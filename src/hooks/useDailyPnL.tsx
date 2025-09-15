@@ -97,7 +97,6 @@ export function useDailyPnL(restaurantId: string | null) {
           gross_revenue: salesData.gross_revenue,
           discounts: salesData.discounts,
           comps: salesData.comps,
-          net_revenue: salesData.gross_revenue - salesData.discounts - salesData.comps,
           transaction_count: salesData.transaction_count || 0,
         }, {
           onConflict: 'restaurant_id,date'
@@ -132,7 +131,6 @@ export function useDailyPnL(restaurantId: string | null) {
           date: foodCostsData.date,
           purchases: foodCostsData.purchases,
           inventory_adjustments: foodCostsData.inventory_adjustments,
-          total_food_cost: foodCostsData.purchases + foodCostsData.inventory_adjustments,
         }, {
           onConflict: 'restaurant_id,date'
         });
@@ -166,7 +164,6 @@ export function useDailyPnL(restaurantId: string | null) {
           hourly_wages: laborCostsData.hourly_wages,
           salary_wages: laborCostsData.salary_wages,
           benefits: laborCostsData.benefits,
-          total_labor_cost: laborCostsData.hourly_wages + laborCostsData.salary_wages + laborCostsData.benefits,
           total_hours: laborCostsData.total_hours || 0,
         }, {
           onConflict: 'restaurant_id,date'

@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/useAuth';
 import { useSSO } from '@/hooks/useSSO';
 import { useToast } from '@/hooks/use-toast';
+import { SSOProviderButtons } from '@/components/SSOProviderButtons';
 import { Building, ArrowRight, Shield } from 'lucide-react';
 
 const Auth = () => {
@@ -55,9 +56,7 @@ const Auth = () => {
           title: "SSO Redirect",
           description: result.message,
         });
-        // In a real implementation, the user would be redirected
-        // For demo purposes, we'll show the redirect URL
-        console.log('SSO Redirect URL:', result.redirectUrl);
+        // Supabase OAuth handles the redirect automatically
       } else {
         toast({
           title: "SSO Error",
@@ -175,15 +174,7 @@ const Auth = () => {
                 
                 {ssoRequired ? (
                   <div className="space-y-4">
-                    <Button 
-                      type="submit" 
-                      className="w-full flex items-center gap-2" 
-                      disabled={loading}
-                    >
-                      <Building className="h-4 w-4" />
-                      {loading ? 'Redirecting...' : `Sign in with ${ssoRequired.sso_provider.toUpperCase()}`}
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
+                    <SSOProviderButtons onSuccess={() => console.log('SSO login successful')} />
                     
                     <div className="text-center text-sm text-muted-foreground">
                       SSO is required for @{ssoRequired.sso_domain} emails
@@ -235,15 +226,7 @@ const Auth = () => {
                 
                 {ssoRequired ? (
                   <div className="space-y-4">
-                    <Button 
-                      type="submit" 
-                      className="w-full flex items-center gap-2" 
-                      disabled={loading}
-                    >
-                      <Building className="h-4 w-4" />
-                      {loading ? 'Redirecting...' : `Create account with ${ssoRequired.sso_provider.toUpperCase()}`}
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
+                    <SSOProviderButtons onSuccess={() => console.log('SSO signup successful')} />
                     
                     <div className="text-center text-sm text-muted-foreground">
                       SSO is required for @{ssoRequired.sso_domain} emails

@@ -24,7 +24,7 @@ export const useSSO = () => {
       const mockConfigs: SSOConfig[] = [
         {
           sso_enabled: true,
-          sso_provider: 'saml',
+          sso_provider: 'google',
           sso_domain: 'toyiyo.com',
           auto_provisioning: true,
           default_role: 'staff',
@@ -53,18 +53,52 @@ export const useSSO = () => {
     try {
       console.log(`Initiating SSO for ${email} with provider ${provider}`);
       
-      // For SAML/OIDC providers, you would redirect to the identity provider
-      // For now, we'll show an informative message
-      const domain = email.split('@')[1];
-      const redirectUrl = `https://sso.${domain}/auth/saml/login?email=${encodeURIComponent(email)}`;
+      // Use Supabase's built-in OAuth providers
+      let oauthProvider: any;
       
-      // In a real implementation, you would:
-      // window.location.href = redirectUrl;
-      
+      switch (provider.toLowerCase()) {
+        case 'google':
+          oauthProvider = 'google';
+          break;
+        case 'microsoft':
+        case 'azure':
+          oauthProvider = 'azure';
+          break;
+        case 'github':
+          oauthProvider = 'github';
+          break;
+        case 'linkedin':
+          oauthProvider = 'linkedin_oidc';
+          break;
+        case 'saml':
+        case 'oauth':
+        case 'oidc':
+        default:
+          // For generic SAML/OIDC, we'll use Google as an example
+          // In production, you'd configure custom OIDC providers in Supabase
+          oauthProvider = 'google';
+          break;
+      }
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: oauthProvider,
+        options: {
+          redirectTo: `${window.location.origin}/`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
       return {
         success: true,
-        redirectUrl,
-        message: `Redirecting to ${provider.toUpperCase()} authentication for ${domain}`,
+        message: `Redirecting to ${provider.toUpperCase()} authentication`,
+        data,
       };
     } catch (error: any) {
       return {

@@ -14,6 +14,197 @@ export type Database = {
   }
   public: {
     Tables: {
+      daily_food_costs: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          inventory_adjustments: number
+          purchases: number
+          restaurant_id: string
+          total_food_cost: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          inventory_adjustments?: number
+          purchases?: number
+          restaurant_id: string
+          total_food_cost?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          inventory_adjustments?: number
+          purchases?: number
+          restaurant_id?: string
+          total_food_cost?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_food_costs_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_labor_costs: {
+        Row: {
+          benefits: number
+          created_at: string
+          date: string
+          hourly_wages: number
+          id: string
+          restaurant_id: string
+          salary_wages: number
+          total_hours: number | null
+          total_labor_cost: number | null
+          updated_at: string
+        }
+        Insert: {
+          benefits?: number
+          created_at?: string
+          date: string
+          hourly_wages?: number
+          id?: string
+          restaurant_id: string
+          salary_wages?: number
+          total_hours?: number | null
+          total_labor_cost?: number | null
+          updated_at?: string
+        }
+        Update: {
+          benefits?: number
+          created_at?: string
+          date?: string
+          hourly_wages?: number
+          id?: string
+          restaurant_id?: string
+          salary_wages?: number
+          total_hours?: number | null
+          total_labor_cost?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_labor_costs_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_pnl: {
+        Row: {
+          created_at: string
+          date: string
+          food_cost: number
+          food_cost_percentage: number | null
+          gross_profit: number | null
+          id: string
+          labor_cost: number
+          labor_cost_percentage: number | null
+          net_revenue: number
+          prime_cost: number | null
+          prime_cost_percentage: number | null
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          food_cost?: number
+          food_cost_percentage?: number | null
+          gross_profit?: number | null
+          id?: string
+          labor_cost?: number
+          labor_cost_percentage?: number | null
+          net_revenue?: number
+          prime_cost?: number | null
+          prime_cost_percentage?: number | null
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          food_cost?: number
+          food_cost_percentage?: number | null
+          gross_profit?: number | null
+          id?: string
+          labor_cost?: number
+          labor_cost_percentage?: number | null
+          net_revenue?: number
+          prime_cost?: number | null
+          prime_cost_percentage?: number | null
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_pnl_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_sales: {
+        Row: {
+          comps: number
+          created_at: string
+          date: string
+          discounts: number
+          gross_revenue: number
+          id: string
+          net_revenue: number | null
+          restaurant_id: string
+          transaction_count: number | null
+          updated_at: string
+        }
+        Insert: {
+          comps?: number
+          created_at?: string
+          date: string
+          discounts?: number
+          gross_revenue?: number
+          id?: string
+          net_revenue?: number | null
+          restaurant_id: string
+          transaction_count?: number | null
+          updated_at?: string
+        }
+        Update: {
+          comps?: number
+          created_at?: string
+          date?: string
+          discounts?: number
+          gross_revenue?: number
+          id?: string
+          net_revenue?: number | null
+          restaurant_id?: string
+          transaction_count?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_sales_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -117,6 +308,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_daily_pnl: {
+        Args: { p_date: string; p_restaurant_id: string }
+        Returns: string
+      }
       create_restaurant_with_owner: {
         Args: {
           restaurant_address?: string

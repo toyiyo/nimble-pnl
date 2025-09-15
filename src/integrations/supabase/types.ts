@@ -321,6 +321,10 @@ export type Database = {
         }
         Returns: string
       }
+      is_restaurant_owner: {
+        Args: { p_restaurant_id: string; p_user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

@@ -14,9 +14,10 @@ interface Invitation {
   id: string;
   email: string;
   role: string;
-  status: 'pending' | 'accepted' | 'expired';
-  created_at: string;
-  expires_at: string;
+  status: 'pending' | 'accepted' | 'expired' | 'cancelled';
+  createdAt: string;
+  expiresAt?: string;
+  invitedBy?: string;
 }
 
 interface TeamInvitationsProps {
@@ -43,10 +44,36 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
 
   const fetchInvitations = async () => {
     try {
-      // This would typically fetch from a team_invitations table
-      // For now, we'll simulate with empty data
-      setInvitations([]);
+      const { data: invitations, error } = await supabase
+        .from('invitations')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Get profile information for invited_by users
+      const invitedByIds = [...new Set(invitations.map(inv => inv.invited_by))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .in('user_id', invitedByIds);
+
+      const profilesMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
+
+      const formattedInvitations: Invitation[] = invitations.map(inv => ({
+        id: inv.id,
+        email: inv.email,
+        role: inv.role,
+        status: inv.status as 'pending' | 'accepted' | 'expired' | 'cancelled',
+        createdAt: inv.created_at,
+        expiresAt: inv.expires_at,
+        invitedBy: profilesMap.get(inv.invited_by)?.full_name || 'Unknown'
+      }));
+
+      setInvitations(formattedInvitations);
     } catch (error: any) {
+      console.error('Error fetching invitations:', error);
       toast({
         title: "Error",
         description: "Failed to load invitations",
@@ -109,6 +136,7 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
     pending: "secondary",
     accepted: "default",
     expired: "destructive",
+    cancelled: "outline",
   } as const;
 
   return (
@@ -199,7 +227,10 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
                   <div>
                     <p className="font-medium">{invitation.email}</p>
                     <p className="text-sm text-muted-foreground">
-                      Invited as {invitation.role} • {new Date(invitation.created_at).toLocaleDateString()}
+                      Invited as {invitation.role} by {invitation.invitedBy} • {new Date(invitation.createdAt).toLocaleDateString()}
+                      {invitation.expiresAt && (
+                        <span> • Expires {new Date(invitation.expiresAt).toLocaleDateString()}</span>
+                      )}
                     </p>
                   </div>
                 </div>

@@ -9,5 +9,8 @@ verify_jwt = true
 [functions.send-team-invitation]
 verify_jwt = true
 
+[functions.accept-invitation]
+verify_jwt = true
+
 [functions.scim-v2]
 verify_jwt = false

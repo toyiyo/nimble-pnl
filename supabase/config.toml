@@ -1,1 +1,10 @@
 project_id = "ncdujvdgqtaunuyigflp"
+
+[functions.update-enterprise-settings]
+verify_jwt = true
+
+[functions.generate-scim-token]
+verify_jwt = true
+
+[functions.send-team-invitation]
+verify_jwt = true

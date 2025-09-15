@@ -5,15 +5,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/useAuth';
+import { useSSO } from '@/hooks/useSSO';
 import { useToast } from '@/hooks/use-toast';
+import { Building, ArrowRight, Shield } from 'lucide-react';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ssoRequired, setSSORequired] = useState<any>(null);
+  const [showSSORedirect, setShowSSORedirect] = useState(false);
   const { signIn, signUp, user } = useAuth();
+  const { checkSSORequired, initiateSSO } = useSSO();
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -23,8 +29,62 @@ const Auth = () => {
     }
   }, [user, navigate]);
 
+  useEffect(() => {
+    // Check for SSO requirement when email changes
+    if (email) {
+      const ssoConfig = checkSSORequired(email);
+      setSSORequired(ssoConfig);
+      if (ssoConfig) {
+        setShowSSORedirect(true);
+      }
+    } else {
+      setSSORequired(null);
+      setShowSSORedirect(false);
+    }
+  }, [email, checkSSORequired]);
+
+  const handleSSORedirect = async () => {
+    if (!ssoRequired) return;
+    
+    setLoading(true);
+    try {
+      const result = await initiateSSO(email, ssoRequired.sso_provider);
+      
+      if (result.success) {
+        toast({
+          title: "SSO Redirect",
+          description: result.message,
+        });
+        // In a real implementation, the user would be redirected
+        // For demo purposes, we'll show the redirect URL
+        console.log('SSO Redirect URL:', result.redirectUrl);
+      } else {
+        toast({
+          title: "SSO Error",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to initiate SSO",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Check if SSO is required for this email domain
+    if (ssoRequired) {
+      await handleSSORedirect();
+      return;
+    }
+    
     setLoading(true);
 
     const { error } = await signIn(email, password);
@@ -47,6 +107,13 @@ const Auth = () => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Check if SSO is required for this email domain
+    if (ssoRequired) {
+      await handleSSORedirect();
+      return;
+    }
+    
     setLoading(true);
 
     const { error } = await signUp(email, password, fullName);
@@ -84,6 +151,15 @@ const Auth = () => {
             </TabsList>
             
             <TabsContent value="signin">
+              {ssoRequired && showSSORedirect && (
+                <Alert className="mb-4">
+                  <Shield className="h-4 w-4" />
+                  <AlertDescription>
+                    Your organization uses SSO. Click below to sign in through your identity provider.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="signin-email">Email</Label>
@@ -96,36 +172,55 @@ const Auth = () => {
                     required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signin-password">Password</Label>
-                  <Input
-                    id="signin-password"
-                    type="password"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? "Signing in..." : "Sign In"}
-                </Button>
+                
+                {ssoRequired ? (
+                  <div className="space-y-4">
+                    <Button 
+                      type="submit" 
+                      className="w-full flex items-center gap-2" 
+                      disabled={loading}
+                    >
+                      <Building className="h-4 w-4" />
+                      {loading ? 'Redirecting...' : `Sign in with ${ssoRequired.sso_provider.toUpperCase()}`}
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                    
+                    <div className="text-center text-sm text-muted-foreground">
+                      SSO is required for @{ssoRequired.sso_domain} emails
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="signin-password">Password</Label>
+                      <Input
+                        id="signin-password"
+                        type="password"
+                        placeholder="Enter your password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={loading}>
+                      {loading ? "Signing in..." : "Sign In"}
+                    </Button>
+                  </>
+                )}
               </form>
             </TabsContent>
             
             <TabsContent value="signup">
+              {ssoRequired && showSSORedirect && (
+                <Alert className="mb-4">
+                  <Shield className="h-4 w-4" />
+                  <AlertDescription>
+                    Your organization uses SSO. New accounts must be created through your identity provider.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
               <form onSubmit={handleSignUp} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-name">Full Name</Label>
-                  <Input
-                    id="signup-name"
-                    type="text"
-                    placeholder="Enter your full name"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                  />
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="signup-email">Email</Label>
                   <Input
@@ -137,20 +232,52 @@ const Auth = () => {
                     required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">Password</Label>
-                  <Input
-                    id="signup-password"
-                    type="password"
-                    placeholder="Create a password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? "Creating account..." : "Sign Up"}
-                </Button>
+                
+                {ssoRequired ? (
+                  <div className="space-y-4">
+                    <Button 
+                      type="submit" 
+                      className="w-full flex items-center gap-2" 
+                      disabled={loading}
+                    >
+                      <Building className="h-4 w-4" />
+                      {loading ? 'Redirecting...' : `Create account with ${ssoRequired.sso_provider.toUpperCase()}`}
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                    
+                    <div className="text-center text-sm text-muted-foreground">
+                      SSO is required for @{ssoRequired.sso_domain} emails
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-name">Full Name</Label>
+                      <Input
+                        id="signup-name"
+                        type="text"
+                        placeholder="Enter your full name"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-password">Password</Label>
+                      <Input
+                        id="signup-password"
+                        type="password"
+                        placeholder="Create a password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={loading}>
+                      {loading ? "Creating account..." : "Sign Up"}
+                    </Button>
+                  </>
+                )}
               </form>
             </TabsContent>
           </Tabs>

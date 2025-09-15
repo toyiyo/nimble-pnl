@@ -88,7 +88,8 @@ export function useDailyPnL(restaurantId: string | null) {
 
   const upsertSales = async (salesData: DailySales) => {
     try {
-      const { error } = await supabase
+      console.log('Upserting sales data:', salesData);
+      const { data, error } = await supabase
         .from('daily_sales')
         .upsert({
           restaurant_id: salesData.restaurant_id,
@@ -96,11 +97,13 @@ export function useDailyPnL(restaurantId: string | null) {
           gross_revenue: salesData.gross_revenue,
           discounts: salesData.discounts,
           comps: salesData.comps,
+          net_revenue: salesData.gross_revenue - salesData.discounts - salesData.comps,
           transaction_count: salesData.transaction_count || 0,
         }, {
           onConflict: 'restaurant_id,date'
         });
 
+      console.log('Sales upsert result:', { data, error });
       if (error) throw error;
 
       toast({
@@ -121,17 +124,20 @@ export function useDailyPnL(restaurantId: string | null) {
 
   const upsertFoodCosts = async (foodCostsData: DailyFoodCosts) => {
     try {
-      const { error } = await supabase
+      console.log('Upserting food costs data:', foodCostsData);
+      const { data, error } = await supabase
         .from('daily_food_costs')
         .upsert({
           restaurant_id: foodCostsData.restaurant_id,
           date: foodCostsData.date,
           purchases: foodCostsData.purchases,
           inventory_adjustments: foodCostsData.inventory_adjustments,
+          total_food_cost: foodCostsData.purchases + foodCostsData.inventory_adjustments,
         }, {
           onConflict: 'restaurant_id,date'
         });
 
+      console.log('Food costs upsert result:', { data, error });
       if (error) throw error;
 
       toast({
@@ -151,7 +157,8 @@ export function useDailyPnL(restaurantId: string | null) {
 
   const upsertLaborCosts = async (laborCostsData: DailyLaborCosts) => {
     try {
-      const { error } = await supabase
+      console.log('Upserting labor costs data:', laborCostsData);
+      const { data, error } = await supabase
         .from('daily_labor_costs')
         .upsert({
           restaurant_id: laborCostsData.restaurant_id,
@@ -159,11 +166,13 @@ export function useDailyPnL(restaurantId: string | null) {
           hourly_wages: laborCostsData.hourly_wages,
           salary_wages: laborCostsData.salary_wages,
           benefits: laborCostsData.benefits,
+          total_labor_cost: laborCostsData.hourly_wages + laborCostsData.salary_wages + laborCostsData.benefits,
           total_hours: laborCostsData.total_hours || 0,
         }, {
           onConflict: 'restaurant_id,date'
         });
 
+      console.log('Labor costs upsert result:', { data, error });
       if (error) throw error;
 
       toast({

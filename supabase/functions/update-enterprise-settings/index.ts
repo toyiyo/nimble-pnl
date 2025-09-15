@@ -55,19 +55,55 @@ const handler = async (req: Request): Promise<Response> => {
     console.log('Updating enterprise settings for restaurant:', restaurantId);
     console.log('Config:', config);
 
-    // For now, we'll just log the settings since we don't have an enterprise_settings table
-    // In a real implementation, you would:
-    // 1. Create an enterprise_settings table
-    // 2. Insert/update the configuration
-    // 3. Validate the user has permission to modify these settings
+    // Save enterprise settings to database
+    const { data: existingSettings } = await supabase
+      .from('enterprise_settings')
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .single();
 
-    // Simulate saving settings (replace with actual database operations)
-    const settings = {
-      id: crypto.randomUUID(),
-      restaurant_id: restaurantId,
-      ...config,
-      updated_at: new Date().toISOString(),
-    };
+    let settings;
+    if (existingSettings) {
+      // Update existing settings
+      const { data, error: updateError } = await supabase
+        .from('enterprise_settings')
+        .update({
+          scim_enabled: config.scim_enabled,
+          scim_endpoint: config.scim_endpoint,
+          scim_token: config.scim_token,
+          sso_enabled: config.sso_enabled,
+          sso_provider: config.sso_provider,
+          sso_domain: config.sso_domain,
+          auto_provisioning: config.auto_provisioning,
+          default_role: config.default_role,
+        })
+        .eq('restaurant_id', restaurantId)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+      settings = data;
+    } else {
+      // Create new settings
+      const { data, error: insertError } = await supabase
+        .from('enterprise_settings')
+        .insert({
+          restaurant_id: restaurantId,
+          scim_enabled: config.scim_enabled,
+          scim_endpoint: config.scim_endpoint,
+          scim_token: config.scim_token,
+          sso_enabled: config.sso_enabled,
+          sso_provider: config.sso_provider,
+          sso_domain: config.sso_domain,
+          auto_provisioning: config.auto_provisioning,
+          default_role: config.default_role,
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+      settings = data;
+    }
 
     console.log('Enterprise settings saved:', settings);
 

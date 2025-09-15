@@ -47,19 +47,43 @@ export const EnterpriseSettings = ({ restaurantId }: EnterpriseSettingsProps) =>
 
   const fetchEnterpriseConfig = async () => {
     try {
-      // This would typically fetch from an enterprise_settings table
-      // For now set some defaults
-      setConfig({
-        scim_enabled: false,
-        scim_endpoint: `https://api.restaurantops.app/scim/v2/${restaurantId}`,
-        scim_token: '',
-        sso_enabled: false,
-        sso_provider: 'saml',
-        sso_domain: '',
-        auto_provisioning: true,
-        default_role: 'staff',
-      });
+      // Fetch from enterprise_settings table
+      const { data: settings, error } = await supabase
+        .from('enterprise_settings')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        throw error;
+      }
+
+      if (settings) {
+        setConfig({
+          scim_enabled: settings.scim_enabled,
+          scim_endpoint: settings.scim_endpoint || `https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/scim-v2`,
+          scim_token: settings.scim_token || '',
+          sso_enabled: settings.sso_enabled,
+          sso_provider: settings.sso_provider || 'saml',
+          sso_domain: settings.sso_domain || '',
+          auto_provisioning: settings.auto_provisioning,
+          default_role: settings.default_role || 'staff',
+        });
+      } else {
+        // Set defaults for new restaurant
+        setConfig({
+          scim_enabled: false,
+          scim_endpoint: `https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/scim-v2`,
+          scim_token: '',
+          sso_enabled: false,
+          sso_provider: 'saml',
+          sso_domain: '',
+          auto_provisioning: true,
+          default_role: 'staff',
+        });
+      }
     } catch (error: any) {
+      console.error('Error fetching enterprise settings:', error);
       toast({
         title: "Error",
         description: "Failed to load enterprise settings",

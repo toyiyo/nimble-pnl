@@ -72,7 +72,12 @@ Deno.serve(async (req) => {
     console.log('Square OAuth - Action:', action, 'Environment:', SQUARE_ENVIRONMENT, 'Origin:', origin, 'Redirect URI:', REDIRECT_URI);
 
     if (!SQUARE_APPLICATION_ID || !SQUARE_APPLICATION_SECRET) {
-      throw new Error('Square credentials not configured');
+      console.error('Square credentials missing:', {
+        hasAppId: !!SQUARE_APPLICATION_ID,
+        hasAppSecret: !!SQUARE_APPLICATION_SECRET,
+        environment: SQUARE_ENVIRONMENT
+      });
+      throw new Error(`Square credentials not configured for ${SQUARE_ENVIRONMENT} environment`);
     }
 
     console.log('Square OAuth action:', action, 'Restaurant ID:', restaurantId);
@@ -116,7 +121,13 @@ Deno.serve(async (req) => {
       console.log('Generated Square OAuth URL:', authUrl.toString(), '(Environment:', SQUARE_ENVIRONMENT + ')');
 
       return new Response(JSON.stringify({
-        authorizationUrl: authUrl.toString()
+        authorizationUrl: authUrl.toString(),
+        environment: SQUARE_ENVIRONMENT,
+        debug: {
+          clientId: SQUARE_APPLICATION_ID,
+          redirectUri: REDIRECT_URI,
+          host: SQUARE_CONNECT_HOST
+        }
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

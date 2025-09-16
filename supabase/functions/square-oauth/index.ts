@@ -45,15 +45,20 @@ Deno.serve(async (req) => {
       user = authUser;
     }
 
-    const SQUARE_APPLICATION_ID = Deno.env.get('SQUARE_APPLICATION_ID');
-    const SQUARE_APPLICATION_SECRET = Deno.env.get('SQUARE_APPLICATION_SECRET');
-    
     // Determine environment and URLs based on request origin
     const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
     const isPreview = origin && origin.includes('lovableproject.com');
     
-    // Use sandbox environment for preview/development
+    // Use appropriate credentials based on environment
     const SQUARE_ENVIRONMENT = isPreview ? 'sandbox' : 'production';
+    const SQUARE_APPLICATION_ID = isPreview 
+      ? Deno.env.get('SQUARE_SANDBOX_APPLICATION_ID')
+      : Deno.env.get('SQUARE_APPLICATION_ID');
+    const SQUARE_APPLICATION_SECRET = isPreview 
+      ? Deno.env.get('SQUARE_SANDBOX_APPLICATION_SECRET')
+      : Deno.env.get('SQUARE_APPLICATION_SECRET');
+    
+    // Use environment-specific hosts
     const SQUARE_CONNECT_HOST = isPreview ? 'connect.squareupsandbox.com' : 'connect.squareup.com';
     const SQUARE_API_HOST = isPreview ? 'connect.squareupsandbox.com' : 'connect.squareup.com';
     

@@ -48,9 +48,20 @@ Deno.serve(async (req) => {
     const SQUARE_APPLICATION_ID = Deno.env.get('SQUARE_APPLICATION_ID');
     const SQUARE_APPLICATION_SECRET = Deno.env.get('SQUARE_APPLICATION_SECRET');
     
-    // Get the origin from the request headers to construct redirect URI dynamically
-    const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/') || 'https://app.easyshifthq.com';
-    const REDIRECT_URI = `${origin}/square/callback`;
+    // Determine redirect URI based on environment
+    // For consistency, use the same logic for both authorization and callback
+    const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
+    let REDIRECT_URI;
+    
+    if (origin && origin.includes('lovableproject.com')) {
+      // Preview environment
+      REDIRECT_URI = `${origin}/square/callback`;
+    } else {
+      // Production or default
+      REDIRECT_URI = 'https://app.easyshifthq.com/square/callback';
+    }
+    
+    console.log('Square OAuth redirect URI:', REDIRECT_URI, 'Origin:', origin);
 
     if (!SQUARE_APPLICATION_ID || !SQUARE_APPLICATION_SECRET) {
       throw new Error('Square credentials not configured');

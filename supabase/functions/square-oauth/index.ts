@@ -80,9 +80,9 @@ Deno.serve(async (req) => {
         'REFUNDS_READ',
         'ITEMS_READ',
         'INVENTORY_READ',
-        'BUSINESS_READ',
-        'TEAM_READ',
-        'LABOR_READ'
+        'MERCHANT_PROFILE_READ',
+        'EMPLOYEES_READ',
+        'TIMECARDS_READ'
       ].join(' ');
 
       const authUrl = new URL('https://connect.squareup.com/oauth2/authorize');

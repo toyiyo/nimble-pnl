@@ -30,7 +30,7 @@ export const useSquareIntegration = (restaurantId: string | null) => {
         .from('square_connections')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') { // Not found error
         console.error('Error checking Square connection:', error);

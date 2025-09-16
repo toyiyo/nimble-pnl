@@ -56,7 +56,7 @@ const SquareCallback = () => {
           body: {
             action: 'callback',
             code: code,
-            restaurantId: restaurantId
+            state: state
           }
         });
 

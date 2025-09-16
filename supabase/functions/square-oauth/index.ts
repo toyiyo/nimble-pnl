@@ -76,13 +76,12 @@ Deno.serve(async (req) => {
       // Generate authorization URL
       const scopes = [
         'ORDERS_READ',
-        'PAYMENTS_READ', 
-        'REFUNDS_READ',
+        'PAYMENTS_READ',
         'ITEMS_READ',
         'INVENTORY_READ',
-        'BUSINESS_READ',
-        'TEAM_READ',
-        'LABOR_READ'
+        'MERCHANT_PROFILE_READ',
+        'EMPLOYEES_READ',
+        'TIMECARDS_READ'
       ].join(' ');
 
       const authUrl = new URL('https://connect.squareup.com/oauth2/authorize');

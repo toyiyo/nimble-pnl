@@ -243,14 +243,20 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                     Labor Costs
                   </CardTitle>
                   <CardDescription>
-                    Enter your daily labor costs and hours worked
+                    Enter the total amounts paid for labor on {selectedDate}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div className="mb-4 p-3 bg-muted/50 rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      <strong>Important:</strong> Enter total dollar amounts paid, not hourly rates. 
+                      For example, if you paid $15/hour × 32 hours = $480 total.
+                    </p>
+                  </div>
                   <form onSubmit={handleLaborCostsSubmit} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="hourly_wages">Hourly Wages ($)</Label>
+                        <Label htmlFor="hourly_wages">Total Hourly Wages Paid ($)</Label>
                         <Input
                           id="hourly_wages"
                           type="number"
@@ -259,9 +265,12 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           onChange={(e) => setLaborCostsData({ ...laborCostsData, hourly_wages: Number(e.target.value) })}
                           placeholder="480.00"
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Total amount paid to hourly employees
+                        </p>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="salary_wages">Salary Wages ($)</Label>
+                        <Label htmlFor="salary_wages">Total Salary Wages Paid ($)</Label>
                         <Input
                           id="salary_wages"
                           type="number"
@@ -270,9 +279,12 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           onChange={(e) => setLaborCostsData({ ...laborCostsData, salary_wages: Number(e.target.value) })}
                           placeholder="200.00"
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Daily portion of salaried employee costs
+                        </p>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="benefits">Benefits ($)</Label>
+                        <Label htmlFor="benefits">Total Benefits Cost ($)</Label>
                         <Input
                           id="benefits"
                           type="number"
@@ -281,9 +293,12 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           onChange={(e) => setLaborCostsData({ ...laborCostsData, benefits: Number(e.target.value) })}
                           placeholder="106.00"
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Health insurance, taxes, other benefits
+                        </p>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="total_hours">Total Hours</Label>
+                        <Label htmlFor="total_hours">Total Hours Worked</Label>
                         <Input
                           id="total_hours"
                           type="number"
@@ -292,6 +307,9 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           onChange={(e) => setLaborCostsData({ ...laborCostsData, total_hours: Number(e.target.value) })}
                           placeholder="64.5"
                         />
+                        <p className="text-xs text-muted-foreground">
+                          For tracking labor efficiency (optional)
+                        </p>
                       </div>
                     </div>
                     <Button type="submit" disabled={loading}>

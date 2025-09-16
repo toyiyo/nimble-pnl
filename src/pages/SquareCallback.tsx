@@ -49,6 +49,8 @@ const SquareCallback = () => {
         // Extract restaurant ID from state parameter
         const restaurantId = state;
 
+        console.log('Square callback processing:', { code, state, restaurantId });
+
         // Call the square-oauth edge function to exchange code for tokens
         const { data, error: callbackError } = await supabase.functions.invoke('square-oauth', {
           body: {
@@ -58,7 +60,10 @@ const SquareCallback = () => {
           }
         });
 
+        console.log('Edge function response:', { data, error: callbackError });
+
         if (callbackError) {
+          console.error('Edge function error details:', callbackError);
           throw callbackError;
         }
 

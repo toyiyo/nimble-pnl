@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -196,14 +197,20 @@ Deno.serve(async (req) => {
 
       console.log('Retrieved merchant info:', merchant.id);
 
-      // Store the connection
+      // Encrypt sensitive tokens before storage
+      const encryption = await getEncryptionService();
+      const encryptedAccessToken = await encryption.encrypt(tokenData.access_token);
+      const encryptedRefreshToken = tokenData.refresh_token ? 
+        await encryption.encrypt(tokenData.refresh_token) : null;
+
+      // Store the connection with encrypted tokens
       const { data: connection, error: connectionError } = await supabase
         .from('square_connections')
         .upsert({
           restaurant_id: restaurantId,
           merchant_id: merchant.id,
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
+          access_token: encryptedAccessToken,
+          refresh_token: encryptedRefreshToken,
           scopes: tokenData.scope?.split(' ') || [],
           expires_at: tokenData.expires_at ? new Date(tokenData.expires_at).toISOString() : null,
           connected_at: new Date().toISOString(),
@@ -212,6 +219,12 @@ Deno.serve(async (req) => {
         })
         .select()
         .single();
+
+      // Log security event
+      await logSecurityEvent(supabase, 'SQUARE_OAUTH_TOKEN_STORED', null, restaurantId, {
+        merchantId: merchant.id,
+        scopes: tokenData.scope?.split(' ') || []
+      });
 
       if (connectionError) {
         console.error('Error storing Square connection:', connectionError);

@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,7 +32,7 @@ Deno.serve(async (req) => {
 
     console.log('Square sync started:', { restaurantId, action, dateRange });
 
-    // Get Square connection
+    // Get Square connection and decrypt tokens
     const { data: connection, error: connectionError } = await supabase
       .from('square_connections')
       .select('*')
@@ -41,6 +42,22 @@ Deno.serve(async (req) => {
     if (connectionError || !connection) {
       throw new Error('Square connection not found');
     }
+
+    // Decrypt the access token
+    const encryption = await getEncryptionService();
+    const decryptedAccessToken = await encryption.decrypt(connection.access_token);
+    
+    // Create connection object with decrypted token
+    const decryptedConnection = {
+      ...connection,
+      access_token: decryptedAccessToken
+    };
+
+    // Log security event for token access
+    await logSecurityEvent(supabase, 'SQUARE_TOKEN_ACCESSED', null, restaurantId, {
+      action: action,
+      merchantId: connection.merchant_id
+    });
 
     // Get Square locations
     const { data: locations, error: locationsError } = await supabase
@@ -67,7 +84,7 @@ Deno.serve(async (req) => {
     // Sync catalog (only for initial sync)
     if (action === 'initial_sync') {
       try {
-        await syncCatalog(connection, restaurantId, supabase);
+        await syncCatalog(decryptedConnection, restaurantId, supabase);
         results.catalogSynced = true;
       } catch (error: any) {
         console.error('Catalog sync error:', error);
@@ -78,7 +95,7 @@ Deno.serve(async (req) => {
     // Sync team members (only for initial sync or daily)
     if (action === 'initial_sync' || action === 'daily_sync') {
       try {
-        const teamCount = await syncTeamMembers(connection, restaurantId, supabase);
+        const teamCount = await syncTeamMembers(decryptedConnection, restaurantId, supabase);
         results.teamMembersSynced = teamCount;
       } catch (error: any) {
         console.error('Team members sync error:', error);
@@ -118,19 +135,19 @@ Deno.serve(async (req) => {
     for (const location of locations) {
       try {
         // Sync orders
-        const ordersCount = await syncOrders(connection, restaurantId, location.location_id, startDate, endDate, supabase);
+        const ordersCount = await syncOrders(decryptedConnection, restaurantId, location.location_id, startDate, endDate, supabase);
         results.ordersSynced += ordersCount;
 
         // Sync payments
-        const paymentsCount = await syncPayments(connection, restaurantId, location.location_id, startDate, endDate, supabase);
+        const paymentsCount = await syncPayments(decryptedConnection, restaurantId, location.location_id, startDate, endDate, supabase);
         results.paymentsSynced += paymentsCount;
 
         // Sync refunds
-        const refundsCount = await syncRefunds(connection, restaurantId, location.location_id, startDate, endDate, supabase);
+        const refundsCount = await syncRefunds(decryptedConnection, restaurantId, location.location_id, startDate, endDate, supabase);
         results.refundsSynced += refundsCount;
 
         // Sync shifts (labor data)
-        const shiftsCount = await syncShifts(connection, restaurantId, location.location_id, startDate, endDate, supabase);
+        const shiftsCount = await syncShifts(decryptedConnection, restaurantId, location.location_id, startDate, endDate, supabase);
         results.shiftsSynced += shiftsCount;
 
       } catch (error: any) {

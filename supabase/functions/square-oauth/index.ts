@@ -77,7 +77,6 @@ Deno.serve(async (req) => {
       const scopes = [
         'ORDERS_READ',
         'PAYMENTS_READ', 
-        'REFUNDS_READ',
         'ITEMS_READ',
         'INVENTORY_READ',
         'MERCHANT_PROFILE_READ',

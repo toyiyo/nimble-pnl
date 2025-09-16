@@ -472,6 +472,496 @@ export type Database = {
         }
         Relationships: []
       }
+      square_catalog_objects: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          id: string
+          modifier_list_ids: string[] | null
+          name: string | null
+          object_id: string
+          object_type: string
+          parent_id: string | null
+          raw_json: Json | null
+          restaurant_id: string
+          sku: string | null
+          updated_at: string
+          version: number | null
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          modifier_list_ids?: string[] | null
+          name?: string | null
+          object_id: string
+          object_type: string
+          parent_id?: string | null
+          raw_json?: Json | null
+          restaurant_id: string
+          sku?: string | null
+          updated_at?: string
+          version?: number | null
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          modifier_list_ids?: string[] | null
+          name?: string | null
+          object_id?: string
+          object_type?: string
+          parent_id?: string | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          sku?: string | null
+          updated_at?: string
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "square_catalog_objects_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      square_connections: {
+        Row: {
+          access_token: string
+          connected_at: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          last_refreshed_at: string | null
+          merchant_id: string
+          refresh_token: string | null
+          restaurant_id: string
+          scopes: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          connected_at?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_refreshed_at?: string | null
+          merchant_id: string
+          refresh_token?: string | null
+          restaurant_id: string
+          scopes?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          connected_at?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_refreshed_at?: string | null
+          merchant_id?: string
+          refresh_token?: string | null
+          restaurant_id?: string
+          scopes?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "square_connections_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      square_locations: {
+        Row: {
+          address: Json | null
+          connection_id: string
+          created_at: string
+          currency: string | null
+          id: string
+          location_id: string
+          name: string | null
+          restaurant_id: string
+          timezone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: Json | null
+          connection_id: string
+          created_at?: string
+          currency?: string | null
+          id?: string
+          location_id: string
+          name?: string | null
+          restaurant_id: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: Json | null
+          connection_id?: string
+          created_at?: string
+          currency?: string | null
+          id?: string
+          location_id?: string
+          name?: string | null
+          restaurant_id?: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "square_locations_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "square_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "square_locations_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      square_order_line_items: {
+        Row: {
+          base_price_money: number | null
+          catalog_object_id: string | null
+          category_id: string | null
+          created_at: string
+          id: string
+          modifiers: Json | null
+          name: string | null
+          order_id: string
+          quantity: number | null
+          raw_json: Json | null
+          restaurant_id: string
+          total_money: number | null
+          uid: string
+        }
+        Insert: {
+          base_price_money?: number | null
+          catalog_object_id?: string | null
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          modifiers?: Json | null
+          name?: string | null
+          order_id: string
+          quantity?: number | null
+          raw_json?: Json | null
+          restaurant_id: string
+          total_money?: number | null
+          uid: string
+        }
+        Update: {
+          base_price_money?: number | null
+          catalog_object_id?: string | null
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          modifiers?: Json | null
+          name?: string | null
+          order_id?: string
+          quantity?: number | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          total_money?: number | null
+          uid?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "square_order_line_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      square_orders: {
+        Row: {
+          closed_at: string | null
+          created_at: string | null
+          gross_sales_money: number | null
+          id: string
+          location_id: string
+          net_amounts_money: number | null
+          order_id: string
+          raw_json: Json | null
+          restaurant_id: string
+          service_date: string | null
+          source: string | null
+          state: string | null
+          synced_at: string
+          total_discount_money: number | null
+          total_service_charge_money: number | null
+          total_tax_money: number | null
+          total_tip_money: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string | null
+          gross_sales_money?: number | null
+          id?: string
+          location_id: string
+          net_amounts_money?: number | null
+          order_id: string
+          raw_json?: Json | null
+          restaurant_id: string
+          service_date?: string | null
+          source?: string | null
+          state?: string | null
+          synced_at?: string
+          total_discount_money?: number | null
+          total_service_charge_money?: number | null
+          total_tax_money?: number | null
+          total_tip_money?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string | null
+          gross_sales_money?: number | null
+          id?: string
+          location_id?: string
+          net_amounts_money?: number | null
+          order_id?: string
+          raw_json?: Json | null
+          restaurant_id?: string
+          service_date?: string | null
+          source?: string | null
+          state?: string | null
+          synced_at?: string
+          total_discount_money?: number | null
+          total_service_charge_money?: number | null
+          total_tax_money?: number | null
+          total_tip_money?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "square_orders_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      square_payments: {
+        Row: {
+          amount_money: number | null
+          created_at: string | null
+          id: string
+          location_id: string
+          order_id: string | null
+          payment_id: string
+          processing_fee_money: number | null
+          raw_json: Json | null
+          restaurant_id: string
+          status: string | null
+          synced_at: string
+          tip_money: number | null
+        }
+        Insert: {
+          amount_money?: number | null
+          created_at?: string | null
+          id?: string
+          location_id: string
+          order_id?: string | null
+          payment_id: string
+          processing_fee_money?: number | null
+          raw_json?: Json | null
+          restaurant_id: string
+          status?: string | null
+          synced_at?: string
+          tip_money?: number | null
+        }
+        Update: {
+          amount_money?: number | null
+          created_at?: string | null
+          id?: string
+          location_id?: string
+          order_id?: string | null
+          payment_id?: string
+          processing_fee_money?: number | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          status?: string | null
+          synced_at?: string
+          tip_money?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "square_payments_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      square_refunds: {
+        Row: {
+          amount_money: number | null
+          created_at: string | null
+          id: string
+          order_id: string | null
+          payment_id: string | null
+          raw_json: Json | null
+          refund_id: string
+          restaurant_id: string
+          status: string | null
+          synced_at: string
+        }
+        Insert: {
+          amount_money?: number | null
+          created_at?: string | null
+          id?: string
+          order_id?: string | null
+          payment_id?: string | null
+          raw_json?: Json | null
+          refund_id: string
+          restaurant_id: string
+          status?: string | null
+          synced_at?: string
+        }
+        Update: {
+          amount_money?: number | null
+          created_at?: string | null
+          id?: string
+          order_id?: string | null
+          payment_id?: string | null
+          raw_json?: Json | null
+          refund_id?: string
+          restaurant_id?: string
+          status?: string | null
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "square_refunds_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      square_shifts: {
+        Row: {
+          break_seconds: number | null
+          end_at: string | null
+          hourly_rate_money: number | null
+          id: string
+          location_id: string
+          overtime_seconds: number | null
+          raw_json: Json | null
+          restaurant_id: string
+          service_date: string | null
+          shift_id: string
+          start_at: string | null
+          synced_at: string
+          team_member_id: string | null
+          total_wage_money: number | null
+        }
+        Insert: {
+          break_seconds?: number | null
+          end_at?: string | null
+          hourly_rate_money?: number | null
+          id?: string
+          location_id: string
+          overtime_seconds?: number | null
+          raw_json?: Json | null
+          restaurant_id: string
+          service_date?: string | null
+          shift_id: string
+          start_at?: string | null
+          synced_at?: string
+          team_member_id?: string | null
+          total_wage_money?: number | null
+        }
+        Update: {
+          break_seconds?: number | null
+          end_at?: string | null
+          hourly_rate_money?: number | null
+          id?: string
+          location_id?: string
+          overtime_seconds?: number | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          service_date?: string | null
+          shift_id?: string
+          start_at?: string | null
+          synced_at?: string
+          team_member_id?: string | null
+          total_wage_money?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "square_shifts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      square_team_members: {
+        Row: {
+          created_at: string
+          id: string
+          name: string | null
+          raw_json: Json | null
+          restaurant_id: string
+          status: string | null
+          team_member_id: string
+          updated_at: string
+          wage_default_money: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name?: string | null
+          raw_json?: Json | null
+          restaurant_id: string
+          status?: string | null
+          team_member_id: string
+          updated_at?: string
+          wage_default_money?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          status?: string | null
+          team_member_id?: string
+          updated_at?: string
+          wage_default_money?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "square_team_members_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_restaurants: {
         Row: {
           created_at: string
@@ -511,6 +1001,10 @@ export type Database = {
     Functions: {
       calculate_daily_pnl: {
         Args: { p_date: string; p_restaurant_id: string }
+        Returns: string
+      }
+      calculate_square_daily_pnl: {
+        Args: { p_restaurant_id: string; p_service_date: string }
         Returns: string
       }
       cleanup_expired_invitations: {

@@ -48,8 +48,7 @@ Deno.serve(async (req) => {
     const SQUARE_APPLICATION_ID = Deno.env.get('SQUARE_APPLICATION_ID');
     const SQUARE_APPLICATION_SECRET = Deno.env.get('SQUARE_APPLICATION_SECRET');
     
-    // Determine redirect URI based on environment
-    // For consistency, use the same logic for both authorization and callback
+    // Determine redirect URI based on environment consistently
     const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
     let REDIRECT_URI;
     
@@ -57,11 +56,11 @@ Deno.serve(async (req) => {
       // Preview environment
       REDIRECT_URI = `${origin}/square/callback`;
     } else {
-      // Production or default
+      // Production or default - always use production URL
       REDIRECT_URI = 'https://app.easyshifthq.com/square/callback';
     }
     
-    console.log('Square OAuth redirect URI:', REDIRECT_URI, 'Origin:', origin);
+    console.log('Square OAuth - Action:', action, 'Origin:', origin, 'Redirect URI:', REDIRECT_URI);
 
     if (!SQUARE_APPLICATION_ID || !SQUARE_APPLICATION_SECRET) {
       throw new Error('Square credentials not configured');
@@ -115,34 +114,46 @@ Deno.serve(async (req) => {
 
     } else if (action === 'callback') {
       if (!code || !state) {
+        console.error('Missing callback parameters:', { code: !!code, state: !!state });
         throw new Error('Missing authorization code or state');
       }
 
       const restaurantId = state; // Restaurant ID passed as state
-
-      // For callback, we don't require user authentication since they might lose session during OAuth flow
-      // We'll verify restaurant access later when needed
+      console.log('Square callback processing:', { code: code.substring(0, 20) + '...', state, restaurantId });
 
       // Exchange authorization code for access token
+      const tokenRequestBody = {
+        client_id: SQUARE_APPLICATION_ID,
+        client_secret: SQUARE_APPLICATION_SECRET,
+        code: code,
+        grant_type: 'authorization_code',
+        redirect_uri: REDIRECT_URI,
+      };
+
+      console.log('Token exchange request:', {
+        client_id: SQUARE_APPLICATION_ID,
+        redirect_uri: REDIRECT_URI,
+        code_length: code.length
+      });
+
       const tokenResponse = await fetch('https://connect.squareup.com/oauth2/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Square-Version': '2024-12-18',
         },
-        body: JSON.stringify({
-          client_id: SQUARE_APPLICATION_ID,
-          client_secret: SQUARE_APPLICATION_SECRET,
-          code: code,
-          grant_type: 'authorization_code',
-          redirect_uri: REDIRECT_URI,
-        }),
+        body: JSON.stringify(tokenRequestBody),
       });
 
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
-        console.error('Square token exchange failed:', errorText);
-        throw new Error('Failed to exchange authorization code');
+        console.error('Square token exchange failed:', {
+          status: tokenResponse.status,
+          statusText: tokenResponse.statusText,
+          error: errorText,
+          redirect_uri: REDIRECT_URI
+        });
+        throw new Error(`Failed to exchange authorization code: ${errorText}`);
       }
 
       const tokenData = await tokenResponse.json();

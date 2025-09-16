@@ -18,6 +18,13 @@ const SquareCallback = () => {
       const state = searchParams.get('state');
       const error = searchParams.get('error');
 
+      console.log('URL search params:', {
+        code,
+        state, 
+        error,
+        allParams: Object.fromEntries(searchParams.entries())
+      });
+
       if (error) {
         setStatus('error');
         setMessage(`Square connection failed: ${error}`);

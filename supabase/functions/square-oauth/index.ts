@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
 
     const SQUARE_APPLICATION_ID = Deno.env.get('SQUARE_APPLICATION_ID');
     const SQUARE_APPLICATION_SECRET = Deno.env.get('SQUARE_APPLICATION_SECRET');
-    const REDIRECT_URI = `${req.headers.get('origin')}/square/callback`;
+    const REDIRECT_URI = 'https://app.easyshifthq.com/square/callback';
 
     if (!SQUARE_APPLICATION_ID || !SQUARE_APPLICATION_SECRET) {
       throw new Error('Square credentials not configured');

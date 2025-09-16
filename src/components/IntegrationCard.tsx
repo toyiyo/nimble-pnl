@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { Plug, Settings, CheckCircle } from 'lucide-react';
 
 interface Integration {
@@ -23,8 +24,23 @@ interface IntegrationCardProps {
 export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardProps) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const { toast } = useToast();
+  
+  // Square-specific integration hook
+  const squareIntegration = useSquareIntegration(restaurantId);
+  
+  // Check if this integration is Square and if it's connected
+  const isSquareIntegration = integration.id === 'square-pos';
+  const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected : integration.connected;
+  const actuallyConnecting = isSquareIntegration ? squareIntegration.isConnecting : isConnecting;
 
   const handleConnect = async () => {
+    if (isSquareIntegration) {
+      // Use Square-specific connection logic
+      await squareIntegration.connectSquare();
+      return;
+    }
+    
+    // For other integrations, show coming soon message
     setIsConnecting(true);
     
     try {
@@ -47,6 +63,11 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   };
 
   const handleDisconnect = async () => {
+    if (isSquareIntegration) {
+      await squareIntegration.disconnectSquare();
+      return;
+    }
+    
     toast({
       title: "Disconnected",
       description: `Successfully disconnected from ${integration.name}`,
@@ -73,7 +94,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
               </Badge>
             </div>
           </div>
-          {integration.connected && (
+          {actuallyConnected && (
             <CheckCircle className="h-5 w-5 text-green-500" />
           )}
         </div>
@@ -97,7 +118,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
 
         {/* Action Buttons */}
         <div className="space-y-2">
-          {integration.connected ? (
+          {actuallyConnected ? (
             <>
               <Button 
                 variant="outline" 
@@ -120,17 +141,20 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             <Button 
               className="w-full" 
               onClick={handleConnect}
-              disabled={isConnecting}
+              disabled={actuallyConnecting}
             >
               <Plug className="h-4 w-4 mr-2" />
-              {isConnecting ? 'Connecting...' : 'Connect'}
+              {actuallyConnecting ? 'Connecting...' : 'Connect'}
             </Button>
           )}
         </div>
 
-        {integration.connected && (
+        {actuallyConnected && (
           <div className="text-xs text-muted-foreground">
-            Last sync: 2 hours ago
+            {isSquareIntegration && squareIntegration.connection ? 
+              `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}` :
+              'Last sync: 2 hours ago'
+            }
           </div>
         )}
       </CardContent>

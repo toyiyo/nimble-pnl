@@ -14,3 +14,12 @@ verify_jwt = true
 
 [functions.scim-v2]
 verify_jwt = false
+
+[functions.square-oauth]
+verify_jwt = false
+
+[functions.square-sync-data]
+verify_jwt = false
+
+[functions.square-webhooks]
+verify_jwt = false

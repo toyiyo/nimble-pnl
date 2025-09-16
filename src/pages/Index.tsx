@@ -72,6 +72,9 @@ const Index = () => {
             <span className="text-sm text-muted-foreground">
               Welcome, {user.email}
             </span>
+            <Button variant="outline" onClick={() => navigate('/integrations')}>
+              Integrations
+            </Button>
             <Button variant="outline" onClick={() => navigate('/team')}>
               Team
             </Button>

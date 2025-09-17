@@ -198,12 +198,23 @@ Deno.serve(async (req) => {
       });
 
       if (!merchantResponse.ok) {
+        const errorText = await merchantResponse.text();
+        console.error('Failed to get merchant information:', {
+          status: merchantResponse.status,
+          error: errorText
+        });
         throw new Error('Failed to get merchant information');
       }
 
       const merchantData = await merchantResponse.json();
+      console.log('Merchant response:', merchantData);
+      
+      if (!merchantData.merchant || !merchantData.merchant.id) {
+        console.error('Invalid merchant response - no merchant ID found:', merchantData);
+        throw new Error('No merchant ID found in Square response');
+      }
+      
       const merchant = merchantData.merchant;
-
       console.log('Retrieved merchant info:', merchant.id);
 
       // Encrypt sensitive tokens before storage
@@ -238,7 +249,7 @@ Deno.serve(async (req) => {
       const { data: connection, error: connectionError } = await supabase
         .from('square_connections')
         .upsert(connectionData, {
-          onConflict: 'restaurant_id'
+          onConflict: 'restaurant_id,merchant_id'
         })
         .select()
         .single();

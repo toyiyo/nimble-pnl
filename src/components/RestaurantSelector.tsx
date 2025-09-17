@@ -53,7 +53,7 @@ export function RestaurantSelector({
     );
   }
 
-  if (restaurants.length === 0) {
+  if (!restaurants || restaurants.length === 0) {
     return (
       <div className="p-6 text-center">
         <Store className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
@@ -230,7 +230,7 @@ export function RestaurantSelector({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {restaurants.map((userRestaurant) => (
+        {restaurants && restaurants.map((userRestaurant) => (
           <Card 
             key={userRestaurant.id}
             className={`cursor-pointer transition-all hover:shadow-md ${

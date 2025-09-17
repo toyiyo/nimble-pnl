@@ -207,15 +207,28 @@ Deno.serve(async (req) => {
       }
 
       const merchantData = await merchantResponse.json();
-      console.log('Merchant response:', merchantData);
+      console.log('Full merchant response:', JSON.stringify(merchantData, null, 2));
       
-      if (!merchantData.merchant || !merchantData.merchant.id) {
-        console.error('Invalid merchant response - no merchant ID found:', merchantData);
-        throw new Error('No merchant ID found in Square response');
+      // Square API can return merchant data in different formats
+      let merchant = null;
+      
+      if (merchantData.merchant) {
+        // Single merchant response
+        merchant = merchantData.merchant;
+      } else if (merchantData.merchants && merchantData.merchants.length > 0) {
+        // Multiple merchants response - take the first one
+        merchant = merchantData.merchants[0];
+      } else {
+        console.error('Invalid merchant response - no merchant found:', merchantData);
+        throw new Error('No merchant found in Square response');
       }
       
-      const merchant = merchantData.merchant;
-      console.log('Retrieved merchant info:', merchant.id);
+      if (!merchant || !merchant.id) {
+        console.error('Merchant object missing ID:', merchant);
+        throw new Error('No merchant ID found in Square merchant object');
+      }
+      
+      console.log('Successfully extracted merchant ID:', merchant.id);
 
       // Encrypt sensitive tokens before storage
       const encryption = await getEncryptionService();

@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
+import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
 import { ExternalLink, Settings, ArrowLeft } from 'lucide-react';
@@ -13,6 +14,7 @@ const Integrations = () => {
   const { user, loading } = useAuth();
   const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
   const [selectedRestaurant, setSelectedRestaurant] = useState<UserRestaurant | null>(null);
+  const { isConnected: squareConnected } = useSquareIntegration(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -62,7 +64,7 @@ const Integrations = () => {
       description: 'Import sales, payments, and inventory data from Square',
       category: 'Point of Sale',
       logo: '⬜',
-      connected: false,
+      connected: squareConnected,
       features: ['Sales Data', 'Payment Processing', 'Inventory', 'Analytics']
     },
     {
@@ -110,6 +112,8 @@ const Integrations = () => {
     acc[integration.category].push(integration);
     return acc;
   }, {} as Record<string, typeof integrations>);
+
+  const connectedCount = integrations.filter(integration => integration.connected).length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -186,7 +190,7 @@ const Integrations = () => {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-4">
-                  <div className="text-2xl font-bold">0</div>
+                  <div className="text-2xl font-bold">{connectedCount}</div>
                   <div className="text-sm text-muted-foreground">
                     connected applications
                   </div>

@@ -98,9 +98,18 @@ export async function logSecurityEvent(
       ...metadata 
     });
     
-    // Store in audit log table if it exists
-    // For now, we'll just log to console for security monitoring
+    // Store in security audit log table
+    await supabase
+      .from('security_audit_log')
+      .insert({
+        event_type: event,
+        user_id: userId || null,
+        restaurant_id: restaurantId || null,
+        metadata: metadata || null,
+        created_at: new Date().toISOString()
+      });
   } catch (error) {
     console.error('Failed to log security event:', error);
+    // Don't throw - security logging should not break the main flow
   }
 }

@@ -9,7 +9,8 @@ import { useRestaurants } from '@/hooks/useRestaurants';
 import { TeamInvitations } from '@/components/TeamInvitations';
 import { TeamMembers } from '@/components/TeamMembers';
 import { EnterpriseSettings } from '@/components/EnterpriseSettings';
-import { UserPlus, Building, Settings, ArrowLeft } from 'lucide-react';
+import { SecuritySettings } from '@/components/SecuritySettings';
+import { UserPlus, Building, Settings, ArrowLeft, Shield } from 'lucide-react';
 
 const Team = () => {
   const { user, loading } = useAuth();
@@ -86,7 +87,7 @@ const Team = () => {
         </div>
 
         <Tabs defaultValue="members" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="members" className="flex items-center gap-2">
               <UserPlus className="h-4 w-4" />
               Team Members
@@ -98,6 +99,10 @@ const Team = () => {
             <TabsTrigger value="enterprise" className="flex items-center gap-2" disabled={!isOwner}>
               <Settings className="h-4 w-4" />
               Enterprise
+            </TabsTrigger>
+            <TabsTrigger value="security" className="flex items-center gap-2" disabled={!isOwner}>
+              <Shield className="h-4 w-4" />
+              Security
             </TabsTrigger>
           </TabsList>
 
@@ -126,6 +131,21 @@ const Team = () => {
                   <CardTitle>Access Restricted</CardTitle>
                   <CardDescription>
                     Only restaurant owners can access enterprise settings.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="security">
+            {isOwner ? (
+              <SecuritySettings />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Access Restricted</CardTitle>
+                  <CardDescription>
+                    Only restaurant owners can access security settings.
                   </CardDescription>
                 </CardHeader>
               </Card>

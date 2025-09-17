@@ -50,21 +50,24 @@ Deno.serve(async (req) => {
     const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
     const isPreview = origin && origin.includes('lovableproject.com');
     
+    // TEMPORARY: Force sandbox for testing - remove this when ready for production
+    const forceSandbox = true;
+    
     // Use appropriate credentials based on environment
-    const SQUARE_ENVIRONMENT = isPreview ? 'sandbox' : 'production';
-    const SQUARE_APPLICATION_ID = isPreview 
+    const SQUARE_ENVIRONMENT = (isPreview || forceSandbox) ? 'sandbox' : 'production';
+    const SQUARE_APPLICATION_ID = (isPreview || forceSandbox)
       ? Deno.env.get('SQUARE_SANDBOX_APPLICATION_ID')
       : Deno.env.get('SQUARE_APPLICATION_ID');
-    const SQUARE_APPLICATION_SECRET = isPreview 
+    const SQUARE_APPLICATION_SECRET = (isPreview || forceSandbox)
       ? Deno.env.get('SQUARE_SANDBOX_APPLICATION_SECRET')
       : Deno.env.get('SQUARE_APPLICATION_SECRET');
     
     // Use environment-specific hosts
-    const SQUARE_CONNECT_HOST = isPreview ? 'connect.squareupsandbox.com' : 'connect.squareup.com';
-    const SQUARE_API_HOST = isPreview ? 'connect.squareupsandbox.com' : 'connect.squareup.com';
+    const SQUARE_CONNECT_HOST = (isPreview || forceSandbox) ? 'connect.squareupsandbox.com' : 'connect.squareup.com';
+    const SQUARE_API_HOST = (isPreview || forceSandbox) ? 'connect.squareupsandbox.com' : 'connect.squareup.com';
     
     let REDIRECT_URI;
-    if (isPreview) {
+    if (isPreview || forceSandbox) {
       REDIRECT_URI = `${origin}/square/callback`;
     } else {
       REDIRECT_URI = 'https://app.easyshifthq.com/square/callback';

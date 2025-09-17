@@ -11,7 +11,7 @@ import { ExternalLink, Settings, ArrowLeft } from 'lucide-react';
 
 const Integrations = () => {
   const { user, loading } = useAuth();
-  const { restaurants } = useRestaurants();
+  const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
   const [selectedRestaurant, setSelectedRestaurant] = useState<UserRestaurant | null>(null);
   const navigate = useNavigate();
 
@@ -156,10 +156,13 @@ const Integrations = () => {
                 Please select a restaurant to manage integrations
               </p>
             </div>
-            <RestaurantSelector 
-              selectedRestaurant={selectedRestaurant}
-              onSelectRestaurant={handleRestaurantSelect}
-            />
+          <RestaurantSelector 
+            selectedRestaurant={selectedRestaurant}
+            onSelectRestaurant={handleRestaurantSelect}
+            restaurants={restaurants}
+            loading={restaurantsLoading}
+            createRestaurant={createRestaurant}
+          />
           </div>
         ) : (
           <div>

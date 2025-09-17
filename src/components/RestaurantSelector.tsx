@@ -6,15 +6,23 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
+import { UserRestaurant } from '@/hooks/useRestaurants';
 
 interface RestaurantSelectorProps {
   selectedRestaurant: UserRestaurant | null;
   onSelectRestaurant: (restaurant: UserRestaurant) => void;
+  restaurants: UserRestaurant[];
+  loading: boolean;
+  createRestaurant: (data: { name: string; address?: string; phone?: string; cuisine_type?: string }) => Promise<any>;
 }
 
-export function RestaurantSelector({ selectedRestaurant, onSelectRestaurant }: RestaurantSelectorProps) {
-  const { restaurants, loading, createRestaurant } = useRestaurants();
+export function RestaurantSelector({ 
+  selectedRestaurant, 
+  onSelectRestaurant, 
+  restaurants, 
+  loading, 
+  createRestaurant 
+}: RestaurantSelectorProps) {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [formData, setFormData] = useState({
     name: '',

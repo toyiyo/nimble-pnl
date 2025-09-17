@@ -14,7 +14,7 @@ import { UserPlus, Building, Settings, ArrowLeft, Shield } from 'lucide-react';
 
 const Team = () => {
   const { user, loading } = useAuth();
-  const { restaurants } = useRestaurants();
+  const { restaurants, loading: restaurantsLoading } = useRestaurants();
   const navigate = useNavigate();
   const [selectedRestaurant, setSelectedRestaurant] = useState(restaurants[0]);
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
@@ -28,7 +28,7 @@ export function useRestaurants() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const fetchRestaurants = async () => {
+  const fetchRestaurants = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -51,7 +51,7 @@ export function useRestaurants() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, toast]);
 
   const createRestaurant = async (restaurantData: {
     name: string;
@@ -115,7 +115,7 @@ export function useRestaurants() {
 
   useEffect(() => {
     fetchRestaurants();
-  }, [user]);
+  }, [fetchRestaurants]);
 
   return {
     restaurants,

@@ -213,18 +213,32 @@ Deno.serve(async (req) => {
         await encryption.encrypt(tokenData.refresh_token) : null;
 
       // Store the connection with encrypted tokens
+      // Use service role to bypass RLS for this backend operation
+      console.log('Storing Square connection for restaurant:', restaurantId, 'merchant:', merchant.id);
+      
+      const connectionData = {
+        restaurant_id: restaurantId,
+        merchant_id: merchant.id,
+        access_token: encryptedAccessToken,
+        refresh_token: encryptedRefreshToken,
+        scopes: tokenData.scope?.split(' ') || [],
+        expires_at: tokenData.expires_at ? new Date(tokenData.expires_at).toISOString() : null,
+        connected_at: new Date().toISOString(),
+      };
+      
+      console.log('Connection data to store:', {
+        restaurant_id: restaurantId,
+        merchant_id: merchant.id,
+        has_access_token: !!encryptedAccessToken,
+        has_refresh_token: !!encryptedRefreshToken,
+        scopes_count: connectionData.scopes.length,
+        expires_at: connectionData.expires_at
+      });
+      
       const { data: connection, error: connectionError } = await supabase
         .from('square_connections')
-        .upsert({
-          restaurant_id: restaurantId,
-          merchant_id: merchant.id,
-          access_token: encryptedAccessToken,
-          refresh_token: encryptedRefreshToken,
-          scopes: tokenData.scope?.split(' ') || [],
-          expires_at: tokenData.expires_at ? new Date(tokenData.expires_at).toISOString() : null,
-          connected_at: new Date().toISOString(),
-        }, {
-          onConflict: 'restaurant_id,merchant_id'
+        .upsert(connectionData, {
+          onConflict: 'restaurant_id'
         })
         .select()
         .single();
@@ -236,8 +250,14 @@ Deno.serve(async (req) => {
       });
 
       if (connectionError) {
-        console.error('Error storing Square connection:', connectionError);
-        throw new Error('Failed to store connection');
+        console.error('Error storing Square connection - Details:', {
+          error: connectionError,
+          message: connectionError.message,
+          code: connectionError.code,
+          hint: connectionError.hint,
+          details: connectionError.details
+        });
+        throw new Error(`Failed to store connection: ${connectionError.message}`);
       }
 
       // Get and store locations

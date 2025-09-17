@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
         client_secret: SQUARE_APPLICATION_SECRET,
         code: code,
         grant_type: 'authorization_code',
-        redirect_uri: REDIRECT_URI,
+        redirect_uri: REDIRECT_URI, // Must match exactly what's in Square app settings
       };
 
       console.log('Token exchange request:', {

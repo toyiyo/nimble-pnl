@@ -46,32 +46,28 @@ Deno.serve(async (req) => {
       user = authUser;
     }
 
-    // Determine environment and URLs based on request origin
+    // Determine environment based on request origin  
     const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
     const isPreview = origin && origin.includes('lovableproject.com');
     
-    // TEMPORARY: Force sandbox for testing - remove this when ready for production
-    const forceSandbox = true;
-    
-    // Use appropriate credentials based on environment
-    const SQUARE_ENVIRONMENT = (isPreview || forceSandbox) ? 'sandbox' : 'production';
-    const SQUARE_APPLICATION_ID = (isPreview || forceSandbox)
+    // Use sandbox for preview/development, production for app.easyshifthq.com
+    const SQUARE_ENVIRONMENT = isPreview ? 'sandbox' : 'production';
+    const SQUARE_APPLICATION_ID = isPreview 
       ? Deno.env.get('SQUARE_SANDBOX_APPLICATION_ID')
       : Deno.env.get('SQUARE_APPLICATION_ID');
-    const SQUARE_APPLICATION_SECRET = (isPreview || forceSandbox)
+    const SQUARE_APPLICATION_SECRET = isPreview 
       ? Deno.env.get('SQUARE_SANDBOX_APPLICATION_SECRET')
       : Deno.env.get('SQUARE_APPLICATION_SECRET');
     
-    // Use environment-specific hosts
-    const SQUARE_CONNECT_HOST = (isPreview || forceSandbox) ? 'connect.squareupsandbox.com' : 'connect.squareup.com';
-    const SQUARE_API_HOST = (isPreview || forceSandbox) ? 'connect.squareupsandbox.com' : 'connect.squareup.com';
+    // Use correct Square API domains
+    const SQUARE_BASE_URL = isPreview 
+      ? 'https://connect.squareupsandbox.com' 
+      : 'https://connect.squareup.com';
     
-    let REDIRECT_URI;
-    if (isPreview || forceSandbox) {
-      REDIRECT_URI = `${origin}/square/callback`;
-    } else {
-      REDIRECT_URI = 'https://app.easyshifthq.com/square/callback';
-    }
+    // Set redirect URI based on environment
+    const REDIRECT_URI = isPreview
+      ? `${origin}/square/callback`
+      : 'https://app.easyshifthq.com/square/callback';
     
     console.log('Square OAuth - Action:', action, 'Environment:', SQUARE_ENVIRONMENT, 'Origin:', origin, 'Redirect URI:', REDIRECT_URI);
 
@@ -115,26 +111,23 @@ Deno.serve(async (req) => {
         'TIMECARDS_READ'
       ].join(' ');
 
-      const authUrl = new URL(`https://${SQUARE_CONNECT_HOST}/oauth2/authorize`);
+      const authUrl = new URL(`${SQUARE_BASE_URL}/oauth2/authorize`);
       authUrl.searchParams.set('client_id', SQUARE_APPLICATION_ID);
       authUrl.searchParams.set('scope', scopes);
       authUrl.searchParams.set('session', 'false');
       authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
       authUrl.searchParams.set('state', restaurantId); // Use restaurant ID as state
 
-      console.log('Generated Square OAuth URL:', authUrl.toString(), '(Environment:', SQUARE_ENVIRONMENT + ')');
+        console.log('Generated Square OAuth URL:', authUrl.toString());
+        console.log('Using environment:', SQUARE_ENVIRONMENT);
+        console.log('Client ID:', SQUARE_APPLICATION_ID);
+        console.log('Redirect URI:', REDIRECT_URI);
 
-      return new Response(JSON.stringify({
-        authorizationUrl: authUrl.toString(),
-        environment: SQUARE_ENVIRONMENT,
-        debug: {
-          clientId: SQUARE_APPLICATION_ID,
-          redirectUri: REDIRECT_URI,
-          host: SQUARE_CONNECT_HOST
-        }
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+        return new Response(JSON.stringify({
+          authorizationUrl: authUrl.toString()
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
 
     } else if (action === 'callback') {
       if (!code || !state) {
@@ -160,7 +153,7 @@ Deno.serve(async (req) => {
         code_length: code.length
       });
 
-      const tokenResponse = await fetch(`https://${SQUARE_API_HOST}/oauth2/token`, {
+      const tokenResponse = await fetch(`${SQUARE_BASE_URL}/oauth2/token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -184,7 +177,7 @@ Deno.serve(async (req) => {
       console.log('Square token exchange successful');
 
       // Get merchant info
-      const merchantResponse = await fetch(`https://${SQUARE_API_HOST}/v2/merchants`, {
+      const merchantResponse = await fetch(`${SQUARE_BASE_URL}/v2/merchants`, {
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`,
           'Square-Version': '2024-12-18',
@@ -235,7 +228,7 @@ Deno.serve(async (req) => {
       }
 
       // Get and store locations
-      const locationsResponse = await fetch(`https://${SQUARE_API_HOST}/v2/locations`, {
+      const locationsResponse = await fetch(`${SQUARE_BASE_URL}/v2/locations`, {
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`,
           'Square-Version': '2024-12-18',

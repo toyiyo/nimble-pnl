@@ -20,14 +20,15 @@ const SquareCallback = () => {
       const state = urlSearchParams.get('state'); 
       const error = urlSearchParams.get('error');
 
-      console.log('URL search params:', {
+      console.log('Square callback - URL search params:', {
         fullUrl: window.location.href,
         search: window.location.search,
         hash: window.location.hash,
-        code,
+        code: code?.substring(0, 20) + '...',
         state, 
         error,
-        allParams: Object.fromEntries(urlSearchParams.entries())
+        allParams: Object.fromEntries(urlSearchParams.entries()),
+        origin: window.location.origin
       });
 
       if (error) {
@@ -61,7 +62,12 @@ const SquareCallback = () => {
         // Extract restaurant ID from state parameter
         const restaurantId = state;
 
-        console.log('Square callback processing:', { code, state, restaurantId });
+        console.log('Square callback processing:', { 
+          code: code?.substring(0, 20) + '...', 
+          state, 
+          restaurantId,
+          callingFrom: window.location.origin 
+        });
 
         // Call the square-oauth edge function to exchange code for tokens
         const { data, error: callbackError } = await supabase.functions.invoke('square-oauth', {

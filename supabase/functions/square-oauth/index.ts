@@ -70,6 +70,16 @@ Deno.serve(async (req) => {
       : 'https://app.easyshifthq.com/square/callback';
     
     console.log('Square OAuth - Action:', action, 'Environment:', SQUARE_ENVIRONMENT, 'Origin:', origin, 'Redirect URI:', REDIRECT_URI);
+    console.log('Square credentials check:', {
+      hasProductionAppId: !!Deno.env.get('SQUARE_APPLICATION_ID'),
+      hasProductionSecret: !!Deno.env.get('SQUARE_APPLICATION_SECRET'),
+      hasSandboxAppId: !!Deno.env.get('SQUARE_SANDBOX_APPLICATION_ID'),
+      hasSandboxSecret: !!Deno.env.get('SQUARE_SANDBOX_APPLICATION_SECRET'),
+      usingCredentials: {
+        appId: SQUARE_APPLICATION_ID?.substring(0, 10) + '...',
+        hasSecret: !!SQUARE_APPLICATION_SECRET
+      }
+    });
 
     if (!SQUARE_APPLICATION_ID || !SQUARE_APPLICATION_SECRET) {
       console.error('Square credentials missing:', {
@@ -147,10 +157,13 @@ Deno.serve(async (req) => {
         redirect_uri: REDIRECT_URI, // Must match exactly what's in Square app settings
       };
 
-      console.log('Token exchange request:', {
-        client_id: SQUARE_APPLICATION_ID,
+      console.log('Square token exchange request details:', {
+        client_id: SQUARE_APPLICATION_ID?.substring(0, 15) + '...',
         redirect_uri: REDIRECT_URI,
-        code_length: code.length
+        code_length: code.length,
+        baseUrl: SQUARE_BASE_URL,
+        environment: SQUARE_ENVIRONMENT,
+        hasClientSecret: !!SQUARE_APPLICATION_SECRET
       });
 
       const tokenResponse = await fetch(`${SQUARE_BASE_URL}/oauth2/token`, {

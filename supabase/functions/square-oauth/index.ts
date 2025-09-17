@@ -213,8 +213,13 @@ Deno.serve(async (req) => {
       let merchant = null;
       
       if (merchantData.merchant) {
-        // Single merchant response
-        merchant = merchantData.merchant;
+        // Check if merchant is an array (common Square API format)
+        if (Array.isArray(merchantData.merchant) && merchantData.merchant.length > 0) {
+          merchant = merchantData.merchant[0];
+        } else {
+          // Single merchant object
+          merchant = merchantData.merchant;
+        }
       } else if (merchantData.merchants && merchantData.merchants.length > 0) {
         // Multiple merchants response - take the first one
         merchant = merchantData.merchants[0];

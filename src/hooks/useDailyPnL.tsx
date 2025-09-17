@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from './use-toast';
 
@@ -51,7 +51,7 @@ export function useDailyPnL(restaurantId: string | null) {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const fetchPnLData = async (dateRange?: { from: string; to: string }) => {
+  const fetchPnLData = useCallback(async (dateRange?: { from: string; to: string }) => {
     if (!restaurantId) return;
 
     try {
@@ -84,7 +84,7 @@ export function useDailyPnL(restaurantId: string | null) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [restaurantId, toast]);
 
   const upsertSales = async (salesData: DailySales) => {
     try {
@@ -226,7 +226,7 @@ export function useDailyPnL(restaurantId: string | null) {
     if (restaurantId) {
       fetchPnLData();
     }
-  }, [restaurantId]);
+  }, [restaurantId, fetchPnLData]);
 
   return {
     pnlData,

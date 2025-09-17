@@ -223,12 +223,19 @@ Deno.serve(async (req) => {
         throw new Error('No merchant found in Square response');
       }
       
-      if (!merchant || !merchant.id) {
-        console.error('Merchant object missing ID:', merchant);
+      if (!merchant || (!merchant.id && !merchant.merchant_id)) {
+        console.error('Merchant object structure:', {
+          merchant: merchant,
+          hasId: !!merchant?.id,
+          hasMerchantId: !!merchant?.merchant_id,
+          merchantKeys: merchant ? Object.keys(merchant) : 'merchant is null/undefined'
+        });
         throw new Error('No merchant ID found in Square merchant object');
       }
       
-      console.log('Successfully extracted merchant ID:', merchant.id);
+      // Handle different merchant ID property names
+      const merchantId = merchant.id || merchant.merchant_id;
+      console.log('Successfully extracted merchant ID:', merchantId);
 
       // Encrypt sensitive tokens before storage
       const encryption = await getEncryptionService();
@@ -242,7 +249,7 @@ Deno.serve(async (req) => {
       
       const connectionData = {
         restaurant_id: restaurantId,
-        merchant_id: merchant.id,
+        merchant_id: merchantId,
         access_token: encryptedAccessToken,
         refresh_token: encryptedRefreshToken,
         scopes: tokenData.scope?.split(' ') || [],
@@ -252,7 +259,7 @@ Deno.serve(async (req) => {
       
       console.log('Connection data to store:', {
         restaurant_id: restaurantId,
-        merchant_id: merchant.id,
+        merchant_id: merchantId,
         has_access_token: !!encryptedAccessToken,
         has_refresh_token: !!encryptedRefreshToken,
         scopes_count: connectionData.scopes.length,
@@ -269,7 +276,7 @@ Deno.serve(async (req) => {
 
       // Log security event
       await logSecurityEvent(supabase, 'SQUARE_OAUTH_TOKEN_STORED', null, restaurantId, {
-        merchantId: merchant.id,
+        merchantId: merchantId,
         scopes: tokenData.scope?.split(' ') || []
       });
 

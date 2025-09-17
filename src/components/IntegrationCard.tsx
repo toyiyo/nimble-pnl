@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
+import { SquareSync } from '@/components/SquareSync';
 import { Plug, Settings, CheckCircle } from 'lucide-react';
 
 interface Integration {
@@ -150,11 +151,21 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
         </div>
 
         {actuallyConnected && (
-          <div className="text-xs text-muted-foreground">
-            {isSquareIntegration && squareIntegration.connection ? 
-              `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}` :
-              'Last sync: 2 hours ago'
-            }
+          <div className="space-y-4">
+            <div className="text-xs text-muted-foreground">
+              {isSquareIntegration && squareIntegration.connection ? 
+                `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}` :
+                'Last sync: 2 hours ago'
+              }
+            </div>
+            
+            {/* Square Sync Component */}
+            {isSquareIntegration && (
+              <SquareSync 
+                restaurantId={restaurantId} 
+                isConnected={actuallyConnected} 
+              />
+            )}
           </div>
         )}
       </CardContent>

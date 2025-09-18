@@ -1069,6 +1069,10 @@ export type Database = {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: boolean
       }
+      trigger_square_periodic_sync: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

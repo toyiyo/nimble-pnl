@@ -8,6 +8,7 @@ import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
+import { TriggerPnLCalculation } from '@/components/TriggerPnLCalculation';
 import { ExternalLink, Settings, ArrowLeft } from 'lucide-react';
 
 const Integrations = () => {
@@ -200,6 +201,26 @@ const Integrations = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* P&L Calculation Trigger for Square */}
+            {squareConnected && (
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle>Square Data P&L Calculation</CardTitle>
+                  <CardDescription>
+                    Manually trigger P&L calculations for synced Square data
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <TriggerPnLCalculation 
+                    restaurantId={selectedRestaurant.restaurant_id}
+                    onCalculationComplete={() => {
+                      // Optionally refresh data or show success message
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            )}
 
             {/* Integration Categories */}
             {Object.entries(groupedIntegrations).map(([category, categoryIntegrations]) => (

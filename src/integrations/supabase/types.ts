@@ -22,6 +22,7 @@ export type Database = {
           inventory_adjustments: number
           purchases: number
           restaurant_id: string
+          source: string
           total_food_cost: number | null
           updated_at: string
         }
@@ -32,6 +33,7 @@ export type Database = {
           inventory_adjustments?: number
           purchases?: number
           restaurant_id: string
+          source?: string
           total_food_cost?: number | null
           updated_at?: string
         }
@@ -42,6 +44,7 @@ export type Database = {
           inventory_adjustments?: number
           purchases?: number
           restaurant_id?: string
+          source?: string
           total_food_cost?: number | null
           updated_at?: string
         }
@@ -64,6 +67,7 @@ export type Database = {
           id: string
           restaurant_id: string
           salary_wages: number
+          source: string
           total_hours: number | null
           total_labor_cost: number | null
           updated_at: string
@@ -76,6 +80,7 @@ export type Database = {
           id?: string
           restaurant_id: string
           salary_wages?: number
+          source?: string
           total_hours?: number | null
           total_labor_cost?: number | null
           updated_at?: string
@@ -88,6 +93,7 @@ export type Database = {
           id?: string
           restaurant_id?: string
           salary_wages?: number
+          source?: string
           total_hours?: number | null
           total_labor_cost?: number | null
           updated_at?: string
@@ -168,6 +174,7 @@ export type Database = {
           id: string
           net_revenue: number | null
           restaurant_id: string
+          source: string
           transaction_count: number | null
           updated_at: string
         }
@@ -180,6 +187,7 @@ export type Database = {
           id?: string
           net_revenue?: number | null
           restaurant_id: string
+          source?: string
           transaction_count?: number | null
           updated_at?: string
         }
@@ -192,6 +200,7 @@ export type Database = {
           id?: string
           net_revenue?: number | null
           restaurant_id?: string
+          source?: string
           transaction_count?: number | null
           updated_at?: string
         }

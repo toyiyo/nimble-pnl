@@ -9,7 +9,7 @@ import { DataInputDialog } from '@/components/DataInputDialog';
 
 const Index = () => {
   const { user, signOut, loading } = useAuth();
-  const { restaurants } = useRestaurants();
+  const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
   const [selectedRestaurant, setSelectedRestaurant] = useState<UserRestaurant | null>(null);
   const { pnlData, loading: pnlLoading, getTodaysData, getAverages, fetchPnLData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
@@ -90,6 +90,9 @@ const Index = () => {
           <RestaurantSelector 
             selectedRestaurant={selectedRestaurant}
             onSelectRestaurant={handleRestaurantSelect}
+            restaurants={restaurants}
+            loading={restaurantsLoading}
+            createRestaurant={createRestaurant}
           />
         ) : (
           <div>

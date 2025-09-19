@@ -14,9 +14,22 @@ const SquareCallback = () => {
 
   useEffect(() => {
     const handleCallback = async () => {
-      const code = searchParams.get('code');
-      const state = searchParams.get('state');
-      const error = searchParams.get('error');
+      // Get search params from URL
+      const urlSearchParams = new URLSearchParams(window.location.search);
+      const code = urlSearchParams.get('code');
+      const state = urlSearchParams.get('state'); 
+      const error = urlSearchParams.get('error');
+
+      console.log('Square callback - URL search params:', {
+        fullUrl: window.location.href,
+        search: window.location.search,
+        hash: window.location.hash,
+        code: code?.substring(0, 20) + '...',
+        state, 
+        error,
+        allParams: Object.fromEntries(urlSearchParams.entries()),
+        origin: window.location.origin
+      });
 
       if (error) {
         setStatus('error');
@@ -49,16 +62,26 @@ const SquareCallback = () => {
         // Extract restaurant ID from state parameter
         const restaurantId = state;
 
+        console.log('Square callback processing:', { 
+          code: code?.substring(0, 20) + '...', 
+          state, 
+          restaurantId,
+          callingFrom: window.location.origin 
+        });
+
         // Call the square-oauth edge function to exchange code for tokens
         const { data, error: callbackError } = await supabase.functions.invoke('square-oauth', {
           body: {
             action: 'callback',
             code: code,
-            restaurantId: restaurantId
+            state: state
           }
         });
 
+        console.log('Edge function response:', { data, error: callbackError });
+
         if (callbackError) {
+          console.error('Edge function error details:', callbackError);
           throw callbackError;
         }
 

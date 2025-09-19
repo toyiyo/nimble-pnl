@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,12 +46,48 @@ Deno.serve(async (req) => {
       user = authUser;
     }
 
-    const SQUARE_APPLICATION_ID = Deno.env.get('SQUARE_APPLICATION_ID');
-    const SQUARE_APPLICATION_SECRET = Deno.env.get('SQUARE_APPLICATION_SECRET');
-    const REDIRECT_URI = `${req.headers.get('origin')}/square/callback`;
+    // Determine environment based on request origin  
+    const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
+    const isPreview = origin && origin.includes('lovableproject.com');
+    
+    // Use sandbox for preview/development, production for app.easyshifthq.com
+    const SQUARE_ENVIRONMENT = isPreview ? 'sandbox' : 'production';
+    const SQUARE_APPLICATION_ID = isPreview 
+      ? Deno.env.get('SQUARE_SANDBOX_APPLICATION_ID')
+      : Deno.env.get('SQUARE_APPLICATION_ID');
+    const SQUARE_APPLICATION_SECRET = isPreview 
+      ? Deno.env.get('SQUARE_SANDBOX_APPLICATION_SECRET')
+      : Deno.env.get('SQUARE_APPLICATION_SECRET');
+    
+    // Use correct Square API domains
+    const SQUARE_BASE_URL = isPreview 
+      ? 'https://connect.squareupsandbox.com' 
+      : 'https://connect.squareup.com';
+    
+    // Set redirect URI based on environment
+    const REDIRECT_URI = isPreview
+      ? `${origin}/square/callback`
+      : 'https://app.easyshifthq.com/square/callback';
+    
+    console.log('Square OAuth - Action:', action, 'Environment:', SQUARE_ENVIRONMENT, 'Origin:', origin, 'Redirect URI:', REDIRECT_URI);
+    console.log('Square credentials check:', {
+      hasProductionAppId: !!Deno.env.get('SQUARE_APPLICATION_ID'),
+      hasProductionSecret: !!Deno.env.get('SQUARE_APPLICATION_SECRET'),
+      hasSandboxAppId: !!Deno.env.get('SQUARE_SANDBOX_APPLICATION_ID'),
+      hasSandboxSecret: !!Deno.env.get('SQUARE_SANDBOX_APPLICATION_SECRET'),
+      usingCredentials: {
+        appId: SQUARE_APPLICATION_ID?.substring(0, 10) + '...',
+        hasSecret: !!SQUARE_APPLICATION_SECRET
+      }
+    });
 
     if (!SQUARE_APPLICATION_ID || !SQUARE_APPLICATION_SECRET) {
-      throw new Error('Square credentials not configured');
+      console.error('Square credentials missing:', {
+        hasAppId: !!SQUARE_APPLICATION_ID,
+        hasAppSecret: !!SQUARE_APPLICATION_SECRET,
+        environment: SQUARE_ENVIRONMENT
+      });
+      throw new Error(`Square credentials not configured for ${SQUARE_ENVIRONMENT} environment`);
     }
 
     console.log('Square OAuth action:', action, 'Restaurant ID:', restaurantId);
@@ -76,67 +113,84 @@ Deno.serve(async (req) => {
       // Generate authorization URL
       const scopes = [
         'ORDERS_READ',
-        'PAYMENTS_READ', 
-        'REFUNDS_READ',
+        'PAYMENTS_READ',
         'ITEMS_READ',
         'INVENTORY_READ',
-        'BUSINESS_READ',
-        'TEAM_READ',
-        'LABOR_READ'
+        'MERCHANT_PROFILE_READ',
+        'EMPLOYEES_READ',
+        'TIMECARDS_READ'
       ].join(' ');
 
-      const authUrl = new URL('https://connect.squareup.com/oauth2/authorize');
+      const authUrl = new URL(`${SQUARE_BASE_URL}/oauth2/authorize`);
       authUrl.searchParams.set('client_id', SQUARE_APPLICATION_ID);
       authUrl.searchParams.set('scope', scopes);
       authUrl.searchParams.set('session', 'false');
       authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
       authUrl.searchParams.set('state', restaurantId); // Use restaurant ID as state
 
-      console.log('Generated Square OAuth URL:', authUrl.toString());
+        console.log('Generated Square OAuth URL:', authUrl.toString());
+        console.log('Using environment:', SQUARE_ENVIRONMENT);
+        console.log('Client ID:', SQUARE_APPLICATION_ID);
+        console.log('Redirect URI:', REDIRECT_URI);
 
-      return new Response(JSON.stringify({
-        authorizationUrl: authUrl.toString()
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+        return new Response(JSON.stringify({
+          authorizationUrl: authUrl.toString()
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
 
     } else if (action === 'callback') {
       if (!code || !state) {
+        console.error('Missing callback parameters:', { code: !!code, state: !!state });
         throw new Error('Missing authorization code or state');
       }
 
       const restaurantId = state; // Restaurant ID passed as state
-
-      // For callback, we don't require user authentication since they might lose session during OAuth flow
-      // We'll verify restaurant access later when needed
+      console.log('Square callback processing:', { code: code.substring(0, 20) + '...', state, restaurantId });
 
       // Exchange authorization code for access token
-      const tokenResponse = await fetch('https://connect.squareup.com/oauth2/token', {
+      const tokenRequestBody = {
+        client_id: SQUARE_APPLICATION_ID,
+        client_secret: SQUARE_APPLICATION_SECRET,
+        code: code,
+        grant_type: 'authorization_code',
+        redirect_uri: REDIRECT_URI, // Must match exactly what's in Square app settings
+      };
+
+      console.log('Square token exchange request details:', {
+        client_id: SQUARE_APPLICATION_ID?.substring(0, 15) + '...',
+        redirect_uri: REDIRECT_URI,
+        code_length: code.length,
+        baseUrl: SQUARE_BASE_URL,
+        environment: SQUARE_ENVIRONMENT,
+        hasClientSecret: !!SQUARE_APPLICATION_SECRET
+      });
+
+      const tokenResponse = await fetch(`${SQUARE_BASE_URL}/oauth2/token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Square-Version': '2024-12-18',
         },
-        body: JSON.stringify({
-          client_id: SQUARE_APPLICATION_ID,
-          client_secret: SQUARE_APPLICATION_SECRET,
-          code: code,
-          grant_type: 'authorization_code',
-          redirect_uri: REDIRECT_URI,
-        }),
+        body: JSON.stringify(tokenRequestBody),
       });
 
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
-        console.error('Square token exchange failed:', errorText);
-        throw new Error('Failed to exchange authorization code');
+        console.error('Square token exchange failed:', {
+          status: tokenResponse.status,
+          statusText: tokenResponse.statusText,
+          error: errorText,
+          redirect_uri: REDIRECT_URI
+        });
+        throw new Error(`Failed to exchange authorization code: ${errorText}`);
       }
 
       const tokenData = await tokenResponse.json();
       console.log('Square token exchange successful');
 
       // Get merchant info
-      const merchantResponse = await fetch('https://connect.squareup.com/v2/merchants', {
+      const merchantResponse = await fetch(`${SQUARE_BASE_URL}/v2/merchants`, {
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`,
           'Square-Version': '2024-12-18',
@@ -144,38 +198,106 @@ Deno.serve(async (req) => {
       });
 
       if (!merchantResponse.ok) {
+        const errorText = await merchantResponse.text();
+        console.error('Failed to get merchant information:', {
+          status: merchantResponse.status,
+          error: errorText
+        });
         throw new Error('Failed to get merchant information');
       }
 
       const merchantData = await merchantResponse.json();
-      const merchant = merchantData.merchant;
+      console.log('Full merchant response:', JSON.stringify(merchantData, null, 2));
+      
+      // Square API can return merchant data in different formats
+      let merchant = null;
+      
+      if (merchantData.merchant) {
+        // Check if merchant is an array (common Square API format)
+        if (Array.isArray(merchantData.merchant) && merchantData.merchant.length > 0) {
+          merchant = merchantData.merchant[0];
+        } else {
+          // Single merchant object
+          merchant = merchantData.merchant;
+        }
+      } else if (merchantData.merchants && merchantData.merchants.length > 0) {
+        // Multiple merchants response - take the first one
+        merchant = merchantData.merchants[0];
+      } else {
+        console.error('Invalid merchant response - no merchant found:', merchantData);
+        throw new Error('No merchant found in Square response');
+      }
+      
+      if (!merchant || (!merchant.id && !merchant.merchant_id)) {
+        console.error('Merchant object structure:', {
+          merchant: merchant,
+          hasId: !!merchant?.id,
+          hasMerchantId: !!merchant?.merchant_id,
+          merchantKeys: merchant ? Object.keys(merchant) : 'merchant is null/undefined'
+        });
+        throw new Error('No merchant ID found in Square merchant object');
+      }
+      
+      // Handle different merchant ID property names
+      const merchantId = merchant.id || merchant.merchant_id;
+      console.log('Successfully extracted merchant ID:', merchantId);
 
-      console.log('Retrieved merchant info:', merchant.id);
+      // Encrypt sensitive tokens before storage
+      const encryption = await getEncryptionService();
+      const encryptedAccessToken = await encryption.encrypt(tokenData.access_token);
+      const encryptedRefreshToken = tokenData.refresh_token ? 
+        await encryption.encrypt(tokenData.refresh_token) : null;
 
-      // Store the connection
+      // Store the connection with encrypted tokens
+      // Use service role to bypass RLS for this backend operation
+      console.log('Storing Square connection for restaurant:', restaurantId, 'merchant:', merchant.id);
+      
+      const connectionData = {
+        restaurant_id: restaurantId,
+        merchant_id: merchantId,
+        access_token: encryptedAccessToken,
+        refresh_token: encryptedRefreshToken,
+        scopes: tokenData.scope?.split(' ') || [],
+        expires_at: tokenData.expires_at ? new Date(tokenData.expires_at).toISOString() : null,
+        connected_at: new Date().toISOString(),
+      };
+      
+      console.log('Connection data to store:', {
+        restaurant_id: restaurantId,
+        merchant_id: merchantId,
+        has_access_token: !!encryptedAccessToken,
+        has_refresh_token: !!encryptedRefreshToken,
+        scopes_count: connectionData.scopes.length,
+        expires_at: connectionData.expires_at
+      });
+      
       const { data: connection, error: connectionError } = await supabase
         .from('square_connections')
-        .upsert({
-          restaurant_id: restaurantId,
-          merchant_id: merchant.id,
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
-          scopes: tokenData.scope?.split(' ') || [],
-          expires_at: tokenData.expires_at ? new Date(tokenData.expires_at).toISOString() : null,
-          connected_at: new Date().toISOString(),
-        }, {
+        .upsert(connectionData, {
           onConflict: 'restaurant_id,merchant_id'
         })
         .select()
         .single();
 
+      // Log security event
+      await logSecurityEvent(supabase, 'SQUARE_OAUTH_TOKEN_STORED', null, restaurantId, {
+        merchantId: merchantId,
+        scopes: tokenData.scope?.split(' ') || []
+      });
+
       if (connectionError) {
-        console.error('Error storing Square connection:', connectionError);
-        throw new Error('Failed to store connection');
+        console.error('Error storing Square connection - Details:', {
+          error: connectionError,
+          message: connectionError.message,
+          code: connectionError.code,
+          hint: connectionError.hint,
+          details: connectionError.details
+        });
+        throw new Error(`Failed to store connection: ${connectionError.message}`);
       }
 
       // Get and store locations
-      const locationsResponse = await fetch('https://connect.squareup.com/v2/locations', {
+      const locationsResponse = await fetch(`${SQUARE_BASE_URL}/v2/locations`, {
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`,
           'Square-Version': '2024-12-18',

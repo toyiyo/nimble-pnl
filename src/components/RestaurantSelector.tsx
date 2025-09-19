@@ -6,15 +6,23 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
+import { UserRestaurant } from '@/hooks/useRestaurants';
 
 interface RestaurantSelectorProps {
   selectedRestaurant: UserRestaurant | null;
   onSelectRestaurant: (restaurant: UserRestaurant) => void;
+  restaurants: UserRestaurant[];
+  loading: boolean;
+  createRestaurant: (data: { name: string; address?: string; phone?: string; cuisine_type?: string }) => Promise<any>;
 }
 
-export function RestaurantSelector({ selectedRestaurant, onSelectRestaurant }: RestaurantSelectorProps) {
-  const { restaurants, loading, createRestaurant } = useRestaurants();
+export function RestaurantSelector({ 
+  selectedRestaurant, 
+  onSelectRestaurant, 
+  restaurants, 
+  loading, 
+  createRestaurant 
+}: RestaurantSelectorProps) {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -45,7 +53,7 @@ export function RestaurantSelector({ selectedRestaurant, onSelectRestaurant }: R
     );
   }
 
-  if (restaurants.length === 0) {
+  if (!restaurants || restaurants.length === 0) {
     return (
       <div className="p-6 text-center">
         <Store className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
@@ -222,7 +230,7 @@ export function RestaurantSelector({ selectedRestaurant, onSelectRestaurant }: R
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {restaurants.map((userRestaurant) => (
+        {restaurants && restaurants.map((userRestaurant) => (
           <Card 
             key={userRestaurant.id}
             className={`cursor-pointer transition-all hover:shadow-md ${

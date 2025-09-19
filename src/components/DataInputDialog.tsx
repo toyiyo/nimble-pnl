@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDailyPnL, DailySales, DailyFoodCosts, DailyLaborCosts } from '@/hooks/useDailyPnL';
 
 interface DataInputDialogProps {
@@ -16,6 +17,7 @@ interface DataInputDialogProps {
 export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedSource, setSelectedSource] = useState('manual');
   const [loading, setLoading] = useState(false);
   const { upsertSales, upsertFoodCosts, upsertLaborCosts } = useDailyPnL(restaurantId);
 
@@ -45,6 +47,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
     await upsertSales({
       restaurant_id: restaurantId,
       date: selectedDate,
+      source: selectedSource,
       gross_revenue: Number(salesData.gross_revenue) || 0,
       discounts: Number(salesData.discounts) || 0,
       comps: Number(salesData.comps) || 0,
@@ -62,6 +65,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
     await upsertFoodCosts({
       restaurant_id: restaurantId,
       date: selectedDate,
+      source: selectedSource,
       purchases: Number(foodCostsData.purchases) || 0,
       inventory_adjustments: Number(foodCostsData.inventory_adjustments) || 0,
     });
@@ -77,6 +81,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
     await upsertLaborCosts({
       restaurant_id: restaurantId,
       date: selectedDate,
+      source: selectedSource,
       hourly_wages: Number(laborCostsData.hourly_wages) || 0,
       salary_wages: Number(laborCostsData.salary_wages) || 0,
       benefits: Number(laborCostsData.benefits) || 0,
@@ -104,14 +109,30 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="date">Date</Label>
-            <Input
-              id="date"
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="source">Data Source</Label>
+              <Select value={selectedSource} onValueChange={setSelectedSource}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Manual Entry</SelectItem>
+                  <SelectItem value="square">Square POS</SelectItem>
+                  <SelectItem value="toast">Toast POS</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <Tabs defaultValue="sales" className="w-full">

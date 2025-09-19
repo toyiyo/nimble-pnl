@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -16,13 +16,7 @@ export const useSquareIntegration = (restaurantId: string | null) => {
   const [connection, setConnection] = useState<SquareConnection | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (restaurantId) {
-      checkConnectionStatus();
-    }
-  }, [restaurantId]);
-
-  const checkConnectionStatus = async () => {
+  const checkConnectionStatus = useCallback(async () => {
     if (!restaurantId) return;
 
     try {
@@ -30,7 +24,7 @@ export const useSquareIntegration = (restaurantId: string | null) => {
         .from('square_connections')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') { // Not found error
         console.error('Error checking Square connection:', error);
@@ -44,7 +38,13 @@ export const useSquareIntegration = (restaurantId: string | null) => {
     } catch (error) {
       console.error('Error checking Square connection:', error);
     }
-  };
+  }, [restaurantId]);
+
+  useEffect(() => {
+    if (restaurantId) {
+      checkConnectionStatus();
+    }
+  }, [restaurantId, checkConnectionStatus]);
 
   const connectSquare = async () => {
     if (!restaurantId) {

@@ -22,6 +22,7 @@ export type Database = {
           inventory_adjustments: number
           purchases: number
           restaurant_id: string
+          source: string
           total_food_cost: number | null
           updated_at: string
         }
@@ -32,6 +33,7 @@ export type Database = {
           inventory_adjustments?: number
           purchases?: number
           restaurant_id: string
+          source?: string
           total_food_cost?: number | null
           updated_at?: string
         }
@@ -42,6 +44,7 @@ export type Database = {
           inventory_adjustments?: number
           purchases?: number
           restaurant_id?: string
+          source?: string
           total_food_cost?: number | null
           updated_at?: string
         }
@@ -64,6 +67,7 @@ export type Database = {
           id: string
           restaurant_id: string
           salary_wages: number
+          source: string
           total_hours: number | null
           total_labor_cost: number | null
           updated_at: string
@@ -76,6 +80,7 @@ export type Database = {
           id?: string
           restaurant_id: string
           salary_wages?: number
+          source?: string
           total_hours?: number | null
           total_labor_cost?: number | null
           updated_at?: string
@@ -88,6 +93,7 @@ export type Database = {
           id?: string
           restaurant_id?: string
           salary_wages?: number
+          source?: string
           total_hours?: number | null
           total_labor_cost?: number | null
           updated_at?: string
@@ -168,6 +174,7 @@ export type Database = {
           id: string
           net_revenue: number | null
           restaurant_id: string
+          source: string
           transaction_count: number | null
           updated_at: string
         }
@@ -180,6 +187,7 @@ export type Database = {
           id?: string
           net_revenue?: number | null
           restaurant_id: string
+          source?: string
           transaction_count?: number | null
           updated_at?: string
         }
@@ -192,6 +200,7 @@ export type Database = {
           id?: string
           net_revenue?: number | null
           restaurant_id?: string
+          source?: string
           transaction_count?: number | null
           updated_at?: string
         }
@@ -471,6 +480,47 @@ export type Database = {
           user_name?: string
         }
         Relationships: []
+      }
+      security_audit_log: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          ip_address: unknown | null
+          metadata: Json | null
+          restaurant_id: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          ip_address?: unknown | null
+          metadata?: Json | null
+          restaurant_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          ip_address?: unknown | null
+          metadata?: Json | null
+          restaurant_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "security_audit_log_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       square_catalog_objects: {
         Row: {
@@ -1011,6 +1061,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      cleanup_old_audit_logs: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       create_restaurant_with_owner: {
         Args: {
           restaurant_address?: string
@@ -1023,6 +1077,10 @@ export type Database = {
       is_restaurant_owner: {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: boolean
+      }
+      trigger_square_periodic_sync: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
     }
     Enums: {

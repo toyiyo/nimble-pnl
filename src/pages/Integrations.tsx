@@ -5,14 +5,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
+import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
+import { TriggerPnLCalculation } from '@/components/TriggerPnLCalculation';
 import { ExternalLink, Settings, ArrowLeft } from 'lucide-react';
 
 const Integrations = () => {
   const { user, loading } = useAuth();
-  const { restaurants } = useRestaurants();
+  const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
   const [selectedRestaurant, setSelectedRestaurant] = useState<UserRestaurant | null>(null);
+  const { isConnected: squareConnected } = useSquareIntegration(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -62,7 +65,7 @@ const Integrations = () => {
       description: 'Import sales, payments, and inventory data from Square',
       category: 'Point of Sale',
       logo: '⬜',
-      connected: false,
+      connected: squareConnected,
       features: ['Sales Data', 'Payment Processing', 'Inventory', 'Analytics']
     },
     {
@@ -111,6 +114,8 @@ const Integrations = () => {
     return acc;
   }, {} as Record<string, typeof integrations>);
 
+  const connectedCount = integrations.filter(integration => integration.connected).length;
+
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -156,10 +161,13 @@ const Integrations = () => {
                 Please select a restaurant to manage integrations
               </p>
             </div>
-            <RestaurantSelector 
-              selectedRestaurant={selectedRestaurant}
-              onSelectRestaurant={handleRestaurantSelect}
-            />
+          <RestaurantSelector 
+            selectedRestaurant={selectedRestaurant}
+            onSelectRestaurant={handleRestaurantSelect}
+            restaurants={restaurants}
+            loading={restaurantsLoading}
+            createRestaurant={createRestaurant}
+          />
           </div>
         ) : (
           <div>
@@ -183,7 +191,7 @@ const Integrations = () => {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-4">
-                  <div className="text-2xl font-bold">0</div>
+                  <div className="text-2xl font-bold">{connectedCount}</div>
                   <div className="text-sm text-muted-foreground">
                     connected applications
                   </div>
@@ -193,6 +201,26 @@ const Integrations = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* P&L Calculation Trigger for Square */}
+            {squareConnected && (
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle>Square Data P&L Calculation</CardTitle>
+                  <CardDescription>
+                    Manually trigger P&L calculations for synced Square data
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <TriggerPnLCalculation 
+                    restaurantId={selectedRestaurant.restaurant_id}
+                    onCalculationComplete={() => {
+                      // Optionally refresh data or show success message
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            )}
 
             {/* Integration Categories */}
             {Object.entries(groupedIntegrations).map(([category, categoryIntegrations]) => (

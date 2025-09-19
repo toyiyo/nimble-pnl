@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from './use-toast';
 
@@ -22,6 +22,7 @@ export interface DailySales {
   id?: string;
   restaurant_id: string;
   date: string;
+  source: string;
   gross_revenue: number;
   discounts: number;
   comps: number;
@@ -32,6 +33,7 @@ export interface DailyFoodCosts {
   id?: string;
   restaurant_id: string;
   date: string;
+  source: string;
   purchases: number;
   inventory_adjustments: number;
 }
@@ -40,6 +42,7 @@ export interface DailyLaborCosts {
   id?: string;
   restaurant_id: string;
   date: string;
+  source: string;
   hourly_wages: number;
   salary_wages: number;
   benefits: number;
@@ -51,7 +54,7 @@ export function useDailyPnL(restaurantId: string | null) {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const fetchPnLData = async (dateRange?: { from: string; to: string }) => {
+  const fetchPnLData = useCallback(async (dateRange?: { from: string; to: string }) => {
     if (!restaurantId) return;
 
     try {
@@ -84,7 +87,7 @@ export function useDailyPnL(restaurantId: string | null) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [restaurantId, toast]);
 
   const upsertSales = async (salesData: DailySales) => {
     try {
@@ -94,12 +97,13 @@ export function useDailyPnL(restaurantId: string | null) {
         .upsert({
           restaurant_id: salesData.restaurant_id,
           date: salesData.date,
+          source: salesData.source,
           gross_revenue: salesData.gross_revenue,
           discounts: salesData.discounts,
           comps: salesData.comps,
           transaction_count: salesData.transaction_count || 0,
         }, {
-          onConflict: 'restaurant_id,date'
+          onConflict: 'restaurant_id,date,source'
         });
 
       console.log('Sales upsert result:', { data, error });
@@ -129,10 +133,11 @@ export function useDailyPnL(restaurantId: string | null) {
         .upsert({
           restaurant_id: foodCostsData.restaurant_id,
           date: foodCostsData.date,
+          source: foodCostsData.source,
           purchases: foodCostsData.purchases,
           inventory_adjustments: foodCostsData.inventory_adjustments,
         }, {
-          onConflict: 'restaurant_id,date'
+          onConflict: 'restaurant_id,date,source'
         });
 
       console.log('Food costs upsert result:', { data, error });
@@ -161,12 +166,13 @@ export function useDailyPnL(restaurantId: string | null) {
         .upsert({
           restaurant_id: laborCostsData.restaurant_id,
           date: laborCostsData.date,
+          source: laborCostsData.source,
           hourly_wages: laborCostsData.hourly_wages,
           salary_wages: laborCostsData.salary_wages,
           benefits: laborCostsData.benefits,
           total_hours: laborCostsData.total_hours || 0,
         }, {
-          onConflict: 'restaurant_id,date'
+          onConflict: 'restaurant_id,date,source'
         });
 
       console.log('Labor costs upsert result:', { data, error });
@@ -226,7 +232,7 @@ export function useDailyPnL(restaurantId: string | null) {
     if (restaurantId) {
       fetchPnLData();
     }
-  }, [restaurantId]);
+  }, [restaurantId, fetchPnLData]);
 
   return {
     pnlData,

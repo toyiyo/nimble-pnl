@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { createHmac } from "node:crypto";
+import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -41,7 +42,7 @@ Deno.serve(async (req) => {
 
     console.log('Square webhook received:', { type, merchant_id, event_id: data?.id });
 
-    // Find restaurant by merchant ID
+    // Find restaurant by merchant ID and decrypt access token
     const { data: connection, error: connectionError } = await supabase
       .from('square_connections')
       .select('restaurant_id, access_token')
@@ -53,24 +54,35 @@ Deno.serve(async (req) => {
       return new Response('Connection not found', { status: 404 });
     }
 
+    // Decrypt the access token
+    const encryption = await getEncryptionService();
+    const decryptedAccessToken = await encryption.decrypt(connection.access_token);
+    
     const restaurantId = connection.restaurant_id;
+
+    // Log security event for webhook processing
+    await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_PROCESSED', null, restaurantId, {
+      webhookType: type,
+      merchantId: merchant_id,
+      eventId: data?.id
+    });
 
     // Process different webhook types
     switch (type) {
       case 'order.updated':
-        await handleOrderUpdated(data, restaurantId, connection.access_token, supabase);
+        await handleOrderUpdated(data, restaurantId, decryptedAccessToken, supabase);
         break;
       
       case 'payment.updated':
-        await handlePaymentUpdated(data, restaurantId, connection.access_token, supabase);
+        await handlePaymentUpdated(data, restaurantId, decryptedAccessToken, supabase);
         break;
       
       case 'refund.updated':
-        await handleRefundUpdated(data, restaurantId, connection.access_token, supabase);
+        await handleRefundUpdated(data, restaurantId, decryptedAccessToken, supabase);
         break;
       
       case 'inventory.count.updated':
-        await handleInventoryUpdated(data, restaurantId, connection.access_token, supabase);
+        await handleInventoryUpdated(data, restaurantId, decryptedAccessToken, supabase);
         break;
       
       default:

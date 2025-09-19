@@ -160,10 +160,7 @@ Deno.serve(async (req) => {
     try {
       const dateRangeArray = getDateRange(startDate, endDate);
       for (const date of dateRangeArray) {
-        await supabase.rpc('calculate_square_daily_pnl', {
-          p_restaurant_id: restaurantId,
-          p_service_date: date
-        });
+        await calculateSquareDailyPnL(supabase, restaurantId, date);
       }
     } catch (error: any) {
       console.error('P&L calculation error:', error);
@@ -510,4 +507,99 @@ function getDateRange(startDate: string, endDate: string): string[] {
   }
   
   return dates;
+}
+
+// Direct P&L calculation function to replace RPC call
+async function calculateSquareDailyPnL(supabase: any, restaurantId: string, serviceDate: string) {
+  console.log(`Calculating P&L for ${restaurantId} on ${serviceDate}`);
+  
+  // Update daily_sales table with Square data
+  const { data: ordersData, error: ordersError } = await supabase
+    .from('square_orders')
+    .select('gross_sales_money, total_discount_money')
+    .eq('restaurant_id', restaurantId)
+    .eq('service_date', serviceDate)
+    .eq('state', 'COMPLETED');
+
+  if (ordersError) {
+    console.error('Error fetching orders for P&L:', ordersError);
+    throw ordersError;
+  }
+
+  if (ordersData && ordersData.length > 0) {
+    const grossRevenue = ordersData.reduce((sum, order) => sum + (order.gross_sales_money || 0), 0);
+    const discounts = ordersData.reduce((sum, order) => sum + (order.total_discount_money || 0), 0);
+
+    console.log(`Square sales for ${serviceDate}: $${grossRevenue}, discounts: $${discounts}`);
+
+    // Upsert Square sales data
+    const { error: salesError } = await supabase
+      .from('daily_sales')
+      .upsert({
+        restaurant_id: restaurantId,
+        date: serviceDate,
+        source: 'square',
+        gross_revenue: grossRevenue,
+        discounts: discounts,
+        comps: 0
+      }, {
+        onConflict: 'restaurant_id,date,source'
+      });
+
+    if (salesError) {
+      console.error('Error upserting sales:', salesError);
+      throw salesError;
+    }
+  }
+
+  // Update daily_labor_costs table with Square data
+  const { data: shiftsData, error: shiftsError } = await supabase
+    .from('square_shifts')
+    .select('total_wage_money')
+    .eq('restaurant_id', restaurantId)
+    .eq('service_date', serviceDate);
+
+  if (shiftsError) {
+    console.error('Error fetching shifts for P&L:', shiftsError);
+    // Don't throw - labor data might not be available
+  }
+
+  if (shiftsData && shiftsData.length > 0) {
+    const totalWages = shiftsData.reduce((sum, shift) => sum + (shift.total_wage_money || 0), 0);
+
+    console.log(`Square labor for ${serviceDate}: $${totalWages}`);
+
+    // Upsert Square labor data
+    const { error: laborError } = await supabase
+      .from('daily_labor_costs')
+      .upsert({
+        restaurant_id: restaurantId,
+        date: serviceDate,
+        source: 'square',
+        hourly_wages: totalWages,
+        salary_wages: 0,
+        benefits: 0,
+        total_labor_cost: totalWages
+      }, {
+        onConflict: 'restaurant_id,date,source'
+      });
+
+    if (laborError) {
+      console.error('Error upserting labor costs:', laborError);
+      throw laborError;
+    }
+  }
+
+  // Trigger overall P&L calculation by calling the aggregation function
+  const { error: pnlError } = await supabase.rpc('calculate_daily_pnl', {
+    p_restaurant_id: restaurantId,
+    p_date: serviceDate
+  });
+
+  if (pnlError) {
+    console.error('Error calculating daily P&L:', pnlError);
+    throw pnlError;
+  }
+
+  console.log(`P&L calculation completed for ${serviceDate}`);
 }

@@ -46,6 +46,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const scanningIntervalRef = useRef<number | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>('Ready to start');
@@ -71,6 +72,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
     return () => {
       stopScanning();
+      if (scanningIntervalRef.current) {
+        clearInterval(scanningIntervalRef.current);
+      }
     };
   }, []);
 
@@ -102,8 +106,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          width: { ideal: 1920, min: 640 },
+          height: { ideal: 1080, min: 480 }
         } 
       });
       
@@ -164,8 +168,22 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     console.log('🛑 Stopping scanner');
     setDebugInfo('Stopping...');
     
-    // The ZXing reader will automatically stop when the video element is removed
-    // or when a new scanning session starts
+    // Clean up scanning interval
+    if (scanningIntervalRef.current) {
+      clearInterval(scanningIntervalRef.current);
+      scanningIntervalRef.current = null;
+    }
+    
+    // Properly clean up video stream
+    if (videoRef.current?.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => {
+        track.stop();
+        console.log('📹 Stopped video track');
+      });
+      videoRef.current.srcObject = null;
+    }
+    
     setIsScanning(false);
     setDebugInfo('Stopped');
   };

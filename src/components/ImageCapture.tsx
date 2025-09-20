@@ -28,6 +28,17 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   const startCamera = useCallback(async () => {
     console.log('🎥 Starting camera...');
     setIsLoading(true);
+    
+    // Add a small delay to ensure the video element is rendered
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    if (!videoRef.current) {
+      console.error('❌ Video ref not available');
+      setIsLoading(false);
+      onError?.('Video element not ready. Please try again.');
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
@@ -39,50 +50,54 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
 
       console.log('📹 Got media stream:', stream.id);
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        
-        // Set up event handlers before setting srcObject
-        const handleLoadedMetadata = () => {
-          console.log('🎬 Video metadata loaded');
-          if (videoRef.current) {
-            videoRef.current.play().then(() => {
-              console.log('▶️ Video playing');
-              setIsStreaming(true);
-              setHasPermission(true);
-              setIsLoading(false);
-            }).catch((error) => {
-              console.error('❌ Video play error:', error);
-              onError?.(`Video play failed: ${error.message}`);
-              setIsLoading(false);
-            });
-          }
-        };
-
-        const handleVideoError = (error: any) => {
-          console.error('❌ Video error:', error);
-          onError?.('Video failed to load');
-          setIsLoading(false);
-        };
-
-        videoRef.current.onloadedmetadata = handleLoadedMetadata;
-        videoRef.current.onerror = handleVideoError;
-
-        // Fallback timeout in case metadata never loads
-        setTimeout(() => {
-          if (videoRef.current && videoRef.current.readyState >= 1) {
-            console.log('🕒 Fallback: Video ready via timeout');
-            handleLoadedMetadata();
-          } else if (isLoading) {
-            console.log('🕒 Timeout: Stopping loading spinner');
-            setIsLoading(false);
-            onError?.('Camera initialization timed out');
-          }
-        }, 5000);
-      } else {
+      const video = videoRef.current;
+      if (!video) {
+        console.error('❌ Video element disappeared');
         setIsLoading(false);
         onError?.('Video element not available');
+        return;
       }
+
+      video.srcObject = stream;
+      
+      // Set up event handlers
+      const handleLoadedMetadata = () => {
+        console.log('🎬 Video metadata loaded');
+        if (videoRef.current) {
+          videoRef.current.play().then(() => {
+            console.log('▶️ Video playing');
+            setIsStreaming(true);
+            setHasPermission(true);
+            setIsLoading(false);
+          }).catch((error) => {
+            console.error('❌ Video play error:', error);
+            onError?.(`Video play failed: ${error.message}`);
+            setIsLoading(false);
+          });
+        }
+      };
+
+      const handleVideoError = (error: any) => {
+        console.error('❌ Video error:', error);
+        onError?.('Video failed to load');
+        setIsLoading(false);
+      };
+
+      video.onloadedmetadata = handleLoadedMetadata;
+      video.onerror = handleVideoError;
+
+      // Fallback timeout in case metadata never loads
+      setTimeout(() => {
+        if (videoRef.current && videoRef.current.readyState >= 1) {
+          console.log('🕒 Fallback: Video ready via timeout');
+          handleLoadedMetadata();
+        } else if (isLoading) {
+          console.log('🕒 Timeout: Stopping loading spinner');
+          setIsLoading(false);
+          onError?.('Camera initialization timed out');
+        }
+      }, 5000);
+      
     } catch (error: any) {
       console.error('❌ Camera access error:', error);
       setHasPermission(false);

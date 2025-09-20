@@ -8,10 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { ProductDialog } from '@/components/ProductDialog';
+import { ProductCard } from '@/components/ProductCard';
 import { useProducts, CreateProductData } from '@/hooks/useProducts';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
@@ -25,19 +27,17 @@ export const Inventory: React.FC = () => {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showProductDialog, setShowProductDialog] = useState(false);
-  const [scannedProductData, setScannedProductData] = useState<{
-    gtin?: string;
-    sku?: string;
-    name?: string;
-  }>({});
+  const [scannedProductData, setScannedProductData] = useState<Partial<CreateProductData> | null>(null);
+  const [lookupResult, setLookupResult] = useState<ProductLookupResult | null>(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [lastScannedGtin, setLastScannedGtin] = useState<string>('');
 
   const handleBarcodeScanned = async (gtin: string, format: string) => {
-    toast({
-      title: "Barcode scanned",
-      description: `Found ${format}: ${gtin}`,
-    });
-
-    // Try to find existing product
+    console.log('📱 Barcode scanned:', gtin, format);
+    setLastScannedGtin(gtin);
+    setLookupResult(null);
+    
+    // Check if product already exists in inventory
     const existingProduct = await findProductByGtin(gtin);
     
     if (existingProduct) {
@@ -45,22 +45,61 @@ export const Inventory: React.FC = () => {
         title: "Product found",
         description: `${existingProduct.name} is already in your inventory`,
       });
-    } else {
-      // Product not found, prompt to create
-      setScannedProductData({
-        gtin,
-        sku: gtin, // Default SKU to GTIN
-        name: '', // Will be filled by user
+      return;
+    }
+
+    // Look up product information
+    setIsLookingUp(true);
+    try {
+      const result = await productLookupService.lookupProduct(gtin);
+      setLookupResult(result);
+      
+      if (result) {
+        toast({
+          title: "Product identified",
+          description: `Found: ${result.product_name}`,
+        });
+      } else {
+        toast({
+          title: "Product not found",
+          description: "Product not found in databases. You can add it manually.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Product lookup error:', error);
+      toast({
+        title: "Lookup failed",
+        description: "Failed to look up product information",
+        variant: "destructive",
       });
-      setShowProductDialog(true);
+    } finally {
+      setIsLookingUp(false);
     }
   };
 
   const handleCreateProduct = async (productData: CreateProductData) => {
-    if (!selectedRestaurant) return;
-    
-    await createProduct(productData);
-    setScannedProductData({});
+    const newProduct = await createProduct(productData);
+    if (newProduct) {
+      setShowProductDialog(false);
+      setScannedProductData(null);
+      setLookupResult(null);
+      setLastScannedGtin('');
+    }
+  };
+
+  const handleAddToInventory = (productData: CreateProductData) => {
+    handleCreateProduct(productData);
+  };
+
+  const handleCreateManually = () => {
+    setScannedProductData({
+      restaurant_id: selectedRestaurant!.restaurant!.id,
+      gtin: lastScannedGtin,
+      sku: lastScannedGtin,
+      name: '', // Let user fill this
+    });
+    setShowProductDialog(true);
   };
 
   const filteredProducts = products.filter(product =>
@@ -141,49 +180,64 @@ export const Inventory: React.FC = () => {
           </TabsList>
 
           <TabsContent value="scanner" className="mt-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div>
-                <BarcodeScanner
-                  onScan={handleBarcodeScanned}
-                  onError={(error) => toast({
-                    title: "Scanner Error",
-                    description: error,
-                    variant: "destructive",
-                  })}
-                  autoStart={false}
-                />
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div>
+                  <BarcodeScanner
+                    onScan={handleBarcodeScanned}
+                    onError={(error) => toast({
+                      title: "Scanner Error",
+                      description: error,
+                      variant: "destructive",
+                    })}
+                    autoStart={false}
+                  />
+                </div>
+                <div>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>How to Scan</CardTitle>
+                      <CardDescription>
+                        Tips for best scanning results
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Supported Barcodes:</h4>
+                        <ul className="text-sm text-muted-foreground space-y-1">
+                          <li>• UPC-A & UPC-E (12 digits)</li>
+                          <li>• EAN-13 & EAN-8</li>
+                          <li>• Code 128</li>
+                          <li>• QR Codes</li>
+                          <li>• Data Matrix</li>
+                        </ul>
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Scanning Tips:</h4>
+                        <ul className="text-sm text-muted-foreground space-y-1">
+                          <li>• Hold the barcode steady within the frame</li>
+                          <li>• Ensure good lighting</li>
+                          <li>• Keep the barcode flat and un-wrinkled</li>
+                          <li>• Try different distances if scanning fails</li>
+                        </ul>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
-              <div>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>How to Scan</CardTitle>
-                    <CardDescription>
-                      Tips for best scanning results
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <h4 className="font-medium">Supported Barcodes:</h4>
-                      <ul className="text-sm text-muted-foreground space-y-1">
-                        <li>• UPC-A & UPC-E (12 digits)</li>
-                        <li>• EAN-13 & EAN-8</li>
-                        <li>• Code 128</li>
-                        <li>• QR Codes</li>
-                        <li>• Data Matrix</li>
-                      </ul>
-                    </div>
-                    <div className="space-y-2">
-                      <h4 className="font-medium">Scanning Tips:</h4>
-                      <ul className="text-sm text-muted-foreground space-y-1">
-                        <li>• Hold the barcode steady within the frame</li>
-                        <li>• Ensure good lighting</li>
-                        <li>• Keep the barcode flat and un-wrinkled</li>
-                        <li>• Try different distances if scanning fails</li>
-                      </ul>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              
+              {(lookupResult || isLookingUp || lastScannedGtin) && (
+                <div className="flex justify-center">
+                  <ProductCard
+                    product={lookupResult}
+                    gtin={lastScannedGtin}
+                    onAddToInventory={handleAddToInventory}
+                    onCreateManually={handleCreateManually}
+                    restaurantId={selectedRestaurant?.restaurant?.id || ''}
+                    isLoading={isLookingUp}
+                  />
+                </div>
+              )}
             </div>
           </TabsContent>
 

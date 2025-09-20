@@ -52,17 +52,21 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const startScanning = async () => {
     console.log('🎯 startScanning called');
     setDebugInfo('Starting scanner...');
+    setIsScanning(true);
+    
+    // Wait for the video element to render
+    await new Promise(resolve => setTimeout(resolve, 100));
     
     if (!videoRef.current) {
-      console.log('❌ No video ref');
-      setDebugInfo('Error: No video element');
+      console.log('❌ No video ref after waiting');
+      setDebugInfo('Error: No video element found');
+      setIsScanning(false);
       return;
     }
 
     try {
       console.log('🟢 Requesting camera...');
       setDebugInfo('Requesting camera access...');
-      setIsScanning(true);
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 

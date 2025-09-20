@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } from '@zxing/library';
+import { BrowserMultiFormatReader } from '@zxing/browser';
+import { DecodeHintType, BarcodeFormat } from '@zxing/library';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Camera, Square, Loader2 } from 'lucide-react';
@@ -45,6 +46,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [lastScan, setLastScan] = useState<string>('');
@@ -83,7 +85,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     try {
       setIsScanning(true);
       
-      // Check for camera permission
+      // Check for camera permission and get stream
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment', // Prefer back camera
@@ -92,6 +94,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         } 
       });
       
+      streamRef.current = stream;
       setHasPermission(true);
       
       // Start continuous decode from video element
@@ -144,9 +147,17 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   };
 
   const stopScanning = () => {
-    if (readerRef.current) {
-      readerRef.current.reset();
+    // Stop all camera streams
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
     }
+    
+    // Clear video element
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    
     setIsScanning(false);
   };
 

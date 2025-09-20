@@ -74,9 +74,43 @@ export class ProductEnhancementService {
   }
 
   private static async performWebSearch(query: string): Promise<SearchResult[]> {
-    // This would typically use a web search API
-    // For now, we'll simulate search results with common product databases
-    const mockResults: SearchResult[] = [
+    try {
+      // Use web search to find product information
+      const searchResponse = await fetch('/api/web-search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query,
+          numResults: 5
+        }),
+      });
+
+      if (!searchResponse.ok) {
+        console.error('Web search failed:', searchResponse.statusText);
+        return this.getMockResults(query);
+      }
+
+      const searchData = await searchResponse.json();
+      
+      if (searchData.results && Array.isArray(searchData.results)) {
+        return searchData.results.map((result: any) => ({
+          title: result.title || '',
+          snippet: result.snippet || result.content || '',
+          link: result.url || result.link || ''
+        }));
+      }
+
+      return this.getMockResults(query);
+    } catch (error) {
+      console.error('Web search error:', error);
+      return this.getMockResults(query);
+    }
+  }
+
+  private static getMockResults(query: string): SearchResult[] {
+    return [
       {
         title: `${query} - Product Information`,
         snippet: "Product details, ingredients, nutrition facts, and manufacturer information. High-quality product with detailed specifications.",
@@ -88,8 +122,6 @@ export class ProductEnhancementService {
         link: "https://example.com/nutrition"
       }
     ];
-
-    return mockResults;
   }
 
   private static async extractEnhancedData(
@@ -116,9 +148,33 @@ export class ProductEnhancementService {
     text: string, 
     originalProduct: Product
   ): Promise<EnhancedProductData | null> {
-    // This would typically call an AI service to extract structured information
-    // For now, we'll provide enhanced mock data based on the product
-    
+    try {
+      // Use AI to extract structured information from search results
+      const aiResponse = await fetch('/api/enhance-product-ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          searchText: text,
+          productName: originalProduct.name,
+          brand: originalProduct.brand,
+          category: originalProduct.category,
+          currentDescription: originalProduct.description
+        }),
+      });
+
+      if (aiResponse.ok) {
+        const aiData = await aiResponse.json();
+        if (aiData.enhancedData) {
+          return aiData.enhancedData;
+        }
+      }
+    } catch (error) {
+      console.error('AI enhancement error:', error);
+    }
+
+    // Fallback to rule-based enhancement
     const enhanced: EnhancedProductData = {};
     
     // Generate enhanced description if not present

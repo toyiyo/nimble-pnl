@@ -23,8 +23,11 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   const [isStreaming, setIsStreaming] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const startCamera = useCallback(async () => {
+    console.log('🎥 Starting camera...');
+    setIsLoading(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
@@ -34,39 +37,84 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
         }
       });
 
+      console.log('📹 Got media stream:', stream.id);
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        setIsStreaming(true);
-        setHasPermission(true);
+        
+        // Wait for video to be ready
+        videoRef.current.onloadedmetadata = () => {
+          console.log('🎬 Video metadata loaded');
+          if (videoRef.current) {
+            videoRef.current.play().then(() => {
+              console.log('▶️ Video playing');
+              setIsStreaming(true);
+              setHasPermission(true);
+              setIsLoading(false);
+            }).catch((error) => {
+              console.error('❌ Video play error:', error);
+              onError?.(`Video play failed: ${error.message}`);
+              setIsLoading(false);
+            });
+          }
+        };
+
+        videoRef.current.onerror = (error) => {
+          console.error('❌ Video error:', error);
+          onError?.('Video failed to load');
+          setIsLoading(false);
+        };
       }
     } catch (error: any) {
-      console.error('Camera access error:', error);
+      console.error('❌ Camera access error:', error);
       setHasPermission(false);
+      setIsLoading(false);
       onError?.(error.message);
     }
   }, [onError]);
 
   const stopCamera = useCallback(() => {
+    console.log('🛑 Stopping camera...');
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach(track => {
+        track.stop();
+        console.log('📹 Stopped track:', track.kind);
+      });
       videoRef.current.srcObject = null;
     }
     setIsStreaming(false);
+    setIsLoading(false);
   }, []);
 
   const capturePhoto = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current) return;
+    console.log('📸 Capturing photo...');
+    if (!videoRef.current || !canvasRef.current) {
+      console.error('❌ Missing video or canvas ref');
+      return;
+    }
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
 
-    if (!context) return;
+    if (!context) {
+      console.error('❌ Could not get canvas context');
+      return;
+    }
+
+    // Make sure video has dimensions
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      console.error('❌ Video has no dimensions');
+      onError?.('Camera not ready. Please try again.');
+      return;
+    }
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0);
+
+    console.log(`📷 Photo captured: ${video.videoWidth}x${video.videoHeight}`);
 
     canvas.toBlob((blob) => {
       if (blob) {
@@ -74,9 +122,13 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
         setCapturedImage(imageUrl);
         onImageCaptured(blob, imageUrl);
         stopCamera();
+        console.log('✅ Photo processed and callback triggered');
+      } else {
+        console.error('❌ Failed to create blob from canvas');
+        onError?.('Failed to capture photo');
       }
     }, 'image/jpeg', 0.8);
-  }, [onImageCaptured, stopCamera]);
+  }, [onImageCaptured, stopCamera, onError]);
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -129,7 +181,14 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
         ) : (
           <div className="space-y-4">
             <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-              {isStreaming ? (
+              {isLoading ? (
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                    <p className="text-sm text-muted-foreground">Starting camera...</p>
+                  </div>
+                </div>
+              ) : isStreaming ? (
                 <video
                   ref={videoRef}
                   className="w-full h-full object-cover"
@@ -144,7 +203,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
                     <p className="text-sm text-muted-foreground">
                       {hasPermission === false
                         ? 'Camera access denied'
-                        : 'Camera ready'}
+                        : 'Ready to start camera'}
                     </p>
                   </div>
                 </div>
@@ -156,15 +215,27 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
                 <>
                   <Button
                     onClick={startCamera}
-                    disabled={disabled || hasPermission === false}
+                    disabled={disabled || hasPermission === false || isLoading}
                     className="flex-1"
                   >
-                    <Camera className="h-4 w-4 mr-2" />
-                    Camera
+                    {isLoading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Starting...
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="h-4 w-4 mr-2" />
+                        Camera
+                      </>
+                    )}
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => {
+                      console.log('📁 Opening file picker...');
+                      fileInputRef.current?.click();
+                    }}
                     disabled={disabled}
                     className="flex-1"
                   >
@@ -201,7 +272,10 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
           ref={fileInputRef}
           type="file"
           accept="image/*"
-          onChange={handleFileUpload}
+          onChange={(e) => {
+            console.log('📁 File selected:', e.target.files?.[0]?.name);
+            handleFileUpload(e);
+          }}
           className="hidden"
         />
 

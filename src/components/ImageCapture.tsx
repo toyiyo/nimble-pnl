@@ -42,8 +42,8 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
-        // Wait for video to be ready
-        videoRef.current.onloadedmetadata = () => {
+        // Set up event handlers before setting srcObject
+        const handleLoadedMetadata = () => {
           console.log('🎬 Video metadata loaded');
           if (videoRef.current) {
             videoRef.current.play().then(() => {
@@ -59,11 +59,29 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
           }
         };
 
-        videoRef.current.onerror = (error) => {
+        const handleVideoError = (error: any) => {
           console.error('❌ Video error:', error);
           onError?.('Video failed to load');
           setIsLoading(false);
         };
+
+        videoRef.current.onloadedmetadata = handleLoadedMetadata;
+        videoRef.current.onerror = handleVideoError;
+
+        // Fallback timeout in case metadata never loads
+        setTimeout(() => {
+          if (videoRef.current && videoRef.current.readyState >= 1) {
+            console.log('🕒 Fallback: Video ready via timeout');
+            handleLoadedMetadata();
+          } else if (isLoading) {
+            console.log('🕒 Timeout: Stopping loading spinner');
+            setIsLoading(false);
+            onError?.('Camera initialization timed out');
+          }
+        }, 5000);
+      } else {
+        setIsLoading(false);
+        onError?.('Video element not available');
       }
     } catch (error: any) {
       console.error('❌ Camera access error:', error);
@@ -71,7 +89,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
       setIsLoading(false);
       onError?.(error.message);
     }
-  }, [onError]);
+  }, [onError, isLoading]);
 
   const stopCamera = useCallback(() => {
     console.log('🛑 Stopping camera...');

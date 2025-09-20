@@ -75,8 +75,8 @@ export class ProductEnhancementService {
 
   private static async performWebSearch(query: string): Promise<SearchResult[]> {
     try {
-      // Use web search to find product information
-      const searchResponse = await fetch('/api/web-search', {
+      // Use Supabase edge function for web search
+      const searchResponse = await fetch('https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/web-search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -89,7 +89,7 @@ export class ProductEnhancementService {
 
       if (!searchResponse.ok) {
         console.error('Web search failed:', searchResponse.statusText);
-        return this.getMockResults(query);
+        return [];
       }
 
       const searchData = await searchResponse.json();
@@ -102,26 +102,11 @@ export class ProductEnhancementService {
         }));
       }
 
-      return this.getMockResults(query);
+      return [];
     } catch (error) {
       console.error('Web search error:', error);
-      return this.getMockResults(query);
+      return [];
     }
-  }
-
-  private static getMockResults(query: string): SearchResult[] {
-    return [
-      {
-        title: `${query} - Product Information`,
-        snippet: "Product details, ingredients, nutrition facts, and manufacturer information. High-quality product with detailed specifications.",
-        link: "https://example.com/product"
-      },
-      {
-        title: `${query} - Nutrition Database`,
-        snippet: "Complete nutritional information, ingredient list, allergen warnings, and dietary information for this product.",
-        link: "https://example.com/nutrition"
-      }
-    ];
   }
 
   private static async extractEnhancedData(
@@ -150,7 +135,7 @@ export class ProductEnhancementService {
   ): Promise<EnhancedProductData | null> {
     try {
       // Use AI to extract structured information from search results
-      const aiResponse = await fetch('/api/enhance-product-ai', {
+      const aiResponse = await fetch('https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/enhance-product-ai', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -174,7 +159,7 @@ export class ProductEnhancementService {
       console.error('AI enhancement error:', error);
     }
 
-    // Fallback to rule-based enhancement
+    // Fallback to rule-based enhancement if AI fails
     const enhanced: EnhancedProductData = {};
     
     // Generate enhanced description if not present

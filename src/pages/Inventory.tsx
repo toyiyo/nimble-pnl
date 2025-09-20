@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
+import { ImageCapture } from '@/components/ImageCapture';
 import { ProductDialog } from '@/components/ProductDialog';
 import { ProductCard } from '@/components/ProductCard';
 import { useProducts, CreateProductData } from '@/hooks/useProducts';
@@ -14,6 +15,7 @@ import { useRestaurants } from '@/hooks/useRestaurants';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
+import { ocrService } from '@/services/ocrService';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
@@ -31,6 +33,8 @@ export const Inventory: React.FC = () => {
   const [lookupResult, setLookupResult] = useState<ProductLookupResult | null>(null);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lastScannedGtin, setLastScannedGtin] = useState<string>('');
+  const [currentMode, setCurrentMode] = useState<'barcode' | 'image'>('barcode');
+  const [capturedImage, setCapturedImage] = useState<{ blob: Blob; url: string } | null>(null);
 
   const handleBarcodeScanned = async (gtin: string, format: string) => {
     console.log('📱 Barcode scanned:', gtin, format);
@@ -48,10 +52,10 @@ export const Inventory: React.FC = () => {
       return;
     }
 
-    // Look up product information
+    // Look up product information with enhanced catalog lookup
     setIsLookingUp(true);
     try {
-      const result = await productLookupService.lookupProduct(gtin);
+      const result = await productLookupService.lookupProduct(gtin, findProductByGtin);
       setLookupResult(result);
       
       if (result) {
@@ -78,6 +82,50 @@ export const Inventory: React.FC = () => {
     }
   };
 
+  const handleImageCaptured = async (imageBlob: Blob, imageUrl: string) => {
+    console.log('📸 Image captured for analysis');
+    setCapturedImage({ blob: imageBlob, url: imageUrl });
+    setIsLookingUp(true);
+
+    try {
+      // First try OCR to extract text and identify product
+      const ocrResult = await productLookupService.identifyFromImage(imageBlob, ocrService);
+      
+      if (ocrResult && ocrResult.product_name) {
+        setLookupResult(ocrResult);
+        toast({
+          title: "Product identified from image",
+          description: `Found: ${ocrResult.product_name}`,
+        });
+      } else {
+        // If OCR doesn't find anything, show manual entry with any extracted text
+        setLookupResult({
+          gtin: '',
+          gtin14: '',
+          product_name: '',
+          source: 'manual',
+          resolution: 'unknown',
+          confidence_score: 0
+        });
+        toast({
+          title: "Product analysis completed",
+          description: "No text found. You can add the product manually.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Image analysis error:', error);
+      toast({
+        title: "Analysis failed",
+        description: "Failed to analyze image. Please try again.",
+        variant: "destructive",
+      });
+      setLookupResult(null);
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
   const handleCreateProduct = async (productData: CreateProductData) => {
     const newProduct = await createProduct(productData);
     if (newProduct) {
@@ -85,6 +133,7 @@ export const Inventory: React.FC = () => {
       setScannedProductData(null);
       setLookupResult(null);
       setLastScannedGtin('');
+      setCapturedImage(null);
     }
   };
 
@@ -93,12 +142,17 @@ export const Inventory: React.FC = () => {
   };
 
   const handleCreateManually = () => {
-    setScannedProductData({
+    // Pre-fill with any available data from OCR or barcode scan
+    const baseData = {
       restaurant_id: selectedRestaurant!.restaurant!.id,
-      gtin: lastScannedGtin,
-      sku: lastScannedGtin,
-      name: '', // Let user fill this
-    });
+      gtin: lastScannedGtin || lookupResult?.gtin || '',
+      sku: lastScannedGtin || lookupResult?.gtin || '',
+      name: lookupResult?.product_name || '',
+      brand: lookupResult?.brand || '',
+      category: lookupResult?.category || '',
+    };
+    
+    setScannedProductData(baseData);
     setShowProductDialog(true);
   };
 
@@ -166,7 +220,9 @@ export const Inventory: React.FC = () => {
       <div className="max-w-7xl mx-auto p-6">
         <Tabs defaultValue="scanner" className="w-full">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="scanner">Scanner</TabsTrigger>
+            <TabsTrigger value="scanner">
+              Scanner {currentMode === 'barcode' ? '📱' : '📸'}
+            </TabsTrigger>
             <TabsTrigger value="products">Products ({products.length})</TabsTrigger>
             <TabsTrigger value="low-stock">
               Low Stock 
@@ -181,17 +237,48 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="scanner" className="mt-6">
             <div className="space-y-6">
+              {/* Mode Toggle */}
+              <div className="flex justify-center">
+                <div className="bg-muted p-1 rounded-lg">
+                  <Button
+                    variant={currentMode === 'barcode' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setCurrentMode('barcode')}
+                  >
+                    📱 Barcode
+                  </Button>
+                  <Button
+                    variant={currentMode === 'image' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setCurrentMode('image')}
+                  >
+                    📸 Image
+                  </Button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div>
-                  <BarcodeScanner
-                    onScan={handleBarcodeScanned}
-                    onError={(error) => toast({
-                      title: "Scanner Error",
-                      description: error,
-                      variant: "destructive",
-                    })}
-                    autoStart={false}
-                  />
+                  {currentMode === 'barcode' ? (
+                    <BarcodeScanner
+                      onScan={handleBarcodeScanned}
+                      onError={(error) => toast({
+                        title: "Scanner Error",
+                        description: error,
+                        variant: "destructive",
+                      })}
+                      autoStart={false}
+                    />
+                  ) : (
+                    <ImageCapture
+                      onImageCaptured={handleImageCaptured}
+                      onError={(error) => toast({
+                        title: "Image Error",
+                        description: error,
+                        variant: "destructive",
+                      })}
+                    />
+                  )}
                 </div>
                 <div>
                   <Card>
@@ -202,35 +289,60 @@ export const Inventory: React.FC = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <h4 className="font-medium">Supported Barcodes:</h4>
-                        <ul className="text-sm text-muted-foreground space-y-1">
-                          <li>• UPC-A & UPC-E (12 digits)</li>
-                          <li>• EAN-13 & EAN-8</li>
-                          <li>• Code 128</li>
-                          <li>• QR Codes</li>
-                          <li>• Data Matrix</li>
-                        </ul>
-                      </div>
-                      <div className="space-y-2">
-                        <h4 className="font-medium">Scanning Tips:</h4>
-                        <ul className="text-sm text-muted-foreground space-y-1">
-                          <li>• Hold the barcode steady within the frame</li>
-                          <li>• Ensure good lighting</li>
-                          <li>• Keep the barcode flat and un-wrinkled</li>
-                          <li>• Try different distances if scanning fails</li>
-                        </ul>
-                      </div>
+                      {currentMode === 'barcode' ? (
+                        <>
+                          <div className="space-y-2">
+                            <h4 className="font-medium">Supported Barcodes:</h4>
+                            <ul className="text-sm text-muted-foreground space-y-1">
+                              <li>• UPC-A & UPC-E (12 digits)</li>
+                              <li>• EAN-13 & EAN-8</li>
+                              <li>• Code 128</li>
+                              <li>• QR Codes</li>
+                              <li>• Data Matrix</li>
+                            </ul>
+                          </div>
+                          <div className="space-y-2">
+                            <h4 className="font-medium">Scanning Tips:</h4>
+                            <ul className="text-sm text-muted-foreground space-y-1">
+                              <li>• Hold the barcode steady within the frame</li>
+                              <li>• Ensure good lighting</li>
+                              <li>• Keep the barcode flat and un-wrinkled</li>
+                              <li>• Try different distances if scanning fails</li>
+                            </ul>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="space-y-2">
+                            <h4 className="font-medium">Image Analysis:</h4>
+                            <ul className="text-sm text-muted-foreground space-y-1">
+                              <li>• Automatically detects text on packages</li>
+                              <li>• Identifies brand names and product info</li>
+                              <li>• Extracts size and quantity information</li>
+                              <li>• Works when barcodes are damaged/missing</li>
+                            </ul>
+                          </div>
+                          <div className="space-y-2">
+                            <h4 className="font-medium">Photo Tips:</h4>
+                            <ul className="text-sm text-muted-foreground space-y-1">
+                              <li>• Ensure clear, readable text</li>
+                              <li>• Use good lighting</li>
+                              <li>• Focus on product labels</li>
+                              <li>• Avoid reflections and shadows</li>
+                            </ul>
+                          </div>
+                        </>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
               </div>
               
-              {(lookupResult || isLookingUp || lastScannedGtin) && (
+              {(lookupResult || isLookingUp || lastScannedGtin || capturedImage) && (
                 <div className="flex justify-center">
                   <ProductCard
                     product={lookupResult}
-                    gtin={lastScannedGtin}
+                    gtin={lastScannedGtin || lookupResult?.gtin || ''}
                     onAddToInventory={handleAddToInventory}
                     onCreateManually={handleCreateManually}
                     restaurantId={selectedRestaurant?.restaurant?.id || ''}

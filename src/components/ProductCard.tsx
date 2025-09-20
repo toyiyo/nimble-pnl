@@ -92,21 +92,31 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <CardTitle className="text-lg leading-tight">
-              {product.product_name}
-            </CardTitle>
-            {product.brand && (
-              <CardDescription className="mt-1">
-                {product.brand}
-              </CardDescription>
-            )}
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <CardTitle className="text-lg leading-tight">
+                {product.product_name}
+              </CardTitle>
+              {product.brand && (
+                <CardDescription className="mt-1">
+                  {product.brand}
+                </CardDescription>
+              )}
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <Badge variant="secondary" className="ml-2">
+                {product.source}
+              </Badge>
+              {product.confidence_score !== undefined && (
+                <Badge 
+                  variant={product.confidence_score > 0.8 ? "default" : "outline"}
+                  className="text-xs"
+                >
+                  {Math.round(product.confidence_score * 100)}% match
+                </Badge>
+              )}
+            </div>
           </div>
-          <Badge variant="secondary" className="ml-2">
-            {product.source}
-          </Badge>
-        </div>
       </CardHeader>
       
       <CardContent className="space-y-4">
@@ -126,7 +136,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">GTIN:</span>
-            <span className="font-mono">{product.gtin}</span>
+            <span className="font-mono">{product.gtin || product.gtin14}</span>
           </div>
           
           {product.package_size && (
@@ -136,10 +146,24 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </div>
           )}
           
+          {product.package_qty && product.package_qty > 1 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Quantity:</span>
+              <span>{product.package_qty} units</span>
+            </div>
+          )}
+          
           {product.category && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Category:</span>
               <span>{product.category}</span>
+            </div>
+          )}
+
+          {product.resolution && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Source:</span>
+              <span className="capitalize">{product.resolution}</span>
             </div>
           )}
         </div>

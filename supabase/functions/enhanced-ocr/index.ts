@@ -22,25 +22,20 @@ serve(async (req) => {
       throw new Error('No image data provided');
     }
 
-    console.log('🔍 Starting enhanced OCR with HuggingFace...');
+    console.log(`🔍 Starting enhanced OCR with HuggingFace model: ${model}`);
     
-    // Convert base64 to blob for HuggingFace API
+    // Convert base64 to binary data for HuggingFace API
     const base64Data = imageData.replace(/^data:image\/[a-z]+;base64,/, '');
     const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
     
-    // Call HuggingFace Inference API for OCR
+    // Call HuggingFace Inference API for OCR - send as binary data
     const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${Deno.env.get('HUGGING_FACE_ACCESS_TOKEN')}`,
-        'Content-Type': 'application/json',
+        'Content-Type': 'image/png',
       },
-      body: JSON.stringify({
-        inputs: base64Data,
-        options: {
-          wait_for_model: true,
-        }
-      }),
+      body: binaryData,
     });
 
     if (!response.ok) {

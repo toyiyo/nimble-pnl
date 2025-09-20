@@ -28,10 +28,13 @@ class OCRService {
         }
       });
       
-      // Optimize for package text recognition
+      // Optimize for package text recognition with enhanced settings
       await this.worker.setParameters({
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,- %()/',
-        tessedit_pageseg_mode: '6', // Uniform block of text
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,%-&()[]/$',
+        tessedit_pageseg_mode: '11', // Sparse text - better for scattered text like labels
+        load_system_dawg: '0', // Disable dictionary for better accuracy on brands/product names
+        load_freq_dawg: '0', // Disable frequency dictionary
+        tessedit_ocr_engine_mode: '1', // LSTM neural net only (most accurate)
       });
 
       this.isInitialized = true;
@@ -142,45 +145,138 @@ class OCRService {
       const img = new Image();
       
       img.onload = () => {
-        // Scale up smaller images for better OCR
-        const minDimension = 800;
-        const scale = Math.max(minDimension / img.width, minDimension / img.height, 1);
+        // Scale image for better OCR (aim for ~300 DPI equivalent, characters ~30px tall)
+        const minHeight = 600;
+        let scale = img.height < minHeight ? minHeight / img.height : 1;
+        // Cap scaling to avoid excessive memory usage
+        scale = Math.min(scale, 3);
         
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
         
-        // Draw image with scaling
+        // Draw scaled image with slight blur to smooth jagged edges
+        ctx.filter = 'blur(0.5px)';
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        ctx.filter = 'none';
         
         // Get image data for processing
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
         
-        // Convert to grayscale and enhance contrast
+        // Calculate histogram for Otsu's thresholding
+        const histogram = new Array(256).fill(0);
+        const grayData = [];
+        
         for (let i = 0; i < data.length; i += 4) {
-          // Convert to grayscale using luminance formula
           const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-          
-          // Enhance contrast (simple threshold)
-          const enhanced = gray > 120 ? 255 : gray < 60 ? 0 : gray;
-          
-          data[i] = enhanced;     // Red
-          data[i + 1] = enhanced; // Green  
-          data[i + 2] = enhanced; // Blue
-          // Alpha channel stays the same
+          grayData.push(gray);
+          histogram[gray]++;
         }
         
-        // Put processed image data back
+        // Otsu's thresholding for optimal binarization
+        const threshold = this.calculateOtsuThreshold(histogram, grayData.length);
+        
+        // Check if image appears to be inverted (white text on dark background)
+        const avgBrightness = grayData.reduce((sum, val) => sum + val, 0) / grayData.length;
+        const isInverted = avgBrightness < 100;
+        
+        // Apply adaptive contrast enhancement and binarization
+        for (let i = 0; i < data.length; i += 4) {
+          const gray = grayData[i / 4];
+          
+          let processed;
+          if (isInverted) {
+            // Invert for white text on dark background
+            processed = gray > threshold ? 0 : 255;
+          } else {
+            // Normal: black text on white background
+            processed = gray < threshold ? 0 : 255;
+          }
+          
+          data[i] = processed;     // Red
+          data[i + 1] = processed; // Green  
+          data[i + 2] = processed; // Blue
+          // Alpha stays the same
+        }
+        
+        // Apply morphological operations to reduce noise
+        this.applyMorphologicalClean(imageData);
+        
+        // Put processed data back
         ctx.putImageData(imageData, 0, 0);
         
-        // Convert back to blob
+        // Convert to blob
         canvas.toBlob((blob) => {
-          resolve(blob || imageBlob);
-        }, 'image/png', 1.0);
+          resolve(blob!);
+        }, 'image/png');
       };
       
       img.src = URL.createObjectURL(imageBlob);
     });
+  }
+
+  private calculateOtsuThreshold(histogram: number[], totalPixels: number): number {
+    let sumTotal = 0;
+    for (let i = 0; i < 256; i++) {
+      sumTotal += i * histogram[i];
+    }
+
+    let sumBackground = 0;
+    let weightBackground = 0;
+    let weightForeground = 0;
+    let maxVariance = 0;
+    let threshold = 0;
+
+    for (let i = 0; i < 256; i++) {
+      weightBackground += histogram[i];
+      if (weightBackground === 0) continue;
+
+      weightForeground = totalPixels - weightBackground;
+      if (weightForeground === 0) break;
+
+      sumBackground += i * histogram[i];
+      const meanBackground = sumBackground / weightBackground;
+      const meanForeground = (sumTotal - sumBackground) / weightForeground;
+
+      const variance = weightBackground * weightForeground * 
+        Math.pow(meanBackground - meanForeground, 2);
+
+      if (variance > maxVariance) {
+        maxVariance = variance;
+        threshold = i;
+      }
+    }
+
+    return threshold;
+  }
+
+  private applyMorphologicalClean(imageData: ImageData): void {
+    const { data, width, height } = imageData;
+    const cleaned = new Uint8ClampedArray(data);
+    
+    // Simple morphological opening (erosion followed by dilation) to remove noise
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = (y * width + x) * 4;
+        
+        // Check 3x3 neighborhood for isolated noise pixels
+        let whiteNeighbors = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nIdx = ((y + dy) * width + (x + dx)) * 4;
+            if (data[nIdx] > 128) whiteNeighbors++;
+          }
+        }
+        
+        // Remove isolated white pixels (noise)
+        if (data[idx] > 128 && whiteNeighbors < 3) {
+          cleaned[idx] = cleaned[idx + 1] = cleaned[idx + 2] = 0;
+        }
+      }
+    }
+    
+    // Copy cleaned data back
+    data.set(cleaned);
   }
 
   // Extract specific patterns for product information

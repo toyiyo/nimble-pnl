@@ -45,123 +45,74 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   autoStart = false
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [lastScan, setLastScan] = useState<string>('');
-  const [scanCooldown, setScanCooldown] = useState(false);
-
-  useEffect(() => {
-    // Initialize the reader with specific hints for better performance
-    const hints = new Map();
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-      BarcodeFormat.UPC_A,
-      BarcodeFormat.UPC_E,
-      BarcodeFormat.EAN_13,
-      BarcodeFormat.EAN_8,
-      BarcodeFormat.CODE_128,
-      BarcodeFormat.QR_CODE,
-      BarcodeFormat.DATA_MATRIX,
-    ]);
-    hints.set(DecodeHintType.TRY_HARDER, true);
-
-    readerRef.current = new BrowserMultiFormatReader(hints);
-
-    return () => {
-      stopScanning();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (autoStart) {
-      startScanning();
-    }
-  }, [autoStart]);
+  const [debugInfo, setDebugInfo] = useState<string>('Ready to start');
 
   const startScanning = async () => {
-    if (!videoRef.current || !readerRef.current) return;
+    console.log('🎯 startScanning called');
+    setDebugInfo('Starting scanner...');
+    
+    if (!videoRef.current) {
+      console.log('❌ No video ref');
+      setDebugInfo('Error: No video element');
+      return;
+    }
 
     try {
+      console.log('🟢 Requesting camera...');
+      setDebugInfo('Requesting camera access...');
       setIsScanning(true);
       
-      // Check for camera permission and get stream
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
-          facingMode: 'environment', // Prefer back camera
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
         } 
       });
       
-      streamRef.current = stream;
+      console.log('✅ Camera access granted');
+      setDebugInfo('Camera access granted!');
       setHasPermission(true);
       
-      // Start continuous decode from video element
-      await readerRef.current.decodeFromVideoDevice(
-        undefined, // Use default device
-        videoRef.current,
-        (result, error) => {
-          if (result) {
-            const barcodeText = result.getText();
-            const format = result.getBarcodeFormat().toString();
-            
-            // Prevent duplicate scans with cooldown
-            if (barcodeText !== lastScan || !scanCooldown) {
-              setLastScan(barcodeText);
-              setScanCooldown(true);
-              
-              // Normalize the barcode to GTIN-14 if possible
-              const normalizedGtin = normalizeGtin(barcodeText, format);
-              
-              onScan(normalizedGtin, format);
-              
-              // Reset cooldown after 2 seconds
-              setTimeout(() => {
-                setScanCooldown(false);
-              }, 2000);
-            }
-          }
-          
-          if (error && onError) {
-            // Only report non-trivial errors
-            if (!error.message.includes('No MultiFormat Readers')) {
-              onError(error.message);
-            }
-          }
-        }
-      );
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      
+      console.log('📹 Video playing');
+      setDebugInfo('Camera is live!');
+      
+      // Simple test - simulate a scan after 3 seconds
+      setTimeout(() => {
+        onScan('123456789012', 'TEST');
+        setDebugInfo('Test scan completed!');
+      }, 3000);
       
     } catch (error: any) {
+      console.error('❌ Camera error:', error);
+      setDebugInfo(`Error: ${error.message}`);
       setHasPermission(false);
       setIsScanning(false);
-      
-      if (error.name === 'NotAllowedError') {
-        onError?.('Camera permission denied. Please allow camera access to scan barcodes.');
-      } else if (error.name === 'NotFoundError') {
-        onError?.('No camera found. Please make sure your device has a camera.');
-      } else {
-        onError?.(`Failed to start camera: ${error.message}`);
-      }
+      onError?.(error.message);
     }
   };
 
   const stopScanning = () => {
-    // Stop all camera streams
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
+    console.log('🛑 Stopping scanner');
+    setDebugInfo('Stopping...');
     
-    // Clear video element
-    if (videoRef.current) {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
       videoRef.current.srcObject = null;
     }
     
     setIsScanning(false);
+    setDebugInfo('Stopped');
   };
 
   const toggleScanning = () => {
+    console.log('🔄 toggleScanning called, isScanning:', isScanning);
     if (isScanning) {
       stopScanning();
     } else {
@@ -189,17 +140,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                 className="w-full h-full object-cover"
                 playsInline
                 muted
+                autoPlay
               />
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="w-48 h-32 border-2 border-primary border-dashed rounded-lg bg-primary/10">
                   <Square className="w-full h-full text-primary/30" />
                 </div>
               </div>
-              {scanCooldown && (
-                <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-sm">
-                  Scanned!
-                </div>
-              )}
             </>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
@@ -215,9 +162,16 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           )}
         </div>
 
+        <div className="text-center p-2 bg-muted rounded text-sm">
+          Debug: {debugInfo}
+        </div>
+
         <div className="flex gap-2">
           <Button
-            onClick={toggleScanning}
+            onClick={() => {
+              console.log('🔥 Button clicked!');
+              toggleScanning();
+            }}
             disabled={hasPermission === false}
             className="flex-1"
           >
@@ -235,10 +189,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           </Button>
         </div>
 
-        {lastScan && (
+        {debugInfo && (
           <div className="text-center p-2 bg-muted rounded">
-            <p className="text-sm text-muted-foreground">Last scan:</p>
-            <p className="font-mono text-sm">{lastScan}</p>
+            <p className="text-sm text-muted-foreground">Status: {debugInfo}</p>
           </div>
         )}
       </CardContent>

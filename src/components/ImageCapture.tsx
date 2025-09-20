@@ -24,20 +24,11 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
 
   const startCamera = useCallback(async () => {
     console.log('🎥 Starting camera...');
     setIsLoading(true);
-    
-    // Add a small delay to ensure the video element is rendered
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    if (!videoRef.current) {
-      console.error('❌ Video ref not available');
-      setIsLoading(false);
-      onError?.('Video element not ready. Please try again.');
-      return;
-    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -50,61 +41,54 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
 
       console.log('📹 Got media stream:', stream.id);
 
-      const video = videoRef.current;
-      if (!video) {
-        console.error('❌ Video element disappeared');
-        setIsLoading(false);
-        onError?.('Video element not available');
-        return;
-      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        
+        // Set up event handlers
+        const handleLoadedMetadata = () => {
+          console.log('🎬 Video metadata loaded');
+          if (videoRef.current) {
+            videoRef.current.play().then(() => {
+              console.log('▶️ Video playing');
+              setIsStreaming(true);
+              setHasPermission(true);
+              setIsLoading(false);
+            }).catch((error) => {
+              console.error('❌ Video play error:', error);
+              onError?.(`Video play failed: ${error.message}`);
+              setIsLoading(false);
+            });
+          }
+        };
 
-      video.srcObject = stream;
-      
-      // Set up event handlers
-      const handleLoadedMetadata = () => {
-        console.log('🎬 Video metadata loaded');
-        if (videoRef.current) {
-          videoRef.current.play().then(() => {
-            console.log('▶️ Video playing');
-            setIsStreaming(true);
-            setHasPermission(true);
-            setIsLoading(false);
-          }).catch((error) => {
-            console.error('❌ Video play error:', error);
-            onError?.(`Video play failed: ${error.message}`);
-            setIsLoading(false);
-          });
-        }
-      };
-
-      const handleVideoError = (error: any) => {
-        console.error('❌ Video error:', error);
-        onError?.('Video failed to load');
-        setIsLoading(false);
-      };
-
-      video.onloadedmetadata = handleLoadedMetadata;
-      video.onerror = handleVideoError;
-
-      // Fallback timeout in case metadata never loads
-      setTimeout(() => {
-        if (videoRef.current && videoRef.current.readyState >= 1) {
-          console.log('🕒 Fallback: Video ready via timeout');
-          handleLoadedMetadata();
-        } else if (isLoading) {
-          console.log('🕒 Timeout: Stopping loading spinner');
+        const handleVideoError = (error: any) => {
+          console.error('❌ Video error:', error);
+          onError?.('Video failed to load');
           setIsLoading(false);
-          onError?.('Camera initialization timed out');
-        }
-      }, 5000);
-      
+        };
+
+        videoRef.current.onloadedmetadata = handleLoadedMetadata;
+        videoRef.current.onerror = handleVideoError;
+
+        // Fallback timeout in case metadata never loads
+        setTimeout(() => {
+          if (videoRef.current && videoRef.current.readyState >= 1) {
+            console.log('🕒 Fallback: Video ready via timeout');
+            handleLoadedMetadata();
+          } else if (isLoading) {
+            console.log('🕒 Timeout: Stopping loading spinner');
+            setIsLoading(false);
+            onError?.('Camera initialization timed out');
+          }
+        }, 5000);
+      }
     } catch (error: any) {
       console.error('❌ Camera access error:', error);
       setHasPermission(false);
       setIsLoading(false);
       onError?.(error.message);
     }
-  }, [onError, isLoading]);
+  }, [onError]);
 
   const stopCamera = useCallback(() => {
     console.log('🛑 Stopping camera...');
@@ -214,23 +198,25 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
         ) : (
           <div className="space-y-4">
             <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
+              <video
+                ref={videoRef}
+                className={cn(
+                  "w-full h-full object-cover",
+                  !isStreaming && "hidden"
+                )}
+                autoPlay
+                playsInline
+                muted
+              />
               {isLoading ? (
-                <div className="w-full h-full flex items-center justify-center">
+                <div className="w-full h-full flex items-center justify-center absolute inset-0">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
                     <p className="text-sm text-muted-foreground">Starting camera...</p>
                   </div>
                 </div>
-              ) : isStreaming ? (
-                <video
-                  ref={videoRef}
-                  className="w-full h-full object-cover"
-                  autoPlay
-                  playsInline
-                  muted
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
+              ) : !isStreaming ? (
+                <div className="w-full h-full flex items-center justify-center absolute inset-0">
                   <div className="text-center">
                     <Camera className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
                     <p className="text-sm text-muted-foreground">
@@ -240,7 +226,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
                     </p>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
 
             <div className="grid grid-cols-2 gap-2">

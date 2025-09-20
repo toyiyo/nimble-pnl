@@ -19,10 +19,14 @@ class OCRService {
 
     try {
       console.log('🔧 Initializing OCR worker...');
-      this.worker = await createWorker();
-      
-      await this.worker.loadLanguage('eng');
-      await this.worker.initialize('eng');
+      // Use the simplified modern API
+      this.worker = await createWorker('eng', 1, {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            console.log(`OCR Progress: ${(m.progress * 100).toFixed(1)}%`);
+          }
+        }
+      });
       
       // Optimize for package text recognition
       await this.worker.setParameters({
@@ -34,6 +38,8 @@ class OCRService {
       console.log('✅ OCR worker initialized');
     } catch (error) {
       console.error('❌ OCR initialization failed:', error);
+      this.worker = null;
+      this.isInitialized = false;
       throw error;
     }
   }

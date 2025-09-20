@@ -10,11 +10,13 @@ import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { ImageCapture } from '@/components/ImageCapture';
 import { ProductDialog } from '@/components/ProductDialog';
 import { ProductCard } from '@/components/ProductCard';
-import { useProducts, CreateProductData } from '@/hooks/useProducts';
+import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
+import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
+import { ProductEnhancementService } from '@/services/productEnhancementService';
 import { ocrService } from '@/services/ocrService';
 
 export const Inventory: React.FC = () => {
@@ -25,10 +27,12 @@ export const Inventory: React.FC = () => {
   
   // For now, use the first restaurant. In a full app, you'd have restaurant selection
   const selectedRestaurant = restaurants[0];
-  const { products, loading, createProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant?.id || null);
+  const { products, loading, createProduct, updateProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant?.id || null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showProductDialog, setShowProductDialog] = useState(false);
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [scannedProductData, setScannedProductData] = useState<Partial<CreateProductData> | null>(null);
   const [lookupResult, setLookupResult] = useState<ProductLookupResult | null>(null);
   const [isLookingUp, setIsLookingUp] = useState(false);
@@ -45,9 +49,11 @@ export const Inventory: React.FC = () => {
     const existingProduct = await findProductByGtin(gtin);
     
     if (existingProduct) {
+      setSelectedProduct(existingProduct);
+      setShowUpdateDialog(true);
       toast({
-        title: "Product found",
-        description: `${existingProduct.name} is already in your inventory`,
+        title: "Product found in inventory",
+        description: `${existingProduct.name} - Update details or add stock`,
       });
       return;
     }
@@ -154,6 +160,24 @@ export const Inventory: React.FC = () => {
     
     setScannedProductData(baseData);
     setShowProductDialog(true);
+  };
+
+  const handleUpdateProduct = async (updates: Partial<Product>, quantityToAdd: number) => {
+    if (!selectedProduct) return;
+    
+    const success = await updateProduct(selectedProduct.id, updates);
+    if (success && quantityToAdd > 0) {
+      toast({
+        title: "Inventory updated",
+        description: `Added ${quantityToAdd} units. New total: ${(selectedProduct.current_stock || 0) + quantityToAdd}`,
+      });
+    }
+    setShowUpdateDialog(false);
+    setSelectedProduct(null);
+  };
+
+  const handleEnhanceProduct = async (product: Product) => {
+    return await ProductEnhancementService.enhanceProduct(product);
   };
 
   const filteredProducts = products.filter(product =>
@@ -502,6 +526,16 @@ export const Inventory: React.FC = () => {
         restaurantId={selectedRestaurant?.restaurant?.id || ''}
         initialData={scannedProductData}
       />
+
+      {selectedProduct && (
+        <ProductUpdateDialog
+          open={showUpdateDialog}
+          onOpenChange={setShowUpdateDialog}
+          product={selectedProduct}
+          onUpdate={handleUpdateProduct}
+          onEnhance={handleEnhanceProduct}
+        />
+      )}
     </div>
   );
 };

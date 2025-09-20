@@ -17,7 +17,7 @@ serve(async (req) => {
   }
 
   try {
-    const { imageData, model = 'nlpconnect/vit-gpt2-image-captioning' }: OCRRequest = await req.json();
+    const { imageData, model = 'microsoft/trocr-base-printed' }: OCRRequest = await req.json();
     
     if (!imageData) {
       throw new Error('No image data provided');

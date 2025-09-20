@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.square-webhooks]
 verify_jwt = false
+
+[functions.enhanced-ocr]
+verify_jwt = false

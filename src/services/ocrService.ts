@@ -61,17 +61,77 @@ class OCRService {
         bbox: word.bbox
       })) || [];
 
+      const confidence = result.data.confidence / 100; // Convert to 0-1 range
       console.log(`✅ OCR completed. Confidence: ${result.data.confidence}%`);
       console.log('📝 Extracted text:', result.data.text);
       
+      // If confidence is low, try enhanced OCR fallback
+      if (confidence < 0.6 || !result.data.text?.trim()) {
+        console.log('🚀 Confidence low, trying enhanced OCR fallback...');
+        try {
+          const enhancedResult = await this.tryEnhancedOCR(processedImageBlob);
+          if (enhancedResult && enhancedResult.text?.trim()) {
+            console.log('✅ Enhanced OCR provided better result');
+            return enhancedResult;
+          }
+        } catch (enhancedError) {
+          console.warn('⚠️ Enhanced OCR failed, using original result:', enhancedError);
+        }
+      }
+      
       return {
         text: result.data.text || '',
-        confidence: result.data.confidence / 100, // Convert to 0-1 range
+        confidence,
         words
       };
     } catch (error) {
       console.error('❌ OCR text extraction failed:', error);
       throw error;
+    }
+  }
+
+  private async tryEnhancedOCR(imageBlob: Blob): Promise<OCRResult | null> {
+    try {
+      // Convert blob to base64 for the API
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new Image();
+      
+      return new Promise((resolve, reject) => {
+        img.onload = async () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          
+          const imageData = canvas.toDataURL('image/png');
+          
+          // Import supabase client
+          const { supabase } = await import('@/integrations/supabase/client');
+          
+          const response = await supabase.functions.invoke('enhanced-ocr', {
+            body: { imageData }
+          });
+          
+          if (response.error) {
+            console.error('Enhanced OCR error:', response.error);
+            reject(new Error(response.error.message));
+            return;
+          }
+          
+          const result = response.data;
+          resolve({
+            text: result.text || '',
+            confidence: result.confidence || 0.8,
+            words: [] // HuggingFace models don't typically return word-level data
+          });
+        };
+        
+        img.onerror = () => reject(new Error('Failed to load image for enhanced OCR'));
+        img.src = URL.createObjectURL(imageBlob);
+      });
+    } catch (error) {
+      console.error('❌ Enhanced OCR failed:', error);
+      return null;
     }
   }
 

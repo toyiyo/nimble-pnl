@@ -49,7 +49,11 @@ class OCRService {
 
     try {
       console.log('🔍 Running OCR on image...');
-      const result = await this.worker.recognize(imageBlob);
+      
+      // Preprocess the image for better OCR accuracy
+      const processedImageBlob = await this.preprocessImage(imageBlob);
+      
+      const result = await this.worker.recognize(processedImageBlob);
       
       const words = result.data.words?.map((word: any) => ({
         text: word.text,
@@ -58,6 +62,7 @@ class OCRService {
       })) || [];
 
       console.log(`✅ OCR completed. Confidence: ${result.data.confidence}%`);
+      console.log('📝 Extracted text:', result.data.text);
       
       return {
         text: result.data.text || '',
@@ -68,6 +73,54 @@ class OCRService {
       console.error('❌ OCR text extraction failed:', error);
       throw error;
     }
+  }
+
+  private async preprocessImage(imageBlob: Blob): Promise<Blob> {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new Image();
+      
+      img.onload = () => {
+        // Scale up smaller images for better OCR
+        const minDimension = 800;
+        const scale = Math.max(minDimension / img.width, minDimension / img.height, 1);
+        
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        
+        // Draw image with scaling
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // Get image data for processing
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        // Convert to grayscale and enhance contrast
+        for (let i = 0; i < data.length; i += 4) {
+          // Convert to grayscale using luminance formula
+          const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+          
+          // Enhance contrast (simple threshold)
+          const enhanced = gray > 120 ? 255 : gray < 60 ? 0 : gray;
+          
+          data[i] = enhanced;     // Red
+          data[i + 1] = enhanced; // Green  
+          data[i + 2] = enhanced; // Blue
+          // Alpha channel stays the same
+        }
+        
+        // Put processed image data back
+        ctx.putImageData(imageData, 0, 0);
+        
+        // Convert back to blob
+        canvas.toBlob((blob) => {
+          resolve(blob || imageBlob);
+        }, 'image/png', 1.0);
+      };
+      
+      img.src = URL.createObjectURL(imageBlob);
+    });
   }
 
   // Extract specific patterns for product information

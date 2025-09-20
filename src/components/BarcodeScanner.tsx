@@ -45,9 +45,40 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   autoStart = false
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>('Ready to start');
+  const [lastScan, setLastScan] = useState<string>('');
+  const [scanCooldown, setScanCooldown] = useState(false);
+
+  useEffect(() => {
+    // Initialize the reader with specific hints for better performance
+    const hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.UPC_A,
+      BarcodeFormat.UPC_E,
+      BarcodeFormat.EAN_13,
+      BarcodeFormat.EAN_8,
+      BarcodeFormat.CODE_128,
+      BarcodeFormat.QR_CODE,
+      BarcodeFormat.DATA_MATRIX,
+    ]);
+    hints.set(DecodeHintType.TRY_HARDER, true);
+
+    readerRef.current = new BrowserMultiFormatReader(hints);
+    console.log('🔧 ZXing reader initialized');
+
+    return () => {
+      stopScanning();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (autoStart) {
+      startScanning();
+    }
+  }, [autoStart]);
 
   const startScanning = async () => {
     console.log('🎯 startScanning called');
@@ -57,9 +88,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     // Wait for the video element to render
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    if (!videoRef.current) {
-      console.log('❌ No video ref after waiting');
-      setDebugInfo('Error: No video element found');
+    if (!videoRef.current || !readerRef.current) {
+      console.log('❌ Missing refs - video:', !!videoRef.current, 'reader:', !!readerRef.current);
+      setDebugInfo('Error: Missing video element or reader');
       setIsScanning(false);
       return;
     }
@@ -77,20 +108,48 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       });
       
       console.log('✅ Camera access granted');
-      setDebugInfo('Camera access granted!');
+      setDebugInfo('Camera live - scanning for barcodes...');
       setHasPermission(true);
       
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play();
-      
-      console.log('📹 Video playing');
-      setDebugInfo('Camera is live!');
-      
-      // Simple test - simulate a scan after 3 seconds
-      setTimeout(() => {
-        onScan('123456789012', 'TEST');
-        setDebugInfo('Test scan completed!');
-      }, 3000);
+      // Start continuous decode from video element
+      await readerRef.current.decodeFromVideoDevice(
+        undefined, // Use default device
+        videoRef.current,
+        (result, error) => {
+          if (result) {
+            const barcodeText = result.getText();
+            const format = result.getBarcodeFormat().toString();
+            
+            console.log('📱 Barcode detected:', barcodeText, format);
+            setDebugInfo(`Found ${format}: ${barcodeText}`);
+            
+            // Prevent duplicate scans with cooldown
+            if (barcodeText !== lastScan || !scanCooldown) {
+              setLastScan(barcodeText);
+              setScanCooldown(true);
+              
+              // Normalize the barcode to GTIN-14 if possible
+              const normalizedGtin = normalizeGtin(barcodeText, format);
+              
+              onScan(normalizedGtin, format);
+              
+              // Reset cooldown after 3 seconds
+              setTimeout(() => {
+                setScanCooldown(false);
+                setDebugInfo('Camera live - scanning for barcodes...');
+              }, 3000);
+            }
+          }
+          
+          if (error && onError) {
+            // Only report significant errors, not scanning noise
+            if (!error.message.includes('No MultiFormat Readers') && 
+                !error.message.includes('No barcode found')) {
+              console.log('🔍 Scanner error:', error.message);
+            }
+          }
+        }
+      );
       
     } catch (error: any) {
       console.error('❌ Camera error:', error);
@@ -105,12 +164,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     console.log('🛑 Stopping scanner');
     setDebugInfo('Stopping...');
     
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    
+    // The ZXing reader will automatically stop when the video element is removed
+    // or when a new scanning session starts
     setIsScanning(false);
     setDebugInfo('Stopped');
   };
@@ -151,6 +206,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                   <Square className="w-full h-full text-primary/30" />
                 </div>
               </div>
+              {scanCooldown && (
+                <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-sm">
+                  Scanned! ✓
+                </div>
+              )}
             </>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
@@ -196,6 +256,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         {debugInfo && (
           <div className="text-center p-2 bg-muted rounded">
             <p className="text-sm text-muted-foreground">Status: {debugInfo}</p>
+          </div>
+        )}
+
+        {lastScan && (
+          <div className="text-center p-2 bg-primary/10 rounded">
+            <p className="text-sm text-muted-foreground">Last scan:</p>
+            <p className="font-mono text-sm font-medium">{lastScan}</p>
           </div>
         )}
       </CardContent>

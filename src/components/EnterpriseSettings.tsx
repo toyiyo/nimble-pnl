@@ -62,7 +62,7 @@ export const EnterpriseSettings = ({ restaurantId }: EnterpriseSettingsProps) =>
         setConfig({
           scim_enabled: settings.scim_enabled,
           scim_endpoint: settings.scim_endpoint || `https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/scim-v2`,
-          scim_token: settings.scim_token || '',
+          scim_token: settings.scim_token === '[ENCRYPTED]' ? '[ENCRYPTED]' : (settings.scim_token || ''),
           sso_enabled: settings.sso_enabled,
           sso_provider: settings.sso_provider || 'saml',
           sso_domain: settings.sso_domain || '',
@@ -242,13 +242,16 @@ export const EnterpriseSettings = ({ restaurantId }: EnterpriseSettingsProps) =>
                       <Input
                         id="scim-token"
                         type="password"
-                        value={config.scim_token}
+                        value={config.scim_token === '[ENCRYPTED]' ? '••••••••••••••••' : config.scim_token}
                         readOnly
                         placeholder="No token generated"
                         className="font-mono text-sm"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
-                        This token is required for SCIM authentication
+                        {config.scim_token === '[ENCRYPTED]' 
+                          ? 'Token is encrypted and stored securely. Generate a new token to replace it.'
+                          : 'This token is required for SCIM authentication'
+                        }
                       </p>
                     </div>
                   </div>

@@ -26,3 +26,9 @@ verify_jwt = false
 
 [functions.enhanced-ocr]
 verify_jwt = true
+
+[functions.web-search]
+verify_jwt = false
+
+[functions.enhance-product-ai]
+verify_jwt = true

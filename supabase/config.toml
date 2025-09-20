@@ -28,7 +28,7 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.web-search]
-verify_jwt = false
+verify_jwt = true
 
 [functions.enhance-product-ai]
 verify_jwt = true

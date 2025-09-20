@@ -1,4 +1,5 @@
 import { Product } from '@/hooks/useProducts';
+import { supabase } from '@/integrations/supabase/client';
 
 interface EnhancedProductData {
   description?: string;
@@ -75,11 +76,20 @@ export class ProductEnhancementService {
 
   private static async performWebSearch(query: string): Promise<SearchResult[]> {
     try {
+      // Get current session for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        console.error('No user session available for web search');
+        return [];
+      }
+
       // Use Supabase edge function for web search
       const searchResponse = await fetch('https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/web-search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           query,
@@ -134,11 +144,20 @@ export class ProductEnhancementService {
     originalProduct: Product
   ): Promise<EnhancedProductData | null> {
     try {
+      // Get current session for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        console.error('No user session available for AI enhancement');
+        return null;
+      }
+
       // Use AI to extract structured information from search results
       const aiResponse = await fetch('https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/enhance-product-ai', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           searchText: text,

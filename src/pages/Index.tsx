@@ -193,9 +193,9 @@ const Index = () => {
                                   year: 'numeric'
                                 })}
                               </span>
-                              <span className="text-xs text-muted-foreground ml-2">
-                                ${day.net_revenue.toFixed(0)} revenue
-                              </span>
+                               <span className="text-xs text-muted-foreground ml-2">
+                                 ${day.net_revenue.toFixed(2)} revenue
+                               </span>
                             </div>
                             <div className="text-right">
                               <span className="text-sm font-medium">

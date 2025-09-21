@@ -229,6 +229,16 @@ async function syncCatalog(connection: any, restaurantId: string, supabase: any)
 async function syncOrders(connection: any, restaurantId: string, locationId: string, startDate: string, endDate: string, supabase: any): Promise<number> {
   console.log(`Syncing orders for location ${locationId} from ${startDate} to ${endDate}`);
   
+  // Get restaurant timezone for proper service date calculation
+  const { data: locationData } = await supabase
+    .from('square_locations')
+    .select('timezone')
+    .eq('restaurant_id', restaurantId)
+    .eq('location_id', locationId)
+    .single();
+  
+  const timezone = locationData?.timezone || 'UTC';
+  
   let cursor = null;
   let totalOrders = 0;
 
@@ -271,7 +281,18 @@ async function syncOrders(connection: any, restaurantId: string, locationId: str
 
     for (const order of orders) {
       const closedAt = order.closed_at ? new Date(order.closed_at) : null;
-      const serviceDate = closedAt ? closedAt.toISOString().split('T')[0] : null;
+      let serviceDate = null;
+      
+      if (closedAt) {
+        // Convert to restaurant's timezone to get the correct business date
+        const localDate = new Intl.DateTimeFormat('en-CA', {
+          timeZone: timezone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).format(closedAt);
+        serviceDate = localDate; // Format: YYYY-MM-DD
+      }
 
       // Store order
       await supabase
@@ -442,6 +463,16 @@ async function syncTeamMembers(connection: any, restaurantId: string, supabase: 
 async function syncShifts(connection: any, restaurantId: string, locationId: string, startDate: string, endDate: string, supabase: any): Promise<number> {
   console.log(`Syncing shifts for location ${locationId}`);
   
+  // Get restaurant timezone for proper service date calculation
+  const { data: locationData } = await supabase
+    .from('square_locations')
+    .select('timezone')
+    .eq('restaurant_id', restaurantId)
+    .eq('location_id', locationId)
+    .single();
+  
+  const timezone = locationData?.timezone || 'UTC';
+  
   const searchQuery = {
     query: {
       filter: {
@@ -473,7 +504,18 @@ async function syncShifts(connection: any, restaurantId: string, locationId: str
 
   for (const shift of shifts) {
     const startAt = shift.start_at ? new Date(shift.start_at) : null;
-    const serviceDate = startAt ? startAt.toISOString().split('T')[0] : null;
+    let serviceDate = null;
+    
+    if (startAt) {
+      // Convert to restaurant's timezone to get the correct business date
+      const localDate = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(startAt);
+      serviceDate = localDate; // Format: YYYY-MM-DD
+    }
 
     await supabase
       .from('square_shifts')

@@ -187,11 +187,10 @@ const Index = () => {
                           <div key={day.date} className="flex justify-between items-center">
                             <div>
                               <span className="text-sm font-medium">
-                                {new Date(day.date).toLocaleDateString('en-US', {
+                                {new Date(day.date + 'T12:00:00Z').toLocaleDateString('en-US', {
                                   month: 'numeric',
                                   day: 'numeric',
-                                  year: 'numeric',
-                                  timeZone: 'UTC'
+                                  year: 'numeric'
                                 })}
                               </span>
                               <span className="text-xs text-muted-foreground ml-2">

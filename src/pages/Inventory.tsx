@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Package, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -412,19 +412,37 @@ export const Inventory: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredProducts.map((product) => (
-                    <Card key={product.id}>
+                    <Card key={product.id} className="cursor-pointer hover:shadow-md transition-shadow">
                       <CardHeader>
                         <div className="flex items-start justify-between">
                           <div>
                             <CardTitle className="text-lg">{product.name}</CardTitle>
                             <CardDescription>SKU: {product.sku}</CardDescription>
                           </div>
-                          {(product.current_stock || 0) <= (product.reorder_point || 0) && (
-                            <AlertTriangle className="h-5 w-5 text-destructive" />
-                          )}
+                          <div className="flex items-center gap-2">
+                            {(product.current_stock || 0) <= (product.reorder_point || 0) && (
+                              <AlertTriangle className="h-5 w-5 text-destructive" />
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedProduct(product);
+                                setShowUpdateDialog(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent
+                        onClick={() => {
+                          setSelectedProduct(product);
+                          setShowUpdateDialog(true);
+                        }}
+                      >
                         <div className="space-y-2">
                           {product.brand && (
                             <p className="text-sm text-muted-foreground">Brand: {product.brand}</p>

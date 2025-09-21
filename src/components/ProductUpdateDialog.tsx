@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -78,6 +78,21 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       category: product.category || '',
     },
   });
+
+  // Reset form when product changes
+  useEffect(() => {
+    form.reset({
+      quantity_to_add: 0,
+      unit: product.size_unit || 'pieces',
+      cost_per_unit: product.cost_per_unit || undefined,
+      supplier_name: product.supplier_name || '',
+      name: product.name,
+      description: product.description || '',
+      brand: product.brand || '',
+      category: product.category || '',
+    });
+    setEnhancedData(null); // Clear any enhanced data from previous product
+  }, [product, form]);
 
   const handleEnhance = async () => {
     if (!onEnhance) return;

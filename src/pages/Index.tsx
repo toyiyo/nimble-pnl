@@ -6,6 +6,7 @@ import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
 import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DataInputDialog } from '@/components/DataInputDialog';
+import { FixServiceDatesButton } from '@/components/FixServiceDatesButton';
 
 const Index = () => {
   const { user, signOut, loading } = useAuth();
@@ -106,10 +107,16 @@ const Index = () => {
                   Real-time food cost tracking and profitability insights for {selectedRestaurant.restaurant.name}
                 </p>
               </div>
-              <DataInputDialog 
-                restaurantId={selectedRestaurant.restaurant_id}
-                onDataUpdated={fetchPnLData}
-              />
+              <div className="flex gap-2">
+                <FixServiceDatesButton 
+                  restaurantId={selectedRestaurant.restaurant_id}
+                  onComplete={fetchPnLData}
+                />
+                <DataInputDialog 
+                  restaurantId={selectedRestaurant.restaurant_id}
+                  onDataUpdated={fetchPnLData}
+                />
+              </div>
             </div>
             
             {pnlLoading ? (

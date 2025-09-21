@@ -24,6 +24,9 @@ verify_jwt = false
 [functions.square-webhooks]
 verify_jwt = false
 
+[functions.fix-service-dates]
+verify_jwt = true
+
 [functions.enhanced-ocr]
 verify_jwt = true
 

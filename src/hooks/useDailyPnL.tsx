@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from './use-toast';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 
 export interface DailyPnL {
   id: string;
@@ -52,6 +53,7 @@ export interface DailyLaborCosts {
 export function useDailyPnL(restaurantId: string | null) {
   const [pnlData, setPnlData] = useState<DailyPnL[]>([]);
   const [loading, setLoading] = useState(true);
+  const [restaurantTimezone, setRestaurantTimezone] = useState<string>('UTC');
   const { toast } = useToast();
 
   const fetchPnLData = useCallback(async (dateRange?: { from: string; to: string }) => {
@@ -68,8 +70,10 @@ export function useDailyPnL(restaurantId: string | null) {
       if (dateRange) {
         query = query.gte('date', dateRange.from).lte('date', dateRange.to);
       } else {
-        // Default to last 30 days
-        const thirtyDaysAgo = new Date();
+        // Default to last 30 days in restaurant timezone
+        const now = new Date();
+        const zonedNow = toZonedTime(now, restaurantTimezone);
+        const thirtyDaysAgo = new Date(zonedNow);
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         query = query.gte('date', thirtyDaysAgo.toISOString().split('T')[0]);
       }
@@ -87,7 +91,7 @@ export function useDailyPnL(restaurantId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, toast]);
+  }, [restaurantId, restaurantTimezone, toast]);
 
   const upsertSales = async (salesData: DailySales) => {
     try {
@@ -194,7 +198,10 @@ export function useDailyPnL(restaurantId: string | null) {
   };
 
   const getTodaysData = () => {
-    const today = new Date().toISOString().split('T')[0];
+    // Get today's date in the restaurant's timezone
+    const now = new Date();
+    const zonedNow = toZonedTime(now, restaurantTimezone);
+    const today = zonedNow.toISOString().split('T')[0];
     return pnlData.find(data => data.date === today) || null;
   };
 
@@ -227,6 +234,30 @@ export function useDailyPnL(restaurantId: string | null) {
       avgPrimeCostPercentage: totals.primeCostPercentage / recentData.length,
     };
   };
+
+  // Fetch restaurant timezone when restaurantId changes
+  useEffect(() => {
+    if (restaurantId) {
+      const fetchTimezone = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('square_locations')
+            .select('timezone')
+            .eq('restaurant_id', restaurantId)
+            .limit(1)
+            .single();
+          
+          if (data?.timezone && !error) {
+            setRestaurantTimezone(data.timezone);
+          }
+        } catch (error) {
+          console.log('No timezone found for restaurant, using UTC');
+        }
+      };
+      
+      fetchTimezone();
+    }
+  }, [restaurantId]);
 
   useEffect(() => {
     if (restaurantId) {

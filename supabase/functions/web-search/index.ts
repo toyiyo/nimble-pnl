@@ -39,19 +39,44 @@ serve(async (req) => {
 
       const html = await response.text()
       
-      // Simple HTML parsing to extract search results
+      // More robust HTML parsing to extract search results
       const results = []
-      const resultPattern = /<a class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([^<]*)</g
       
-      let match
-      let count = 0
-      while ((match = resultPattern.exec(html)) !== null && count < numResults) {
-        results.push({
-          title: match[2].trim(),
-          snippet: match[3].trim(),
-          url: match[1]
-        })
-        count++
+      // Try multiple patterns to match DuckDuckGo's HTML structure
+      const patterns = [
+        // Current DuckDuckGo pattern
+        /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>[\s\S]*?<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([^<]*)/g,
+        // Alternative pattern
+        /<a[^>]*href="([^"]*)"[^>]*class="[^"]*result__a[^"]*"[^>]*>([^<]*)<\/a>[\s\S]*?<span[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([^<]*)/g,
+        // Simplified pattern
+        /<a[^>]*href="([^"]*)"[^>]*>([^<]+)<\/a>[\s\S]*?<span[^>]*>([^<]{20,})/g
+      ]
+      
+      for (const pattern of patterns) {
+        let match
+        let count = 0
+        pattern.lastIndex = 0 // Reset regex
+        
+        while ((match = pattern.exec(html)) !== null && count < numResults) {
+          const url = match[1]
+          const title = match[2].trim()
+          const snippet = match[3].trim()
+          
+          // Filter out DuckDuckGo internal links and ensure we have real content
+          if (url && !url.includes('duckduckgo.com') && title.length > 0 && snippet.length > 10) {
+            results.push({
+              title,
+              snippet,
+              url
+            })
+            count++
+          }
+        }
+        
+        // If we got results with this pattern, use them
+        if (results.length > 0) {
+          break
+        }
       }
 
       // If we got results, return them

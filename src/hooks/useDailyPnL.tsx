@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from './use-toast';
-import { getTodayInTimezone } from '@/lib/timezone';
+import { getTodayInTimezone, formatDateInTimezone } from '@/lib/timezone';
 
 export interface DailyPnL {
   id: string;
@@ -204,8 +204,55 @@ export function useDailyPnL(restaurantId: string | null) {
     return pnlData.find(data => data.date === todayStr) || null;
   };
 
+  const getGroupedPnLData = () => {
+    if (!pnlData || pnlData.length === 0) return [];
+    
+    // Group P&L data by restaurant's local date
+    const grouped = pnlData.reduce((acc, entry) => {
+      const localDate = formatDateInTimezone(entry.date, restaurantTimezone, 'yyyy-MM-dd');
+      
+      if (!acc[localDate]) {
+        acc[localDate] = {
+          id: entry.id,
+          restaurant_id: entry.restaurant_id,
+          date: localDate,
+          net_revenue: 0,
+          food_cost: 0,
+          labor_cost: 0,
+          prime_cost: 0,
+          gross_profit: 0,
+          food_cost_percentage: 0,
+          labor_cost_percentage: 0,
+          prime_cost_percentage: 0,
+          created_at: entry.created_at,
+          updated_at: entry.updated_at,
+          entries: []
+        };
+      }
+      
+      // Accumulate values for the same business date
+      acc[localDate].net_revenue += entry.net_revenue;
+      acc[localDate].food_cost += entry.food_cost;
+      acc[localDate].labor_cost += entry.labor_cost;
+      acc[localDate].prime_cost += entry.prime_cost || (entry.food_cost + entry.labor_cost);
+      acc[localDate].gross_profit += entry.gross_profit || (entry.net_revenue - entry.food_cost - entry.labor_cost);
+      acc[localDate].entries.push(entry);
+      
+      return acc;
+    }, {} as Record<string, any>);
+    
+    // Convert to array and calculate percentages
+    return Object.values(grouped).map((group: any) => ({
+      ...group,
+      food_cost_percentage: group.net_revenue > 0 ? (group.food_cost / group.net_revenue) * 100 : 0,
+      labor_cost_percentage: group.net_revenue > 0 ? (group.labor_cost / group.net_revenue) * 100 : 0,
+      prime_cost_percentage: group.net_revenue > 0 ? (group.prime_cost / group.net_revenue) * 100 : 0,
+    })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  };
+
   const getAverages = (days: number = 7) => {
-    const recentData = pnlData.slice(0, days);
+    const groupedData = getGroupedPnLData();
+    const recentData = groupedData.slice(0, days);
     if (recentData.length === 0) return null;
 
     const totals = recentData.reduce((acc, day) => ({
@@ -273,5 +320,6 @@ export function useDailyPnL(restaurantId: string | null) {
     fetchPnLData,
     getTodaysData,
     getAverages,
+    getGroupedPnLData,
   };
 }

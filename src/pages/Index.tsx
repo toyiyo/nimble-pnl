@@ -6,7 +6,6 @@ import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
 import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DataInputDialog } from '@/components/DataInputDialog';
-import { FixServiceDatesButton } from '@/components/FixServiceDatesButton';
 
 const Index = () => {
   const { user, signOut, loading } = useAuth();
@@ -108,10 +107,6 @@ const Index = () => {
                 </p>
               </div>
               <div className="flex gap-2">
-                <FixServiceDatesButton 
-                  restaurantId={selectedRestaurant.restaurant_id}
-                  onComplete={fetchPnLData}
-                />
                 <DataInputDialog 
                   restaurantId={selectedRestaurant.restaurant_id}
                   onDataUpdated={fetchPnLData}

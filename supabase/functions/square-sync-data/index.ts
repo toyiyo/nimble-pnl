@@ -271,7 +271,7 @@ async function syncOrders(connection: any, restaurantId: string, locationId: str
 
     for (const order of orders) {
       const closedAt = order.closed_at ? new Date(order.closed_at) : null;
-      const serviceDate = closedAt ? closedAt.toISOString().split('T')[0] : null;
+      const serviceDate = await getServiceDate(closedAt, restaurantId, supabase);
 
       // Store order
       await supabase
@@ -325,6 +325,35 @@ async function syncOrders(connection: any, restaurantId: string, locationId: str
   } while (cursor);
 
   return totalOrders;
+}
+
+async function getServiceDate(date: Date | null, restaurantId: string, supabase: any): Promise<string | null> {
+  if (!date) return null;
+  
+  try {
+    // Get restaurant timezone
+    const { data: location } = await supabase
+      .from('square_locations')
+      .select('timezone')
+      .eq('restaurant_id', restaurantId)
+      .single();
+    
+    const timezone = location?.timezone || 'UTC';
+    
+    // Convert UTC date to restaurant timezone and get date
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    
+    return formatter.format(date);
+  } catch (error) {
+    console.error('Error getting service date:', error);
+    // Fallback to UTC date
+    return date.toISOString().split('T')[0];
+  }
 }
 
 async function syncPayments(connection: any, restaurantId: string, locationId: string, startDate: string, endDate: string, supabase: any): Promise<number> {
@@ -472,7 +501,7 @@ async function syncShifts(connection: any, restaurantId: string, locationId: str
 
   for (const shift of shifts) {
     const startAt = shift.start_at ? new Date(shift.start_at) : null;
-    const serviceDate = startAt ? startAt.toISOString().split('T')[0] : null;
+    const serviceDate = await getServiceDate(startAt, restaurantId, supabase);
 
     await supabase
       .from('square_shifts')

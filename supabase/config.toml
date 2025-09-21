@@ -1,37 +1,84 @@
 project_id = "ncdujvdgqtaunuyigflp"
 
-[functions.update-enterprise-settings]
-verify_jwt = true
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
 
-[functions.generate-scim-token]
-verify_jwt = true
+[auth]
+enabled = true
+port = 54324
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://ncdujvdgqtaunuyigflp.supabase.co"]
+jwt_expiry = 3600
+refresh_token_rotation_enabled = true
+security_captcha_enabled = false
+security_captcha_provider = "hcaptcha"
+security_update_password_require_reauthentication = false
 
-[functions.send-team-invitation]
-verify_jwt = true
+[db]
+port = 54322
+
+[realtime]
+enabled = true
+port = 54323
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+port = 54325
+
+[edge-runtime]
+enabled = true
+port = 54326
 
 [functions.accept-invitation]
-verify_jwt = true
-
-[functions.scim-v2]
 verify_jwt = false
 
-[functions.square-oauth]
-verify_jwt = false
-
-[functions.square-sync-data]
-verify_jwt = false
-
-[functions.square-webhooks]
-verify_jwt = false
-
-[functions.fix-service-dates]
+[functions.enhance-product-ai]
 verify_jwt = true
 
 [functions.enhanced-ocr]
 verify_jwt = true
 
+[functions.generate-scim-token]
+verify_jwt = true
+
+[functions.scim-v2]
+verify_jwt = false
+
+[functions.send-team-invitation]
+verify_jwt = true
+
+[functions.square-oauth]
+verify_jwt = false
+
+[functions.square-periodic-sync]
+verify_jwt = false
+
+[functions.square-sync-data]
+verify_jwt = true
+
+[functions.square-webhook-register]
+verify_jwt = true
+
+[functions.square-webhooks]
+verify_jwt = false
+
+[functions.trigger-pnl-calculation]
+verify_jwt = true
+
 [functions.web-search]
 verify_jwt = true
 
-[functions.enhance-product-ai]
+[functions.update-enterprise-settings]
 verify_jwt = true

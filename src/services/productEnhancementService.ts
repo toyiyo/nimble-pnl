@@ -23,10 +23,15 @@ export class ProductEnhancementService {
   static async enhanceProduct(product: Product): Promise<EnhancedProductData | null> {
     const cacheKey = `${product.name}_${product.brand || ''}`.toLowerCase();
     
+    console.log('🚀 Starting product enhancement for:', product.name, 'Cache key:', cacheKey);
+    
     // Check cache first
     if (this.cache.has(cacheKey)) {
+      console.log('📦 Found cached data for:', product.name);
       return this.cache.get(cacheKey)!;
     }
+
+    console.log('🔄 No cache found, proceeding with enhancement...');
 
     try {
       // Create search query
@@ -75,14 +80,18 @@ export class ProductEnhancementService {
   }
 
   private static async performWebSearch(query: string): Promise<SearchResult[]> {
+    console.log('🌐 Starting web search for query:', query);
+    
     try {
       // Get current session for authorization
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
-        console.error('No user session available for web search');
+        console.error('❌ No user session available for web search');
         return [];
       }
+
+      console.log('✅ Session found, making web search request...');
 
       // Use Supabase edge function for web search
       const searchResponse = await fetch('https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/web-search', {
@@ -97,14 +106,20 @@ export class ProductEnhancementService {
         }),
       });
 
+      console.log('📡 Web search response status:', searchResponse.status);
+
       if (!searchResponse.ok) {
-        console.error('Web search failed:', searchResponse.statusText);
+        console.error('❌ Web search failed:', searchResponse.statusText);
+        const errorText = await searchResponse.text();
+        console.error('Error details:', errorText);
         return [];
       }
 
       const searchData = await searchResponse.json();
+      console.log('📊 Web search results received:', searchData);
       
       if (searchData.results && Array.isArray(searchData.results)) {
+        console.log('✅ Found', searchData.results.length, 'search results');
         return searchData.results.map((result: any) => ({
           title: result.title || '',
           snippet: result.snippet || result.content || '',
@@ -112,9 +127,10 @@ export class ProductEnhancementService {
         }));
       }
 
+      console.log('⚠️ No results found in search response');
       return [];
     } catch (error) {
-      console.error('Web search error:', error);
+      console.error('💥 Web search error:', error);
       return [];
     }
   }

@@ -187,7 +187,12 @@ const Index = () => {
                           <div key={day.date} className="flex justify-between items-center">
                             <div>
                               <span className="text-sm font-medium">
-                                {new Date(day.date + 'T00:00:00').toLocaleDateString()}
+                                {new Date(day.date).toLocaleDateString('en-US', {
+                                  month: 'numeric',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                  timeZone: 'UTC'
+                                })}
                               </span>
                               <span className="text-xs text-muted-foreground ml-2">
                                 ${day.net_revenue.toFixed(0)} revenue

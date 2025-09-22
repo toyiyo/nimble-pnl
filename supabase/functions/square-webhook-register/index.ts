@@ -192,8 +192,16 @@ Deno.serve(async (req) => {
 
   } catch (error: any) {
     console.error('Square webhook registration error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    
     return new Response(JSON.stringify({
-      error: error.message
+      error: error.message,
+      details: error.stack,
+      timestamp: new Date().toISOString()
     }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

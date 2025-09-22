@@ -1,12 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
+import { logSecurityEvent } from '../_shared/encryption.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface WebhookRegisterRequest {
+interface WebhookSetupRequest {
   restaurantId: string;
 }
 
@@ -22,15 +22,15 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const body: WebhookRegisterRequest = await req.json();
+    const body: WebhookSetupRequest = await req.json();
     const { restaurantId } = body;
 
-    console.log('Square webhook registration started:', { restaurantId });
+    console.log('Square webhook setup started:', { restaurantId });
 
-    // Get Square connection and decrypt tokens
+    // Verify Square connection exists for this restaurant
     const { data: connection, error: connectionError } = await supabase
       .from('square_connections')
-      .select('*')
+      .select('merchant_id')
       .eq('restaurant_id', restaurantId)
       .single();
 
@@ -38,83 +38,68 @@ Deno.serve(async (req) => {
       throw new Error('Square connection not found');
     }
 
-    // Decrypt the access token
-    const encryption = await getEncryptionService();
-    const decryptedAccessToken = await encryption.decrypt(connection.access_token);
-
-    // Log security event for webhook registration
-    await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_REGISTRATION', null, restaurantId, {
-      merchantId: connection.merchant_id
-    });
-
-    // Webhook configuration
-    const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/square-webhooks`;
-    const webhookName = `Restaurant P&L Webhook - ${restaurantId}`;
+    // Check if application-wide webhook already exists
+    const personalAccessToken = Deno.env.get('SQUARE_PERSONAL_ACCESS_TOKEN');
     
-    // Event types we want to subscribe to
-    const eventTypes = [
-      'order.created',
-      'order.updated',
-      'payment.updated',
-      'refund.updated',
-      'inventory.count.updated'
-    ];
+    if (!personalAccessToken) {
+      throw new Error('Square personal access token not configured');
+    }
 
-    // Check if webhook already exists
-    const existingWebhooksResponse = await fetch('https://connect.squareup.com/v2/webhooks', {
+    // Always use production Square API
+    const apiBaseUrl = 'https://connect.squareup.com/v2';
+    
+    console.log('Checking existing application webhooks');
+
+    // Check existing webhooks for the entire application
+    const existingWebhooksResponse = await fetch(`${apiBaseUrl}/webhooks/subscriptions`, {
       headers: {
-        'Authorization': `Bearer ${decryptedAccessToken}`,
+        'Authorization': `Bearer ${personalAccessToken}`,
         'Square-Version': '2024-12-18',
       },
     });
 
     if (!existingWebhooksResponse.ok) {
-      throw new Error(`Failed to fetch existing webhooks: ${existingWebhooksResponse.status}`);
+      const errorText = await existingWebhooksResponse.text();
+      console.error('Failed to fetch webhooks:', errorText);
+      throw new Error(`Failed to check existing webhooks: ${existingWebhooksResponse.status} - ${errorText}`);
     }
 
-    const existingWebhooks = await existingWebhooksResponse.json();
-    const existingWebhook = existingWebhooks.subscriptions?.find((webhook: any) => 
+    const webhooksData = await existingWebhooksResponse.json();
+    console.log('Existing webhooks:', webhooksData);
+
+    // Our application webhook configuration
+    const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/square-webhooks`;
+    const webhookName = 'EasyShift Restaurant P&L Webhook';
+    
+    // Event types we want to subscribe to
+    const eventTypes = [
+      'order.created',
+      'order.updated', 
+      'payment.updated',
+      'refund.updated',
+      'inventory.count.updated'
+    ];
+
+    // Check if our application webhook already exists
+    const existingWebhook = webhooksData.subscriptions?.find((webhook: any) => 
       webhook.notification_url === webhookUrl && webhook.name === webhookName
     );
 
     let webhookId: string;
+    let webhookResult: string;
 
     if (existingWebhook) {
-      console.log('Webhook already exists, updating:', existingWebhook.id);
+      console.log('Application webhook already exists:', existingWebhook.id);
       webhookId = existingWebhook.id;
-      
-      // Update existing webhook
-      const updateResponse = await fetch(`https://connect.squareup.com/v2/webhooks/${webhookId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${decryptedAccessToken}`,
-          'Square-Version': '2024-12-18',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          subscription: {
-            name: webhookName,
-            notification_url: webhookUrl,
-            event_types: eventTypes,
-            enabled: true
-          }
-        }),
-      });
-
-      if (!updateResponse.ok) {
-        const errorData = await updateResponse.text();
-        throw new Error(`Failed to update webhook: ${updateResponse.status} - ${errorData}`);
-      }
-
-      console.log('Webhook updated successfully');
+      webhookResult = 'already_configured';
     } else {
-      console.log('Creating new webhook');
+      console.log('Creating application-wide webhook');
       
-      // Create new webhook
-      const createResponse = await fetch('https://connect.squareup.com/v2/webhooks', {
+      // Create the application webhook that will receive events from ALL merchants
+      const createResponse = await fetch(`${apiBaseUrl}/webhooks/subscriptions`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${decryptedAccessToken}`,
+          'Authorization': `Bearer ${personalAccessToken}`,
           'Square-Version': '2024-12-18',
           'Content-Type': 'application/json',
         },
@@ -130,19 +115,28 @@ Deno.serve(async (req) => {
 
       if (!createResponse.ok) {
         const errorData = await createResponse.text();
+        console.error('Failed to create webhook:', createResponse.status, errorData);
         throw new Error(`Failed to create webhook: ${createResponse.status} - ${errorData}`);
       }
 
       const webhookData = await createResponse.json();
       webhookId = webhookData.subscription.id;
-      console.log('Webhook created successfully:', webhookId);
+      webhookResult = 'created';
+      console.log('Application webhook created successfully:', webhookId);
     }
 
+    // Log security event
+    await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_SETUP', null, restaurantId, {
+      merchantId: connection.merchant_id,
+      webhookId,
+      result: webhookResult
+    });
+
     // Test the webhook
-    const testResponse = await fetch(`https://connect.squareup.com/v2/webhooks/${webhookId}/test`, {
+    const testResponse = await fetch(`${apiBaseUrl}/webhooks/subscriptions/${webhookId}/test`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${decryptedAccessToken}`,
+        'Authorization': `Bearer ${personalAccessToken}`,
         'Square-Version': '2024-12-18',
         'Content-Type': 'application/json',
       },
@@ -157,7 +151,8 @@ Deno.serve(async (req) => {
       console.log('Webhook test successful');
     } else {
       testResult = 'failed';
-      console.log('Webhook test failed:', testResponse.status);
+      const errorDetails = await testResponse.text();
+      console.log('Webhook test failed:', testResponse.status, errorDetails);
     }
 
     return new Response(JSON.stringify({
@@ -165,15 +160,26 @@ Deno.serve(async (req) => {
       webhookId,
       eventTypes,
       testResult,
-      webhookUrl
+      webhookUrl,
+      message: webhookResult === 'already_configured' 
+        ? 'Application webhook already configured - your restaurant is ready to receive Square events'
+        : 'Application webhook created successfully - your restaurant is ready to receive Square events'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error: any) {
-    console.error('Square webhook registration error:', error);
+    console.error('Square webhook setup error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    
     return new Response(JSON.stringify({
-      error: error.message
+      error: error.message,
+      details: error.stack,
+      timestamp: new Date().toISOString()
     }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

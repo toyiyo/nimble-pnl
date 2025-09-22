@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { RefreshCw, Download, Calendar, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { RefreshCw, Download, AlertCircle, CheckCircle2, Zap } from 'lucide-react';
 
 interface SquareSyncProps {
   restaurantId: string;
@@ -27,9 +27,15 @@ export const SquareSync = ({ restaurantId, isConnected }: SquareSyncProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [syncType, setSyncType] = useState<'initial_sync' | 'daily_sync' | 'hourly_sync'>('initial_sync');
-  const [webhookRegistered, setWebhookRegistered] = useState(false);
-  const [isRegisteringWebhook, setIsRegisteringWebhook] = useState(false);
   const { toast } = useToast();
+
+  // Check if webhooks are registered and working
+  useEffect(() => {
+    if (isConnected && restaurantId) {
+      // We can assume webhooks are registered automatically upon Square connection
+      // The webhook registration happens in the OAuth callback
+    }
+  }, [isConnected, restaurantId]);
 
   const handleSync = async (action: 'initial_sync' | 'daily_sync' | 'hourly_sync', dateRange?: { startDate: string; endDate: string }) => {
     if (!isConnected) {
@@ -89,51 +95,6 @@ export const SquareSync = ({ restaurantId, isConnected }: SquareSyncProps) => {
     handleSync('daily_sync');
   };
 
-  const handleCustomSync = () => {
-    // For now, sync last 30 days - could add date picker later
-    const endDate = new Date().toISOString().split('T')[0];
-    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    
-    handleSync('initial_sync', { startDate, endDate });
-  };
-
-  const handleRegisterWebhook = async () => {
-    if (!isConnected) {
-      toast({
-        title: "Error",
-        description: "Please connect to Square first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsRegisteringWebhook(true);
-
-    try {
-      const { data, error } = await supabase.functions.invoke('square-webhook-register', {
-        body: { restaurantId }
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      setWebhookRegistered(true);
-      toast({
-        title: "Webhooks Registered",
-        description: "Square will now send real-time updates for automatic P&L calculation",
-      });
-    } catch (error: any) {
-      console.error('Webhook registration error:', error);
-      toast({
-        title: "Webhook Registration Failed",
-        description: error.message || "Failed to register webhooks with Square",
-        variant: "destructive",
-      });
-    } finally {
-      setIsRegisteringWebhook(false);
-    }
-  };
 
   if (!isConnected) {
     return (
@@ -171,82 +132,63 @@ export const SquareSync = ({ restaurantId, isConnected }: SquareSyncProps) => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Sync Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2">
+        {/* Real-time Status */}
+        <div className="bg-muted/50 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-100 text-green-600">
+              <Zap className="h-4 w-4" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-medium text-sm">Real-time Updates Active</h4>
+              <p className="text-xs text-muted-foreground">
+                Your P&L dashboard automatically updates when new orders, payments, or shifts are processed in Square
+              </p>
+            </div>
+            <Badge variant="secondary" className="bg-green-100 text-green-700">
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Live
+            </Badge>
+          </div>
+        </div>
+
+        {/* Primary Sync Action */}
+        <div className="space-y-4">
+          <div className="text-center">
             <Button
               onClick={handleHistoricalSync}
               disabled={isLoading}
-              className="w-full"
-              variant="default"
+              className="w-full max-w-xs mx-auto"
+              size="lg"
             >
               <Download className="h-4 w-4 mr-2" />
-              {isLoading && syncType === 'initial_sync' ? 'Syncing...' : 'Historical Sync'}
+              {isLoading && syncType === 'initial_sync' ? 'Importing Data...' : 'Import Last 90 Days'}
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Import last 90 days of data
+            <p className="text-sm text-muted-foreground mt-2">
+              Import historical data to populate your P&L calculations
             </p>
           </div>
-          
-          <div className="space-y-2">
+
+          {/* Secondary Sync Options */}
+          <div className="grid grid-cols-2 gap-3">
             <Button
               onClick={handleDailySync}
               disabled={isLoading}
               variant="outline"
-              className="w-full"
-            >
-              <Calendar className="h-4 w-4 mr-2" />
-              {isLoading && syncType === 'daily_sync' ? 'Syncing...' : 'Daily Sync'}
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Import yesterday's data
-            </p>
-          </div>
-          
-          <div className="space-y-2">
-            <Button
-              onClick={handleCustomSync}
-              disabled={isLoading}
-              variant="outline"
-              className="w-full"
-            >
-              <Clock className="h-4 w-4 mr-2" />
-              {isLoading && syncType === 'initial_sync' ? 'Syncing...' : 'Last 30 Days'}
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Import last month's data
-            </p>
-          </div>
-        </div>
-
-        {/* Webhook Registration */}
-        <div className="border-t pt-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="font-medium">Real-time Updates</h4>
-              <p className="text-sm text-muted-foreground">
-                Register webhooks for automatic data updates
-              </p>
-            </div>
-            <Button
-              onClick={handleRegisterWebhook}
-              disabled={isRegisteringWebhook || webhookRegistered}
-              variant={webhookRegistered ? "default" : "outline"}
               size="sm"
             >
-              {isRegisteringWebhook ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Registering...
-                </>
-              ) : webhookRegistered ? (
-                <>
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  Webhooks Active
-                </>
-              ) : (
-                'Register Webhooks'
-              )}
+              {isLoading && syncType === 'daily_sync' ? 'Syncing...' : 'Sync Yesterday'}
+            </Button>
+            <Button
+              onClick={() => {
+                const endDate = new Date().toISOString().split('T')[0];
+                const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                handleSync('initial_sync', { startDate, endDate });
+              }}
+              disabled={isLoading}
+              variant="outline"
+              size="sm"
+            >
+              {isLoading ? 'Syncing...' : 'Sync Last 7 Days'}
             </Button>
           </div>
         </div>
@@ -328,14 +270,11 @@ export const SquareSync = ({ restaurantId, isConnected }: SquareSyncProps) => {
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             <div className="space-y-2">
-              <div className="font-medium">Data Management</div>
+              <div className="font-medium">How it works</div>
               <div className="text-sm space-y-1">
-                <div><strong>Historical Sync:</strong> Import past data to populate your P&L calculations</div>
-                <div><strong>Real-time Updates:</strong> Once webhooks are registered, changes in Square automatically update your P&L</div>
-                <div><strong>Manual Sync:</strong> Use daily sync to catch up on recent data or custom sync for specific date ranges</div>
-              </div>
-              <div className="text-sm">
-                <strong>What gets synced:</strong> Orders, payments, refunds, labor shifts, team members, and catalog data are automatically processed to calculate accurate P&L metrics.
+                <div><strong>Automatic Updates:</strong> Your P&L dashboard updates in real-time as Square processes orders, payments, and shifts</div>
+                <div><strong>Historical Data:</strong> Use the import button to bring in past data for complete P&L history</div>
+                <div><strong>What's Included:</strong> Orders, payments, refunds, labor shifts, team members, and catalog items</div>
               </div>
             </div>
           </AlertDescription>

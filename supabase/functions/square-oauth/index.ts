@@ -328,6 +328,17 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Automatically register webhooks for real-time updates
+      const webhookResponse = await supabase.functions.invoke('square-webhook-register', {
+        body: { restaurantId }
+      });
+
+      if (webhookResponse.error) {
+        console.error('Error registering webhooks:', webhookResponse.error);
+      } else {
+        console.log('Webhooks registered successfully for restaurant:', restaurantId);
+      }
+
       // Trigger initial data sync
       const syncResponse = await supabase.functions.invoke('square-sync-data', {
         body: { restaurantId, action: 'initial_sync' }

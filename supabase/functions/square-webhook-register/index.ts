@@ -68,14 +68,21 @@ Deno.serve(async (req) => {
       },
     });
 
-    if (!existingWebhooksResponse.ok) {
-      throw new Error(`Failed to fetch existing webhooks: ${existingWebhooksResponse.status}`);
+    let existingWebhook = null;
+    
+    if (existingWebhooksResponse.ok) {
+      const existingWebhooks = await existingWebhooksResponse.json();
+      existingWebhook = existingWebhooks.subscriptions?.find((webhook: any) => 
+        webhook.notification_url === webhookUrl && webhook.name === webhookName
+      );
+    } else if (existingWebhooksResponse.status === 404) {
+      // No webhooks exist yet - this is normal for first-time setup
+      console.log('No existing webhooks found (404) - will create new webhook');
+    } else {
+      // Other errors should still be thrown
+      const errorText = await existingWebhooksResponse.text();
+      throw new Error(`Failed to fetch existing webhooks: ${existingWebhooksResponse.status} - ${errorText}`);
     }
-
-    const existingWebhooks = await existingWebhooksResponse.json();
-    const existingWebhook = existingWebhooks.subscriptions?.find((webhook: any) => 
-      webhook.notification_url === webhookUrl && webhook.name === webhookName
-    );
 
     let webhookId: string;
 

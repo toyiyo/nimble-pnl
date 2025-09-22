@@ -47,6 +47,22 @@ Deno.serve(async (req) => {
       merchantId: connection.merchant_id
     });
 
+    // Determine if this is a sandbox environment based on merchant ID or access token
+    const isSandbox = connection.merchant_id.includes('sandbox') || 
+                      connection.merchant_id.startsWith('ML') || // Sandbox merchant IDs typically start with ML
+                      decryptedAccessToken.includes('sandbox');
+    
+    // Use appropriate API base URL
+    const apiBaseUrl = isSandbox 
+      ? 'https://connect.squareupsandbox.com/v2' 
+      : 'https://connect.squareup.com/v2';
+    
+    console.log('Using Square API:', { 
+      apiBaseUrl, 
+      isSandbox, 
+      merchantId: connection.merchant_id 
+    });
+
     // Webhook configuration
     const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/square-webhooks`;
     const webhookName = `Restaurant P&L Webhook - ${restaurantId}`;
@@ -61,7 +77,7 @@ Deno.serve(async (req) => {
     ];
 
     // Check if webhook already exists
-    const existingWebhooksResponse = await fetch('https://connect.squareup.com/v2/webhooks', {
+    const existingWebhooksResponse = await fetch(`${apiBaseUrl}/webhooks`, {
       headers: {
         'Authorization': `Bearer ${decryptedAccessToken}`,
         'Square-Version': '2024-12-18',
@@ -91,7 +107,7 @@ Deno.serve(async (req) => {
       webhookId = existingWebhook.id;
       
       // Update existing webhook
-      const updateResponse = await fetch(`https://connect.squareup.com/v2/webhooks/${webhookId}`, {
+      const updateResponse = await fetch(`${apiBaseUrl}/webhooks/${webhookId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${decryptedAccessToken}`,
@@ -118,7 +134,7 @@ Deno.serve(async (req) => {
       console.log('Creating new webhook');
       
       // Create new webhook
-      const createResponse = await fetch('https://connect.squareup.com/v2/webhooks', {
+      const createResponse = await fetch(`${apiBaseUrl}/webhooks`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${decryptedAccessToken}`,
@@ -146,7 +162,7 @@ Deno.serve(async (req) => {
     }
 
     // Test the webhook
-    const testResponse = await fetch(`https://connect.squareup.com/v2/webhooks/${webhookId}/test`, {
+    const testResponse = await fetch(`${apiBaseUrl}/webhooks/${webhookId}/test`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${decryptedAccessToken}`,

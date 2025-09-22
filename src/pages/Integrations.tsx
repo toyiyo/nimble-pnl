@@ -8,6 +8,7 @@ import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
+import { WebhookTester } from '@/components/WebhookTester';
 import { TriggerPnLCalculation } from '@/components/TriggerPnLCalculation';
 import { ExternalLink, Settings, ArrowLeft } from 'lucide-react';
 
@@ -202,24 +203,28 @@ const Integrations = () => {
               </CardContent>
             </Card>
 
-            {/* P&L Calculation Trigger for Square */}
+            {/* P&L Calculation and Webhook Testing for Square */}
             {squareConnected && (
-              <Card className="mb-8">
-                <CardHeader>
-                  <CardTitle>Square Data P&L Calculation</CardTitle>
-                  <CardDescription>
-                    Manually trigger P&L calculations for synced Square data
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <TriggerPnLCalculation 
-                    restaurantId={selectedRestaurant.restaurant_id}
-                    onCalculationComplete={() => {
-                      // Optionally refresh data or show success message
-                    }}
-                  />
-                </CardContent>
-              </Card>
+              <div className="space-y-4 mb-8">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Square Data P&L Calculation</CardTitle>
+                    <CardDescription>
+                      Manually trigger P&L calculations for synced Square data
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <TriggerPnLCalculation 
+                      restaurantId={selectedRestaurant.restaurant_id}
+                      onCalculationComplete={() => {
+                        // Optionally refresh data or show success message
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+                
+                <WebhookTester restaurantId={selectedRestaurant.restaurant_id} />
+              </div>
             )}
 
             {/* Integration Categories */}

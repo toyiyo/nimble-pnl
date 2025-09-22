@@ -152,12 +152,16 @@ Deno.serve(async (req) => {
     });
 
     let testResult = 'unknown';
+    let testDetails = null;
     if (testResponse.ok) {
       testResult = 'success';
-      console.log('Webhook test successful');
+      testDetails = await testResponse.json();
+      console.log('Webhook test successful:', testDetails);
     } else {
       testResult = 'failed';
-      console.log('Webhook test failed:', testResponse.status);
+      const errorDetails = await testResponse.text();
+      testDetails = { error: errorDetails, status: testResponse.status };
+      console.log('Webhook test failed:', testResponse.status, errorDetails);
     }
 
     return new Response(JSON.stringify({

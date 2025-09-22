@@ -40,7 +40,17 @@ Deno.serve(async (req) => {
     const webhookData = JSON.parse(rawBody);
     const { type, data, merchant_id } = webhookData;
 
-    console.log('Square webhook received:', { type, merchant_id, event_id: data?.id });
+    console.log('Square webhook received:', { 
+      type, 
+      merchant_id, 
+      event_id: data?.id,
+      timestamp: new Date().toISOString(),
+      headers: {
+        signature: signature ? 'present' : 'missing',
+        contentType: req.headers.get('content-type'),
+        userAgent: req.headers.get('user-agent')
+      }
+    });
 
     // Find restaurant by merchant ID and decrypt access token
     const { data: connection, error: connectionError } = await supabase

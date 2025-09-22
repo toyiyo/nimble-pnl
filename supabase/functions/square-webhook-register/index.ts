@@ -47,23 +47,16 @@ Deno.serve(async (req) => {
       merchantId: connection.merchant_id
     });
 
-    // Determine if this is a sandbox environment based on merchant ID or access token
-    const isSandbox = connection.merchant_id.includes('sandbox') || 
-                      connection.merchant_id.startsWith('ML') || // Sandbox merchant IDs typically start with ML
-                      decryptedAccessToken.includes('sandbox');
+    // Always use production Square API
+    const apiBaseUrl = 'https://connect.squareup.com/v2';
     
-    // Use appropriate API base URL
-    const apiBaseUrl = isSandbox 
-      ? 'https://connect.squareupsandbox.com/v2' 
-      : 'https://connect.squareup.com/v2';
-    
-    console.log('Using Square API:', { 
+    console.log('Using Square Production API:', { 
       apiBaseUrl, 
-      isSandbox, 
       merchantId: connection.merchant_id 
     });
 
-    // Webhook configuration
+    // Webhook configuration - register for Supabase edge function endpoint
+    // This single endpoint will handle webhooks from all environments
     const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/square-webhooks`;
     const webhookName = `Restaurant P&L Webhook - ${restaurantId}`;
     

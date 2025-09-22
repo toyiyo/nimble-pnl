@@ -131,8 +131,8 @@ export const WebhookTester = ({ restaurantId }: WebhookTesterProps) => {
       const totalTests = testResults.length;
       
       toast({
-        title: "Webhook Tests Complete",
-        description: `${successCount}/${totalTests} tests passed`,
+        title: "Webhook Setup Complete",
+        description: `${successCount}/${totalTests} steps completed successfully`,
         variant: successCount === totalTests ? "default" : "destructive",
       });
 
@@ -174,7 +174,8 @@ export const WebhookTester = ({ restaurantId }: WebhookTesterProps) => {
           Webhook Testing
         </CardTitle>
         <CardDescription>
-          Test and debug your Square webhook configuration
+          Set up application-wide webhook to receive Square events from all connected restaurants. 
+          This creates a single webhook that routes events based on merchant ID.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -182,10 +183,9 @@ export const WebhookTester = ({ restaurantId }: WebhookTesterProps) => {
           onClick={runTests}
           disabled={isRunning}
           className="w-full"
-          variant="outline"
         >
           <Play className="h-4 w-4 mr-2" />
-          {isRunning ? 'Running Tests...' : 'Run Webhook Tests'}
+          {isRunning ? 'Setting up Webhooks...' : 'Setup Square Webhooks'}
         </Button>
 
         {results.length > 0 && (
@@ -210,14 +210,14 @@ export const WebhookTester = ({ restaurantId }: WebhookTesterProps) => {
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             <div className="space-y-2">
-              <div className="font-medium">Test Information</div>
+              <div className="font-medium">How it works</div>
               <div className="text-sm space-y-1">
-                <div><strong>Webhook Registration:</strong> Tests creating/updating webhooks with Square</div>
-                <div><strong>Webhook Endpoint:</strong> Tests that your webhook endpoint can receive and process requests</div>
-                <div><strong>Square Connection:</strong> Verifies your restaurant is connected to Square</div>
+                <div><strong>Application Webhook:</strong> Creates one webhook for your entire application that receives events from all Square merchants</div>
+                <div><strong>Event Routing:</strong> Events are automatically routed to the correct restaurant based on the merchant_id in the webhook payload</div>
+                <div><strong>Real-time Updates:</strong> Once configured, your P&L data will automatically update when Square events occur</div>
               </div>
               <div className="text-sm">
-                Check the browser console and Supabase logs for detailed error information.
+                Check the browser console and Supabase logs for detailed setup information.
               </div>
             </div>
           </AlertDescription>

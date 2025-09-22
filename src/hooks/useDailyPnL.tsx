@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from './use-toast';
+import { getTodayInTimezone, formatDateInTimezone } from '@/lib/timezone';
 
 export interface DailyPnL {
   id: string;
@@ -52,6 +53,7 @@ export interface DailyLaborCosts {
 export function useDailyPnL(restaurantId: string | null) {
   const [pnlData, setPnlData] = useState<DailyPnL[]>([]);
   const [loading, setLoading] = useState(true);
+  const [restaurantTimezone, setRestaurantTimezone] = useState<string>('UTC');
   const { toast } = useToast();
 
   const fetchPnLData = useCallback(async (dateRange?: { from: string; to: string }) => {
@@ -68,7 +70,7 @@ export function useDailyPnL(restaurantId: string | null) {
       if (dateRange) {
         query = query.gte('date', dateRange.from).lte('date', dateRange.to);
       } else {
-        // Default to last 30 days
+        // Default to last 30 days - using UTC dates since that's how we store them
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         query = query.gte('date', thirtyDaysAgo.toISOString().split('T')[0]);
@@ -87,7 +89,7 @@ export function useDailyPnL(restaurantId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, toast]);
+  }, [restaurantId, restaurantTimezone, toast]);
 
   const upsertSales = async (salesData: DailySales) => {
     try {
@@ -194,12 +196,25 @@ export function useDailyPnL(restaurantId: string | null) {
   };
 
   const getTodaysData = () => {
-    const today = new Date().toISOString().split('T')[0];
-    return pnlData.find(data => data.date === today) || null;
+    if (!pnlData || pnlData.length === 0) return null;
+    
+    // Get today's date in the restaurant's timezone
+    const todayStr = getTodayInTimezone(restaurantTimezone);
+    
+    return pnlData.find(data => data.date === todayStr) || null;
+  };
+
+  const getGroupedPnLData = () => {
+    if (!pnlData || pnlData.length === 0) return [];
+    
+    // Since dates are already stored as UTC dates (YYYY-MM-DD format), we don't need complex grouping
+    // The P&L calculation already aggregates by date, so just return sorted data
+    return [...pnlData].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
 
   const getAverages = (days: number = 7) => {
-    const recentData = pnlData.slice(0, days);
+    const groupedData = getGroupedPnLData();
+    const recentData = groupedData.slice(0, days);
     if (recentData.length === 0) return null;
 
     const totals = recentData.reduce((acc, day) => ({
@@ -228,6 +243,30 @@ export function useDailyPnL(restaurantId: string | null) {
     };
   };
 
+  // Fetch restaurant timezone when restaurantId changes
+  useEffect(() => {
+    if (restaurantId) {
+      const fetchTimezone = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('square_locations')
+            .select('timezone')
+            .eq('restaurant_id', restaurantId)
+            .limit(1)
+            .single();
+          
+          if (data?.timezone && !error) {
+            setRestaurantTimezone(data.timezone);
+          }
+        } catch (error) {
+          console.log('No timezone found for restaurant, using UTC');
+        }
+      };
+      
+      fetchTimezone();
+    }
+  }, [restaurantId]);
+
   useEffect(() => {
     if (restaurantId) {
       fetchPnLData();
@@ -243,5 +282,6 @@ export function useDailyPnL(restaurantId: string | null) {
     fetchPnLData,
     getTodaysData,
     getAverages,
+    getGroupedPnLData,
   };
 }

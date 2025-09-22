@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getEncryptionService, logSecurityEvent } from "../_shared/encryption.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -41,10 +42,10 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Set auth for supabase client
-    supabase.auth.setSession({
-      access_token: authHeader.replace('Bearer ', ''),
-      refresh_token: '',
-    });
+    const { data: userData, error: userError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+    if (userError || !userData.user) {
+      throw new Error('Invalid authentication token');
+    }
 
     const { restaurantId, config }: RequestBody = await req.json();
 
@@ -52,8 +53,29 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Missing restaurantId or config');
     }
 
+    // Verify user is owner of the restaurant
+    const { data: ownership, error: ownershipError } = await supabase
+      .from('user_restaurants')
+      .select('role')
+      .eq('restaurant_id', restaurantId)
+      .eq('user_id', userData.user.id)
+      .eq('role', 'owner')
+      .single();
+
+    if (ownershipError || !ownership) {
+      throw new Error('Unauthorized: Only restaurant owners can update enterprise settings');
+    }
+
     console.log('Updating enterprise settings for restaurant:', restaurantId);
-    console.log('Config:', config);
+    
+    // Get encryption service for sensitive data
+    const encryptionService = getEncryptionService();
+    
+    // Encrypt SCIM token if provided
+    let encryptedScimToken = config.scim_token;
+    if (config.scim_token && config.scim_token.trim() !== '') {
+      encryptedScimToken = await encryptionService.encrypt(config.scim_token);
+    }
 
     // Save enterprise settings to database
     const { data: existingSettings } = await supabase
@@ -70,7 +92,7 @@ const handler = async (req: Request): Promise<Response> => {
         .update({
           scim_enabled: config.scim_enabled,
           scim_endpoint: config.scim_endpoint,
-          scim_token: config.scim_token,
+          scim_token: encryptedScimToken,
           sso_enabled: config.sso_enabled,
           sso_provider: config.sso_provider,
           sso_domain: config.sso_domain,
@@ -91,7 +113,7 @@ const handler = async (req: Request): Promise<Response> => {
           restaurant_id: restaurantId,
           scim_enabled: config.scim_enabled,
           scim_endpoint: config.scim_endpoint,
-          scim_token: config.scim_token,
+          scim_token: encryptedScimToken,
           sso_enabled: config.sso_enabled,
           sso_provider: config.sso_provider,
           sso_domain: config.sso_domain,
@@ -105,13 +127,34 @@ const handler = async (req: Request): Promise<Response> => {
       settings = data;
     }
 
-    console.log('Enterprise settings saved:', settings);
+    console.log('Enterprise settings saved for restaurant:', restaurantId);
+
+    // Log security event for audit trail
+    await logSecurityEvent(
+      supabase,
+      'enterprise_settings_updated',
+      userData.user.id,
+      restaurantId,
+      {
+        scim_enabled: config.scim_enabled,
+        sso_enabled: config.sso_enabled,
+        auto_provisioning: config.auto_provisioning,
+        sso_provider: config.sso_provider,
+        sso_domain: config.sso_domain
+      }
+    );
+
+    // Return settings without sensitive data
+    const sanitizedSettings = {
+      ...settings,
+      scim_token: settings?.scim_token ? '[ENCRYPTED]' : null
+    };
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         message: 'Enterprise settings updated successfully',
-        settings 
+        settings: sanitizedSettings 
       }),
       {
         status: 200,

@@ -11,7 +11,7 @@ const Index = () => {
   const { user, signOut, loading } = useAuth();
   const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
   const [selectedRestaurant, setSelectedRestaurant] = useState<UserRestaurant | null>(null);
-  const { pnlData, loading: pnlLoading, getTodaysData, getAverages, fetchPnLData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
+  const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, fetchPnLData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -75,6 +75,9 @@ const Index = () => {
             <Button variant="outline" onClick={() => navigate('/integrations')}>
               Integrations
             </Button>
+            <Button variant="outline" onClick={() => navigate('/inventory')}>
+              Inventory
+            </Button>
             <Button variant="outline" onClick={() => navigate('/team')}>
               Team
             </Button>
@@ -103,10 +106,12 @@ const Index = () => {
                   Real-time food cost tracking and profitability insights for {selectedRestaurant.restaurant.name}
                 </p>
               </div>
-              <DataInputDialog 
-                restaurantId={selectedRestaurant.restaurant_id}
-                onDataUpdated={fetchPnLData}
-              />
+              <div className="flex gap-2">
+                <DataInputDialog 
+                  restaurantId={selectedRestaurant.restaurant_id}
+                  onDataUpdated={fetchPnLData}
+                />
+              </div>
             </div>
             
             {pnlLoading ? (
@@ -176,17 +181,21 @@ const Index = () => {
 
                   <div className="p-6 border rounded-lg">
                     <h3 className="text-lg font-semibold mb-4">Recent Performance</h3>
-                    {pnlData.length > 0 ? (
+                    {getGroupedPnLData().length > 0 ? (
                       <div className="space-y-3">
-                        {pnlData.slice(0, 5).map((day) => (
-                          <div key={day.id} className="flex justify-between items-center">
+                        {getGroupedPnLData().slice(0, 5).map((day) => (
+                          <div key={day.date} className="flex justify-between items-center">
                             <div>
                               <span className="text-sm font-medium">
-                                {new Date(day.date).toLocaleDateString()}
+                                {new Date(day.date + 'T12:00:00Z').toLocaleDateString('en-US', {
+                                  month: 'numeric',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
                               </span>
-                              <span className="text-xs text-muted-foreground ml-2">
-                                ${day.net_revenue.toFixed(0)} revenue
-                              </span>
+                               <span className="text-xs text-muted-foreground ml-2">
+                                 ${day.net_revenue.toFixed(2)} revenue
+                               </span>
                             </div>
                             <div className="text-right">
                               <span className="text-sm font-medium">

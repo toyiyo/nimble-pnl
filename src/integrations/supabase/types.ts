@@ -259,6 +259,65 @@ export type Database = {
         }
         Relationships: []
       }
+      inventory_transactions: {
+        Row: {
+          created_at: string
+          expiry_date: string | null
+          id: string
+          location: string | null
+          lot_number: string | null
+          performed_by: string | null
+          product_id: string
+          quantity: number
+          reason: string | null
+          reference_id: string | null
+          restaurant_id: string
+          total_cost: number | null
+          transaction_type: string
+          unit_cost: number | null
+        }
+        Insert: {
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          location?: string | null
+          lot_number?: string | null
+          performed_by?: string | null
+          product_id: string
+          quantity: number
+          reason?: string | null
+          reference_id?: string | null
+          restaurant_id: string
+          total_cost?: number | null
+          transaction_type: string
+          unit_cost?: number | null
+        }
+        Update: {
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          location?: string | null
+          lot_number?: string | null
+          performed_by?: string | null
+          product_id?: string
+          quantity?: number
+          reason?: string | null
+          reference_id?: string | null
+          restaurant_id?: string
+          total_cost?: number | null
+          transaction_type?: string
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_transactions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invitations: {
         Row: {
           accepted_at: string | null
@@ -300,6 +359,87 @@ export type Database = {
           role?: string
           status?: string
           token?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      products: {
+        Row: {
+          barcode_data: Json | null
+          brand: string | null
+          category: string | null
+          conversion_factor: number | null
+          cost_per_unit: number | null
+          created_at: string
+          current_stock: number | null
+          description: string | null
+          gtin: string | null
+          id: string
+          name: string
+          package_qty: number | null
+          par_level_max: number | null
+          par_level_min: number | null
+          reorder_point: number | null
+          restaurant_id: string
+          size_unit: string | null
+          size_value: number | null
+          sku: string
+          supplier_name: string | null
+          supplier_sku: string | null
+          uom_purchase: string | null
+          uom_recipe: string | null
+          updated_at: string
+        }
+        Insert: {
+          barcode_data?: Json | null
+          brand?: string | null
+          category?: string | null
+          conversion_factor?: number | null
+          cost_per_unit?: number | null
+          created_at?: string
+          current_stock?: number | null
+          description?: string | null
+          gtin?: string | null
+          id?: string
+          name: string
+          package_qty?: number | null
+          par_level_max?: number | null
+          par_level_min?: number | null
+          reorder_point?: number | null
+          restaurant_id: string
+          size_unit?: string | null
+          size_value?: number | null
+          sku: string
+          supplier_name?: string | null
+          supplier_sku?: string | null
+          uom_purchase?: string | null
+          uom_recipe?: string | null
+          updated_at?: string
+        }
+        Update: {
+          barcode_data?: Json | null
+          brand?: string | null
+          category?: string | null
+          conversion_factor?: number | null
+          cost_per_unit?: number | null
+          created_at?: string
+          current_stock?: number | null
+          description?: string | null
+          gtin?: string | null
+          id?: string
+          name?: string
+          package_qty?: number | null
+          par_level_max?: number | null
+          par_level_min?: number | null
+          reorder_point?: number | null
+          restaurant_id?: string
+          size_unit?: string | null
+          size_value?: number | null
+          sku?: string
+          supplier_name?: string | null
+          supplier_sku?: string | null
+          uom_purchase?: string | null
+          uom_recipe?: string | null
           updated_at?: string
         }
         Relationships: []

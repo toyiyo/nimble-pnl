@@ -89,7 +89,7 @@ const SquareCallback = () => {
         setMessage('Successfully connected to Square!');
         toast({
           title: "Connection Successful",
-          description: "Your Square account has been connected and data sync will begin shortly",
+          description: "Square connected! Webhooks are registered and real-time P&L updates are now active.",
         });
 
         // Redirect to integrations page after success

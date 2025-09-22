@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     console.log('Checking existing application webhooks');
 
     // Check existing webhooks for the entire application
-    const existingWebhooksResponse = await fetch(`${apiBaseUrl}/webhooks`, {
+    const existingWebhooksResponse = await fetch(`${apiBaseUrl}/webhooks/subscriptions`, {
       headers: {
         'Authorization': `Bearer ${personalAccessToken}`,
         'Square-Version': '2024-12-18',
@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
       console.log('Creating application-wide webhook');
       
       // Create the application webhook that will receive events from ALL merchants
-      const createResponse = await fetch(`${apiBaseUrl}/webhooks`, {
+      const createResponse = await fetch(`${apiBaseUrl}/webhooks/subscriptions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${personalAccessToken}`,
@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
     });
 
     // Test the webhook
-    const testResponse = await fetch(`${apiBaseUrl}/webhooks/${webhookId}/test`, {
+    const testResponse = await fetch(`${apiBaseUrl}/webhooks/subscriptions/${webhookId}/test`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${personalAccessToken}`,

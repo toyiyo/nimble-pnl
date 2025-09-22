@@ -27,10 +27,10 @@ Deno.serve(async (req) => {
 
     console.log('Square webhook registration started:', { restaurantId });
 
-    // Get Square connection and decrypt tokens
+    // Get Square connection for merchant ID only
     const { data: connection, error: connectionError } = await supabase
       .from('square_connections')
-      .select('*')
+      .select('merchant_id')
       .eq('restaurant_id', restaurantId)
       .single();
 
@@ -38,9 +38,13 @@ Deno.serve(async (req) => {
       throw new Error('Square connection not found');
     }
 
-    // Decrypt the access token
-    const encryption = await getEncryptionService();
-    const decryptedAccessToken = await encryption.decrypt(connection.access_token);
+    // Use Square application's personal access token (required for webhooks)
+    // OAuth tokens are merchant-specific, but webhooks are application-wide
+    const personalAccessToken = Deno.env.get('SQUARE_PERSONAL_ACCESS_TOKEN');
+    
+    if (!personalAccessToken) {
+      throw new Error('Square personal access token not configured');
+    }
 
     // Log security event for webhook registration
     await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_REGISTRATION', null, restaurantId, {
@@ -72,7 +76,7 @@ Deno.serve(async (req) => {
     // Check if webhook already exists
     const existingWebhooksResponse = await fetch(`${apiBaseUrl}/webhooks`, {
       headers: {
-        'Authorization': `Bearer ${decryptedAccessToken}`,
+        'Authorization': `Bearer ${personalAccessToken}`,
         'Square-Version': '2024-12-18',
       },
     });
@@ -103,7 +107,7 @@ Deno.serve(async (req) => {
       const updateResponse = await fetch(`${apiBaseUrl}/webhooks/${webhookId}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${decryptedAccessToken}`,
+          'Authorization': `Bearer ${personalAccessToken}`,
           'Square-Version': '2024-12-18',
           'Content-Type': 'application/json',
         },
@@ -130,7 +134,7 @@ Deno.serve(async (req) => {
       const createResponse = await fetch(`${apiBaseUrl}/webhooks`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${decryptedAccessToken}`,
+          'Authorization': `Bearer ${personalAccessToken}`,
           'Square-Version': '2024-12-18',
           'Content-Type': 'application/json',
         },
@@ -158,7 +162,7 @@ Deno.serve(async (req) => {
     const testResponse = await fetch(`${apiBaseUrl}/webhooks/${webhookId}/test`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${decryptedAccessToken}`,
+        'Authorization': `Bearer ${personalAccessToken}`,
         'Square-Version': '2024-12-18',
         'Content-Type': 'application/json',
       },

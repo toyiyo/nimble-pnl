@@ -180,18 +180,36 @@ export const Inventory: React.FC = () => {
   };
 
   const handleCreateManually = () => {
-    // Pre-fill with any available data from OCR or barcode scan
-    const baseData = {
+    // Create a new product object for manual entry (same flow as barcode scanner)
+    const newProductData: Product = {
+      id: '', // Will be generated on creation
       restaurant_id: selectedRestaurant!.restaurant!.id,
       gtin: lastScannedGtin || lookupResult?.gtin || '',
-      sku: lastScannedGtin || lookupResult?.gtin || '',
+      sku: '', // User will fill this in
       name: lookupResult?.product_name || '',
+      description: null,
       brand: lookupResult?.brand || '',
       category: lookupResult?.category || '',
+      size_value: null,
+      size_unit: null,
+      package_qty: 1,
+      uom_purchase: null,
+      uom_recipe: null,
+      conversion_factor: 1,
+      cost_per_unit: null,
+      current_stock: 0,
+      par_level_min: 0,
+      par_level_max: 0,
+      reorder_point: 0,
+      supplier_name: null,
+      supplier_sku: null,
+      barcode_data: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
-    
-    setScannedProductData(baseData);
-    setShowProductDialog(true);
+
+    setSelectedProduct(newProductData);
+    setShowUpdateDialog(true);
   };
 
   const handleUpdateProduct = async (updates: Partial<Product>, quantityToAdd: number) => {
@@ -323,7 +341,7 @@ export const Inventory: React.FC = () => {
               <p className="text-muted-foreground">{selectedRestaurant?.restaurant?.name}</p>
             </div>
           </div>
-          <Button onClick={() => setShowProductDialog(true)}>
+          <Button onClick={handleCreateManually}>
             <Plus className="h-4 w-4 mr-2" />
             Add Product
           </Button>

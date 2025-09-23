@@ -182,6 +182,52 @@ export const useProducts = (restaurantId: string | null) => {
     }
   }, [restaurantId]);
 
+  const deleteProduct = useCallback(async (id: string): Promise<boolean> => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to delete products",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting product:', error);
+        toast({
+          title: "Error",
+          description: "Failed to delete product",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      // Remove from local state
+      setProducts(prev => prev.filter(p => p.id !== id));
+      
+      toast({
+        title: "Product deleted",
+        description: "Product has been permanently removed from inventory",
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete product",
+        variant: "destructive",
+      });
+      return false;
+    }
+  }, [user, toast]);
+
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
@@ -191,6 +237,7 @@ export const useProducts = (restaurantId: string | null) => {
     loading,
     createProduct,
     updateProduct,
+    deleteProduct,
     findProductByGtin,
     findProductBySku,
     refetchProducts: fetchProducts,

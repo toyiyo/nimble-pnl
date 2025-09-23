@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { ImageCapture } from '@/components/ImageCapture';
 import { ProductDialog } from '@/components/ProductDialog';
 import { ProductCard } from '@/components/ProductCard';
 import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
+import { DeleteProductDialog } from '@/components/DeleteProductDialog';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,7 +28,7 @@ export const Inventory: React.FC = () => {
   
   // For now, use the first restaurant. In a full app, you'd have restaurant selection
   const selectedRestaurant = restaurants[0];
-  const { products, loading, createProduct, updateProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant?.id || null);
+  const { products, loading, createProduct, updateProduct, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant?.id || null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showProductDialog, setShowProductDialog] = useState(false);
@@ -39,6 +40,8 @@ export const Inventory: React.FC = () => {
   const [lastScannedGtin, setLastScannedGtin] = useState<string>('');
   const [currentMode, setCurrentMode] = useState<'barcode' | 'image'>('barcode');
   const [capturedImage, setCapturedImage] = useState<{ blob: Blob; url: string } | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
   const handleBarcodeScanned = async (gtin: string, format: string) => {
     console.log('📱 Barcode scanned:', gtin, format);
@@ -247,6 +250,24 @@ export const Inventory: React.FC = () => {
   const handleEnhanceProduct = async (product: Product) => {
     return await ProductEnhancementService.enhanceProduct(product);
   };
+
+  const handleDeleteProduct = (product: Product) => {
+    setProductToDelete(product);
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!productToDelete) return;
+    
+    const success = await deleteProduct(productToDelete.id);
+    if (success) {
+      setShowDeleteDialog(false);
+      setProductToDelete(null);
+    }
+  };
+
+  // Check if user has permission to delete products
+  const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -502,6 +523,19 @@ export const Inventory: React.FC = () => {
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
+                            {canDeleteProducts && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteProduct(product);
+                                }}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </CardHeader>
@@ -622,6 +656,13 @@ export const Inventory: React.FC = () => {
           onEnhance={handleEnhanceProduct}
         />
       )}
+      {/* Delete Product Dialog */}
+      <DeleteProductDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        product={productToDelete}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 };

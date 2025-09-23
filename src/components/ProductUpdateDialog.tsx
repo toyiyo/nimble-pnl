@@ -147,7 +147,14 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
     
     setIsEnhancing(true);
     try {
-      const enhanced = await onEnhance(product);
+      // Use current form data instead of saved product data
+      const formData = form.getValues();
+      const formBasedProduct: Product = {
+        ...product,
+        ...formData,
+      };
+      
+      const enhanced = await onEnhance(formBasedProduct);
       setEnhancedData(enhanced);
       
       // Show enhanced data for user to review and apply

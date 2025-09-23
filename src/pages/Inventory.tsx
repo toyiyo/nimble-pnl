@@ -129,26 +129,46 @@ export const Inventory: React.FC = () => {
       // First try OCR to extract text and identify product
       const ocrResult = await productLookupService.identifyFromImage(imageBlob, ocrService);
       
+      // Create a new product object with OCR data for the update dialog
+      const newProductData: Product = {
+        id: '', // Will be generated on creation
+        restaurant_id: selectedRestaurant!.restaurant!.id,
+        gtin: ocrResult?.gtin || '',
+        sku: ocrResult?.gtin || '',
+        name: ocrResult?.product_name || 'New Product',
+        description: null,
+        brand: ocrResult?.brand || '',
+        category: ocrResult?.category || '',
+        size_value: ocrResult?.package_size_value || null,
+        size_unit: ocrResult?.package_size_unit || null,
+        package_qty: ocrResult?.package_qty || 1,
+        uom_purchase: null,
+        uom_recipe: null,
+        conversion_factor: 1,
+        cost_per_unit: null,
+        current_stock: 0,
+        par_level_min: 0,
+        par_level_max: 0,
+        reorder_point: 0,
+        supplier_name: null,
+        supplier_sku: null,
+        barcode_data: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      setSelectedProduct(newProductData);
+      setShowUpdateDialog(true);
+      
       if (ocrResult && ocrResult.product_name) {
-        setLookupResult(ocrResult);
         toast({
           title: "Product identified from image",
-          description: `Found: ${ocrResult.product_name}`,
+          description: `Found: ${ocrResult.product_name} - Add details and quantity`,
         });
       } else {
-        // If OCR doesn't find anything, show manual entry with any extracted text
-        setLookupResult({
-          gtin: '',
-          gtin14: '',
-          product_name: '',
-          source: 'manual',
-          resolution: 'unknown',
-          confidence_score: 0
-        });
         toast({
-          title: "Product analysis completed",
-          description: "No text found. You can add the product manually.",
-          variant: "destructive",
+          title: "Image analyzed",
+          description: "Add product details and initial quantity",
         });
       }
     } catch (error) {
@@ -158,7 +178,6 @@ export const Inventory: React.FC = () => {
         description: "Failed to analyze image. Please try again.",
         variant: "destructive",
       });
-      setLookupResult(null);
     } finally {
       setIsLookingUp(false);
     }
@@ -469,16 +488,25 @@ export const Inventory: React.FC = () => {
                 </div>
               </div>
               
-              {(lookupResult || isLookingUp || lastScannedGtin || capturedImage) && (
+              {(isLookingUp && currentMode === 'barcode') && (
                 <div className="flex justify-center">
-                  <ProductCard
-                    product={lookupResult}
-                    gtin={lastScannedGtin || lookupResult?.gtin || ''}
-                    onAddToInventory={handleAddToInventory}
-                    onCreateManually={handleCreateManually}
-                    restaurantId={selectedRestaurant?.restaurant?.id || ''}
-                    isLoading={isLookingUp}
-                  />
+                  <Card className="w-full max-w-md">
+                    <CardContent className="py-8 text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                      <p className="text-muted-foreground">Looking up product...</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+              
+              {(isLookingUp && currentMode === 'image') && (
+                <div className="flex justify-center">
+                  <Card className="w-full max-w-md">
+                    <CardContent className="py-8 text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                      <p className="text-muted-foreground">Analyzing image...</p>
+                    </CardContent>
+                  </Card>
                 </div>
               )}
             </div>

@@ -32,6 +32,7 @@ const updateSchema = z.object({
   unit: z.string().optional(),
   cost_per_unit: z.number().positive().optional(),
   supplier_name: z.string().optional(),
+  reorder_point: z.number().min(0, 'Reorder point must be positive').optional(),
   name: z.string().min(1, 'Product name is required'),
   description: z.string().optional(),
   brand: z.string().optional(),
@@ -72,6 +73,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       unit: product.size_unit || 'pieces',
       cost_per_unit: product.cost_per_unit || undefined,
       supplier_name: product.supplier_name || '',
+      reorder_point: product.reorder_point || 0,
       name: product.name,
       description: product.description || '',
       brand: product.brand || '',
@@ -86,6 +88,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       unit: product.size_unit || 'pieces',
       cost_per_unit: product.cost_per_unit || undefined,
       supplier_name: product.supplier_name || '',
+      reorder_point: product.reorder_point || 0,
       name: product.name,
       description: product.description || '',
       brand: product.brand || '',
@@ -139,6 +142,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       category: data.category,
       cost_per_unit: data.cost_per_unit,
       supplier_name: data.supplier_name,
+      reorder_point: data.reorder_point,
       current_stock: (product.current_stock || 0) + data.quantity_to_add,
     };
 
@@ -333,6 +337,26 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                         )}
                       />
                     </div>
+
+                    <FormField
+                      control={form.control}
+                      name="reorder_point"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Reorder Point</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type="number"
+                              min="0"
+                              placeholder="Enter reorder threshold"
+                              onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : 0)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   </CardContent>
                 </Card>
 

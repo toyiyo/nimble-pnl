@@ -50,10 +50,12 @@ export const AcceptInvitation = () => {
 
   const validateInvitation = async () => {
     if (!token) {
+      console.log('No token provided');
       setStatus('invalid');
       return;
     }
 
+    console.log('Validating invitation with token:', token);
     setLoading(true);
     try {
       // Use public validation endpoint to get invitation details
@@ -61,9 +63,12 @@ export const AcceptInvitation = () => {
         body: { token }
       });
 
+      console.log('Validation response:', { data, error });
+
       if (error) throw error;
 
       if (data.success) {
+        console.log('Invitation validated successfully:', data.invitation);
         setInvitation(data.invitation);
         setEmail(data.invitation.email); // Pre-fill email
         

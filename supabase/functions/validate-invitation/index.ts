@@ -42,7 +42,10 @@ const handler = async (req: Request): Promise<Response> => {
       .eq('status', 'pending')
       .single();
 
+    console.log('Database query result:', { invitation, invitationError });
+
     if (invitationError || !invitation) {
+      console.error('Invitation not found or error:', invitationError);
       throw new Error('Invalid or expired invitation');
     }
 

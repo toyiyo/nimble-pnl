@@ -84,6 +84,14 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Insufficient permissions to send invitations');
     }
 
+    // Cancel any existing pending invitations for this email and restaurant
+    await supabase
+      .from('invitations')
+      .update({ status: 'cancelled', updated_at: new Date() })
+      .eq('email', email)
+      .eq('restaurant_id', restaurantId)
+      .eq('status', 'pending');
+
     // Generate secure invitation token
     const tokenBytes = new Uint8Array(32);
     crypto.getRandomValues(tokenBytes);
@@ -105,9 +113,6 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     if (invitationError) {
-      if (invitationError.code === '23505') { // Unique violation
-        throw new Error('An invitation is already pending for this email address');
-      }
       throw invitationError;
     }
 

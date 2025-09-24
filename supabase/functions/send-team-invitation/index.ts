@@ -113,8 +113,9 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log('Team invitation stored:', invitation);
 
-    // Create invitation acceptance URL
-    const invitationUrl = `${Deno.env.get('SUPABASE_URL')?.replace('https://', 'https://').replace('.supabase.co', '.lovable.app')}/accept-invitation?token=${invitationToken}`;
+    // Create invitation acceptance URL using the request origin
+    const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/') || 'https://app.easyshifthq.com';
+    const invitationUrl = `${origin}/accept-invitation?token=${invitationToken}`;
 
     // Send invitation email
     try {

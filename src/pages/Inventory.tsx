@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { ImageCapture } from '@/components/ImageCapture';
 import { ProductDialog } from '@/components/ProductDialog';
 import { ProductCard } from '@/components/ProductCard';
 import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
+import { DeleteProductDialog } from '@/components/DeleteProductDialog';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,7 +28,7 @@ export const Inventory: React.FC = () => {
   
   // For now, use the first restaurant. In a full app, you'd have restaurant selection
   const selectedRestaurant = restaurants[0];
-  const { products, loading, createProduct, updateProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant?.id || null);
+  const { products, loading, createProduct, updateProduct, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant?.id || null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showProductDialog, setShowProductDialog] = useState(false);
@@ -39,6 +40,8 @@ export const Inventory: React.FC = () => {
   const [lastScannedGtin, setLastScannedGtin] = useState<string>('');
   const [currentMode, setCurrentMode] = useState<'barcode' | 'image'>('barcode');
   const [capturedImage, setCapturedImage] = useState<{ blob: Blob; url: string } | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
   const handleBarcodeScanned = async (gtin: string, format: string) => {
     console.log('📱 Barcode scanned:', gtin, format);
@@ -62,18 +65,47 @@ export const Inventory: React.FC = () => {
     setIsLookingUp(true);
     try {
       const result = await productLookupService.lookupProduct(gtin, findProductByGtin);
-      setLookupResult(result);
+      
+      // Create a new product object with lookup data for the update dialog
+      const newProductData: Product = {
+        id: '', // Will be generated on creation
+        restaurant_id: selectedRestaurant!.restaurant!.id,
+        gtin: gtin,
+        sku: gtin,
+        name: result?.product_name || 'New Product',
+        description: null,
+        brand: result?.brand || '',
+        category: result?.category || '',
+        size_value: result?.package_size_value || null,
+        size_unit: result?.package_size_unit || null,
+        package_qty: result?.package_qty || 1,
+        uom_purchase: null,
+        uom_recipe: null,
+        conversion_factor: 1,
+        cost_per_unit: null,
+        current_stock: 0,
+        par_level_min: 0,
+        par_level_max: 0,
+        reorder_point: 0,
+        supplier_name: null,
+        supplier_sku: null,
+        barcode_data: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      setSelectedProduct(newProductData);
+      setShowUpdateDialog(true);
       
       if (result) {
         toast({
           title: "Product identified",
-          description: `Found: ${result.product_name}`,
+          description: `Found: ${result.product_name} - Add details and quantity`,
         });
       } else {
         toast({
-          title: "Product not found",
-          description: "Product not found in databases. You can add it manually.",
-          variant: "destructive",
+          title: "New product scanned",
+          description: "Add product details and initial quantity",
         });
       }
     } catch (error) {
@@ -97,26 +129,46 @@ export const Inventory: React.FC = () => {
       // First try OCR to extract text and identify product
       const ocrResult = await productLookupService.identifyFromImage(imageBlob, ocrService);
       
+      // Create a new product object with OCR data for the update dialog
+      const newProductData: Product = {
+        id: '', // Will be generated on creation
+        restaurant_id: selectedRestaurant!.restaurant!.id,
+        gtin: ocrResult?.gtin || '',
+        sku: ocrResult?.gtin || '',
+        name: ocrResult?.product_name || 'New Product',
+        description: null,
+        brand: ocrResult?.brand || '',
+        category: ocrResult?.category || '',
+        size_value: ocrResult?.package_size_value || null,
+        size_unit: ocrResult?.package_size_unit || null,
+        package_qty: ocrResult?.package_qty || 1,
+        uom_purchase: null,
+        uom_recipe: null,
+        conversion_factor: 1,
+        cost_per_unit: null,
+        current_stock: 0,
+        par_level_min: 0,
+        par_level_max: 0,
+        reorder_point: 0,
+        supplier_name: null,
+        supplier_sku: null,
+        barcode_data: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      setSelectedProduct(newProductData);
+      setShowUpdateDialog(true);
+      
       if (ocrResult && ocrResult.product_name) {
-        setLookupResult(ocrResult);
         toast({
           title: "Product identified from image",
-          description: `Found: ${ocrResult.product_name}`,
+          description: `Found: ${ocrResult.product_name} - Add details and quantity`,
         });
       } else {
-        // If OCR doesn't find anything, show manual entry with any extracted text
-        setLookupResult({
-          gtin: '',
-          gtin14: '',
-          product_name: '',
-          source: 'manual',
-          resolution: 'unknown',
-          confidence_score: 0
-        });
         toast({
-          title: "Product analysis completed",
-          description: "No text found. You can add the product manually.",
-          variant: "destructive",
+          title: "Image analyzed",
+          description: "Add product details and initial quantity",
         });
       }
     } catch (error) {
@@ -126,7 +178,6 @@ export const Inventory: React.FC = () => {
         description: "Failed to analyze image. Please try again.",
         variant: "destructive",
       });
-      setLookupResult(null);
     } finally {
       setIsLookingUp(false);
     }
@@ -148,37 +199,112 @@ export const Inventory: React.FC = () => {
   };
 
   const handleCreateManually = () => {
-    // Pre-fill with any available data from OCR or barcode scan
-    const baseData = {
+    // Create a new product object for manual entry (same flow as barcode scanner)
+    const newProductData: Product = {
+      id: '', // Will be generated on creation
       restaurant_id: selectedRestaurant!.restaurant!.id,
       gtin: lastScannedGtin || lookupResult?.gtin || '',
-      sku: lastScannedGtin || lookupResult?.gtin || '',
+      sku: '', // User will fill this in
       name: lookupResult?.product_name || '',
+      description: null,
       brand: lookupResult?.brand || '',
       category: lookupResult?.category || '',
+      size_value: null,
+      size_unit: null,
+      package_qty: 1,
+      uom_purchase: null,
+      uom_recipe: null,
+      conversion_factor: 1,
+      cost_per_unit: null,
+      current_stock: 0,
+      par_level_min: 0,
+      par_level_max: 0,
+      reorder_point: 0,
+      supplier_name: null,
+      supplier_sku: null,
+      barcode_data: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
-    
-    setScannedProductData(baseData);
-    setShowProductDialog(true);
+
+    setSelectedProduct(newProductData);
+    setShowUpdateDialog(true);
   };
 
   const handleUpdateProduct = async (updates: Partial<Product>, quantityToAdd: number) => {
     if (!selectedProduct) return;
     
-    const success = await updateProduct(selectedProduct.id, updates);
-    if (success && quantityToAdd > 0) {
-      toast({
-        title: "Inventory updated",
-        description: `Added ${quantityToAdd} units. New total: ${(selectedProduct.current_stock || 0) + quantityToAdd}`,
-      });
+    // Check if this is a new product (no ID) or existing product
+    if (!selectedProduct.id) {
+      // Create new product
+      const productData: CreateProductData = {
+        restaurant_id: selectedProduct.restaurant_id,
+        gtin: selectedProduct.gtin,
+        sku: selectedProduct.sku,
+        name: updates.name || selectedProduct.name,
+        description: updates.description || selectedProduct.description,
+        brand: updates.brand || selectedProduct.brand,
+        category: updates.category || selectedProduct.category,
+        size_value: selectedProduct.size_value,
+        size_unit: updates.size_unit || selectedProduct.size_unit,
+        package_qty: selectedProduct.package_qty,
+        uom_purchase: updates.uom_purchase || selectedProduct.uom_purchase,
+        uom_recipe: selectedProduct.uom_recipe,
+        conversion_factor: selectedProduct.conversion_factor,
+        cost_per_unit: updates.cost_per_unit || selectedProduct.cost_per_unit,
+        current_stock: quantityToAdd, // Set initial stock to the quantity being added
+        par_level_min: selectedProduct.par_level_min,
+        par_level_max: selectedProduct.par_level_max,
+        reorder_point: selectedProduct.reorder_point,
+        supplier_name: updates.supplier_name || selectedProduct.supplier_name,
+        supplier_sku: selectedProduct.supplier_sku,
+        barcode_data: selectedProduct.barcode_data,
+      };
+
+      const newProduct = await createProduct(productData);
+      if (newProduct) {
+        toast({
+          title: "Product created",
+          description: `${newProduct.name} added to inventory with ${quantityToAdd} units`,
+        });
+        setShowUpdateDialog(false);
+        setSelectedProduct(null);
+      }
+    } else {
+      // Update existing product
+      const success = await updateProduct(selectedProduct.id, updates);
+      if (success && quantityToAdd > 0) {
+        toast({
+          title: "Inventory updated",
+          description: `Added ${quantityToAdd} units. New total: ${(selectedProduct.current_stock || 0) + quantityToAdd}`,
+        });
+      }
+      setShowUpdateDialog(false);
+      setSelectedProduct(null);
     }
-    setShowUpdateDialog(false);
-    setSelectedProduct(null);
   };
 
   const handleEnhanceProduct = async (product: Product) => {
     return await ProductEnhancementService.enhanceProduct(product);
   };
+
+  const handleDeleteProduct = (product: Product) => {
+    setProductToDelete(product);
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!productToDelete) return;
+    
+    const success = await deleteProduct(productToDelete.id);
+    if (success) {
+      setShowDeleteDialog(false);
+      setProductToDelete(null);
+    }
+  };
+
+  // Check if user has permission to delete products
+  const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -234,7 +360,7 @@ export const Inventory: React.FC = () => {
               <p className="text-muted-foreground">{selectedRestaurant?.restaurant?.name}</p>
             </div>
           </div>
-          <Button onClick={() => setShowProductDialog(true)}>
+          <Button onClick={handleCreateManually}>
             <Plus className="h-4 w-4 mr-2" />
             Add Product
           </Button>
@@ -362,16 +488,25 @@ export const Inventory: React.FC = () => {
                 </div>
               </div>
               
-              {(lookupResult || isLookingUp || lastScannedGtin || capturedImage) && (
+              {(isLookingUp && currentMode === 'barcode') && (
                 <div className="flex justify-center">
-                  <ProductCard
-                    product={lookupResult}
-                    gtin={lastScannedGtin || lookupResult?.gtin || ''}
-                    onAddToInventory={handleAddToInventory}
-                    onCreateManually={handleCreateManually}
-                    restaurantId={selectedRestaurant?.restaurant?.id || ''}
-                    isLoading={isLookingUp}
-                  />
+                  <Card className="w-full max-w-md">
+                    <CardContent className="py-8 text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                      <p className="text-muted-foreground">Looking up product...</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+              
+              {(isLookingUp && currentMode === 'image') && (
+                <div className="flex justify-center">
+                  <Card className="w-full max-w-md">
+                    <CardContent className="py-8 text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                      <p className="text-muted-foreground">Analyzing image...</p>
+                    </CardContent>
+                  </Card>
                 </div>
               )}
             </div>
@@ -434,6 +569,19 @@ export const Inventory: React.FC = () => {
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
+                            {canDeleteProducts && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteProduct(product);
+                                }}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </CardHeader>
@@ -554,6 +702,13 @@ export const Inventory: React.FC = () => {
           onEnhance={handleEnhanceProduct}
         />
       )}
+      {/* Delete Product Dialog */}
+      <DeleteProductDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        product={productToDelete}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 };

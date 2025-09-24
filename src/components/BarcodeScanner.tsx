@@ -244,10 +244,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           )}
         </div>
 
-        <div className="text-center p-2 bg-muted rounded text-sm">
-          Debug: {debugInfo}
-        </div>
-
         <div className="flex gap-2">
           <Button
             onClick={() => {
@@ -270,12 +266,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
             )}
           </Button>
         </div>
-
-        {debugInfo && (
-          <div className="text-center p-2 bg-muted rounded">
-            <p className="text-sm text-muted-foreground">Status: {debugInfo}</p>
-          </div>
-        )}
 
         {lastScan && (
           <div className="text-center p-2 bg-primary/10 rounded">

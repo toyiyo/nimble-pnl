@@ -4,17 +4,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { CheckCircle, XCircle, Clock, Users, Building, UserPlus, LogIn } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Users, Building, ArrowLeft } from 'lucide-react';
 
 export const AcceptInvitation = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, loading: authLoading, signIn, signUp } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [authLoading2, setAuthLoading2] = useState(false);
@@ -23,6 +22,7 @@ export const AcceptInvitation = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [showSignIn, setShowSignIn] = useState(false);
 
   const token = searchParams.get('token');
 
@@ -50,25 +50,19 @@ export const AcceptInvitation = () => {
 
   const validateInvitation = async () => {
     if (!token) {
-      console.log('No token provided');
       setStatus('invalid');
       return;
     }
 
-    console.log('Validating invitation with token:', token);
     setLoading(true);
     try {
-      // Use public validation endpoint to get invitation details
       const { data, error } = await supabase.functions.invoke('validate-invitation', {
         body: { token }
       });
 
-      console.log('Validation response:', { data, error });
-
       if (error) throw error;
 
       if (data.success) {
-        console.log('Invitation validated successfully:', data.invitation);
         setInvitation(data.invitation);
         setEmail(data.invitation.email); // Pre-fill email
         
@@ -113,7 +107,7 @@ export const AcceptInvitation = () => {
       if (data.success) {
         setStatus('accepted');
         toast({
-          title: "Invitation Accepted!",
+          title: "Welcome to the Team!",
           description: data.message,
         });
 
@@ -140,39 +134,77 @@ export const AcceptInvitation = () => {
     e.preventDefault();
     setAuthLoading2(true);
 
-    const { error } = await signIn(email, password);
-    
-    if (error) {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) throw error;
+      
+      // User will be auto-authenticated and invitation accepted via useEffect
+    } catch (error: any) {
       toast({
         title: "Error signing in",
         description: error.message,
         variant: "destructive",
       });
+    } finally {
+      setAuthLoading2(false);
     }
-    
-    setAuthLoading2(false);
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading2(true);
 
-    const { error } = await signUp(email, password, fullName);
-    
-    if (error) {
+    try {
+      // Validate email matches invitation
+      if (email !== invitation?.email) {
+        toast({
+          title: "Email Mismatch",
+          description: "Please use the email address from the invitation.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Special signup for invited users - no email verification needed
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+          },
+          // Skip email confirmation for invited users since invitation validates email ownership
+        }
+      });
+      
+      if (error) {
+        toast({
+          title: "Error creating account",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Success - user will be auto-authenticated and invitation will be accepted via useEffect
       toast({
-        title: "Error creating account",
-        description: error.message,
+        title: "Welcome!",
+        description: "Your account has been created. Joining the team...",
+      });
+    } catch (error: any) {
+      console.error('Sign up error:', error);
+      toast({
+        title: "Error creating account", 
+        description: error.message || "Please try again.",
         variant: "destructive",
       });
-    } else {
-      toast({
-        title: "Account created!",
-        description: "Please check your email to verify your account, then return to accept the invitation.",
-      });
+    } finally {
+      setAuthLoading2(false);
     }
-    
-    setAuthLoading2(false);
   };
 
   if (authLoading || loading) {
@@ -222,34 +254,11 @@ export const AcceptInvitation = () => {
             <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
               <CheckCircle className="w-6 h-6 text-green-600" />
             </div>
-            <CardTitle className="text-green-600">Invitation Accepted!</CardTitle>
+            <CardTitle className="text-green-600">Welcome to the Team!</CardTitle>
             <CardDescription>
-              Welcome to {invitation?.restaurant?.name}! You'll be redirected to the dashboard shortly.
+              You've successfully joined {invitation?.restaurant?.name}! Redirecting to dashboard...
             </CardDescription>
           </CardHeader>
-        </Card>
-      </div>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
-              <XCircle className="w-6 h-6 text-destructive" />
-            </div>
-            <CardTitle>Error</CardTitle>
-            <CardDescription>
-              Something went wrong while processing your invitation. Please try again later.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center">
-            <Button onClick={() => navigate('/')}>
-              Go to Dashboard
-            </Button>
-          </CardContent>
         </Card>
       </div>
     );
@@ -326,7 +335,7 @@ export const AcceptInvitation = () => {
     );
   }
 
-  // Show invitation details with authentication required
+  // Show invitation details with authentication required - NEW USER FOCUSED FLOW
   if (status === 'needs_auth' && invitation) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
@@ -335,80 +344,32 @@ export const AcceptInvitation = () => {
             <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
               <Users className="w-6 h-6 text-primary" />
             </div>
-            <CardTitle>Team Invitation</CardTitle>
+            <CardTitle>Join {invitation.restaurant?.name}</CardTitle>
             <CardDescription>
-              You've been invited to join {invitation.restaurant?.name}
+              You've been invited as a {invitation.role}
             </CardDescription>
           </CardHeader>
           
           <CardContent className="space-y-6">
             {/* Invitation Preview */}
-            <div className="p-4 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-3 mb-3">
+            <div className="p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
                 <Building className="w-4 h-4 text-muted-foreground" />
-                <div>
-                  <h4 className="font-medium">{invitation.restaurant?.name}</h4>
-                  {invitation.restaurant?.address && (
-                    <p className="text-xs text-muted-foreground">{invitation.restaurant.address}</p>
-                  )}
-                </div>
+                <h4 className="font-medium text-sm">{invitation.restaurant?.name}</h4>
               </div>
-              
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-muted-foreground">Role:</span>
-                  <p className="font-medium capitalize">{invitation.role}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Invited by:</span>
-                  <p className="font-medium">{invitation.invited_by}</p>
-                </div>
+              <div className="text-xs text-muted-foreground">
+                Invited by {invitation.invited_by}
               </div>
             </div>
 
-            {/* Authentication Forms */}
-            <Tabs defaultValue="signin">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="signin" className="flex items-center gap-2">
-                  <LogIn className="w-4 h-4" />
-                  Sign In
-                </TabsTrigger>
-                <TabsTrigger value="signup" className="flex items-center gap-2">
-                  <UserPlus className="w-4 h-4" />
-                  Sign Up
-                </TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="signin">
-                <form onSubmit={handleSignIn} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signin-email">Email</Label>
-                    <Input
-                      id="signin-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      disabled
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signin-password">Password</Label>
-                    <Input
-                      id="signin-password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={authLoading2}>
-                    {authLoading2 ? "Signing in..." : "Sign In & Accept Invitation"}
-                  </Button>
-                </form>
-              </TabsContent>
-              
-              <TabsContent value="signup">
+            {!showSignIn ? (
+              /* NEW USER SIGNUP - PRIMARY FLOW */
+              <div className="space-y-4">
+                <div className="text-center">
+                  <h4 className="font-medium mb-2">Create Your Account</h4>
+                  <p className="text-sm text-muted-foreground">Join the team instantly - no email verification needed!</p>
+                </div>
+                
                 <form onSubmit={handleSignUp} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">Email</Label>
@@ -416,9 +377,9 @@ export const AcceptInvitation = () => {
                       id="signup-email"
                       type="email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
                       required
                       disabled
+                      className="bg-muted/30"
                     />
                   </div>
                   <div className="space-y-2">
@@ -429,6 +390,7 @@ export const AcceptInvitation = () => {
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       required
+                      placeholder="Enter your full name"
                     />
                   </div>
                   <div className="space-y-2">
@@ -439,14 +401,73 @@ export const AcceptInvitation = () => {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
+                      placeholder="Create a secure password"
+                      minLength={6}
                     />
                   </div>
                   <Button type="submit" className="w-full" disabled={authLoading2}>
-                    {authLoading2 ? "Creating account..." : "Sign Up & Accept Invitation"}
+                    {authLoading2 ? "Creating Account..." : "Join Team"}
                   </Button>
                 </form>
-              </TabsContent>
-            </Tabs>
+
+                <div className="text-center">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setShowSignIn(true)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Already have an account? Sign in instead
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              /* EXISTING USER SIGN IN - SECONDARY FLOW */
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setShowSignIn(false)}
+                    className="p-1"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </Button>
+                  <div>
+                    <h4 className="font-medium">Sign In</h4>
+                    <p className="text-sm text-muted-foreground">Use your existing account</p>
+                  </div>
+                </div>
+                
+                <form onSubmit={handleSignIn} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signin-email">Email</Label>
+                    <Input
+                      id="signin-email"
+                      type="email"
+                      value={email}
+                      required
+                      disabled
+                      className="bg-muted/30"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signin-password">Password</Label>
+                    <Input
+                      id="signin-password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      placeholder="Enter your password"
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={authLoading2}>
+                    {authLoading2 ? "Signing In..." : "Sign In & Join Team"}
+                  </Button>
+                </form>
+              </div>
+            )}
             
             <p className="text-xs text-center text-muted-foreground">
               This invitation was sent to {invitation.email}

@@ -59,16 +59,25 @@ const handler = async (req: Request): Promise<Response> => {
     // Get invitation details and validate
     const { data: invitation, error: invitationError } = await supabase
       .from('invitations')
-      .select(`
-        *,
-        restaurants(name)
-      `)
+      .select('*')
       .eq('token', token)
       .eq('status', 'pending')
       .single();
 
     if (invitationError || !invitation) {
       throw new Error('Invalid or expired invitation');
+    }
+
+    // Get restaurant details separately
+    const { data: restaurant, error: restaurantError } = await supabase
+      .from('restaurants')
+      .select('name, address')
+      .eq('id', invitation.restaurant_id)
+      .single();
+
+    if (restaurantError) {
+      console.error('Error fetching restaurant:', restaurantError);
+      throw new Error('Restaurant not found');
     }
 
     // Check if invitation is expired
@@ -128,8 +137,8 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Welcome to ${invitation.restaurants?.name}! You are now a ${invitation.role}.`,
-        restaurantName: invitation.restaurants?.name,
+        message: `Welcome to ${restaurant.name}! You are now a ${invitation.role}.`,
+        restaurantName: restaurant.name,
         role: invitation.role,
       }),
       {

@@ -65,15 +65,16 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Restaurant not found');
     }
 
-    // Get current user info using the user client
-    const { data: { user }, error: authError } = await userSupabase.auth.getUser();
+    // Get current user info using the JWT token directly
+    const jwt = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(jwt);
     if (authError || !user) {
       console.error('Auth error:', authError);
       throw new Error('Unauthorized');
     }
 
     // Check if user has permission to invite (owner or manager)
-    const { data: userRole, error: roleError } = await userSupabase
+    const { data: userRole, error: roleError } = await supabase
       .from('user_restaurants')
       .select('role')
       .eq('restaurant_id', restaurantId)

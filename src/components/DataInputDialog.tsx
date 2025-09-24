@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CalendarIcon, DollarSign, ShoppingCart, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDailyPnL, DailySales, DailyFoodCosts, DailyLaborCosts } from '@/hooks/useDailyPnL';
+import { supabase } from '@/integrations/supabase/client';
 
 interface DataInputDialogProps {
   restaurantId: string;
@@ -19,6 +20,8 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedSource, setSelectedSource] = useState('manual');
   const [loading, setLoading] = useState(false);
+  const [loadingExistingData, setLoadingExistingData] = useState(false);
+  const [hasExistingData, setHasExistingData] = useState({ sales: false, food: false, labor: false });
   const { upsertSales, upsertFoodCosts, upsertLaborCosts } = useDailyPnL(restaurantId);
 
   const [salesData, setSalesData] = useState<Partial<DailySales>>({
@@ -39,6 +42,121 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
     benefits: undefined,
     total_hours: undefined,
   });
+
+  // Load existing data for the selected date
+  const loadExistingData = async (date: string, source: string) => {
+    if (!restaurantId) return;
+    
+    setLoadingExistingData(true);
+    try {
+      // Check for existing sales data
+      const { data: salesData } = await supabase
+        .from('daily_sales')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('date', date)
+        .eq('source', source)
+        .single();
+
+      // Check for existing food costs data
+      const { data: foodData } = await supabase
+        .from('daily_food_costs')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('date', date)
+        .eq('source', source)
+        .single();
+
+      // Check for existing labor costs data
+      const { data: laborData } = await supabase
+        .from('daily_labor_costs')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('date', date)
+        .eq('source', source)
+        .single();
+
+      // Update form data if existing data is found
+      if (salesData) {
+        setSalesData({
+          gross_revenue: salesData.gross_revenue,
+          discounts: salesData.discounts,
+          comps: salesData.comps,
+          transaction_count: salesData.transaction_count,
+        });
+      } else {
+        setSalesData({
+          gross_revenue: undefined,
+          discounts: undefined,
+          comps: undefined,
+          transaction_count: undefined,
+        });
+      }
+
+      if (foodData) {
+        setFoodCostsData({
+          purchases: foodData.purchases,
+          inventory_adjustments: foodData.inventory_adjustments,
+        });
+      } else {
+        setFoodCostsData({
+          purchases: undefined,
+          inventory_adjustments: undefined,
+        });
+      }
+
+      if (laborData) {
+        setLaborCostsData({
+          hourly_wages: laborData.hourly_wages,
+          salary_wages: laborData.salary_wages,
+          benefits: laborData.benefits,
+          total_hours: laborData.total_hours,
+        });
+      } else {
+        setLaborCostsData({
+          hourly_wages: undefined,
+          salary_wages: undefined,
+          benefits: undefined,
+          total_hours: undefined,
+        });
+      }
+
+      setHasExistingData({
+        sales: !!salesData,
+        food: !!foodData,
+        labor: !!laborData,
+      });
+
+    } catch (error) {
+      // Reset to empty form if no existing data found
+      setSalesData({
+        gross_revenue: undefined,
+        discounts: undefined,
+        comps: undefined,
+        transaction_count: undefined,
+      });
+      setFoodCostsData({
+        purchases: undefined,
+        inventory_adjustments: undefined,
+      });
+      setLaborCostsData({
+        hourly_wages: undefined,
+        salary_wages: undefined,
+        benefits: undefined,
+        total_hours: undefined,
+      });
+      setHasExistingData({ sales: false, food: false, labor: false });
+    } finally {
+      setLoadingExistingData(false);
+    }
+  };
+
+  // Load existing data when date or source changes
+  useEffect(() => {
+    if (open && restaurantId) {
+      loadExistingData(selectedDate, selectedSource);
+    }
+  }, [selectedDate, selectedSource, open, restaurantId]);
 
   const handleSalesSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,6 +253,12 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
             </div>
           </div>
 
+          {loadingExistingData && (
+            <div className="text-center text-sm text-muted-foreground">
+              Loading existing data...
+            </div>
+          )}
+
           <Tabs defaultValue="sales" className="w-full">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="sales">Sales Data</TabsTrigger>
@@ -150,7 +274,10 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                     Daily Sales
                   </CardTitle>
                   <CardDescription>
-                    Enter your POS sales data for {selectedDate}
+                    {hasExistingData.sales ? 
+                      `Updating existing sales data for ${selectedDate}` : 
+                      `Enter new sales data for ${selectedDate}`
+                    }
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -167,7 +294,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                             const value = e.target.value;
                             setSalesData({ ...salesData, gross_revenue: value === '' ? undefined : Number(value) });
                           }}
-                          placeholder="2450.00"
+                          placeholder="0.00"
                         />
                       </div>
                       <div className="space-y-2">
@@ -181,7 +308,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                             const value = e.target.value;
                             setSalesData({ ...salesData, discounts: value === '' ? undefined : Number(value) });
                           }}
-                          placeholder="125.00"
+                          placeholder="0.00"
                         />
                       </div>
                       <div className="space-y-2">
@@ -195,7 +322,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                             const value = e.target.value;
                             setSalesData({ ...salesData, comps: value === '' ? undefined : Number(value) });
                           }}
-                          placeholder="75.00"
+                          placeholder="0.00"
                         />
                       </div>
                       <div className="space-y-2">
@@ -208,7 +335,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                             const value = e.target.value;
                             setSalesData({ ...salesData, transaction_count: value === '' ? undefined : Number(value) });
                           }}
-                          placeholder="148"
+                          placeholder="0"
                         />
                       </div>
                     </div>
@@ -228,7 +355,10 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                     Food Costs
                   </CardTitle>
                   <CardDescription>
-                    Enter your daily food costs and inventory adjustments
+                    {hasExistingData.food ? 
+                      `Updating existing food costs for ${selectedDate}` : 
+                      `Enter new food costs for ${selectedDate}`
+                    }
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -245,7 +375,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                             const value = e.target.value;
                             setFoodCostsData({ ...foodCostsData, purchases: value === '' ? undefined : Number(value) });
                           }}
-                          placeholder="650.00"
+                          placeholder="0.00"
                         />
                       </div>
                       <div className="space-y-2">
@@ -259,7 +389,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                             const value = e.target.value;
                             setFoodCostsData({ ...foodCostsData, inventory_adjustments: value === '' ? undefined : Number(value) });
                           }}
-                          placeholder="48.00"
+                          placeholder="0.00"
                         />
                         <p className="text-xs text-muted-foreground">
                           Positive for waste/loss, negative for found inventory
@@ -282,7 +412,10 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                     Labor Costs
                   </CardTitle>
                   <CardDescription>
-                    Enter the total amounts paid for labor on {selectedDate}
+                    {hasExistingData.labor ? 
+                      `Updating existing labor costs for ${selectedDate}` : 
+                      `Enter total amounts paid for labor on ${selectedDate}`
+                    }
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -305,7 +438,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                             const value = e.target.value;
                             setLaborCostsData({ ...laborCostsData, hourly_wages: value === '' ? undefined : Number(value) });
                           }}
-                          placeholder="480.00"
+                          placeholder="0.00"
                         />
                         <p className="text-xs text-muted-foreground">
                           Total amount paid to hourly employees
@@ -322,7 +455,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                             const value = e.target.value;
                             setLaborCostsData({ ...laborCostsData, salary_wages: value === '' ? undefined : Number(value) });
                           }}
-                          placeholder="200.00"
+                          placeholder="0.00"
                         />
                         <p className="text-xs text-muted-foreground">
                           Daily portion of salaried employee costs
@@ -339,7 +472,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                             const value = e.target.value;
                             setLaborCostsData({ ...laborCostsData, benefits: value === '' ? undefined : Number(value) });
                           }}
-                          placeholder="106.00"
+                          placeholder="0.00"
                         />
                         <p className="text-xs text-muted-foreground">
                           Health insurance, taxes, other benefits
@@ -356,7 +489,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                             const value = e.target.value;
                             setLaborCostsData({ ...laborCostsData, total_hours: value === '' ? undefined : Number(value) });
                           }}
-                          placeholder="64.5"
+                          placeholder="0"
                         />
                         <p className="text-xs text-muted-foreground">
                           For tracking labor efficiency (optional)

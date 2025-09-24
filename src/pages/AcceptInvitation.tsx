@@ -36,7 +36,10 @@ export const AcceptInvitation = () => {
     if (user && invitation && (status === 'needs_auth' || status === 'valid')) {
       // User just authenticated, check if email matches and auto-accept
       if (user.email === invitation.email && status === 'needs_auth') {
-        acceptInvitation();
+        // Wait a bit longer for auth session to fully establish
+        setTimeout(() => {
+          acceptInvitation();
+        }, 2000);
       } else if (user.email !== invitation.email) {
         toast({
           title: "Email Mismatch",
@@ -196,10 +199,7 @@ export const AcceptInvitation = () => {
         description: "Your account has been created. Joining the team...",
       });
       
-      // Wait for auth state to update, then accept invitation
-      setTimeout(() => {
-        acceptInvitation();
-      }, 1000);
+      // The useEffect will handle invitation acceptance once auth state updates
     } catch (error: any) {
       console.error('Sign up error:', error);
       toast({

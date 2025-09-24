@@ -9,8 +9,7 @@ import { useRestaurants } from '@/hooks/useRestaurants';
 import { TeamInvitations } from '@/components/TeamInvitations';
 import { TeamMembers } from '@/components/TeamMembers';
 import { EnterpriseSettings } from '@/components/EnterpriseSettings';
-import { SecuritySettings } from '@/components/SecuritySettings';
-import { UserPlus, Building, Settings, ArrowLeft, Shield } from 'lucide-react';
+import { UserPlus, Building, Settings, ArrowLeft } from 'lucide-react';
 
 const Team = () => {
   const { user, loading } = useAuth();
@@ -105,7 +104,7 @@ const Team = () => {
         </div>
 
         <Tabs defaultValue="members" className="space-y-4 md:space-y-6">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
+          <TabsList className="grid w-full grid-cols-3 h-auto">
             <TabsTrigger value="members" className="flex-col py-2 px-1 text-center">
               <UserPlus className="h-4 w-4 mb-1" />
               <span className="text-xs md:text-sm">Team Members</span>
@@ -117,10 +116,6 @@ const Team = () => {
             <TabsTrigger value="enterprise" className="flex-col py-2 px-1 text-center" disabled={!isOwner}>
               <Settings className="h-4 w-4 mb-1" />
               <span className="text-xs md:text-sm">Enterprise</span>
-            </TabsTrigger>
-            <TabsTrigger value="security" className="flex-col py-2 px-1 text-center" disabled={!isOwner}>
-              <Shield className="h-4 w-4 mb-1" />
-              <span className="text-xs md:text-sm">Security</span>
             </TabsTrigger>
           </TabsList>
 
@@ -149,21 +144,6 @@ const Team = () => {
                   <CardTitle>Access Restricted</CardTitle>
                   <CardDescription>
                     Only restaurant owners can access enterprise settings.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            )}
-          </TabsContent>
-
-          <TabsContent value="security">
-            {isOwner ? (
-              <SecuritySettings />
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Access Restricted</CardTitle>
-                  <CardDescription>
-                    Only restaurant owners can access security settings.
                   </CardDescription>
                 </CardHeader>
               </Card>

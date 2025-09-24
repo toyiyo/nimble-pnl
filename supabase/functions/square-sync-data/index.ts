@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     };
 
     // Log security event for token access
-    await logSecurityEvent(supabase, 'SQUARE_TOKEN_ACCESSED', null, restaurantId, {
+    await logSecurityEvent(supabase, 'SQUARE_TOKEN_ACCESSED', undefined, restaurantId, {
       action: action,
       merchantId: connection.merchant_id
     });
@@ -243,7 +243,7 @@ async function syncOrders(connection: any, restaurantId: string, locationId: str
   let totalOrders = 0;
 
   do {
-    const searchQuery = {
+    const searchQuery: any = {
       location_ids: [locationId],
       query: {
         filter: {
@@ -259,7 +259,7 @@ async function syncOrders(connection: any, restaurantId: string, locationId: str
       ...(cursor && { cursor })
     };
 
-    const response = await fetch('https://connect.squareup.com/v2/orders/search', {
+    const response: any = await fetch('https://connect.squareup.com/v2/orders/search', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${connection.access_token}`,
@@ -273,7 +273,7 @@ async function syncOrders(connection: any, restaurantId: string, locationId: str
       throw new Error(`Orders API error: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
     const orders = data.orders || [];
     cursor = data.cursor;
 
@@ -570,8 +570,8 @@ async function calculateSquareDailyPnL(supabase: any, restaurantId: string, serv
   }
 
   if (ordersData && ordersData.length > 0) {
-    const grossRevenue = ordersData.reduce((sum, order) => sum + (order.gross_sales_money || 0), 0);
-    const discounts = ordersData.reduce((sum, order) => sum + (order.total_discount_money || 0), 0);
+    const grossRevenue = ordersData.reduce((sum: any, order: any) => sum + (order.gross_sales_money || 0), 0);
+    const discounts = ordersData.reduce((sum: any, order: any) => sum + (order.total_discount_money || 0), 0);
 
     console.log(`Square sales for ${serviceDate}: $${grossRevenue}, discounts: $${discounts}`);
 
@@ -608,7 +608,7 @@ async function calculateSquareDailyPnL(supabase: any, restaurantId: string, serv
   }
 
   if (shiftsData && shiftsData.length > 0) {
-    const totalWages = shiftsData.reduce((sum, shift) => sum + (shift.total_wage_money || 0), 0);
+    const totalWages = shiftsData.reduce((sum: any, shift: any) => sum + (shift.total_wage_money || 0), 0);
 
     console.log(`Square labor for ${serviceDate}: $${totalWages}`);
 

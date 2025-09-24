@@ -63,7 +63,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('❌ Enhanced OCR error:', error);
     return new Response(JSON.stringify({
-      error: error.message,
+      error: (error as Error).message,
       source: 'huggingface'
     }), {
       status: 500,

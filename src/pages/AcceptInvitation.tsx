@@ -33,11 +33,11 @@ export const AcceptInvitation = () => {
   }, [token]);
 
   useEffect(() => {
-    if (user && invitation && status === 'needs_auth') {
+    if (user && invitation && (status === 'needs_auth' || status === 'valid')) {
       // User just authenticated, check if email matches and auto-accept
-      if (user.email === invitation.email) {
+      if (user.email === invitation.email && status === 'needs_auth') {
         acceptInvitation();
-      } else {
+      } else if (user.email !== invitation.email) {
         toast({
           title: "Email Mismatch",
           description: `This invitation was sent to ${invitation.email}, but you're logged in as ${user.email}`,
@@ -190,11 +190,16 @@ export const AcceptInvitation = () => {
         return;
       }
 
-      // Success - user will be auto-authenticated and invitation will be accepted via useEffect
+      // Success - user will be auto-authenticated and invitation will be accepted
       toast({
         title: "Welcome!",
         description: "Your account has been created. Joining the team...",
       });
+      
+      // Wait for auth state to update, then accept invitation
+      setTimeout(() => {
+        acceptInvitation();
+      }, 1000);
     } catch (error: any) {
       console.error('Sign up error:', error);
       toast({

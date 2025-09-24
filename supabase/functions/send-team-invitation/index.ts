@@ -113,14 +113,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log('Team invitation stored:', invitation);
 
-    // Create invitation acceptance URL using the request origin
-    console.log('Request headers - origin:', req.headers.get('origin'));
-    console.log('Request headers - referer:', req.headers.get('referer'));
-    const origin = req.headers.get('origin') || 
-                   (req.headers.get('referer') ? new URL(req.headers.get('referer')).origin : null) || 
-                   'https://app.easyshifthq.com';
-    console.log('Final origin used:', origin);
-    const invitationUrl = `${origin}/accept-invitation?token=${invitationToken}`;
+    // Create invitation acceptance URL
+    const invitationUrl = `https://app.easyshifthq.com/accept-invitation?token=${invitationToken}`;
 
     // Send invitation email
     try {

@@ -44,6 +44,9 @@ port = 54326
 [functions.accept-invitation]
 verify_jwt = false
 
+[functions.validate-invitation]
+verify_jwt = false
+
 [functions.enhance-product-ai]
 verify_jwt = true
 

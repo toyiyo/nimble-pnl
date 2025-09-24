@@ -27,10 +27,7 @@ Deno.serve(async (req) => {
     // First, validate the invitation
     const { data: invitation, error: inviteError } = await supabaseAdmin
       .from('invitations')
-      .select(`
-        *,
-        restaurant:restaurants(*)
-      `)
+      .select('*')
       .eq('token', token)
       .eq('status', 'pending')
       .eq('email', email)
@@ -117,11 +114,18 @@ Deno.serve(async (req) => {
 
     console.log('Invitation accepted successfully');
 
+    // Get restaurant information
+    const { data: restaurant } = await supabaseAdmin
+      .from('restaurants')
+      .select('*')
+      .eq('id', invitation.restaurant_id)
+      .single();
+
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Welcome to ${invitation.restaurant.name}! Please sign in with your new account.`,
-        restaurant: invitation.restaurant
+        message: `Welcome to ${restaurant?.name || 'the team'}! Please sign in with your new account.`,
+        restaurant: restaurant
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

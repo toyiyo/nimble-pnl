@@ -22,22 +22,22 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
   const { upsertSales, upsertFoodCosts, upsertLaborCosts } = useDailyPnL(restaurantId);
 
   const [salesData, setSalesData] = useState<Partial<DailySales>>({
-    gross_revenue: 0,
-    discounts: 0,
-    comps: 0,
-    transaction_count: 0,
+    gross_revenue: undefined,
+    discounts: undefined,
+    comps: undefined,
+    transaction_count: undefined,
   });
 
   const [foodCostsData, setFoodCostsData] = useState<Partial<DailyFoodCosts>>({
-    purchases: 0,
-    inventory_adjustments: 0,
+    purchases: undefined,
+    inventory_adjustments: undefined,
   });
 
   const [laborCostsData, setLaborCostsData] = useState<Partial<DailyLaborCosts>>({
-    hourly_wages: 0,
-    salary_wages: 0,
-    benefits: 0,
-    total_hours: 0,
+    hourly_wages: undefined,
+    salary_wages: undefined,
+    benefits: undefined,
+    total_hours: undefined,
   });
 
   const handleSalesSubmit = async (e: React.FormEvent) => {
@@ -162,8 +162,11 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           id="gross_revenue"
                           type="number"
                           step="0.01"
-                          value={salesData.gross_revenue}
-                          onChange={(e) => setSalesData({ ...salesData, gross_revenue: Number(e.target.value) })}
+                          value={salesData.gross_revenue ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setSalesData({ ...salesData, gross_revenue: value === '' ? undefined : Number(value) });
+                          }}
                           placeholder="2450.00"
                         />
                       </div>
@@ -173,8 +176,11 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           id="discounts"
                           type="number"
                           step="0.01"
-                          value={salesData.discounts}
-                          onChange={(e) => setSalesData({ ...salesData, discounts: Number(e.target.value) })}
+                          value={salesData.discounts ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setSalesData({ ...salesData, discounts: value === '' ? undefined : Number(value) });
+                          }}
                           placeholder="125.00"
                         />
                       </div>
@@ -184,8 +190,11 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           id="comps"
                           type="number"
                           step="0.01"
-                          value={salesData.comps}
-                          onChange={(e) => setSalesData({ ...salesData, comps: Number(e.target.value) })}
+                          value={salesData.comps ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setSalesData({ ...salesData, comps: value === '' ? undefined : Number(value) });
+                          }}
                           placeholder="75.00"
                         />
                       </div>
@@ -194,8 +203,11 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                         <Input
                           id="transaction_count"
                           type="number"
-                          value={salesData.transaction_count}
-                          onChange={(e) => setSalesData({ ...salesData, transaction_count: Number(e.target.value) })}
+                          value={salesData.transaction_count ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setSalesData({ ...salesData, transaction_count: value === '' ? undefined : Number(value) });
+                          }}
                           placeholder="148"
                         />
                       </div>
@@ -228,8 +240,11 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           id="purchases"
                           type="number"
                           step="0.01"
-                          value={foodCostsData.purchases}
-                          onChange={(e) => setFoodCostsData({ ...foodCostsData, purchases: Number(e.target.value) })}
+                          value={foodCostsData.purchases ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setFoodCostsData({ ...foodCostsData, purchases: value === '' ? undefined : Number(value) });
+                          }}
                           placeholder="650.00"
                         />
                       </div>
@@ -239,8 +254,11 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           id="inventory_adjustments"
                           type="number"
                           step="0.01"
-                          value={foodCostsData.inventory_adjustments}
-                          onChange={(e) => setFoodCostsData({ ...foodCostsData, inventory_adjustments: Number(e.target.value) })}
+                          value={foodCostsData.inventory_adjustments ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setFoodCostsData({ ...foodCostsData, inventory_adjustments: value === '' ? undefined : Number(value) });
+                          }}
                           placeholder="48.00"
                         />
                         <p className="text-xs text-muted-foreground">
@@ -282,8 +300,11 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           id="hourly_wages"
                           type="number"
                           step="0.01"
-                          value={laborCostsData.hourly_wages}
-                          onChange={(e) => setLaborCostsData({ ...laborCostsData, hourly_wages: Number(e.target.value) })}
+                          value={laborCostsData.hourly_wages ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setLaborCostsData({ ...laborCostsData, hourly_wages: value === '' ? undefined : Number(value) });
+                          }}
                           placeholder="480.00"
                         />
                         <p className="text-xs text-muted-foreground">
@@ -296,8 +317,11 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           id="salary_wages"
                           type="number"
                           step="0.01"
-                          value={laborCostsData.salary_wages}
-                          onChange={(e) => setLaborCostsData({ ...laborCostsData, salary_wages: Number(e.target.value) })}
+                          value={laborCostsData.salary_wages ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setLaborCostsData({ ...laborCostsData, salary_wages: value === '' ? undefined : Number(value) });
+                          }}
                           placeholder="200.00"
                         />
                         <p className="text-xs text-muted-foreground">
@@ -310,8 +334,11 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           id="benefits"
                           type="number"
                           step="0.01"
-                          value={laborCostsData.benefits}
-                          onChange={(e) => setLaborCostsData({ ...laborCostsData, benefits: Number(e.target.value) })}
+                          value={laborCostsData.benefits ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setLaborCostsData({ ...laborCostsData, benefits: value === '' ? undefined : Number(value) });
+                          }}
                           placeholder="106.00"
                         />
                         <p className="text-xs text-muted-foreground">
@@ -324,8 +351,11 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
                           id="total_hours"
                           type="number"
                           step="0.25"
-                          value={laborCostsData.total_hours}
-                          onChange={(e) => setLaborCostsData({ ...laborCostsData, total_hours: Number(e.target.value) })}
+                          value={laborCostsData.total_hours ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setLaborCostsData({ ...laborCostsData, total_hours: value === '' ? undefined : Number(value) });
+                          }}
                           placeholder="64.5"
                         />
                         <p className="text-xs text-muted-foreground">

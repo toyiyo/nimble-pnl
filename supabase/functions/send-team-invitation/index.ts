@@ -65,16 +65,15 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Restaurant not found');
     }
 
-    // Get current user info using the JWT token directly
-    const jwt = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(jwt);
+    // Get current user info using the user client
+    const { data: { user }, error: authError } = await userSupabase.auth.getUser();
     if (authError || !user) {
       console.error('Auth error:', authError);
       throw new Error('Unauthorized');
     }
 
     // Check if user has permission to invite (owner or manager)
-    const { data: userRole, error: roleError } = await supabase
+    const { data: userRole, error: roleError } = await userSupabase
       .from('user_restaurants')
       .select('role')
       .eq('restaurant_id', restaurantId)
@@ -115,7 +114,12 @@ const handler = async (req: Request): Promise<Response> => {
     console.log('Team invitation stored:', invitation);
 
     // Create invitation acceptance URL using the request origin
-    const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/') || 'https://app.easyshifthq.com';
+    console.log('Request headers - origin:', req.headers.get('origin'));
+    console.log('Request headers - referer:', req.headers.get('referer'));
+    const origin = req.headers.get('origin') || 
+                   (req.headers.get('referer') ? new URL(req.headers.get('referer')).origin : null) || 
+                   'https://app.easyshifthq.com';
+    console.log('Final origin used:', origin);
     const invitationUrl = `${origin}/accept-invitation?token=${invitationToken}`;
 
     // Send invitation email

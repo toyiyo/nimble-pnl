@@ -33,21 +33,16 @@ export const AcceptInvitation = () => {
   }, [token]);
 
   useEffect(() => {
-    if (user && invitation && (status === 'needs_auth' || status === 'valid')) {
-      // User just authenticated, check if email matches and auto-accept
-      if (user.email === invitation.email && status === 'needs_auth') {
-        // Wait a bit longer for auth session to fully establish
-        setTimeout(() => {
-          acceptInvitation();
-        }, 2000);
-      } else if (user.email !== invitation.email) {
-        toast({
-          title: "Email Mismatch",
-          description: `This invitation was sent to ${invitation.email}, but you're logged in as ${user.email}`,
-          variant: "destructive",
-        });
-        setStatus('invalid');
-      }
+    if (user && invitation && status === 'needs_auth' && user.email === invitation.email) {
+      // Auto-accept invitation for newly authenticated user
+      acceptInvitation();
+    } else if (user && invitation && user.email !== invitation.email) {
+      toast({
+        title: "Email Mismatch",
+        description: `This invitation was sent to ${invitation.email}, but you're logged in as ${user.email}`,
+        variant: "destructive",
+      });
+      setStatus('invalid');
     }
   }, [user, invitation, status]);
 
@@ -114,10 +109,8 @@ export const AcceptInvitation = () => {
           description: data.message,
         });
 
-        // Redirect to dashboard after 2 seconds
-        setTimeout(() => {
-          navigate('/');
-        }, 2000);
+        // Immediate redirect to dashboard
+        navigate('/');
       } else {
         throw new Error(data.error || 'Failed to accept invitation');
       }
@@ -193,13 +186,11 @@ export const AcceptInvitation = () => {
         return;
       }
 
-      // Success - user will be auto-authenticated and invitation will be accepted
+      // Success - user will be auto-authenticated and invitation will be accepted via useEffect
       toast({
         title: "Welcome!",
         description: "Your account has been created. Joining the team...",
       });
-      
-      // The useEffect will handle invitation acceptance once auth state updates
     } catch (error: any) {
       console.error('Sign up error:', error);
       toast({

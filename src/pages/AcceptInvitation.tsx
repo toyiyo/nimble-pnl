@@ -140,7 +140,8 @@ export const AcceptInvitation = () => {
       
       if (error) throw error;
       
-      // User will be auto-authenticated and invitation accepted via useEffect
+      // Update status to valid so useEffect can accept the invitation
+      setStatus('valid');
     } catch (error: any) {
       toast({
         title: "Error signing in",

@@ -33,9 +33,11 @@ export const AcceptInvitation = () => {
   }, [token]);
 
   useEffect(() => {
-    if (user && invitation && status === 'needs_auth' && user.email === invitation.email) {
-      // Auto-accept invitation for newly authenticated user
-      acceptInvitation();
+    if (user && invitation && user.email === invitation.email) {
+      // For existing users signing in, accept the invitation
+      if (status === 'valid') {
+        acceptInvitation();
+      }
     } else if (user && invitation && user.email !== invitation.email) {
       toast({
         title: "Email Mismatch",
@@ -165,32 +167,31 @@ export const AcceptInvitation = () => {
         return;
       }
 
-      // Special signup for invited users - no email verification needed
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-          // Skip email confirmation for invited users since invitation validates email ownership
+      // Use special signup function that bypasses email confirmation and accepts invitation
+      const { data, error } = await supabase.functions.invoke('signup-with-invitation', {
+        body: {
+          email,
+          password,
+          fullName,
+          token
         }
       });
-      
+
       if (error) {
-        toast({
-          title: "Error creating account",
-          description: error.message,
-          variant: "destructive",
-        });
-        return;
+        throw error;
       }
 
-      // Success - user will be auto-authenticated and invitation will be accepted via useEffect
-      toast({
-        title: "Welcome!",
-        description: "Your account has been created. Joining the team...",
-      });
+      if (data.success) {
+        toast({
+          title: "Account Created!",
+          description: `${data.message} Please sign in to continue.`,
+        });
+        // Switch to sign-in mode after successful signup
+        setShowSignIn(true);
+        setPassword(''); // Clear password field
+      } else {
+        throw new Error(data.error || 'Failed to create account');
+      }
     } catch (error: any) {
       console.error('Sign up error:', error);
       toast({

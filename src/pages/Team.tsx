@@ -49,60 +49,78 @@ const Team = () => {
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => navigate('/')}
-              className="flex items-center gap-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to Dashboard
-            </Button>
-            <div className="h-4 w-px bg-border" />
-            <h1 className="text-xl font-semibold">Team Management</h1>
+        <div className="container px-4">
+          <div className="flex h-14 items-center justify-between">
+            <div className="flex items-center gap-2 md:gap-4 min-w-0">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => navigate('/')}
+                className="p-2 md:px-3"
+              >
+                <ArrowLeft className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Back to Dashboard</span>
+              </Button>
+              <div className="hidden sm:block h-4 w-px bg-border" />
+              <h1 className="text-lg md:text-xl font-semibold truncate">Team Management</h1>
+              {selectedRestaurant && (
+                <div className="hidden lg:flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">•</span>
+                  <span className="text-sm font-medium truncate">{selectedRestaurant.restaurant.name}</span>
+                  <Badge variant={isOwner ? "default" : "secondary"}>
+                    {selectedRestaurant.role}
+                  </Badge>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">•</span>
-              <span className="text-sm font-medium">{selectedRestaurant.restaurant.name}</span>
-              <Badge variant={isOwner ? "default" : "secondary"}>
-                {selectedRestaurant.role}
-              </Badge>
+              <span className="hidden md:block text-sm text-muted-foreground truncate">
+                Welcome, {user.email}
+              </span>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">
-              Welcome, {user.email}
-            </span>
-          </div>
+          
+          {/* Mobile restaurant info */}
+          {selectedRestaurant && (
+            <div className="lg:hidden py-2 border-t">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium truncate">{selectedRestaurant.restaurant.name}</span>
+                  <Badge variant={isOwner ? "default" : "secondary"} className="text-xs">
+                    {selectedRestaurant.role}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </nav>
       
-      <main className="container py-6">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold mb-2">Team Management</h2>
-          <p className="text-muted-foreground">
+      <main className="container px-4 py-4 md:py-6">
+        <div className="mb-6 md:mb-8 text-center md:text-left">
+          <h2 className="text-2xl md:text-3xl font-bold mb-2">Team Management</h2>
+          <p className="text-sm md:text-base text-muted-foreground">
             Manage your restaurant team, send invitations, and configure enterprise settings
           </p>
         </div>
 
-        <Tabs defaultValue="members" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="members" className="flex items-center gap-2">
-              <UserPlus className="h-4 w-4" />
-              Team Members
+        <Tabs defaultValue="members" className="space-y-4 md:space-y-6">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
+            <TabsTrigger value="members" className="flex-col py-2 px-1 text-center">
+              <UserPlus className="h-4 w-4 mb-1" />
+              <span className="text-xs md:text-sm">Team Members</span>
             </TabsTrigger>
-            <TabsTrigger value="invitations" className="flex items-center gap-2">
-              <Building className="h-4 w-4" />
-              Invitations
+            <TabsTrigger value="invitations" className="flex-col py-2 px-1 text-center">
+              <Building className="h-4 w-4 mb-1" />
+              <span className="text-xs md:text-sm">Invitations</span>
             </TabsTrigger>
-            <TabsTrigger value="enterprise" className="flex items-center gap-2" disabled={!isOwner}>
-              <Settings className="h-4 w-4" />
-              Enterprise
+            <TabsTrigger value="enterprise" className="flex-col py-2 px-1 text-center" disabled={!isOwner}>
+              <Settings className="h-4 w-4 mb-1" />
+              <span className="text-xs md:text-sm">Enterprise</span>
             </TabsTrigger>
-            <TabsTrigger value="security" className="flex items-center gap-2" disabled={!isOwner}>
-              <Shield className="h-4 w-4" />
-              Security
+            <TabsTrigger value="security" className="flex-col py-2 px-1 text-center" disabled={!isOwner}>
+              <Shield className="h-4 w-4 mb-1" />
+              <span className="text-xs md:text-sm">Security</span>
             </TabsTrigger>
           </TabsList>
 

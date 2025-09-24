@@ -36,7 +36,7 @@ const handler = async (req: Request): Promise<Response> => {
       .select(`
         *,
         restaurants(name, address),
-        invited_by_profile:profiles!invitations_invited_by_fkey(full_name)
+        invited_by_profile:profiles!invited_by(full_name)
       `)
       .eq('token', token)
       .eq('status', 'pending')

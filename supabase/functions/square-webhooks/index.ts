@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
     const restaurantId = connection.restaurant_id;
 
     // Log security event for webhook processing
-    await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_PROCESSED', null, restaurantId, {
+    await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_PROCESSED', undefined, restaurantId, {
       webhookType: type,
       merchantId: merchant_id,
       eventId: data?.id

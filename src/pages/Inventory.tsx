@@ -345,69 +345,81 @@ export const Inventory: React.FC = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="bg-card border-b border-border p-4">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto">
+          {/* Mobile-first layout */}
+          <div className="flex items-center justify-between mb-3 md:mb-0">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => navigate('/')}
+              className="p-2 md:px-3"
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Dashboard
+              <ArrowLeft className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Dashboard</span>
             </Button>
-            <div>
-              <h1 className="text-2xl font-bold">Inventory Management</h1>
-              <p className="text-muted-foreground">{selectedRestaurant?.restaurant?.name}</p>
-            </div>
+            <Button onClick={handleCreateManually} size="sm">
+              <Plus className="h-4 w-4 md:mr-2" />
+              <span className="hidden sm:inline">Add Product</span>
+            </Button>
           </div>
-          <Button onClick={handleCreateManually}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Product
-          </Button>
+          <div className="text-center md:text-left">
+            <h1 className="text-xl md:text-2xl font-bold">Inventory Management</h1>
+            <p className="text-sm text-muted-foreground">{selectedRestaurant?.restaurant?.name}</p>
+          </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto p-4 md:p-6">
         <Tabs defaultValue="scanner" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="scanner">
-              Scanner {currentMode === 'barcode' ? '📱' : '📸'}
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
+            <TabsTrigger value="scanner" className="flex-col py-2 px-1">
+              <span className="text-xs md:text-sm">Scanner</span>
+              <span className="text-lg">{currentMode === 'barcode' ? '📱' : '📸'}</span>
             </TabsTrigger>
-            <TabsTrigger value="products">Products ({products.length})</TabsTrigger>
-            <TabsTrigger value="low-stock">
-              Low Stock 
+            <TabsTrigger value="products" className="flex-col py-2 px-1">
+              <span className="text-xs md:text-sm">Products</span>
+              <span className="text-xs">({products.length})</span>
+            </TabsTrigger>
+            <TabsTrigger value="low-stock" className="flex-col py-2 px-1">
+              <span className="text-xs md:text-sm">Low Stock</span>
               {lowStockProducts.length > 0 && (
-                <Badge variant="destructive" className="ml-2">
+                <Badge variant="destructive" className="text-xs h-4 px-1">
                   {lowStockProducts.length}
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="categories">Categories</TabsTrigger>
+            <TabsTrigger value="categories" className="flex-col py-2 px-1">
+              <span className="text-xs md:text-sm">Categories</span>
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="scanner" className="mt-6">
-            <div className="space-y-6">
+          <TabsContent value="scanner" className="mt-4 md:mt-6">
+            <div className="space-y-4 md:space-y-6">
               {/* Mode Toggle */}
               <div className="flex justify-center">
-                <div className="bg-muted p-1 rounded-lg">
-                  <Button
-                    variant={currentMode === 'barcode' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setCurrentMode('barcode')}
-                  >
-                    📱 Barcode
-                  </Button>
-                  <Button
-                    variant={currentMode === 'image' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setCurrentMode('image')}
-                  >
-                    📸 Image
-                  </Button>
+                <div className="bg-muted p-1 rounded-lg w-full max-w-xs">
+                  <div className="grid grid-cols-2 gap-1">
+                    <Button
+                      variant={currentMode === 'barcode' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setCurrentMode('barcode')}
+                      className="flex-1"
+                    >
+                      📱 Barcode
+                    </Button>
+                    <Button
+                      variant={currentMode === 'image' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setCurrentMode('image')}
+                      className="flex-1"
+                    >
+                      📸 Image
+                    </Button>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="space-y-6 lg:grid lg:grid-cols-2 lg:gap-8 lg:space-y-0">
                 <div>
                   {currentMode === 'barcode' ? (
                     <BarcodeScanner
@@ -430,8 +442,8 @@ export const Inventory: React.FC = () => {
                     />
                   )}
                 </div>
-                <div>
-                  <Card>
+                <div className="lg:block">
+                  <Card className="hidden md:block">
                     <CardHeader>
                       <CardTitle>How to Scan</CardTitle>
                       <CardDescription>

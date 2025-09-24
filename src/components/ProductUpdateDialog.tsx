@@ -34,24 +34,24 @@ import { Product } from '@/hooks/useProducts';
 import { useToast } from '@/hooks/use-toast';
 
 const updateSchema = z.object({
-  quantity_to_add: z.number().min(0, 'Quantity must be positive'),
+  quantity_to_add: z.coerce.number().min(0, 'Quantity must be positive').optional(),
   sku: z.string().min(1, 'SKU is required'),
   name: z.string().min(1, 'Product name is required'),
   description: z.string().optional(),
   brand: z.string().optional(),
   category: z.string().optional(),
-  size_value: z.number().positive().optional(),
+  size_value: z.coerce.number().positive().optional(),
   size_unit: z.string().optional(),
-  package_qty: z.number().int().positive().optional(),
+  package_qty: z.coerce.number().int().positive().optional(),
   uom_purchase: z.string().optional(),
   uom_recipe: z.string().optional(),
-  conversion_factor: z.number().positive().optional(),
-  cost_per_unit: z.number().positive().optional(),
+  conversion_factor: z.coerce.number().positive().optional(),
+  cost_per_unit: z.coerce.number().positive().optional(),
   supplier_name: z.string().optional(),
   supplier_sku: z.string().optional(),
-  par_level_min: z.number().int().min(0).optional(),
-  par_level_max: z.number().int().min(0).optional(),
-  reorder_point: z.number().int().min(0).optional(),
+  par_level_min: z.coerce.number().int().min(0).optional(),
+  par_level_max: z.coerce.number().int().min(0).optional(),
+  reorder_point: z.coerce.number().int().min(0).optional(),
 });
 
 type UpdateFormData = z.infer<typeof updateSchema>;
@@ -96,7 +96,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const form = useForm<UpdateFormData>({
     resolver: zodResolver(updateSchema),
     defaultValues: {
-      quantity_to_add: 0,
+      quantity_to_add: undefined,
       sku: product.sku,
       name: product.name,
       description: product.description || '',
@@ -104,23 +104,23 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       category: product.category || '',
       size_value: product.size_value || undefined,
       size_unit: product.size_unit || 'pieces',
-      package_qty: product.package_qty || 1,
+      package_qty: product.package_qty || undefined,
       uom_purchase: product.uom_purchase || '',
       uom_recipe: product.uom_recipe || '',
-      conversion_factor: product.conversion_factor || 1,
+      conversion_factor: product.conversion_factor || undefined,
       cost_per_unit: product.cost_per_unit || undefined,
       supplier_name: product.supplier_name || '',
       supplier_sku: product.supplier_sku || '',
-      par_level_min: product.par_level_min || 0,
-      par_level_max: product.par_level_max || 0,
-      reorder_point: product.reorder_point || 0,
+      par_level_min: product.par_level_min || undefined,
+      par_level_max: product.par_level_max || undefined,
+      reorder_point: product.reorder_point || undefined,
     },
   });
 
   // Reset form when product changes
   useEffect(() => {
     form.reset({
-      quantity_to_add: 0,
+      quantity_to_add: undefined,
       sku: product.sku,
       name: product.name,
       description: product.description || '',
@@ -128,16 +128,16 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       category: product.category || '',
       size_value: product.size_value || undefined,
       size_unit: product.size_unit || 'pieces',
-      package_qty: product.package_qty || 1,
+      package_qty: product.package_qty || undefined,
       uom_purchase: product.uom_purchase || '',
       uom_recipe: product.uom_recipe || '',
-      conversion_factor: product.conversion_factor || 1,
+      conversion_factor: product.conversion_factor || undefined,
       cost_per_unit: product.cost_per_unit || undefined,
       supplier_name: product.supplier_name || '',
       supplier_sku: product.supplier_sku || '',
-      par_level_min: product.par_level_min || 0,
-      par_level_max: product.par_level_max || 0,
-      reorder_point: product.reorder_point || 0,
+      par_level_min: product.par_level_min || undefined,
+      par_level_max: product.par_level_max || undefined,
+      reorder_point: product.reorder_point || undefined,
     });
     setEnhancedData(null); // Clear any enhanced data from previous product
   }, [product, form]);
@@ -186,6 +186,9 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   };
 
   const handleSubmit = async (data: UpdateFormData) => {
+    const quantityToAdd = data.quantity_to_add || 0;
+    const isNewProduct = !product.id; // Check if this is a new product
+    
     const updates: Partial<Product> = {
       sku: data.sku,
       name: data.name,
@@ -194,20 +197,22 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       category: data.category,
       size_value: data.size_value,
       size_unit: data.size_unit,
-      package_qty: data.package_qty,
+      package_qty: data.package_qty || 1,
       uom_purchase: data.uom_purchase,
       uom_recipe: data.uom_recipe,
-      conversion_factor: data.conversion_factor,
+      conversion_factor: data.conversion_factor || 1,
       cost_per_unit: data.cost_per_unit,
       supplier_name: data.supplier_name,
       supplier_sku: data.supplier_sku,
-      par_level_min: data.par_level_min,
-      par_level_max: data.par_level_max,
-      reorder_point: data.reorder_point,
-      current_stock: (product.current_stock || 0) + data.quantity_to_add,
+      par_level_min: data.par_level_min || 0,
+      par_level_max: data.par_level_max || 0,
+      reorder_point: data.reorder_point || 0,
+      // For new products, quantity_to_add becomes the initial stock
+      // For existing products, add to current stock
+      current_stock: isNewProduct ? quantityToAdd : (product.current_stock || 0) + quantityToAdd,
     };
 
-    await onUpdate(updates, data.quantity_to_add);
+    await onUpdate(updates, quantityToAdd);
     onOpenChange(false);
   };
 
@@ -331,7 +336,9 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                     name="quantity_to_add"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Quantity to Add</FormLabel>
+                        <FormLabel>
+                          {product.id ? 'Quantity to Add' : 'Initial Stock Quantity'}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -339,7 +346,11 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             min="0"
                             step="0.1"
                             placeholder="Enter quantity"
-                            onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : 0)}
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              field.onChange(value === '' ? undefined : Number(value));
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -377,7 +388,10 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                   <div className="p-3 bg-muted rounded-md">
                     <p className="text-sm">
                       <strong>Stock Update Preview:</strong><br />
-                      Current: {currentStock} → New Total: {totalAfterUpdate} {form.getValues('size_unit')}
+                      {product.id 
+                        ? `Current: ${currentStock} → New Total: ${totalAfterUpdate} ${form.getValues('size_unit')}`
+                        : `Initial Stock: ${newQuantity} ${form.getValues('size_unit')}`
+                      }
                     </p>
                   </div>
                 )}
@@ -496,7 +510,11 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             type="number"
                             step="0.01"
                             placeholder="e.g., 5"
-                            onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              field.onChange(value === '' ? undefined : Number(value));
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -516,7 +534,11 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             type="number"
                             min="1"
                             placeholder="1"
-                            onChange={(e) => field.onChange(Number(e.target.value))}
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              field.onChange(value === '' ? undefined : Number(value));
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -536,7 +558,11 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             type="number"
                             step="0.01"
                             placeholder="1"
-                            onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : 1)}
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              field.onChange(value === '' ? undefined : Number(value));
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -596,7 +622,11 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             type="number"
                             step="0.01"
                             placeholder="0.00"
-                            onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              field.onChange(value === '' ? undefined : Number(value));
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -654,7 +684,11 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             type="number"
                             min="0"
                             placeholder="0"
-                            onChange={(e) => field.onChange(Number(e.target.value))}
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              field.onChange(value === '' ? undefined : Number(value));
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -674,7 +708,11 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             type="number"
                             min="0"
                             placeholder="0"
-                            onChange={(e) => field.onChange(Number(e.target.value))}
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              field.onChange(value === '' ? undefined : Number(value));
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -694,7 +732,11 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             type="number"
                             min="0"
                             placeholder="0"
-                            onChange={(e) => field.onChange(Number(e.target.value))}
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              field.onChange(value === '' ? undefined : Number(value));
+                            }}
                           />
                         </FormControl>
                         <FormMessage />

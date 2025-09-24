@@ -74,6 +74,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Encrypt SCIM token if provided
     let encryptedScimToken = config.scim_token;
     if (config.scim_token && config.scim_token.trim() !== '') {
+      const encryptionService = await getEncryptionService();
       encryptedScimToken = await encryptionService.encrypt(config.scim_token);
     }
 

@@ -28,33 +28,38 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Missing authorization header');
     }
 
-    // Set auth for supabase client
-    supabase.auth.setSession({
-      access_token: authHeader.replace('Bearer ', ''),
-      refresh_token: '',
-    });
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      throw new Error('Unauthorized');
-    }
+    // Create a client with the user's token for auth operations
+    const userSupabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+      }
+    );
 
     const { token }: RequestBody = await req.json();
 
     if (!token) {
-      throw new Error('Missing invitation token');
+      throw new Error('Missing token');
     }
 
-    console.log('Processing invitation acceptance for token:', token);
+    console.log('Accepting invitation with token:', token);
 
-    // Find the invitation
+    // Get current user info
+    const { data: { user }, error: authError } = await userSupabase.auth.getUser();
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      throw new Error('Unauthorized');
+    }
+
+    // Get invitation details and validate
     const { data: invitation, error: invitationError } = await supabase
       .from('invitations')
-      .select(`
-        *,
-        restaurants(name)
-      `)
+      .select('*')
       .eq('token', token)
       .eq('status', 'pending')
       .single();
@@ -63,19 +68,26 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Invalid or expired invitation');
     }
 
-    // Check if invitation is expired
-    if (new Date() > new Date(invitation.expires_at)) {
-      await supabase
-        .from('invitations')
-        .update({ status: 'expired', updated_at: new Date() })
-        .eq('id', invitation.id);
-      
-      throw new Error('This invitation has expired');
+    // Get restaurant details separately
+    const { data: restaurant, error: restaurantError } = await supabase
+      .from('restaurants')
+      .select('name, address')
+      .eq('id', invitation.restaurant_id)
+      .single();
+
+    if (restaurantError) {
+      console.error('Error fetching restaurant:', restaurantError);
+      throw new Error('Restaurant not found');
     }
 
-    // Check if the user's email matches the invitation email
+    // Check if invitation is expired
+    if (new Date() > new Date(invitation.expires_at)) {
+      throw new Error('Invitation has expired');
+    }
+
+    // Check if the user's email matches
     if (user.email !== invitation.email) {
-      throw new Error('This invitation was sent to a different email address');
+      throw new Error(`This invitation was sent to ${invitation.email}, but you're logged in as ${user.email}`);
     }
 
     // Check if user is already a member of this restaurant
@@ -87,71 +99,47 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     if (existingMember) {
-      // Update invitation status to accepted anyway
-      await supabase
-        .from('invitations')
-        .update({ 
-          status: 'accepted', 
-          accepted_at: new Date(),
-          accepted_by: user.id,
-          updated_at: new Date()
-        })
-        .eq('id', invitation.id);
-
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          message: 'You are already a member of this restaurant',
-          restaurantName: invitation.restaurants?.name,
-          alreadyMember: true
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...corsHeaders,
-          },
-        }
-      );
+      throw new Error('You are already a member of this restaurant');
     }
 
-    // Add user to restaurant with the specified role
+    // Accept the invitation - add user to restaurant and update invitation status
     const { error: memberError } = await supabase
       .from('user_restaurants')
       .insert({
         user_id: user.id,
         restaurant_id: invitation.restaurant_id,
-        role: invitation.role
+        role: invitation.role,
       });
 
     if (memberError) {
-      throw memberError;
+      console.error('Error adding user to restaurant:', memberError);
+      throw new Error('Failed to add you to the restaurant team');
     }
 
-    // Update invitation status to accepted
+    // Update invitation status
     const { error: updateError } = await supabase
       .from('invitations')
-      .update({ 
-        status: 'accepted', 
-        accepted_at: new Date(),
+      .update({
+        status: 'accepted',
+        accepted_at: new Date().toISOString(),
         accepted_by: user.id,
-        updated_at: new Date()
+        updated_at: new Date().toISOString(),
       })
       .eq('id', invitation.id);
 
     if (updateError) {
-      throw updateError;
+      console.error('Error updating invitation status:', updateError);
+      // Don't fail the request if we can't update the invitation status
     }
 
-    console.log(`Invitation accepted: User ${user.id} joined restaurant ${invitation.restaurant_id} as ${invitation.role}`);
+    console.log('Invitation accepted successfully for user:', user.email);
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Welcome to ${invitation.restaurants?.name}! You've been added as a ${invitation.role}.`,
-        restaurantName: invitation.restaurants?.name,
+        message: `Welcome to ${restaurant.name}! You are now a ${invitation.role}.`,
+        restaurantName: restaurant.name,
         role: invitation.role,
-        restaurantId: invitation.restaurant_id
       }),
       {
         status: 200,

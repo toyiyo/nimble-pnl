@@ -123,7 +123,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Web search error:', error)
     return new Response(
-      JSON.stringify({ error: 'Search failed', details: error.message }),
+      JSON.stringify({ error: 'Search failed', details: (error as Error).message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )
   }

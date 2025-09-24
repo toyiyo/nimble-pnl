@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
     }
 
     // Log security event
-    await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_SETUP', null, restaurantId, {
+    await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_SETUP', undefined, restaurantId, {
       merchantId: connection.merchant_id,
       webhookId,
       result: webhookResult

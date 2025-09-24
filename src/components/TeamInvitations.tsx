@@ -84,6 +84,32 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
     }
   };
 
+  const deleteInvitation = async (invitationId: string, email: string) => {
+    try {
+      const { error } = await supabase
+        .from('invitations')
+        .delete()
+        .eq('id', invitationId)
+        .eq('restaurant_id', restaurantId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `Invitation to ${email} has been cancelled`,
+      });
+
+      fetchInvitations();
+    } catch (error: any) {
+      console.error('Error deleting invitation:', error);
+      toast({
+        title: "Error",
+        description: "Failed to cancel invitation",
+        variant: "destructive",
+      });
+    }
+  };
+
   const sendInvitation = async () => {
     if (!inviteForm.email || !inviteForm.role) {
       toast({
@@ -142,10 +168,10 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <CardTitle>Team Invitations</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-lg md:text-xl">Team Invitations</CardTitle>
+            <CardDescription className="text-sm">
               Send invitations to new team members
             </CardDescription>
           </div>
@@ -153,9 +179,9 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
           {canManageInvites && (
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
-                <Button className="flex items-center gap-2">
+                <Button className="flex items-center gap-2 w-full sm:w-auto" size="sm">
                   <Plus className="h-4 w-4" />
-                  Send Invitation
+                  <span className="sm:inline">Send Invitation</span>
                 </Button>
               </DialogTrigger>
               <DialogContent>
@@ -219,30 +245,40 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
             <p className="text-muted-foreground">Loading invitations...</p>
           </div>
         ) : invitations.length > 0 ? (
-          <div className="space-y-4">
+          <div className="space-y-3 md:space-y-4">
             {invitations.map((invitation) => (
-              <div key={invitation.id} className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Mail className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="font-medium">{invitation.email}</p>
-                    <p className="text-sm text-muted-foreground">
-                      Invited as {invitation.role} by {invitation.invitedBy} • {new Date(invitation.createdAt).toLocaleDateString()}
-                      {invitation.expiresAt && (
-                        <span> • Expires {new Date(invitation.expiresAt).toLocaleDateString()}</span>
-                      )}
-                    </p>
+              <div key={invitation.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 md:p-4 border rounded-lg">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <Mail className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm md:text-base truncate">{invitation.email}</p>
+                    <div className="text-xs md:text-sm text-muted-foreground space-y-1">
+                      <p className="truncate">
+                        Invited as <span className="capitalize font-medium">{invitation.role}</span> by {invitation.invitedBy}
+                      </p>
+                      <p>
+                        {new Date(invitation.createdAt).toLocaleDateString()}
+                        {invitation.expiresAt && (
+                          <span> • Expires {new Date(invitation.expiresAt).toLocaleDateString()}</span>
+                        )}
+                      </p>
+                    </div>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-3">
-                  <Badge variant={statusColors[invitation.status]} className="flex items-center gap-1">
+                <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3">
+                  <Badge variant={statusColors[invitation.status]} className="flex items-center gap-1 text-xs">
                     {statusIcons[invitation.status]}
-                    {invitation.status}
+                    <span className="capitalize">{invitation.status}</span>
                   </Badge>
                   
                   {canManageInvites && invitation.status === 'pending' && (
-                    <Button variant="ghost" size="sm">
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => deleteInvitation(invitation.id, invitation.email)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10 p-2"
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   )}
@@ -251,11 +287,11 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
             ))}
           </div>
         ) : (
-          <div className="text-center py-8">
-            <Mail className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground mb-4">No invitations sent yet</p>
+          <div className="text-center py-6 md:py-8">
+            <Mail className="h-10 w-10 md:h-12 md:w-12 text-muted-foreground mx-auto mb-3 md:mb-4" />
+            <p className="text-sm md:text-base text-muted-foreground mb-3 md:mb-4">No invitations sent yet</p>
             {canManageInvites && (
-              <Button onClick={() => setIsDialogOpen(true)} className="flex items-center gap-2 mx-auto">
+              <Button onClick={() => setIsDialogOpen(true)} className="flex items-center gap-2 mx-auto" size="sm">
                 <Plus className="h-4 w-4" />
                 Send Your First Invitation
               </Button>

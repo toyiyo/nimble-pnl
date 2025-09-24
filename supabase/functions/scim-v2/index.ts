@@ -385,7 +385,7 @@ const handleUsers = async (req: Request, supabase: any, restaurantId: string): P
       return scimError(500, 'internalError', 'Failed to fetch users');
     }
 
-    const scimUsers = users.map(user => ({
+    const scimUsers = users.map((user: any) => ({
       schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
       id: user.scim_id,
       externalId: user.external_id,

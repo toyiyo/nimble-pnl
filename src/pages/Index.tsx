@@ -51,44 +51,69 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-semibold">Restaurant Operations</h1>
-            {selectedRestaurant && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">•</span>
-                <span className="text-sm font-medium">{selectedRestaurant.restaurant.name}</span>
+        <div className="container px-4">
+          {/* Mobile-first navigation */}
+          <div className="flex h-14 items-center justify-between">
+            <div className="flex items-center gap-2 md:gap-4 min-w-0">
+              <h1 className="text-lg md:text-xl font-semibold truncate">Restaurant Operations</h1>
+              {selectedRestaurant && (
+                <div className="hidden sm:flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">•</span>
+                  <span className="text-sm font-medium truncate">{selectedRestaurant.restaurant.name}</span>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setSelectedRestaurant(null)}
+                    className="text-xs"
+                  >
+                    Switch
+                  </Button>
+                </div>
+              )}
+            </div>
+            
+            {/* Mobile menu - horizontal scroll for buttons */}
+            <div className="flex items-center gap-1 md:gap-4 overflow-x-auto">
+              <span className="hidden md:block text-sm text-muted-foreground truncate">
+                Welcome, {user.email}
+              </span>
+              <div className="flex gap-1 md:gap-2">
+                <Button variant="outline" size="sm" onClick={() => navigate('/integrations')} className="text-xs whitespace-nowrap">
+                  Integrations
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => navigate('/inventory')} className="text-xs whitespace-nowrap">
+                  Inventory
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => navigate('/team')} className="text-xs whitespace-nowrap">
+                  Team
+                </Button>
+                <Button variant="outline" size="sm" onClick={signOut} className="text-xs whitespace-nowrap">
+                  Sign Out
+                </Button>
+              </div>
+            </div>
+          </div>
+          
+          {/* Mobile restaurant info */}
+          {selectedRestaurant && (
+            <div className="sm:hidden py-2 border-t">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium truncate">{selectedRestaurant.restaurant.name}</span>
                 <Button 
                   variant="ghost" 
                   size="sm" 
                   onClick={() => setSelectedRestaurant(null)}
+                  className="text-xs"
                 >
-                  Switch
+                  Switch Restaurant
                 </Button>
               </div>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">
-              Welcome, {user.email}
-            </span>
-            <Button variant="outline" onClick={() => navigate('/integrations')}>
-              Integrations
-            </Button>
-            <Button variant="outline" onClick={() => navigate('/inventory')}>
-              Inventory
-            </Button>
-            <Button variant="outline" onClick={() => navigate('/team')}>
-              Team
-            </Button>
-            <Button variant="outline" onClick={signOut}>
-              Sign Out
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       </nav>
       
-      <main className="container py-6">
+      <main className="container px-4 py-4 md:py-6">
         {!selectedRestaurant ? (
           <RestaurantSelector 
             selectedRestaurant={selectedRestaurant}
@@ -98,15 +123,13 @@ const Index = () => {
             createRestaurant={createRestaurant}
           />
         ) : (
-          <div>
-            <div className="flex justify-between items-center mb-8">
-              <div>
-                <h2 className="text-3xl font-bold mb-2">Daily P&L Dashboard</h2>
-                <p className="text-muted-foreground">
-                  Real-time food cost tracking and profitability insights for {selectedRestaurant.restaurant.name}
-                </p>
-              </div>
-              <div className="flex gap-2">
+          <div className="space-y-6 md:space-y-8">
+            <div className="text-center md:text-left">
+              <h2 className="text-2xl md:text-3xl font-bold mb-2">Daily P&L Dashboard</h2>
+              <p className="text-sm md:text-base text-muted-foreground">
+                Real-time food cost tracking and profitability insights for {selectedRestaurant.restaurant.name}
+              </p>
+              <div className="mt-4 flex justify-center md:justify-start">
                 <DataInputDialog 
                   restaurantId={selectedRestaurant.restaurant_id}
                   onDataUpdated={fetchPnLData}
@@ -120,43 +143,43 @@ const Index = () => {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                  <div className="p-6 border rounded-lg">
-                    <h3 className="text-lg font-semibold mb-2">Food Cost %</h3>
-                    <p className="text-3xl font-bold text-primary">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+                  <div className="p-4 md:p-6 border rounded-lg">
+                    <h3 className="text-base md:text-lg font-semibold mb-2">Food Cost %</h3>
+                    <p className="text-2xl md:text-3xl font-bold text-primary">
                       {todaysData ? `${todaysData.food_cost_percentage.toFixed(1)}%` : '--'}
                     </p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs md:text-sm text-muted-foreground">
                       {averages ? `7-day avg: ${averages.avgFoodCostPercentage.toFixed(1)}%` : 'No historical data'}
                     </p>
                   </div>
                   
-                  <div className="p-6 border rounded-lg">
-                    <h3 className="text-lg font-semibold mb-2">Labor Cost %</h3>
-                    <p className="text-3xl font-bold text-primary">
+                  <div className="p-4 md:p-6 border rounded-lg">
+                    <h3 className="text-base md:text-lg font-semibold mb-2">Labor Cost %</h3>
+                    <p className="text-2xl md:text-3xl font-bold text-primary">
                       {todaysData ? `${todaysData.labor_cost_percentage.toFixed(1)}%` : '--'}
                     </p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs md:text-sm text-muted-foreground">
                       {averages ? `7-day avg: ${averages.avgLaborCostPercentage.toFixed(1)}%` : 'No historical data'}
                     </p>
                   </div>
                   
-                  <div className="p-6 border rounded-lg">
-                    <h3 className="text-lg font-semibold mb-2">Prime Cost %</h3>
-                    <p className="text-3xl font-bold text-primary">
+                  <div className="p-4 md:p-6 border rounded-lg">
+                    <h3 className="text-base md:text-lg font-semibold mb-2">Prime Cost %</h3>
+                    <p className="text-2xl md:text-3xl font-bold text-primary">
                       {todaysData ? `${todaysData.prime_cost_percentage.toFixed(1)}%` : '--'}
                     </p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs md:text-sm text-muted-foreground">
                       {averages ? `7-day avg: ${averages.avgPrimeCostPercentage.toFixed(1)}%` : 'No historical data'}
                     </p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="p-6 border rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4">Today's Summary</h3>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                  <div className="p-4 md:p-6 border rounded-lg">
+                    <h3 className="text-base md:text-lg font-semibold mb-4">Today's Summary</h3>
                     {todaysData ? (
-                      <div className="space-y-3">
+                      <div className="space-y-3 text-sm md:text-base">
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Revenue</span>
                           <span className="font-medium">${todaysData.net_revenue.toFixed(2)}</span>
@@ -175,12 +198,12 @@ const Index = () => {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-muted-foreground">No data for today. Add daily data to see your P&L.</p>
+                      <p className="text-sm text-muted-foreground">No data for today. Add daily data to see your P&L.</p>
                     )}
                   </div>
 
-                  <div className="p-6 border rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4">Recent Performance</h3>
+                  <div className="p-4 md:p-6 border rounded-lg">
+                    <h3 className="text-base md:text-lg font-semibold mb-4">Recent Performance</h3>
                     {getGroupedPnLData().length > 0 ? (
                       <div className="space-y-3">
                         {getGroupedPnLData().slice(0, 5).map((day) => (
@@ -209,7 +232,7 @@ const Index = () => {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-muted-foreground">No historical data available.</p>
+                      <p className="text-sm text-muted-foreground">No historical data available.</p>
                     )}
                   </div>
                 </div>

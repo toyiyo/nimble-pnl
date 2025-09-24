@@ -118,45 +118,65 @@ const Integrations = () => {
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Dashboard
-            </Button>
-            <div className="h-4 w-px bg-border" />
-            <h1 className="text-xl font-semibold">Integrations</h1>
-            {selectedRestaurant && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">•</span>
-                <span className="text-sm font-medium">{selectedRestaurant.restaurant.name}</span>
+        <div className="container px-4">
+          <div className="flex h-14 items-center justify-between">
+            <div className="flex items-center gap-2 md:gap-4 min-w-0">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="p-2 md:px-3">
+                <ArrowLeft className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Back to Dashboard</span>
+              </Button>
+              <div className="hidden sm:block h-4 w-px bg-border" />
+              <h1 className="text-lg md:text-xl font-semibold truncate">Integrations</h1>
+              {selectedRestaurant && (
+                <div className="hidden lg:flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">•</span>
+                  <span className="text-sm font-medium truncate">{selectedRestaurant.restaurant.name}</span>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setSelectedRestaurant(null)}
+                    className="text-xs"
+                  >
+                    Switch
+                  </Button>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-1 md:gap-4">
+              <Button variant="outline" size="sm" onClick={() => navigate('/team')} className="text-xs whitespace-nowrap">
+                Team
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate('/')} className="text-xs whitespace-nowrap">
+                Dashboard
+              </Button>
+            </div>
+          </div>
+          
+          {/* Mobile restaurant info */}
+          {selectedRestaurant && (
+            <div className="lg:hidden py-2 border-t">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium truncate">{selectedRestaurant.restaurant.name}</span>
                 <Button 
                   variant="ghost" 
                   size="sm" 
                   onClick={() => setSelectedRestaurant(null)}
+                  className="text-xs"
                 >
-                  Switch
+                  Switch Restaurant
                 </Button>
               </div>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
-            <Button variant="outline" onClick={() => navigate('/team')}>
-              Team
-            </Button>
-            <Button variant="outline" onClick={() => navigate('/')}>
-              Dashboard
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       </nav>
       
-      <main className="container py-6">
+      <main className="container px-4 py-4 md:py-6">
         {!selectedRestaurant ? (
           <div>
-            <div className="mb-8">
-              <h2 className="text-3xl font-bold mb-2">Connect Your Applications</h2>
-              <p className="text-muted-foreground">
+            <div className="mb-6 md:mb-8 text-center md:text-left">
+              <h2 className="text-2xl md:text-3xl font-bold mb-2">Connect Your Applications</h2>
+              <p className="text-sm md:text-base text-muted-foreground">
                 Please select a restaurant to manage integrations
               </p>
             </div>
@@ -169,32 +189,32 @@ const Integrations = () => {
           />
           </div>
         ) : (
-          <div>
-            <div className="mb-8">
-              <h2 className="text-3xl font-bold mb-2">Connect Your Applications</h2>
-              <p className="text-muted-foreground">
+          <div className="space-y-6 md:space-y-8">
+            <div className="text-center md:text-left">
+              <h2 className="text-2xl md:text-3xl font-bold mb-2">Connect Your Applications</h2>
+              <p className="text-sm md:text-base text-muted-foreground">
                 Automatically sync data from your existing tools to eliminate manual data entry
               </p>
             </div>
 
             {/* Connected Integrations Summary */}
-            <Card className="mb-8">
+            <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="h-5 w-5" />
+                <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                  <Settings className="h-4 w-4 md:h-5 md:w-5" />
                   Connection Status
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-sm">
                   Overview of your connected applications
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-4">
-                  <div className="text-2xl font-bold">{connectedCount}</div>
+                  <div className="text-xl md:text-2xl font-bold">{connectedCount}</div>
                   <div className="text-sm text-muted-foreground">
                     connected applications
                   </div>
-                  <Badge variant="outline" className="ml-auto">
+                  <Badge variant="outline" className="ml-auto text-xs">
                     {integrations.length} available
                   </Badge>
                 </div>
@@ -204,8 +224,8 @@ const Integrations = () => {
 
             {/* Integration Categories */}
             {Object.entries(groupedIntegrations).map(([category, categoryIntegrations]) => (
-              <div key={category} className="mb-8">
-                <h3 className="text-xl font-semibold mb-4">{category}</h3>
+              <div key={category} className="space-y-4">
+                <h3 className="text-lg md:text-xl font-semibold">{category}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {categoryIntegrations.map((integration) => (
                     <IntegrationCard
@@ -221,11 +241,11 @@ const Integrations = () => {
             {/* Help Section */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ExternalLink className="h-5 w-5" />
+                <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                  <ExternalLink className="h-4 w-4 md:h-5 md:w-5" />
                   Need Help?
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-sm">
                   Don't see your application? Need assistance with setup?
                 </CardDescription>
               </CardHeader>
@@ -234,7 +254,7 @@ const Integrations = () => {
                   We're constantly adding new integrations. Contact our support team to request 
                   a new integration or get help connecting your existing applications.
                 </p>
-                <Button variant="outline">
+                <Button variant="outline" size="sm">
                   Contact Support
                 </Button>
               </CardContent>

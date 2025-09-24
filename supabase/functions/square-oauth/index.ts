@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
       const { data: userRestaurant, error: accessError } = await supabase
         .from('user_restaurants')
         .select('role')
-        .eq('user_id', user.id)
+        .eq('user_id', user?.id)
         .eq('restaurant_id', restaurantId)
         .in('role', ['owner', 'manager'])
         .single();
@@ -280,7 +280,7 @@ Deno.serve(async (req) => {
         .single();
 
       // Log security event
-      await logSecurityEvent(supabase, 'SQUARE_OAUTH_TOKEN_STORED', null, restaurantId, {
+      await logSecurityEvent(supabase, 'SQUARE_OAUTH_TOKEN_STORED', undefined, restaurantId, {
         merchantId: merchantId,
         scopes: tokenData.scope?.split(' ') || []
       });

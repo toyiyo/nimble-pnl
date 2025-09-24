@@ -50,11 +50,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create the user account with admin privileges (bypassing email confirmation)
+    // Create the user account first
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Skip email confirmation
       user_metadata: {
         full_name: fullName,
       }
@@ -69,6 +68,17 @@ Deno.serve(async (req) => {
     }
 
     console.log('User created successfully:', authData.user.id);
+
+    // Now confirm the user's email manually
+    const { error: confirmError } = await supabaseAdmin.auth.admin.updateUserById(
+      authData.user.id,
+      { email_confirm: true }
+    );
+
+    if (confirmError) {
+      console.error('Error confirming user email:', confirmError);
+      // Continue anyway, as the user is created
+    }
 
     // Check if user is already a member of the restaurant
     const { data: existingMembership } = await supabaseAdmin

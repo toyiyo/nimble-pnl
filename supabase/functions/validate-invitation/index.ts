@@ -33,11 +33,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Get invitation details (public endpoint - no auth required)
     const { data: invitation, error: invitationError } = await supabase
       .from('invitations')
-      .select(`
-        *,
-        restaurants(name, address),
-        invited_by_profile:profiles!invited_by(full_name)
-      `)
+      .select('*')
       .eq('token', token)
       .eq('status', 'pending')
       .single();
@@ -48,6 +44,20 @@ const handler = async (req: Request): Promise<Response> => {
       console.error('Invitation not found or error:', invitationError);
       throw new Error('Invalid or expired invitation');
     }
+
+    // Get restaurant details separately
+    const { data: restaurant } = await supabase
+      .from('restaurants')
+      .select('name, address')
+      .eq('id', invitation.restaurant_id)
+      .single();
+
+    // Get invited by profile details separately
+    const { data: invitedByProfile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('user_id', invitation.invited_by)
+      .single();
 
     // Check if invitation is expired
     if (new Date() > new Date(invitation.expires_at)) {
@@ -62,8 +72,8 @@ const handler = async (req: Request): Promise<Response> => {
         invitation: {
           email: invitation.email,
           role: invitation.role,
-          restaurant: invitation.restaurants,
-          invited_by: invitation.invited_by_profile?.full_name || 'Restaurant Owner',
+          restaurant: restaurant,
+          invited_by: invitedByProfile?.full_name || 'Restaurant Owner',
           expires_at: invitation.expires_at
         }
       }),

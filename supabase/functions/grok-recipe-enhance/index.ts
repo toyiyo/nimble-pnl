@@ -67,7 +67,7 @@ Only suggest ingredients that are actually in the available ingredients list. If
         'X-Title': 'Recipe Enhancement'
       },
       body: JSON.stringify({
-        model: 'x-ai/grok-beta',
+        model: 'anthropic/claude-3.5-sonnet',
         messages: [
           {
             role: 'system',

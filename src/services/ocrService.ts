@@ -111,29 +111,32 @@ class OCRService {
           // Import supabase client
           const { supabase } = await import('@/integrations/supabase/client');
           
-          const response = await supabase.functions.invoke('enhanced-ocr', {
+          console.log('🚀 Trying Grok OCR via OpenRouter...');
+          const response = await supabase.functions.invoke('grok-ocr', {
             body: { imageData }
           });
           
           if (response.error) {
-            console.error('Enhanced OCR error:', response.error);
+            console.error('Grok OCR error:', response.error);
             reject(new Error(response.error.message));
             return;
           }
           
           const result = response.data;
+          console.log('✅ Grok OCR result:', result);
+          
           resolve({
             text: result.text || '',
             confidence: result.confidence || 0.8,
-            words: [] // HuggingFace models don't typically return word-level data
+            words: [] // Grok doesn't return word-level data, focus on text extraction
           });
         };
         
-        img.onerror = () => reject(new Error('Failed to load image for enhanced OCR'));
+        img.onerror = () => reject(new Error('Failed to load image for Grok OCR'));
         img.src = URL.createObjectURL(imageBlob);
       });
     } catch (error) {
-      console.error('❌ Enhanced OCR failed:', error);
+      console.error('❌ Grok OCR failed:', error);
       return null;
     }
   }

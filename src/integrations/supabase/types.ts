@@ -422,10 +422,12 @@ export type Database = {
           description: string | null
           gtin: string | null
           id: string
+          image_url: string | null
           name: string
           package_qty: number | null
           par_level_max: number | null
           par_level_min: number | null
+          pos_item_name: string | null
           reorder_point: number | null
           restaurant_id: string
           size_unit: string | null
@@ -448,10 +450,12 @@ export type Database = {
           description?: string | null
           gtin?: string | null
           id?: string
+          image_url?: string | null
           name: string
           package_qty?: number | null
           par_level_max?: number | null
           par_level_min?: number | null
+          pos_item_name?: string | null
           reorder_point?: number | null
           restaurant_id: string
           size_unit?: string | null
@@ -474,10 +478,12 @@ export type Database = {
           description?: string | null
           gtin?: string | null
           id?: string
+          image_url?: string | null
           name?: string
           package_qty?: number | null
           par_level_max?: number | null
           par_level_min?: number | null
+          pos_item_name?: string | null
           reorder_point?: number | null
           restaurant_id?: string
           size_unit?: string | null
@@ -1471,6 +1477,15 @@ export type Database = {
         Returns: boolean
       }
       process_inventory_deduction: {
+        Args: {
+          p_pos_item_name: string
+          p_quantity_sold: number
+          p_restaurant_id: string
+          p_sale_date: string
+        }
+        Returns: Json
+      }
+      process_unified_inventory_deduction: {
         Args: {
           p_pos_item_name: string
           p_quantity_sold: number

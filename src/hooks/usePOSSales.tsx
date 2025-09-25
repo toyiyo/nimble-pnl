@@ -143,7 +143,7 @@ export const usePOSSales = (restaurantId: string | null) => {
   const processInventoryDeduction = async (sale: POSSale) => {
     try {
       // Call the inventory deduction function
-      const { error } = await supabase.rpc('process_inventory_deduction', {
+      const { error } = await supabase.rpc('process_inventory_deduction' as any, {
         p_restaurant_id: sale.restaurant_id,
         p_pos_item_name: sale.pos_item_name,
         p_quantity_sold: sale.quantity,

@@ -25,7 +25,7 @@ export const useInventoryDeduction = () => {
   ): Promise<DeductionResult | null> => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc('process_inventory_deduction', {
+      const { data, error } = await supabase.rpc('process_inventory_deduction' as any, {
         p_restaurant_id: restaurantId,
         p_pos_item_name: posItemName,
         p_quantity_sold: quantitySold,
@@ -33,7 +33,7 @@ export const useInventoryDeduction = () => {
       });
 
       if (error) throw error;
-      return data;
+      return data as DeductionResult;
     } catch (error: any) {
       console.error('Error processing inventory deduction:', error);
       toast({
@@ -90,14 +90,14 @@ export const useInventoryDeduction = () => {
     quantitySold: number
   ) => {
     try {
-      const { data, error } = await supabase.rpc('simulate_inventory_deduction', {
+      const { data, error } = await supabase.rpc('simulate_inventory_deduction' as any, {
         p_restaurant_id: restaurantId,
         p_pos_item_name: posItemName,
         p_quantity_sold: quantitySold
       });
 
       if (error) throw error;
-      return data;
+      return data as DeductionResult;
     } catch (error: any) {
       console.error('Error simulating deduction:', error);
       return null;

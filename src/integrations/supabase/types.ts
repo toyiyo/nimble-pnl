@@ -1394,6 +1394,23 @@ export type Database = {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: boolean
       }
+      process_inventory_deduction: {
+        Args: {
+          p_pos_item_name: string
+          p_quantity_sold: number
+          p_restaurant_id: string
+          p_sale_date: string
+        }
+        Returns: Json
+      }
+      simulate_inventory_deduction: {
+        Args: {
+          p_pos_item_name: string
+          p_quantity_sold: number
+          p_restaurant_id: string
+        }
+        Returns: Json
+      }
       trigger_square_periodic_sync: {
         Args: Record<PropertyKey, never>
         Returns: undefined

@@ -48,6 +48,7 @@ export const RecipeSuggestions: React.FC<RecipeSuggestionsProps> = ({
       const { data, error } = await supabase.functions.invoke('grok-recipe-enhance', {
         body: {
           itemName,
+          itemDescription: undefined,
           availableIngredients
         }
       });
@@ -148,8 +149,8 @@ export const RecipeSuggestions: React.FC<RecipeSuggestionsProps> = ({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Lightbulb className="h-5 w-5" />
+        <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+          <Lightbulb className="h-4 w-4 md:h-5 md:w-5" />
           Recipe Suggestions
         </CardTitle>
       </CardHeader>
@@ -163,23 +164,28 @@ export const RecipeSuggestions: React.FC<RecipeSuggestionsProps> = ({
           const suggestion = suggestions[itemName];
           
           return (
-            <div key={itemName} className="border rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium">{itemName}</h4>
+            <div key={itemName} className="border rounded-lg p-3 md:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <h4 className="font-medium text-sm md:text-base truncate">{itemName}</h4>
                 {!suggestion && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleGenerateSuggestion(itemName)}
                     disabled={isLoading}
+                    className="shrink-0 w-full sm:w-auto"
                   >
                     {isLoading ? (
                       <>
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Generating...
+                        <span className="hidden sm:inline">Generating...</span>
+                        <span className="sm:hidden">AI Thinking...</span>
                       </>
                     ) : (
-                      'Suggest Recipe'
+                      <>
+                        <span className="hidden sm:inline">Suggest Recipe</span>
+                        <span className="sm:hidden">Generate AI Recipe</span>
+                      </>
                     )}
                   </Button>
                 )}
@@ -188,31 +194,32 @@ export const RecipeSuggestions: React.FC<RecipeSuggestionsProps> = ({
               {suggestion && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <Badge variant={suggestion.confidence > 0.7 ? 'default' : 'secondary'}>
+                    <Badge variant={suggestion.confidence > 0.7 ? 'default' : 'secondary'} className="text-xs">
                       {Math.round(suggestion.confidence * 100)}% confidence
                     </Badge>
                   </div>
                   
                   <div>
-                    <h5 className="font-medium mb-1">{suggestion.recipeName}</h5>
+                    <h5 className="font-medium mb-1 text-sm md:text-base">{suggestion.recipeName}</h5>
                     <p className="text-sm text-muted-foreground mb-2">{suggestion.reasoning}</p>
                     
                     <div className="mb-3">
                       <h6 className="text-sm font-medium mb-1">Ingredients:</h6>
-                      <div className="space-y-1">
+                      <div className="space-y-1 max-h-32 md:max-h-none overflow-y-auto">
                         {suggestion.ingredients.map((ingredient, idx) => (
-                          <div key={idx} className="text-sm">
+                          <div key={idx} className="text-sm bg-muted/30 p-2 rounded">
                             {ingredient.quantity} {ingredient.unit} of {ingredient.ingredientName}
                           </div>
                         ))}
                       </div>
                     </div>
                     
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
                       <Button
                         size="sm"
                         onClick={() => handleCreateRecipe(itemName, suggestion)}
                         disabled={suggestion.confidence < 0.3}
+                        className="w-full sm:w-auto"
                       >
                         Create Recipe
                       </Button>
@@ -224,6 +231,7 @@ export const RecipeSuggestions: React.FC<RecipeSuggestionsProps> = ({
                           delete next[itemName];
                           return next;
                         })}
+                        className="w-full sm:w-auto"
                       >
                         Dismiss
                       </Button>

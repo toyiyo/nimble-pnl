@@ -79,81 +79,85 @@ export default function POSSales() {
   }
 
   return (
-    <div className="container mx-auto py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold">POS Sales</h1>
-            <p className="text-muted-foreground">
+    <div className="container mx-auto py-4 md:py-8">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6 md:mb-8">
+          <div className="text-center lg:text-left">
+            <h1 className="text-2xl md:text-3xl font-bold">POS Sales</h1>
+            <p className="text-sm md:text-base text-muted-foreground">
               Unified sales data from all connected POS systems for {selectedRestaurant.restaurant.name}
             </p>
-            <div className="flex flex-wrap gap-2 mt-2">
+            <div className="flex flex-wrap gap-1 md:gap-2 mt-2 justify-center lg:justify-start">
               {integrationStatuses.map(status => (
                 <Badge 
                   key={status.system} 
                   variant={status.isConnected ? 'default' : 'secondary'}
+                  className="text-xs"
                 >
                   {status.system} {status.isConnected ? '✓' : '○'}
                 </Badge>
               ))}
             </div>
           </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
             onClick={() => setShowSaleDialog(true)}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 w-full sm:w-auto"
           >
             <Plus className="h-4 w-4" />
-            Record Manual Sale
+            <span className="hidden sm:inline">Record Manual Sale</span>
+            <span className="sm:hidden">Manual Sale</span>
           </Button>
           {hasAnyConnectedSystem() && (
             <Button
               variant="outline"
               onClick={handleSyncSales}
               disabled={isSyncing}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 w-full sm:w-auto"
             >
               <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
               {isSyncing ? 'Syncing...' : 'Sync Sales'}
             </Button>
           )}
-          <Button variant="outline" className="flex items-center gap-2">
+          <Button variant="outline" className="flex items-center gap-2 w-full sm:w-auto">
             <Download className="h-4 w-4" />
-            Export Data
+            <span className="hidden sm:inline">Export Data</span>
+            <span className="sm:hidden">Export</span>
           </Button>
           {unmappedItems.length > 0 && (
-            <Badge variant="secondary" className="ml-2">
+            <Badge variant="secondary" className="w-full sm:w-auto text-xs justify-center">
               {unmappedItems.length} items need recipes
             </Badge>
           )}
         </div>
       </div>
 
-      <div className="grid gap-6 mb-8">
+      <div className="grid gap-4 md:gap-6 mb-6 md:mb-8">
         <Card>
           <CardHeader>
-            <CardTitle>Filters & Search</CardTitle>
+            <CardTitle className="text-base md:text-lg">Filters & Search</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-64">
+          <CardContent className="space-y-4">
+            <div className="w-full">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by item name..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 text-sm"
                 />
               </div>
             </div>
-            <div className="flex gap-2">
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 text-sm"
                   placeholder="Start date"
                 />
               </div>
@@ -163,23 +167,30 @@ export default function POSSales() {
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 text-sm"
                   placeholder="End date"
                 />
               </div>
             </div>
-            <div className="flex gap-2">
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Button
                 variant={selectedView === 'sales' ? 'default' : 'outline'}
                 onClick={() => setSelectedView('sales')}
+                size="sm"
+                className="w-full"
               >
-                Individual Sales
+                <span className="hidden sm:inline">Individual Sales</span>
+                <span className="sm:hidden">Sales</span>
               </Button>
               <Button
                 variant={selectedView === 'grouped' ? 'default' : 'outline'}
                 onClick={() => setSelectedView('grouped')}
+                size="sm"
+                className="w-full"
               >
-                Grouped by Item
+                <span className="hidden sm:inline">Grouped by Item</span>
+                <span className="sm:hidden">Grouped</span>
               </Button>
             </div>
           </CardContent>
@@ -210,20 +221,20 @@ export default function POSSales() {
                 No sales found for the selected date range.
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3 md:space-y-4">
                 {dateFilteredSales.map((sale) => (
                   <div
                     key={sale.id}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-3 md:p-4 border rounded-lg hover:bg-muted/50 gap-3 sm:gap-2"
                   >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-medium">{sale.itemName}</h3>
-                        <Badge variant="secondary">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-1 md:gap-2 mb-2">
+                        <h3 className="font-medium text-sm md:text-base truncate">{sale.itemName}</h3>
+                        <Badge variant="secondary" className="text-xs">
                           Qty: {sale.quantity}
                         </Badge>
                         {sale.totalPrice && (
-                          <Badge variant="outline">
+                          <Badge variant="outline" className="text-xs">
                             ${sale.totalPrice.toFixed(2)}
                           </Badge>
                         )}
@@ -231,15 +242,21 @@ export default function POSSales() {
                           {sale.posSystem}
                         </Badge>
                         {unmappedItems.includes(sale.itemName) && (
-                          <Badge variant="destructive">
+                          <Badge variant="destructive" className="text-xs">
                             No Recipe
                           </Badge>
                         )}
                       </div>
-                      <div className="text-sm text-muted-foreground mt-1">
+                      <div className="text-xs md:text-sm text-muted-foreground">
                         {format(new Date(sale.saleDate), 'MMM d, yyyy')}
                         {sale.saleTime && ` at ${sale.saleTime}`}
-                        {sale.externalOrderId && ` • Order: ${sale.externalOrderId}`}
+                        {sale.externalOrderId && (
+                          <>
+                            <br className="sm:hidden" />
+                            <span className="hidden sm:inline"> • </span>
+                            Order: {sale.externalOrderId}
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -247,8 +264,10 @@ export default function POSSales() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleSimulateDeduction(sale.itemName, sale.quantity)}
+                        className="w-full sm:w-auto text-xs"
                       >
-                        Simulate Impact
+                        <span className="hidden sm:inline">Simulate Impact</span>
+                        <span className="sm:hidden">Impact</span>
                       </Button>
                     </div>
                   </div>

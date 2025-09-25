@@ -102,13 +102,16 @@ export default function Reports() {
         </div>
       </nav>
 
-      <main className="container mx-auto py-8">
-        <Tabs defaultValue="profitability" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="profitability">Recipe Analysis</TabsTrigger>
-            <TabsTrigger value="consumption">Trends</TabsTrigger>
-            <TabsTrigger value="alerts">Alerts</TabsTrigger>
-            <TabsTrigger value="variance">Variance</TabsTrigger>
+      <main className="container mx-auto py-4 md:py-8">
+        <Tabs defaultValue="profitability" className="space-y-4 md:space-y-6">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto md:h-10">
+            <TabsTrigger value="profitability" className="text-xs md:text-sm">
+              <span className="hidden sm:inline">Recipe Analysis</span>
+              <span className="sm:hidden">Recipes</span>
+            </TabsTrigger>
+            <TabsTrigger value="consumption" className="text-xs md:text-sm">Trends</TabsTrigger>
+            <TabsTrigger value="alerts" className="text-xs md:text-sm">Alerts</TabsTrigger>
+            <TabsTrigger value="variance" className="text-xs md:text-sm">Variance</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profitability" className="space-y-6">
@@ -131,57 +134,57 @@ export default function Reports() {
                 </CardContent>
               </Card>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                 <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Highest Margin</CardTitle>
+                  <CardHeader className="pb-2 md:pb-3">
+                    <CardTitle className="text-xs md:text-sm">Highest Margin</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {profitabilityData?.highestMargin ? (
                       <div>
-                        <p className="font-medium">{profitabilityData.highestMargin.name}</p>
-                        <p className="text-2xl font-bold text-green-600">
+                        <p className="font-medium text-sm truncate">{profitabilityData.highestMargin.name}</p>
+                        <p className="text-xl md:text-2xl font-bold text-green-600">
                           {profitabilityData.highestMargin.margin.toFixed(1)}%
                         </p>
                       </div>
                     ) : (
-                      <p className="text-muted-foreground">No data</p>
+                      <p className="text-muted-foreground text-sm">No data</p>
                     )}
                   </CardContent>
                 </Card>
 
                 <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Lowest Margin</CardTitle>
+                  <CardHeader className="pb-2 md:pb-3">
+                    <CardTitle className="text-xs md:text-sm">Lowest Margin</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {profitabilityData?.lowestMargin ? (
                       <div>
-                        <p className="font-medium">{profitabilityData.lowestMargin.name}</p>
-                        <p className="text-2xl font-bold text-red-600">
+                        <p className="font-medium text-sm truncate">{profitabilityData.lowestMargin.name}</p>
+                        <p className="text-xl md:text-2xl font-bold text-red-600">
                           {profitabilityData.lowestMargin.margin.toFixed(1)}%
                         </p>
                       </div>
                     ) : (
-                      <p className="text-muted-foreground">No data</p>
+                      <p className="text-muted-foreground text-sm">No data</p>
                     )}
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Avg Food Cost %</CardTitle>
+                <Card className="sm:col-span-2 lg:col-span-1">
+                  <CardHeader className="pb-2 md:pb-3">
+                    <CardTitle className="text-xs md:text-sm">Avg Food Cost %</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {profitabilityData?.averageFoodCost ? (
                       <div>
-                        <p className="text-2xl font-bold text-primary">
+                        <p className="text-xl md:text-2xl font-bold text-primary">
                           {profitabilityData.averageFoodCost.toFixed(1)}%
                         </p>
-                        <p className="text-sm text-muted-foreground">Across all recipes</p>
+                        <p className="text-xs md:text-sm text-muted-foreground">Across all recipes</p>
                       </div>
                     ) : (
-                      <p className="text-muted-foreground">No data</p>
+                      <p className="text-muted-foreground text-sm">No data</p>
                     )}
                   </CardContent>
                 </Card>

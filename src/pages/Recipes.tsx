@@ -80,22 +80,26 @@ export default function Recipes() {
   const mappedRecipes = filteredRecipes.filter(recipe => recipe.pos_item_name);
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-4 md:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Recipes</h1>
-          <p className="text-muted-foreground">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 md:mb-8">
+        <div className="text-center lg:text-left">
+          <h1 className="text-2xl md:text-3xl font-bold mb-2">Recipes</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Create and manage recipes for {selectedRestaurant.name || selectedRestaurant.restaurant?.name}
           </p>
         </div>
-        <div className="flex items-center gap-4">
-          <Link to="/">
-            <Button variant="outline">Back to Dashboard</Button>
+        <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
+          <Link to="/" className="w-full sm:w-auto">
+            <Button variant="outline" className="w-full sm:w-auto">
+              <span className="hidden sm:inline">Back to Dashboard</span>
+              <span className="sm:hidden">Dashboard</span>
+            </Button>
           </Link>
-          <Button onClick={() => setIsCreateDialogOpen(true)}>
+          <Button onClick={() => setIsCreateDialogOpen(true)} className="w-full sm:w-auto">
             <Plus className="w-4 h-4 mr-2" />
-            Create Recipe
+            <span className="hidden sm:inline">Create Recipe</span>
+            <span className="sm:hidden">New Recipe</span>
           </Button>
         </div>
       </div>
@@ -135,21 +139,26 @@ export default function Recipes() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="all" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="all">
-            All Recipes ({filteredRecipes.length})
+      <Tabs defaultValue="all" className="space-y-4 md:space-y-6">
+        <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 h-auto md:h-10">
+          <TabsTrigger value="all" className="flex flex-col md:flex-row items-center gap-1">
+            <span className="text-xs md:text-sm">All Recipes</span>
+            <span className="text-xs">({filteredRecipes.length})</span>
           </TabsTrigger>
-          <TabsTrigger value="mapped">
-            Mapped to POS ({mappedRecipes.length})
+          <TabsTrigger value="mapped" className="flex flex-col md:flex-row items-center gap-1">
+            <span className="text-xs md:text-sm">Mapped to POS</span>
+            <span className="text-xs">({mappedRecipes.length})</span>
           </TabsTrigger>
-          <TabsTrigger value="unmapped">
-            Unmapped ({unmappedRecipes.length})
-            {unmappedRecipes.length > 0 && (
-              <Badge variant="secondary" className="ml-2">
-                {unmappedRecipes.length}
-              </Badge>
-            )}
+          <TabsTrigger value="unmapped" className="flex flex-col md:flex-row items-center gap-1">
+            <span className="text-xs md:text-sm">Unmapped</span>
+            <div className="flex items-center gap-1">
+              <span className="text-xs">({unmappedRecipes.length})</span>
+              {unmappedRecipes.length > 0 && (
+                <Badge variant="secondary" className="text-xs h-4 px-1 ml-1">
+                  {unmappedRecipes.length}
+                </Badge>
+              )}
+            </div>
           </TabsTrigger>
         </TabsList>
 
@@ -243,72 +252,115 @@ function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
   return (
     <Card>
       <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Recipe Name</TableHead>
-              <TableHead>POS Item</TableHead>
-              <TableHead>Serving Size</TableHead>
-              <TableHead>Estimated Cost</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {recipes.map((recipe) => (
-              <TableRow key={recipe.id}>
-                <TableCell>
-                  <div>
-                    <div className="font-medium">{recipe.name}</div>
+        {/* Mobile-friendly cards for small screens */}
+        <div className="block md:hidden">
+          {recipes.map((recipe) => (
+            <div key={recipe.id} className="p-4 border-b last:border-b-0">
+              <div className="space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium truncate">{recipe.name}</h3>
                     {recipe.description && (
-                      <div className="text-sm text-muted-foreground">
-                        {recipe.description}
-                      </div>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{recipe.description}</p>
                     )}
                   </div>
-                </TableCell>
-                <TableCell>
+                  <div className="flex gap-1 ml-2">
+                    <Button variant="ghost" size="sm" onClick={() => onEdit(recipe)} className="h-8 w-8 p-0">
+                      <Edit className="w-3 h-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => onDelete(recipe)} className="h-8 w-8 p-0">
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap gap-2">
                   {recipe.pos_item_name ? (
-                    <Badge variant="secondary">{recipe.pos_item_name}</Badge>
+                    <Badge variant="secondary" className="text-xs">{recipe.pos_item_name}</Badge>
                   ) : (
-                    <Badge variant="outline">Not mapped</Badge>
+                    <Badge variant="outline" className="text-xs">Not mapped</Badge>
                   )}
-                </TableCell>
-                <TableCell>{recipe.serving_size || 1}</TableCell>
-                <TableCell>
-                  <div className="flex items-center">
-                    <DollarSign className="w-4 h-4 mr-1" />
-                    ${recipe.estimated_cost?.toFixed(2) || '0.00'}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center text-sm text-muted-foreground">
-                    <Clock className="w-4 h-4 mr-1" />
-                    {new Date(recipe.created_at).toLocaleDateString()}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onEdit(recipe)}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onDelete(recipe)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </TableCell>
+                  <Badge variant="outline" className="text-xs">Size: {recipe.serving_size || 1}</Badge>
+                  <Badge variant="outline" className="text-xs">${recipe.estimated_cost?.toFixed(2) || '0.00'}</Badge>
+                </div>
+                
+                <div className="text-xs text-muted-foreground">
+                  {new Date(recipe.created_at).toLocaleDateString()}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop table for larger screens */}
+        <div className="hidden md:block overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Recipe Name</TableHead>
+                <TableHead>POS Item</TableHead>
+                <TableHead>Serving Size</TableHead>
+                <TableHead>Estimated Cost</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {recipes.map((recipe) => (
+                <TableRow key={recipe.id}>
+                  <TableCell>
+                    <div>
+                      <div className="font-medium">{recipe.name}</div>
+                      {recipe.description && (
+                        <div className="text-sm text-muted-foreground">
+                          {recipe.description}
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {recipe.pos_item_name ? (
+                      <Badge variant="secondary">{recipe.pos_item_name}</Badge>
+                    ) : (
+                      <Badge variant="outline">Not mapped</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>{recipe.serving_size || 1}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center">
+                      <DollarSign className="w-4 h-4 mr-1" />
+                      ${recipe.estimated_cost?.toFixed(2) || '0.00'}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center text-sm text-muted-foreground">
+                      <Clock className="w-4 h-4 mr-1" />
+                      {new Date(recipe.created_at).toLocaleDateString()}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onEdit(recipe)}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onDelete(recipe)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );

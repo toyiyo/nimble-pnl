@@ -19,15 +19,14 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { usePOSSales, CreatePOSSaleData } from '@/hooks/usePOSSales';
+import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 
 const saleSchema = z.object({
-  pos_item_name: z.string().min(1, 'Item name is required'),
-  pos_item_id: z.string().optional(),
+  itemName: z.string().min(1, 'Item name is required'),
   quantity: z.number().min(1, 'Quantity must be at least 1'),
-  sale_price: z.number().min(0, 'Price must be positive').optional(),
-  sale_date: z.string().min(1, 'Sale date is required'),
-  sale_time: z.string().optional(),
+  totalPrice: z.number().min(0, 'Price must be positive').optional(),
+  saleDate: z.string().min(1, 'Sale date is required'),
+  saleTime: z.string().optional(),
 });
 
 type SaleFormValues = z.infer<typeof saleSchema>;
@@ -43,32 +42,28 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   onOpenChange,
   restaurantId,
 }) => {
-  const { createSale } = usePOSSales(restaurantId);
+  const { createManualSale } = useUnifiedSales(restaurantId);
 
   const form = useForm<SaleFormValues>({
     resolver: zodResolver(saleSchema),
     defaultValues: {
-      pos_item_name: '',
-      pos_item_id: '',
+      itemName: '',
       quantity: 1,
-      sale_price: undefined,
-      sale_date: new Date().toISOString().split('T')[0],
-      sale_time: new Date().toTimeString().slice(0, 5),
+      totalPrice: undefined,
+      saleDate: new Date().toISOString().split('T')[0],
+      saleTime: new Date().toTimeString().slice(0, 5),
     },
   });
 
   const onSubmit = async (values: SaleFormValues) => {
-    const saleData: CreatePOSSaleData = {
-      restaurant_id: restaurantId,
-      pos_item_name: values.pos_item_name,
-      pos_item_id: values.pos_item_id || undefined,
+    const success = await createManualSale({
+      itemName: values.itemName,
       quantity: values.quantity,
-      sale_price: values.sale_price || undefined,
-      sale_date: values.sale_date,
-      sale_time: values.sale_time || undefined,
-    };
+      totalPrice: values.totalPrice,
+      saleDate: values.saleDate,
+      saleTime: values.saleTime,
+    });
 
-    const success = await createSale(saleData);
     if (success) {
       form.reset();
       onOpenChange(false);
@@ -79,33 +74,19 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Record POS Sale</DialogTitle>
+          <DialogTitle>Record Manual Sale</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
-              name="pos_item_name"
+              name="itemName"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Item Name *</FormLabel>
                   <FormControl>
                     <Input {...field} placeholder="e.g., Cheeseburger, Coffee" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="pos_item_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>POS Item ID</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder="Optional POS system ID" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -134,10 +115,10 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
 
               <FormField
                 control={form.control}
-                name="sale_price"
+                name="totalPrice"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Sale Price</FormLabel>
+                    <FormLabel>Total Price</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -157,7 +138,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="sale_date"
+                name="saleDate"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Sale Date *</FormLabel>
@@ -171,7 +152,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
 
               <FormField
                 control={form.control}
-                name="sale_time"
+                name="saleTime"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Sale Time</FormLabel>

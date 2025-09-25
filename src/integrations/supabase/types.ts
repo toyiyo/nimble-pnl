@@ -1422,6 +1422,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      aggregate_unified_sales_to_daily: {
+        Args: { p_date: string; p_restaurant_id: string }
+        Returns: undefined
+      }
       calculate_daily_pnl: {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: string

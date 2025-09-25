@@ -1476,6 +1476,10 @@ export type Database = {
         }
         Returns: Json
       }
+      sync_square_to_unified_sales: {
+        Args: { p_restaurant_id: string }
+        Returns: number
+      }
       trigger_square_periodic_sync: {
         Args: Record<PropertyKey, never>
         Returns: undefined

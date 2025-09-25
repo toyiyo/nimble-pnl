@@ -3,7 +3,7 @@ import { useSquareSalesAdapter } from './adapters/useSquareSalesAdapter';
 import { POSAdapter, POSIntegrationStatus, POSSystemType } from '@/types/pos';
 
 export const usePOSIntegrations = (restaurantId: string | null) => {
-  const [adapters, setAdapters] = useState<Record<POSSystemType, POSAdapter>>({} as any);
+  const [adapters, setAdapters] = useState<Partial<Record<POSSystemType, POSAdapter>>>({});
   const [integrationStatuses, setIntegrationStatuses] = useState<POSIntegrationStatus[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -11,7 +11,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
   const squareAdapter = useSquareSalesAdapter(restaurantId);
 
   useEffect(() => {
-    const adapterMap: Record<POSSystemType, POSAdapter> = {
+    const adapterMap: Partial<Record<POSSystemType, POSAdapter>> = {
       square: squareAdapter,
       // Future adapters will be added here:
       // toast: useToastSalesAdapter(restaurantId),
@@ -30,11 +30,11 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
       },
     };
 
-    setAdapters(adapterMap);
+    setAdapters(adapterMap as Record<POSSystemType, POSAdapter>);
 
     // Update integration statuses
-    const statuses = Object.values(adapterMap).map(adapter => 
-      adapter.getIntegrationStatus()
+    const statuses = Object.values(adapterMap).filter(Boolean).map(adapter => 
+      adapter!.getIntegrationStatus()
     );
     setIntegrationStatuses(statuses);
   }, [squareAdapter]);

@@ -62,13 +62,13 @@ export const useSquareSalesAdapter = (restaurantId: string | null): POSAdapter =
 
     try {
       // Sync Square data to unified_sales table
-      const { data, error } = await supabase.rpc('sync_square_to_unified_sales', {
+      const { data, error } = await supabase.rpc('sync_square_to_unified_sales' as any, {
         p_restaurant_id: restaurantId
       });
 
       if (error) throw error;
 
-      const syncedCount = data || 0;
+      const syncedCount = Number(data) || 0;
       
       if (syncedCount > 0) {
         toast({

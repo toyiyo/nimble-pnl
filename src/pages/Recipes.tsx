@@ -18,6 +18,8 @@ import {
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeDialog } from '@/components/RecipeDialog';
 import { DeleteRecipeDialog } from '@/components/DeleteRecipeDialog';
+import { RecipeSuggestions } from '@/components/RecipeSuggestions';
+import { useSquareSales } from '@/hooks/useSquareSales';
 import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -25,7 +27,8 @@ export default function Recipes() {
   const { user } = useAuth();
   const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
   const [selectedRestaurant, setSelectedRestaurant] = useState<any>(null);
-  const { recipes, loading } = useRecipes(selectedRestaurant?.restaurant_id || selectedRestaurant?.id || null);
+  const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || selectedRestaurant?.id || null);
+  const { unmappedItems } = useSquareSales(selectedRestaurant?.restaurant_id || selectedRestaurant?.id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
@@ -109,6 +112,16 @@ export default function Recipes() {
       </div>
 
       {/* Search */}
+      {unmappedItems.length > 0 && (
+        <div className="mb-6">
+          <RecipeSuggestions
+            unmappedItems={unmappedItems}
+            restaurantId={selectedRestaurant?.restaurant_id || selectedRestaurant?.id}
+            onRecipeCreated={fetchRecipes}
+          />
+        </div>
+      )}
+      
       <div className="mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />

@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
-import { usePOSSales } from '@/hooks/usePOSSales';
+import { useSquareSales } from '@/hooks/useSquareSales';
+import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useInventoryDeduction } from '@/hooks/useInventoryDeduction';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { POSSaleDialog } from '@/components/POSSaleDialog';
@@ -15,7 +16,8 @@ import { InventoryDeductionDialog } from '@/components/InventoryDeductionDialog'
 export default function POSSales() {
   const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
   const [selectedRestaurant, setSelectedRestaurant] = useState<UserRestaurant | null>(null);
-  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem } = usePOSSales(selectedRestaurant?.restaurant_id || null);
+  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems } = useSquareSales(selectedRestaurant?.restaurant_id || null);
+  const { isConnected } = useSquareIntegration(selectedRestaurant?.restaurant_id || null);
   const { simulateDeduction } = useInventoryDeduction();
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,12 +29,14 @@ export default function POSSales() {
   const [selectedItemForDeduction, setSelectedItemForDeduction] = useState<{name: string; quantity: number} | null>(null);
 
   const filteredSales = sales.filter(sale =>
-    sale.pos_item_name.toLowerCase().includes(searchTerm.toLowerCase())
+    sale.items.some(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const dateFilteredSales = startDate && endDate 
     ? getSalesByDateRange(startDate, endDate)
     : filteredSales;
+
+  const allSaleItems = dateFilteredSales.flatMap(order => order.items);
 
   const groupedSales = getSalesGroupedByItem();
 
@@ -73,22 +77,25 @@ export default function POSSales() {
             </p>
           </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setShowSaleDialog(true)}
-            className="flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Record Sale
-          </Button>
-          <Button variant="outline" className="flex items-center gap-2">
-            <Upload className="h-4 w-4" />
-            Import Sales
-          </Button>
+          {!isConnected && (
+            <Button
+              variant="outline"
+              onClick={() => setShowSaleDialog(true)}
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Record Sale
+            </Button>
+          )}
           <Button variant="outline" className="flex items-center gap-2">
             <Download className="h-4 w-4" />
             Export Data
           </Button>
+          {unmappedItems.length > 0 && (
+            <Badge variant="secondary" className="ml-2">
+              {unmappedItems.length} items need recipes
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -163,40 +170,49 @@ export default function POSSales() {
             <CardTitle>Sales Transactions</CardTitle>
           </CardHeader>
           <CardContent>
-            {dateFilteredSales.length === 0 ? (
+            {!isConnected ? (
               <div className="text-center py-8 text-muted-foreground">
-                No sales found. Record your first sale to get started.
+                Connect to Square to see your POS sales data automatically.
+              </div>
+            ) : allSaleItems.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No sales found for the selected date range.
               </div>
             ) : (
               <div className="space-y-4">
-                {dateFilteredSales.map((sale) => (
+                {allSaleItems.map((item) => (
                   <div
-                    key={sale.id}
+                    key={`${item.order_id}-${item.id}`}
                     className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-medium">{sale.pos_item_name}</h3>
+                        <h3 className="font-medium">{item.name}</h3>
                         <Badge variant="secondary">
-                          Qty: {sale.quantity}
+                          Qty: {item.quantity}
                         </Badge>
-                        {sale.sale_price && (
+                        {item.total_money && (
                           <Badge variant="outline">
-                            ${sale.sale_price.toFixed(2)}
+                            ${(item.total_money / 100).toFixed(2)}
+                          </Badge>
+                        )}
+                        {unmappedItems.includes(item.name) && (
+                          <Badge variant="destructive">
+                            No Recipe
                           </Badge>
                         )}
                       </div>
                       <div className="text-sm text-muted-foreground mt-1">
-                        {format(new Date(sale.sale_date), 'MMM d, yyyy')}
-                        {sale.sale_time && ` at ${sale.sale_time}`}
-                        {sale.pos_item_id && ` • POS ID: ${sale.pos_item_id}`}
+                        {item.service_date && format(new Date(item.service_date), 'MMM d, yyyy')}
+                        {item.catalog_object_id && ` • Item ID: ${item.catalog_object_id}`}
+                        <span className="ml-2">Order: {item.order_id}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleSimulateDeduction(sale.pos_item_name, sale.quantity)}
+                        onClick={() => handleSimulateDeduction(item.name, item.quantity)}
                       >
                         Simulate Impact
                       </Button>

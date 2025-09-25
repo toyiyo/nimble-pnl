@@ -126,22 +126,90 @@ export const Inventory: React.FC = () => {
     setIsLookingUp(true);
 
     try {
-      // First try OCR to extract text and identify product
-      const ocrResult = await productLookupService.identifyFromImage(imageBlob, ocrService);
+      // Upload image to storage first
+      const uploadedImageUrl = await uploadImageToStorage(imageBlob);
       
-      // Create a new product object with OCR data for the update dialog
+      // Enhanced flow: Grok OCR → Web Search → AI Enhancement
+      console.log('🚀 Starting enhanced product identification...');
+      
+      // Step 1: Use Grok OCR to extract text
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new Image();
+      
+      const grokOCRResult = await new Promise<{ text: string; confidence: number }>((resolve, reject) => {
+        img.onload = async () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          
+          const imageData = canvas.toDataURL('image/png');
+          
+          console.log('🔍 Processing with Grok OCR...');
+          const response = await supabase.functions.invoke('grok-ocr', {
+            body: { imageData }
+          });
+          
+          if (response.error) {
+            reject(new Error(response.error.message));
+            return;
+          }
+          
+          resolve(response.data);
+        };
+        
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = imageUrl;
+      });
+      
+      console.log('✅ Grok OCR completed:', grokOCRResult);
+      
+      // Step 2: Use OCR text for web search to get structured data
+      let enhancedData = null;
+      if (grokOCRResult.text?.trim()) {
+        console.log('🌐 Searching for product information...');
+        const searchResponse = await supabase.functions.invoke('web-search', {
+          body: { 
+            query: `${grokOCRResult.text} product information nutrition ingredients`,
+            maxResults: 5 
+          }
+        });
+        
+        if (!searchResponse.error && searchResponse.data?.results?.length > 0) {
+          // Step 3: Use AI to enhance product data with search results
+          console.log('🤖 Enhancing product data with AI...');
+          const enhanceResponse = await supabase.functions.invoke('enhance-product-ai', {
+            body: {
+              searchText: searchResponse.data.results.map((r: any) => r.content).join('\n\n'),
+              productName: grokOCRResult.text,
+              brand: '',
+              category: '',
+              currentDescription: ''
+            }
+          });
+          
+          if (!enhanceResponse.error) {
+            enhancedData = enhanceResponse.data;
+            console.log('✅ AI enhancement completed:', enhancedData);
+          }
+        }
+      }
+      
+      // Create product data with enhanced information and image
       const newProductData: Product = {
         id: '', // Will be generated on creation
         restaurant_id: selectedRestaurant!.restaurant!.id,
-        gtin: ocrResult?.gtin || '',
-        sku: ocrResult?.gtin || '',
-        name: ocrResult?.product_name || 'New Product',
-        description: null,
-        brand: ocrResult?.brand || '',
-        category: ocrResult?.category || '',
-        size_value: ocrResult?.package_size_value || null,
-        size_unit: ocrResult?.package_size_unit || null,
-        package_qty: ocrResult?.package_qty || 1,
+        gtin: enhancedData?.gtin || '',
+        sku: enhancedData?.gtin || Date.now().toString(),
+        name: enhancedData?.productName || grokOCRResult.text || 'New Product',
+        description: enhancedData?.description || null,
+        brand: enhancedData?.brand || '',
+        category: enhancedData?.category || '',
+        size_value: enhancedData?.sizeValue || null,
+        size_unit: enhancedData?.sizeUnit || null,
+        package_qty: enhancedData?.packageQty || 1,
         uom_purchase: null,
         uom_recipe: null,
         conversion_factor: 1,
@@ -152,6 +220,8 @@ export const Inventory: React.FC = () => {
         reorder_point: 0,
         supplier_name: null,
         supplier_sku: null,
+        pos_item_name: enhancedData?.productName || grokOCRResult.text || '',
+        image_url: uploadedImageUrl, // Use the captured image
         barcode_data: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -160,27 +230,85 @@ export const Inventory: React.FC = () => {
       setSelectedProduct(newProductData);
       setShowUpdateDialog(true);
       
-      if (ocrResult && ocrResult.product_name) {
+      if (enhancedData?.productName || grokOCRResult.text) {
         toast({
           title: "Product identified from image",
-          description: `Found: ${ocrResult.product_name} - Add details and quantity`,
+          description: `Found: ${enhancedData?.productName || grokOCRResult.text} - Review and save`,
         });
       } else {
         toast({
-          title: "Image analyzed",
-          description: "Add product details and initial quantity",
+          title: "Image captured",
+          description: "Add product details manually",
         });
       }
     } catch (error) {
-      console.error('Image analysis error:', error);
+      console.error('Enhanced image analysis error:', error);
       toast({
-        title: "Analysis failed",
-        description: "Failed to analyze image. Please try again.",
+        title: "Analysis failed", 
+        description: "Failed to analyze image. You can still add the product manually.",
         variant: "destructive",
       });
+      
+      // Fallback: still allow manual entry with the image
+      try {
+        const uploadedImageUrl = await uploadImageToStorage(imageBlob);
+        const fallbackProductData: Product = {
+          id: '',
+          restaurant_id: selectedRestaurant!.restaurant!.id,
+          gtin: '',
+          sku: Date.now().toString(),
+          name: 'New Product',
+          description: null,
+          brand: '',
+          category: '',
+          size_value: null,
+          size_unit: null,
+          package_qty: 1,
+          uom_purchase: null,
+          uom_recipe: null,
+          conversion_factor: 1,
+          cost_per_unit: null,
+          current_stock: 0,
+          par_level_min: 0,
+          par_level_max: 0,
+          reorder_point: 0,
+          supplier_name: null,
+          supplier_sku: null,
+          pos_item_name: '',
+          image_url: uploadedImageUrl,
+          barcode_data: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        
+        setSelectedProduct(fallbackProductData);
+        setShowUpdateDialog(true);
+      } catch (uploadError) {
+        console.error('Image upload failed:', uploadError);
+      }
     } finally {
       setIsLookingUp(false);
     }
+  };
+
+  const uploadImageToStorage = async (imageBlob: Blob): Promise<string> => {
+    const { supabase } = await import('@/integrations/supabase/client');
+    
+    const fileExt = 'jpg';
+    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `${selectedRestaurant?.restaurant?.id}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('product-images')
+      .upload(filePath, imageBlob);
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+      .from('product-images')
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
   };
 
   const handleCreateProduct = async (productData: CreateProductData) => {

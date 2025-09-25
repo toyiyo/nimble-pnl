@@ -224,36 +224,49 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4">
             <div className="flex-1">
-              <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <span>Update Product: {product.name}</span>
-                <Badge variant="secondary" className="w-fit">Current Stock: {currentStock}</Badge>
-              </DialogTitle>
-              <DialogDescription className="mt-1">
-                Add inventory quantity and update product information
-              </DialogDescription>
-            </div>
-            {onEnhance && (
-              <Button 
-                onClick={handleEnhance}
-                disabled={isEnhancing}
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2 w-fit"
-              >
-                {isEnhancing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Enhancing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    AI Enhance
-                  </>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="flex-1">
+                  <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <span>Update Product: {product.name}</span>
+                    <Badge variant="secondary" className="w-fit">Current Stock: {currentStock}</Badge>
+                  </DialogTitle>
+                  <DialogDescription className="mt-1">
+                    Add inventory quantity and update product information
+                  </DialogDescription>
+                </div>
+                {onEnhance && (
+                  <Button 
+                    onClick={handleEnhance}
+                    disabled={isEnhancing}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2 w-fit"
+                  >
+                    {isEnhancing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Enhancing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        AI Enhance
+                      </>
+                    )}
+                  </Button>
                 )}
-              </Button>
+              </div>
+            </div>
+            {product.image_url && (
+              <div className="flex-shrink-0">
+                <img 
+                  src={product.image_url} 
+                  alt={product.name}
+                  className="w-24 h-24 object-cover rounded-lg border border-border"
+                />
+              </div>
             )}
           </div>
         </DialogHeader>

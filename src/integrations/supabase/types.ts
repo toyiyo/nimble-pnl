@@ -1025,6 +1025,13 @@ export type Database = {
             referencedColumns: ["order_id", "restaurant_id"]
           },
           {
+            foreignKeyName: "square_order_line_items_order_id_restaurant_id_fkey"
+            columns: ["order_id", "restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "square_orders"
+            referencedColumns: ["order_id", "restaurant_id"]
+          },
+          {
             foreignKeyName: "square_order_line_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false

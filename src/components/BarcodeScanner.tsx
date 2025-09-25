@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useReducer, useCallback } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { DecodeHintType, BarcodeFormat } from '@zxing/library';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,75 @@ interface BarcodeScannerProps {
   className?: string;
   autoStart?: boolean;
 }
+
+// Scanner state management
+interface ScannerState {
+  isScanning: boolean;
+  hasPermission: boolean | null;
+  debugInfo: string;
+  lastScan: string;
+  scanCooldown: boolean;
+  isPaused: boolean;
+  isUsingGrokOCR: boolean;
+  scanAttempts: number;
+}
+
+type ScannerAction = 
+  | { type: 'START_SCANNING' }
+  | { type: 'STOP_SCANNING' }
+  | { type: 'SET_PERMISSION'; payload: boolean }
+  | { type: 'SET_DEBUG_INFO'; payload: string }
+  | { type: 'SCAN_SUCCESS'; payload: { result: string; format: string } }
+  | { type: 'SCAN_ERROR' }
+  | { type: 'SET_COOLDOWN'; payload: boolean }
+  | { type: 'SET_PAUSED'; payload: boolean }
+  | { type: 'SET_GROK_OCR'; payload: boolean }
+  | { type: 'RESET_ATTEMPTS' };
+
+const initialState: ScannerState = {
+  isScanning: false,
+  hasPermission: null,
+  debugInfo: 'Ready to start',
+  lastScan: '',
+  scanCooldown: false,
+  isPaused: false,
+  isUsingGrokOCR: false,
+  scanAttempts: 0
+};
+
+const scannerReducer = (state: ScannerState, action: ScannerAction): ScannerState => {
+  switch (action.type) {
+    case 'START_SCANNING':
+      return { ...state, isScanning: true, debugInfo: 'Starting scanner...', scanAttempts: 0 };
+    case 'STOP_SCANNING':
+      return { ...state, isScanning: false, debugInfo: 'Stopped' };
+    case 'SET_PERMISSION':
+      return { ...state, hasPermission: action.payload };
+    case 'SET_DEBUG_INFO':
+      return { ...state, debugInfo: action.payload };
+    case 'SCAN_SUCCESS':
+      return { 
+        ...state, 
+        lastScan: action.payload.result,
+        scanCooldown: true,
+        isPaused: true,
+        debugInfo: `Found ${action.payload.format}: ${action.payload.result}`,
+        scanAttempts: 0
+      };
+    case 'SCAN_ERROR':
+      return { ...state, scanAttempts: state.scanAttempts + 1 };
+    case 'SET_COOLDOWN':
+      return { ...state, scanCooldown: action.payload };
+    case 'SET_PAUSED':
+      return { ...state, isPaused: action.payload };
+    case 'SET_GROK_OCR':
+      return { ...state, isUsingGrokOCR: action.payload };
+    case 'RESET_ATTEMPTS':
+      return { ...state, scanAttempts: 0 };
+    default:
+      return state;
+  }
+};
 
 // Normalize common barcode formats to GTIN-14
 const normalizeGtin = (barcode: string, format: string): string => {
@@ -68,20 +137,18 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const animationFrameRef = useRef<number | null>(null);
   const grokTimeoutRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  
-  const [state, setState] = useState({
-    isScanning: false,
-    hasPermission: null as boolean | null,
-    debugInfo: 'Ready to start',
-    lastScan: '',
-    scanCooldown: false,
-    isPaused: false,
-    isUsingGrokOCR: false,
-    scanAttempts: 0
-  });
-
   const frameSkipCounter = useRef(0);
   const lastScanTime = useRef(0);
+  
+  // Use useReducer for optimized state management
+  const [state, dispatch] = useReducer(scannerReducer, initialState);
+
+  // Constants for performance optimization
+  const FRAME_SKIP_COUNT = 4; // Process every 4th frame
+  const OCR_TIMEOUT = 2000; // 2 seconds before OCR fallback
+  const MAX_WIDTH = 800;
+  const MAX_HEIGHT = 600;
+  const JPEG_QUALITY = 0.7;
 
   // Initialize reader once
   useEffect(() => {
@@ -127,26 +194,25 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     CanvasPool.cleanup();
   }, []);
 
-  // Optimized Grok OCR with single canvas
+  // Optimized Grok OCR with single canvas and limited resolution
   const attemptGrokOCR = useCallback(async (): Promise<boolean> => {
     if (!videoRef.current || state.isPaused) return false;
 
-    setState(prev => ({ 
-      ...prev, 
-      isUsingGrokOCR: true, 
-      debugInfo: 'Using AI to read barcode...' 
-    }));
+    dispatch({ type: 'SET_GROK_OCR', payload: true });
+    dispatch({ type: 'SET_DEBUG_INFO', payload: 'Using AI to read barcode...' });
 
     try {
       const video = videoRef.current;
       const canvas = CanvasPool.get();
       const ctx = canvas.getContext('2d')!;
 
-      canvas.width = Math.min(video.videoWidth, 800); // Limit size for performance
-      canvas.height = Math.min(video.videoHeight, 600);
+      // Scale down for performance
+      const scale = Math.min(MAX_WIDTH / video.videoWidth, MAX_HEIGHT / video.videoHeight);
+      canvas.width = video.videoWidth * scale;
+      canvas.height = video.videoHeight * scale;
       
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.7); // Lower quality for speed
+      const imageDataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
       
       CanvasPool.release(canvas);
 
@@ -168,41 +234,26 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           const normalizedGtin = normalizeGtin(barcodeText, 'OCR');
           onScan(normalizedGtin, 'OCR');
           
-          setState(prev => ({
-            ...prev,
-            lastScan: barcodeText,
-            scanCooldown: true,
-            isPaused: true,
-            isUsingGrokOCR: false,
-            debugInfo: `AI found barcode: ${barcodeText}`
-          }));
+          dispatch({ type: 'SCAN_SUCCESS', payload: { result: barcodeText, format: 'OCR' } });
+          dispatch({ type: 'SET_DEBUG_INFO', payload: `AI found barcode: ${barcodeText}` });
 
           setTimeout(() => {
-            setState(prev => ({
-              ...prev,
-              scanCooldown: false,
-              debugInfo: 'Paused - click Resume to continue scanning'
-            }));
+            dispatch({ type: 'SET_COOLDOWN', payload: false });
+            dispatch({ type: 'SET_DEBUG_INFO', payload: 'Paused - click Resume to continue scanning' });
           }, 1000);
         }
         return true;
       }
       
-      setState(prev => ({ 
-        ...prev, 
-        isUsingGrokOCR: false, 
-        debugInfo: 'AI could not find barcode' 
-      }));
+      dispatch({ type: 'SET_GROK_OCR', payload: false });
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI could not find barcode' });
       return false;
     } catch (error) {
-      setState(prev => ({ 
-        ...prev, 
-        isUsingGrokOCR: false, 
-        debugInfo: 'AI barcode reading failed' 
-      }));
+      dispatch({ type: 'SET_GROK_OCR', payload: false });
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI barcode reading failed' });
       return false;
     }
-  }, [state.isPaused, state.lastScan, state.scanCooldown, onScan]);
+  }, [state.isPaused, state.lastScan, state.scanCooldown, onScan, MAX_WIDTH, MAX_HEIGHT, JPEG_QUALITY]);
 
   // Handle successful barcode scan
   const handleScanSuccess = useCallback((result: any, format: string) => {
@@ -216,38 +267,23 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       const normalizedGtin = normalizeGtin(result, format);
       onScan(normalizedGtin, format);
       
-      setState(prev => ({
-        ...prev,
-        lastScan: result,
-        scanCooldown: true,
-        isPaused: true,
-        debugInfo: `Found ${format}: ${result}`,
-        scanAttempts: 0
-      }));
+      dispatch({ type: 'SCAN_SUCCESS', payload: { result, format } });
 
       setTimeout(() => {
-        setState(prev => ({
-          ...prev,
-          scanCooldown: false,
-          debugInfo: 'Paused - click Resume to continue scanning'
-        }));
+        dispatch({ type: 'SET_COOLDOWN', payload: false });
+        dispatch({ type: 'SET_DEBUG_INFO', payload: 'Paused - click Resume to continue scanning' });
       }, 1000);
     }
   }, [state.lastScan, state.scanCooldown, onScan]);
 
   // Handle scan errors
   const handleScanError = useCallback(() => {
-    setState(prev => ({ ...prev, scanAttempts: prev.scanAttempts + 1 }));
+    dispatch({ type: 'SCAN_ERROR' });
   }, []);
 
   // Start scanning with optimization
   const startScanning = useCallback(async () => {
-    setState(prev => ({ 
-      ...prev, 
-      isScanning: true, 
-      debugInfo: 'Starting scanner...', 
-      scanAttempts: 0 
-    }));
+    dispatch({ type: 'START_SCANNING' });
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -259,31 +295,28 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       });
       
       streamRef.current = stream;
-      setState(prev => ({ 
-        ...prev, 
-        hasPermission: true, 
-        debugInfo: 'Camera live - scanning...' 
-      }));
+      dispatch({ type: 'SET_PERMISSION', payload: true });
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
 
-      // Start 2-second timeout for Grok OCR
+      // Start OCR timeout (fallback after 2 seconds)
       grokTimeoutRef.current = window.setTimeout(() => {
         if (!state.isPaused && !state.scanCooldown) {
           attemptGrokOCR();
         }
-      }, 2000);
+      }, OCR_TIMEOUT);
 
-      // Start ZXing continuous scanning with callback
+      // Start ZXing continuous scanning with optimized frame processing
       if (readerRef.current && videoRef.current) {
         await readerRef.current.decodeFromVideoDevice(
           undefined,
           videoRef.current,
           (result, error) => {
-            // Skip frames for performance - only process every 4th callback
-            frameSkipCounter.current = (frameSkipCounter.current + 1) % 4;
+            // Frame skipping for performance - only process every nth frame
+            frameSkipCounter.current = (frameSkipCounter.current + 1) % FRAME_SKIP_COUNT;
             if (frameSkipCounter.current !== 0) return;
 
             // Don't process if paused
@@ -299,22 +332,16 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       }
       
     } catch (error: any) {
-      setState(prev => ({
-        ...prev,
-        debugInfo: `Error: ${error.message}`,
-        hasPermission: false,
-        isScanning: false
-      }));
+      dispatch({ type: 'SET_DEBUG_INFO', payload: `Error: ${error.message}` });
+      dispatch({ type: 'SET_PERMISSION', payload: false });
+      dispatch({ type: 'STOP_SCANNING' });
       onError?.(error.message);
     }
-  }, [handleScanSuccess, handleScanError, attemptGrokOCR, state.isPaused, state.scanCooldown]);
+  }, [handleScanSuccess, handleScanError, attemptGrokOCR, state.isPaused, state.scanCooldown, OCR_TIMEOUT, FRAME_SKIP_COUNT]);
 
   const resumeScanning = useCallback(() => {
-    setState(prev => ({ 
-      ...prev, 
-      isPaused: false, 
-      debugInfo: 'Resumed scanning...' 
-    }));
+    dispatch({ type: 'SET_PAUSED', payload: false });
+    dispatch({ type: 'SET_DEBUG_INFO', payload: 'Resumed scanning...' });
     
     // Restart Grok timeout
     if (grokTimeoutRef.current) {
@@ -324,15 +351,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       if (!state.isPaused && !state.scanCooldown) {
         attemptGrokOCR();
       }
-    }, 2000);
-  }, [attemptGrokOCR, state.isPaused, state.scanCooldown]);
+    }, OCR_TIMEOUT);
+  }, [attemptGrokOCR, state.isPaused, state.scanCooldown, OCR_TIMEOUT]);
 
   const stopScanning = useCallback(() => {
-    setState(prev => ({ 
-      ...prev, 
-      isScanning: false, 
-      debugInfo: 'Stopped' 
-    }));
+    dispatch({ type: 'STOP_SCANNING' });
     cleanup();
   }, [cleanup]);
 

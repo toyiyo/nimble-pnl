@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Camera, Square, Loader2, Target, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { supabase } from "@/integrations/supabase/client";
 
 interface BarcodeScannerProps {
   onScan: (result: string, format: string) => void;
@@ -216,15 +217,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       
       CanvasPool.release(canvas);
 
-      const response = await fetch('/functions/v1/grok-ocr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageData: imageDataUrl })
+      const { data: response } = await supabase.functions.invoke('grok-ocr', {
+        body: { imageData: imageDataUrl }
       });
 
-      if (!response.ok) throw new Error('OCR service failed');
+      if (!response) throw new Error('OCR service failed');
 
-      const result = await response.json();
+      const result = response;
       const barcodeMatches = result.text?.match(/\b\d{8,14}\b/g);
       
       if (barcodeMatches?.[0]) {

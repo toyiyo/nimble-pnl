@@ -90,6 +90,9 @@ const Index = () => {
                 <Button variant="outline" size="sm" onClick={() => navigate('/inventory')} className="text-xs whitespace-nowrap">
                   Inventory
                 </Button>
+                <Button variant="outline" size="sm" onClick={() => navigate('/reports')} className="text-xs whitespace-nowrap">
+                  Reports
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => navigate('/team')} className="text-xs whitespace-nowrap">
                   Team
                 </Button>

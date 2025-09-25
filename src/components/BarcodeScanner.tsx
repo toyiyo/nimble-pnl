@@ -56,7 +56,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const [scanAttempts, setScanAttempts] = useState(0);
   const [isProcessingCurved, setIsProcessingCurved] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isUsingGrokOCR, setIsUsingGrokOCR] = useState(false);
   const frameSkipCounter = useRef(0);
+  const grokTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     // Initialize the reader with enhanced hints for curved surfaces
@@ -80,6 +82,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       stopScanning();
       if (scanningIntervalRef.current) {
         clearInterval(scanningIntervalRef.current);
+      }
+      if (grokTimeoutRef.current) {
+        clearTimeout(grokTimeoutRef.current);
       }
     };
   }, []);
@@ -180,6 +185,84 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     return false;
   };
 
+  // Grok OCR fallback for when regular scanning fails
+  const attemptGrokOCR = async (): Promise<boolean> => {
+    if (!videoRef.current || !canvasRef.current) return false;
+
+    setIsUsingGrokOCR(true);
+    setDebugInfo('Using AI to read barcode...');
+
+    try {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d')!;
+      const video = videoRef.current;
+
+      // Set canvas size to match video
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // Capture current frame
+      ctx.drawImage(video, 0, 0);
+      
+      // Convert canvas to base64 image
+      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      
+      // Call Grok OCR function
+      const response = await fetch('/functions/v1/grok-ocr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageData: imageDataUrl
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('OCR service failed');
+      }
+
+      const result = await response.json();
+      console.log('🤖 Grok OCR result:', result);
+
+      if (result.text) {
+        // Extract potential barcode numbers from OCR text
+        const barcodeMatches = result.text.match(/\b\d{8,14}\b/g);
+        
+        if (barcodeMatches && barcodeMatches.length > 0) {
+          const barcodeText = barcodeMatches[0];
+          console.log('📱 Grok OCR found barcode:', barcodeText);
+          setDebugInfo(`AI found barcode: ${barcodeText}`);
+          
+          if (barcodeText !== lastScan || !scanCooldown) {
+            setLastScan(barcodeText);
+            setScanCooldown(true);
+            setIsPaused(true);
+            const normalizedGtin = normalizeGtin(barcodeText, 'OCR');
+            onScan(normalizedGtin, 'OCR');
+            
+            setTimeout(() => {
+              setScanCooldown(false);
+              setDebugInfo('Paused - click Resume to continue scanning');
+            }, 1000);
+          }
+          
+          setIsUsingGrokOCR(false);
+          return true;
+        }
+      }
+      
+      setIsUsingGrokOCR(false);
+      setDebugInfo('AI could not find barcode in image');
+      return false;
+    } catch (error) {
+      console.error('❌ Grok OCR error:', error);
+      setIsUsingGrokOCR(false);
+      setDebugInfo('AI barcode reading failed');
+      return false;
+    }
+  };
+
   const startScanning = async () => {
     console.log('🎯 startScanning called');
     setDebugInfo('Starting enhanced scanner...');
@@ -215,6 +298,14 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       let lastFailureTime = 0;
       const FAILURE_RETRY_INTERVAL = 5000; // 5 seconds
       
+      // Start 2-second timeout for Grok OCR fallback
+      grokTimeoutRef.current = window.setTimeout(() => {
+        if (!isPaused && !scanCooldown) {
+          console.log('⏰ 2-second timeout reached, trying Grok OCR');
+          attemptGrokOCR();
+        }
+      }, 2000);
+      
       // Start continuous decode with enhanced error handling
       await readerRef.current.decodeFromVideoDevice(
         undefined,
@@ -228,6 +319,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           if (isPaused) return;
 
           if (result) {
+            // Clear the Grok timeout since we found a barcode
+            if (grokTimeoutRef.current) {
+              clearTimeout(grokTimeoutRef.current);
+              grokTimeoutRef.current = null;
+            }
+            
             const barcodeText = result.getText();
             const format = result.getBarcodeFormat().toString();
             
@@ -278,11 +375,28 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const resumeScanning = () => {
     setIsPaused(false);
     setDebugInfo('Resumed scanning...');
+    
+    // Restart the 2-second Grok timeout
+    if (grokTimeoutRef.current) {
+      clearTimeout(grokTimeoutRef.current);
+    }
+    grokTimeoutRef.current = window.setTimeout(() => {
+      if (!isPaused && !scanCooldown) {
+        console.log('⏰ 2-second timeout reached, trying Grok OCR');
+        attemptGrokOCR();
+      }
+    }, 2000);
   };
 
   const stopScanning = () => {
     console.log('🛑 Stopping scanner');
     setDebugInfo('Stopping...');
+    
+    // Clear Grok timeout
+    if (grokTimeoutRef.current) {
+      clearTimeout(grokTimeoutRef.current);
+      grokTimeoutRef.current = null;
+    }
     
     // Clean up scanning interval
     if (scanningIntervalRef.current) {
@@ -358,6 +472,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                 <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-sm flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Curve Detection
+                </div>
+              )}
+              {isUsingGrokOCR && (
+                <div className="absolute top-2 right-2 bg-purple-500 text-white px-2 py-1 rounded text-sm flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  AI Reading...
                 </div>
               )}
               {scanAttempts > 5 && !isProcessingCurved && (

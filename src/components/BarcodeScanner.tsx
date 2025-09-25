@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { DecodeHintType, BarcodeFormat } from '@zxing/library';
 import { Button } from '@/components/ui/button';
@@ -15,28 +15,47 @@ interface BarcodeScannerProps {
 
 // Normalize common barcode formats to GTIN-14
 const normalizeGtin = (barcode: string, format: string): string => {
-  // Remove any non-digit characters
   const digits = barcode.replace(/\D/g, '');
   
   switch (format) {
     case 'UPC_A':
-      // UPC-A is 12 digits, pad to 14 with leading zeros
       return digits.padStart(14, '0');
     case 'UPC_E':
-      // UPC-E needs to be expanded to UPC-A first, then padded
-      // This is a simplified version - full expansion rules are more complex
       return digits.padStart(14, '0');
     case 'EAN_13':
-      // EAN-13 is 13 digits, pad to 14 with one leading zero
       return digits.padStart(14, '0');
     case 'EAN_8':
-      // EAN-8 is 8 digits, pad to 14 with leading zeros
       return digits.padStart(14, '0');
     default:
-      // For other formats, just return as-is or pad if numeric
       return /^\d+$/.test(digits) ? digits.padStart(14, '0') : barcode;
   }
 };
+
+// Canvas pool for memory efficiency
+class CanvasPool {
+  private static pool: HTMLCanvasElement[] = [];
+  private static maxSize = 2;
+
+  static get(): HTMLCanvasElement {
+    return this.pool.pop() || document.createElement('canvas');
+  }
+
+  static release(canvas: HTMLCanvasElement) {
+    if (this.pool.length < this.maxSize) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+      this.pool.push(canvas);
+    }
+  }
+
+  static cleanup() {
+    this.pool = [];
+  }
+}
 
 export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   onScan,
@@ -46,22 +65,26 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
-  const scanningIntervalRef = useRef<number | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [debugInfo, setDebugInfo] = useState<string>('Ready to start');
-  const [lastScan, setLastScan] = useState<string>('');
-  const [scanCooldown, setScanCooldown] = useState(false);
-  const [scanAttempts, setScanAttempts] = useState(0);
-  const [isProcessingCurved, setIsProcessingCurved] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [isUsingGrokOCR, setIsUsingGrokOCR] = useState(false);
-  const frameSkipCounter = useRef(0);
+  const animationFrameRef = useRef<number | null>(null);
   const grokTimeoutRef = useRef<number | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  
+  const [state, setState] = useState({
+    isScanning: false,
+    hasPermission: null as boolean | null,
+    debugInfo: 'Ready to start',
+    lastScan: '',
+    scanCooldown: false,
+    isPaused: false,
+    isUsingGrokOCR: false,
+    scanAttempts: 0
+  });
 
+  const frameSkipCounter = useRef(0);
+  const lastScanTime = useRef(0);
+
+  // Initialize reader once
   useEffect(() => {
-    // Initialize the reader with enhanced hints for curved surfaces
     const hints = new Map();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
       BarcodeFormat.UPC_A,
@@ -73,359 +96,259 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       BarcodeFormat.DATA_MATRIX,
     ]);
     hints.set(DecodeHintType.TRY_HARDER, true);
-    hints.set(DecodeHintType.PURE_BARCODE, false); // Allow imperfect barcodes
+    hints.set(DecodeHintType.PURE_BARCODE, false);
 
     readerRef.current = new BrowserMultiFormatReader(hints);
-    console.log('🔧 Enhanced ZXing reader initialized for curved surfaces');
 
-    return () => {
-      stopScanning();
-      if (scanningIntervalRef.current) {
-        clearInterval(scanningIntervalRef.current);
-      }
-      if (grokTimeoutRef.current) {
-        clearTimeout(grokTimeoutRef.current);
-      }
-    };
+    return cleanup;
   }, []);
+
+  // Cleanup function
+  const cleanup = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    
+    if (grokTimeoutRef.current) {
+      clearTimeout(grokTimeoutRef.current);
+      grokTimeoutRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    CanvasPool.cleanup();
+  }, []);
+
+  // Optimized Grok OCR with single canvas
+  const attemptGrokOCR = useCallback(async (): Promise<boolean> => {
+    if (!videoRef.current || state.isPaused) return false;
+
+    setState(prev => ({ 
+      ...prev, 
+      isUsingGrokOCR: true, 
+      debugInfo: 'Using AI to read barcode...' 
+    }));
+
+    try {
+      const video = videoRef.current;
+      const canvas = CanvasPool.get();
+      const ctx = canvas.getContext('2d')!;
+
+      canvas.width = Math.min(video.videoWidth, 800); // Limit size for performance
+      canvas.height = Math.min(video.videoHeight, 600);
+      
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.7); // Lower quality for speed
+      
+      CanvasPool.release(canvas);
+
+      const response = await fetch('/functions/v1/grok-ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageData: imageDataUrl })
+      });
+
+      if (!response.ok) throw new Error('OCR service failed');
+
+      const result = await response.json();
+      const barcodeMatches = result.text?.match(/\b\d{8,14}\b/g);
+      
+      if (barcodeMatches?.[0]) {
+        const barcodeText = barcodeMatches[0];
+        
+        if (barcodeText !== state.lastScan && !state.scanCooldown) {
+          const normalizedGtin = normalizeGtin(barcodeText, 'OCR');
+          onScan(normalizedGtin, 'OCR');
+          
+          setState(prev => ({
+            ...prev,
+            lastScan: barcodeText,
+            scanCooldown: true,
+            isPaused: true,
+            isUsingGrokOCR: false,
+            debugInfo: `AI found barcode: ${barcodeText}`
+          }));
+
+          setTimeout(() => {
+            setState(prev => ({
+              ...prev,
+              scanCooldown: false,
+              debugInfo: 'Paused - click Resume to continue scanning'
+            }));
+          }, 1000);
+        }
+        return true;
+      }
+      
+      setState(prev => ({ 
+        ...prev, 
+        isUsingGrokOCR: false, 
+        debugInfo: 'AI could not find barcode' 
+      }));
+      return false;
+    } catch (error) {
+      setState(prev => ({ 
+        ...prev, 
+        isUsingGrokOCR: false, 
+        debugInfo: 'AI barcode reading failed' 
+      }));
+      return false;
+    }
+  }, [state.isPaused, state.lastScan, state.scanCooldown, onScan]);
+
+  // Handle successful barcode scan
+  const handleScanSuccess = useCallback((result: any, format: string) => {
+    // Clear Grok timeout on successful scan
+    if (grokTimeoutRef.current) {
+      clearTimeout(grokTimeoutRef.current);
+      grokTimeoutRef.current = null;
+    }
+
+    if (result !== state.lastScan && !state.scanCooldown) {
+      const normalizedGtin = normalizeGtin(result, format);
+      onScan(normalizedGtin, format);
+      
+      setState(prev => ({
+        ...prev,
+        lastScan: result,
+        scanCooldown: true,
+        isPaused: true,
+        debugInfo: `Found ${format}: ${result}`,
+        scanAttempts: 0
+      }));
+
+      setTimeout(() => {
+        setState(prev => ({
+          ...prev,
+          scanCooldown: false,
+          debugInfo: 'Paused - click Resume to continue scanning'
+        }));
+      }, 1000);
+    }
+  }, [state.lastScan, state.scanCooldown, onScan]);
+
+  // Handle scan errors
+  const handleScanError = useCallback(() => {
+    setState(prev => ({ ...prev, scanAttempts: prev.scanAttempts + 1 }));
+  }, []);
+
+  // Start scanning with optimization
+  const startScanning = useCallback(async () => {
+    setState(prev => ({ 
+      ...prev, 
+      isScanning: true, 
+      debugInfo: 'Starting scanner...', 
+      scanAttempts: 0 
+    }));
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280, max: 1920 }, // Limit max resolution
+          height: { ideal: 720, max: 1080 }
+        }
+      });
+      
+      streamRef.current = stream;
+      setState(prev => ({ 
+        ...prev, 
+        hasPermission: true, 
+        debugInfo: 'Camera live - scanning...' 
+      }));
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+
+      // Start 2-second timeout for Grok OCR
+      grokTimeoutRef.current = window.setTimeout(() => {
+        if (!state.isPaused && !state.scanCooldown) {
+          attemptGrokOCR();
+        }
+      }, 2000);
+
+      // Start ZXing continuous scanning with callback
+      if (readerRef.current && videoRef.current) {
+        await readerRef.current.decodeFromVideoDevice(
+          undefined,
+          videoRef.current,
+          (result, error) => {
+            // Skip frames for performance - only process every 4th callback
+            frameSkipCounter.current = (frameSkipCounter.current + 1) % 4;
+            if (frameSkipCounter.current !== 0) return;
+
+            // Don't process if paused
+            if (state.isPaused) return;
+
+            if (result) {
+              handleScanSuccess(result.getText(), result.getBarcodeFormat().toString());
+            } else if (error) {
+              handleScanError();
+            }
+          }
+        );
+      }
+      
+    } catch (error: any) {
+      setState(prev => ({
+        ...prev,
+        debugInfo: `Error: ${error.message}`,
+        hasPermission: false,
+        isScanning: false
+      }));
+      onError?.(error.message);
+    }
+  }, [handleScanSuccess, handleScanError, attemptGrokOCR, state.isPaused, state.scanCooldown]);
+
+  const resumeScanning = useCallback(() => {
+    setState(prev => ({ 
+      ...prev, 
+      isPaused: false, 
+      debugInfo: 'Resumed scanning...' 
+    }));
+    
+    // Restart Grok timeout
+    if (grokTimeoutRef.current) {
+      clearTimeout(grokTimeoutRef.current);
+    }
+    grokTimeoutRef.current = window.setTimeout(() => {
+      if (!state.isPaused && !state.scanCooldown) {
+        attemptGrokOCR();
+      }
+    }, 2000);
+  }, [attemptGrokOCR, state.isPaused, state.scanCooldown]);
+
+  const stopScanning = useCallback(() => {
+    setState(prev => ({ 
+      ...prev, 
+      isScanning: false, 
+      debugInfo: 'Stopped' 
+    }));
+    cleanup();
+  }, [cleanup]);
+
+  const toggleScanning = useCallback(() => {
+    if (state.isScanning) {
+      stopScanning();
+    } else {
+      startScanning();
+    }
+  }, [state.isScanning, stopScanning, startScanning]);
 
   useEffect(() => {
     if (autoStart) {
       startScanning();
     }
-  }, [autoStart]);
-
-  // Enhanced image preprocessing for curved surfaces
-  const preprocessImage = (imageData: ImageData): ImageData => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
-    canvas.width = imageData.width;
-    canvas.height = imageData.height;
-    
-    ctx.putImageData(imageData, 0, 0);
-    
-    // Apply contrast enhancement
-    ctx.filter = 'contrast(150%) brightness(110%)';
-    ctx.drawImage(canvas, 0, 0);
-    
-    return ctx.getImageData(0, 0, canvas.width, canvas.height);
-  };
-
-  // Multi-frame scanning approach for curved surfaces
-  const attemptMultiFrameScan = async (): Promise<boolean> => {
-    if (!videoRef.current || !canvasRef.current || !readerRef.current) return false;
-
-    setIsProcessingCurved(true);
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d')!;
-    const video = videoRef.current;
-
-    // Set canvas size to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    const frames = 5; // Try 5 different frames
-    for (let i = 0; i < frames; i++) {
-      try {
-        // Wait a bit between frames
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        // Capture current frame
-        ctx.drawImage(video, 0, 0);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // Try different preprocessing approaches
-        const variations = [
-          imageData, // Original
-          preprocessImage(imageData), // Enhanced contrast
-        ];
-
-        for (const variation of variations) {
-          try {
-            // Create a temporary canvas for this variation
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = canvas.height;
-            const tempCtx = tempCanvas.getContext('2d')!;
-            tempCtx.putImageData(variation, 0, 0);
-            
-            const result = await readerRef.current.decodeFromImageUrl(tempCanvas.toDataURL());
-            if (result) {
-              const barcodeText = result.getText();
-              const format = result.getBarcodeFormat().toString();
-              
-              console.log('📱 Multi-frame scan success:', barcodeText, format);
-              setDebugInfo(`Multi-frame found ${format}: ${barcodeText}`);
-              
-              if (barcodeText !== lastScan || !scanCooldown) {
-                setLastScan(barcodeText);
-                setScanCooldown(true);
-                const normalizedGtin = normalizeGtin(barcodeText, format);
-                onScan(normalizedGtin, format);
-                
-                setTimeout(() => {
-                  setScanCooldown(false);
-                  setDebugInfo('Camera live - scanning for barcodes...');
-                }, 3000);
-              }
-              
-              setIsProcessingCurved(false);
-              return true;
-            }
-          } catch (e) {
-            // Continue trying other variations
-          }
-        }
-      } catch (e) {
-        // Continue to next frame
-      }
-    }
-    
-    setIsProcessingCurved(false);
-    return false;
-  };
-
-  // Grok OCR fallback for when regular scanning fails
-  const attemptGrokOCR = async (): Promise<boolean> => {
-    if (!videoRef.current || !canvasRef.current) return false;
-
-    setIsUsingGrokOCR(true);
-    setDebugInfo('Using AI to read barcode...');
-
-    try {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d')!;
-      const video = videoRef.current;
-
-      // Set canvas size to match video
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      // Capture current frame
-      ctx.drawImage(video, 0, 0);
-      
-      // Convert canvas to base64 image
-      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      
-      // Call Grok OCR function
-      const response = await fetch('/functions/v1/grok-ocr', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          imageData: imageDataUrl
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('OCR service failed');
-      }
-
-      const result = await response.json();
-      console.log('🤖 Grok OCR result:', result);
-
-      if (result.text) {
-        // Extract potential barcode numbers from OCR text
-        const barcodeMatches = result.text.match(/\b\d{8,14}\b/g);
-        
-        if (barcodeMatches && barcodeMatches.length > 0) {
-          const barcodeText = barcodeMatches[0];
-          console.log('📱 Grok OCR found barcode:', barcodeText);
-          setDebugInfo(`AI found barcode: ${barcodeText}`);
-          
-          if (barcodeText !== lastScan || !scanCooldown) {
-            setLastScan(barcodeText);
-            setScanCooldown(true);
-            setIsPaused(true);
-            const normalizedGtin = normalizeGtin(barcodeText, 'OCR');
-            onScan(normalizedGtin, 'OCR');
-            
-            setTimeout(() => {
-              setScanCooldown(false);
-              setDebugInfo('Paused - click Resume to continue scanning');
-            }, 1000);
-          }
-          
-          setIsUsingGrokOCR(false);
-          return true;
-        }
-      }
-      
-      setIsUsingGrokOCR(false);
-      setDebugInfo('AI could not find barcode in image');
-      return false;
-    } catch (error) {
-      console.error('❌ Grok OCR error:', error);
-      setIsUsingGrokOCR(false);
-      setDebugInfo('AI barcode reading failed');
-      return false;
-    }
-  };
-
-  const startScanning = async () => {
-    console.log('🎯 startScanning called');
-    setDebugInfo('Starting enhanced scanner...');
-    setIsScanning(true);
-    setScanAttempts(0);
-    
-    // Wait for elements to render
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    if (!videoRef.current || !readerRef.current) {
-      console.log('❌ Missing refs - video:', !!videoRef.current, 'reader:', !!readerRef.current);
-      setDebugInfo('Error: Missing video element or reader');
-      setIsScanning(false);
-      return;
-    }
-
-    try {
-      console.log('🟢 Requesting high-res camera...');
-      setDebugInfo('Requesting camera access...');
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1920, min: 1280 },
-          height: { ideal: 1080, min: 720 }
-        }
-      });
-      
-      console.log('✅ Camera access granted with enhanced settings');
-      setDebugInfo('Camera live - enhanced curved surface scanning...');
-      setHasPermission(true);
-      
-      let lastFailureTime = 0;
-      const FAILURE_RETRY_INTERVAL = 5000; // 5 seconds
-      
-      // Start 2-second timeout for Grok OCR fallback
-      grokTimeoutRef.current = window.setTimeout(() => {
-        if (!isPaused && !scanCooldown) {
-          console.log('⏰ 2-second timeout reached, trying Grok OCR');
-          attemptGrokOCR();
-        }
-      }, 2000);
-      
-      // Start continuous decode with enhanced error handling
-      await readerRef.current.decodeFromVideoDevice(
-        undefined,
-        videoRef.current,
-        async (result, error) => {
-          // Skip frames for performance - only process every 3rd frame
-          frameSkipCounter.current = (frameSkipCounter.current + 1) % 3;
-          if (frameSkipCounter.current !== 0) return;
-
-          // Don't process if paused
-          if (isPaused) return;
-
-          if (result) {
-            // Clear the Grok timeout since we found a barcode
-            if (grokTimeoutRef.current) {
-              clearTimeout(grokTimeoutRef.current);
-              grokTimeoutRef.current = null;
-            }
-            
-            const barcodeText = result.getText();
-            const format = result.getBarcodeFormat().toString();
-            
-            console.log('📱 Standard scan success:', barcodeText, format);
-            setDebugInfo(`Found ${format}: ${barcodeText}`);
-            setScanAttempts(0);
-            
-            if (barcodeText !== lastScan || !scanCooldown) {
-              setLastScan(barcodeText);
-              setScanCooldown(true);
-              setIsPaused(true); // Pause scanning to prevent overwrites
-              const normalizedGtin = normalizeGtin(barcodeText, format);
-              onScan(normalizedGtin, format);
-              
-              setTimeout(() => {
-                setScanCooldown(false);
-                setDebugInfo('Paused - click Resume to continue scanning');
-              }, 1000);
-            }
-          } else if (error && !isPaused) {
-            // Increment scan attempts for fallback logic
-            setScanAttempts(prev => prev + 1);
-            
-            // After several failed attempts, try multi-frame approach (less frequently)
-            const now = Date.now();
-            if (scanAttempts > 15 && (now - lastFailureTime) > FAILURE_RETRY_INTERVAL) {
-              lastFailureTime = now;
-              setDebugInfo('Trying enhanced curve detection...');
-              
-              const success = await attemptMultiFrameScan();
-              if (!success) {
-                setDebugInfo('Hold steady - scanning curved surface...');
-              }
-            }
-          }
-        }
-      );
-      
-    } catch (error: any) {
-      console.error('❌ Camera error:', error);
-      setDebugInfo(`Error: ${error.message}`);
-      setHasPermission(false);
-      setIsScanning(false);
-      onError?.(error.message);
-    }
-  };
-
-  const resumeScanning = () => {
-    setIsPaused(false);
-    setDebugInfo('Resumed scanning...');
-    
-    // Restart the 2-second Grok timeout
-    if (grokTimeoutRef.current) {
-      clearTimeout(grokTimeoutRef.current);
-    }
-    grokTimeoutRef.current = window.setTimeout(() => {
-      if (!isPaused && !scanCooldown) {
-        console.log('⏰ 2-second timeout reached, trying Grok OCR');
-        attemptGrokOCR();
-      }
-    }, 2000);
-  };
-
-  const stopScanning = () => {
-    console.log('🛑 Stopping scanner');
-    setDebugInfo('Stopping...');
-    
-    // Clear Grok timeout
-    if (grokTimeoutRef.current) {
-      clearTimeout(grokTimeoutRef.current);
-      grokTimeoutRef.current = null;
-    }
-    
-    // Clean up scanning interval
-    if (scanningIntervalRef.current) {
-      clearInterval(scanningIntervalRef.current);
-      scanningIntervalRef.current = null;
-    }
-    
-    // Properly clean up video stream
-    if (videoRef.current?.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => {
-        track.stop();
-        console.log('📹 Stopped video track');
-      });
-      videoRef.current.srcObject = null;
-    }
-    
-    setIsScanning(false);
-    setDebugInfo('Stopped');
-  };
-
-  const toggleScanning = () => {
-    console.log('🔄 toggleScanning called, isScanning:', isScanning);
-    if (isScanning) {
-      stopScanning();
-    } else {
-      startScanning();
-    }
-  };
+  }, [autoStart, startScanning]);
 
   return (
     <Card className={cn('w-full max-w-md mx-auto', className)}>
@@ -435,12 +358,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           Barcode Scanner
         </CardTitle>
         <CardDescription>
-          Enhanced for curved surfaces - hold steady for best results
+          High-performance scanner with AI fallback
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-          {isScanning ? (
+          {state.isScanning ? (
             <>
               <video
                 ref={videoRef}
@@ -449,41 +372,31 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                 muted
                 autoPlay
               />
-              <canvas
-                ref={canvasRef}
-                className="hidden"
-              />
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="w-48 h-32 border-2 border-primary border-dashed rounded-lg bg-primary/10">
                   <Target className="w-full h-full text-primary/30" />
                 </div>
               </div>
-              {scanCooldown && (
+              {state.scanCooldown && (
                 <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-sm">
                   Scanned! ✓
                 </div>
               )}
-              {isPaused && !scanCooldown && (
+              {state.isPaused && !state.scanCooldown && (
                 <div className="absolute top-2 left-2 bg-orange-500 text-white px-2 py-1 rounded text-sm">
                   Paused
                 </div>
               )}
-              {isProcessingCurved && (
-                <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-sm flex items-center gap-1">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Curve Detection
-                </div>
-              )}
-              {isUsingGrokOCR && (
+              {state.isUsingGrokOCR && (
                 <div className="absolute top-2 right-2 bg-purple-500 text-white px-2 py-1 rounded text-sm flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   AI Reading...
                 </div>
               )}
-              {scanAttempts > 5 && !isProcessingCurved && (
+              {state.scanAttempts > 10 && !state.isUsingGrokOCR && (
                 <div className="absolute bottom-2 left-2 right-2 bg-yellow-500/90 text-white px-2 py-1 rounded text-xs text-center">
                   <AlertCircle className="h-3 w-3 inline mr-1" />
-                  Try flattening curved surfaces or adjusting angle
+                  Try different angle or lighting
                 </div>
               )}
             </>
@@ -492,9 +405,10 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
               <div className="text-center">
                 <Target className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">
-                  {hasPermission === false
+                  {state.hasPermission === false 
                     ? 'Camera access denied'
-                    : 'Enhanced scanner ready - works on curved surfaces'}
+                    : 'Click start to begin scanning'
+                  }
                 </p>
               </div>
             </div>
@@ -502,44 +416,34 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         </div>
 
         <div className="flex gap-2">
-          <Button
-            onClick={() => {
-              console.log('🔥 Button clicked!');
-              toggleScanning();
-            }}
-            disabled={hasPermission === false}
+          <Button 
+            onClick={toggleScanning}
+            variant={state.isScanning ? "destructive" : "default"}
             className="flex-1"
           >
-            {isScanning ? (
+            {state.isScanning ? (
               <>
                 <Square className="h-4 w-4 mr-2" />
-                Stop Scanning
+                Stop
               </>
             ) : (
               <>
-                <Target className="h-4 w-4 mr-2" />
-                Start Enhanced Scan
+                <Camera className="h-4 w-4 mr-2" />
+                Start
               </>
             )}
           </Button>
-          
-          {isScanning && isPaused && (
-            <Button
-              onClick={resumeScanning}
-              variant="outline"
-              size="sm"
-            >
+
+          {state.isPaused && (
+            <Button onClick={resumeScanning} variant="outline">
               Resume
             </Button>
           )}
         </div>
 
-        {lastScan && (
-          <div className="text-center p-2 bg-primary/10 rounded">
-            <p className="text-sm text-muted-foreground">Last scan:</p>
-            <p className="font-mono text-sm font-medium">{lastScan}</p>
-          </div>
-        )}
+        <div className="text-xs text-muted-foreground text-center">
+          {state.debugInfo}
+        </div>
       </CardContent>
     </Card>
   );

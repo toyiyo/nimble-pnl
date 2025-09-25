@@ -6,9 +6,12 @@ export interface DeductionResult {
   recipe_name: string;
   ingredients_deducted: {
     product_name: string;
-    quantity_deducted: number;
-    unit: string;
-    remaining_stock: number;
+    quantity_recipe_units: number;
+    recipe_unit: string;
+    quantity_purchase_units: number;
+    purchase_unit: string;
+    conversion_factor: number;
+    remaining_stock_purchase_units: number;
   }[];
   total_cost: number;
 }

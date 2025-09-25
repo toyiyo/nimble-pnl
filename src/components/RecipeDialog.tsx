@@ -32,6 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { useRecipes, Recipe, CreateRecipeData } from '@/hooks/useRecipes';
 import { useProducts } from '@/hooks/useProducts';
 import { Plus, Trash2, DollarSign } from 'lucide-react';
+import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
 
 const measurementUnits = [
   'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 
@@ -124,15 +125,17 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
     }
   }, [recipe, isOpen, form, fetchRecipeIngredients]);
 
-  // Calculate estimated cost when ingredients change
+  // Calculate estimated cost when ingredients change using proper unit conversions
   useEffect(() => {
     const subscription = form.watch((value) => {
       if (value.ingredients) {
         const cost = value.ingredients.reduce((total, ingredient) => {
           if (ingredient?.product_id && ingredient?.quantity) {
             const product = products.find(p => p.id === ingredient.product_id);
-            if (product?.cost_per_unit) {
-              return total + (ingredient.quantity * product.cost_per_unit);
+            if (product?.cost_per_unit && product?.conversion_factor) {
+              // Calculate cost per recipe unit = cost per purchase unit / conversion factor
+              const costPerRecipeUnit = product.cost_per_unit / (product.conversion_factor || 1);
+              return total + (ingredient.quantity * costPerRecipeUnit);
             }
           }
           return total;
@@ -317,104 +320,130 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
               </CardHeader>
               <CardContent className="space-y-4">
                 {fields.map((field, index) => (
-                  <div key={field.id} className="flex items-end gap-4 p-4 border rounded-lg">
-                    <FormField
-                      control={form.control}
-                      name={`ingredients.${index}.product_id`}
-                      render={({ field }) => (
-                        <FormItem className="flex-1">
-                          <FormLabel>Product</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                  <div key={field.id} className="space-y-4 p-4 border rounded-lg">
+                    <div className="flex items-end gap-4">
+                      <FormField
+                        control={form.control}
+                        name={`ingredients.${index}.product_id`}
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormLabel>Product</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select product" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {products.map((product) => (
+                                  <SelectItem key={product.id} value={product.id}>
+                                    <div className="flex flex-col">
+                                      <span>{product.name}</span>
+                                      {product.cost_per_unit && product.conversion_factor && (
+                                        <span className="text-xs text-muted-foreground">
+                                          ${(product.cost_per_unit / (product.conversion_factor || 1)).toFixed(3)}/{product.uom_recipe || 'unit'}
+                                          {product.uom_purchase && (
+                                            <span className="ml-1">
+                                              (${product.cost_per_unit.toFixed(2)}/{product.uom_purchase})
+                                            </span>
+                                          )}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name={`ingredients.${index}.quantity`}
+                        render={({ field }) => (
+                          <FormItem className="w-24">
+                            <FormLabel>Qty</FormLabel>
                             <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select product" />
-                              </SelectTrigger>
+                              <Input 
+                                type="number" 
+                                step="0.001"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                              />
                             </FormControl>
-                            <SelectContent>
-                              {products.map((product) => (
-                                <SelectItem key={product.id} value={product.id}>
-                                  {product.name}
-                                  {product.cost_per_unit && (
-                                    <span className="text-muted-foreground ml-2">
-                                      (${product.cost_per_unit.toFixed(2)})
-                                    </span>
-                                  )}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                    <FormField
-                      control={form.control}
-                      name={`ingredients.${index}.quantity`}
-                      render={({ field }) => (
-                        <FormItem className="w-24">
-                          <FormLabel>Qty</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="number" 
-                              step="0.001"
-                              {...field}
-                              onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                      <FormField
+                        control={form.control}
+                        name={`ingredients.${index}.unit`}
+                        render={({ field }) => (
+                          <FormItem className="w-24">
+                            <FormLabel>Unit</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {measurementUnits.map((unit) => (
+                                  <SelectItem key={unit} value={unit}>
+                                    {unit}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                    <FormField
-                      control={form.control}
-                      name={`ingredients.${index}.unit`}
-                      render={({ field }) => (
-                        <FormItem className="w-24">
-                          <FormLabel>Unit</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                      <FormField
+                        control={form.control}
+                        name={`ingredients.${index}.notes`}
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormLabel>Notes</FormLabel>
                             <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
+                              <Input placeholder="Optional notes..." {...field} />
                             </FormControl>
-                            <SelectContent>
-                              {measurementUnits.map((unit) => (
-                                <SelectItem key={unit} value={unit}>
-                                  {unit}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                    <FormField
-                      control={form.control}
-                      name={`ingredients.${index}.notes`}
-                      render={({ field }) => (
-                        <FormItem className="flex-1">
-                          <FormLabel>Notes</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Optional notes..." {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeIngredient(index)}
-                      disabled={fields.length === 1}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeIngredient(index)}
+                        disabled={fields.length === 1}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    
+                    {/* Show conversion info if product is selected */}
+                    {(() => {
+                      const currentIngredient = form.watch(`ingredients.${index}`);
+                      const selectedProduct = products.find(p => p.id === currentIngredient?.product_id);
+                      
+                      if (selectedProduct && currentIngredient?.quantity && selectedProduct.conversion_factor) {
+                        return (
+                          <RecipeConversionInfo
+                            product={selectedProduct}
+                            recipeQuantity={currentIngredient.quantity}
+                            recipeUnit={currentIngredient.unit}
+                          />
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 ))}
               </CardContent>

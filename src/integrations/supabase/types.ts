@@ -1390,6 +1390,10 @@ export type Database = {
         }
         Returns: string
       }
+      get_product_cost_per_recipe_unit: {
+        Args: { product_id: string }
+        Returns: number
+      }
       is_restaurant_owner: {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: boolean

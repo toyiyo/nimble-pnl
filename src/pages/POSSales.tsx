@@ -10,6 +10,7 @@ import { useInventoryDeduction } from '@/hooks/useInventoryDeduction';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { POSSaleDialog } from '@/components/POSSaleDialog';
 import { format } from 'date-fns';
+import { InventoryDeductionDialog } from '@/components/InventoryDeductionDialog';
 
 export default function POSSales() {
   const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
@@ -22,6 +23,8 @@ export default function POSSales() {
   const [endDate, setEndDate] = useState('');
   const [showSaleDialog, setShowSaleDialog] = useState(false);
   const [selectedView, setSelectedView] = useState<'sales' | 'grouped'>('sales');
+  const [deductionDialogOpen, setDeductionDialogOpen] = useState(false);
+  const [selectedItemForDeduction, setSelectedItemForDeduction] = useState<{name: string; quantity: number} | null>(null);
 
   const filteredSales = sales.filter(sale =>
     sale.pos_item_name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -36,16 +39,8 @@ export default function POSSales() {
   const handleSimulateDeduction = async (itemName: string, quantity: number) => {
     if (!selectedRestaurant?.restaurant_id) return;
     
-      const result = await simulateDeduction(
-        selectedRestaurant.restaurant_id,
-        itemName,
-        quantity
-      );
-    
-    if (result) {
-      console.log('Simulation result:', result);
-      // Could show a dialog with the simulation results
-    }
+    setSelectedItemForDeduction({ name: itemName, quantity });
+    setDeductionDialogOpen(true);
   };
 
   if (!selectedRestaurant) {
@@ -257,6 +252,20 @@ export default function POSSales() {
           onOpenChange={setShowSaleDialog}
           restaurantId={selectedRestaurant.restaurant_id}
         />
+
+        {/* Inventory Deduction Dialog */}
+        {selectedItemForDeduction && (
+          <InventoryDeductionDialog
+            isOpen={deductionDialogOpen}
+            onClose={() => {
+              setDeductionDialogOpen(false);
+              setSelectedItemForDeduction(null);
+            }}
+            restaurantId={selectedRestaurant.restaurant_id}
+            posItemName={selectedItemForDeduction.name}
+            quantitySold={selectedItemForDeduction.quantity}
+          />
+        )}
     </div>
   );
 }

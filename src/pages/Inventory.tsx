@@ -686,45 +686,58 @@ export const Inventory: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredProducts.map((product) => (
-                    <Card key={product.id} className="cursor-pointer hover:shadow-md transition-shadow">
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="text-lg">{product.name}</CardTitle>
-                            <CardDescription>SKU: {product.sku}</CardDescription>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {(product.current_stock || 0) <= (product.reorder_point || 0) && (
-                              <AlertTriangle className="h-5 w-5 text-destructive" />
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedProduct(product);
-                                setShowUpdateDialog(true);
-                              }}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            {canDeleteProducts && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteProduct(product);
-                                }}
-                                className="text-destructive hover:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </CardHeader>
+                   {filteredProducts.map((product) => (
+                     <Card key={product.id} className="cursor-pointer hover:shadow-md transition-shadow">
+                       <CardHeader>
+                         <div className="flex items-start gap-3">
+                           {product.image_url && (
+                             <div className="flex-shrink-0">
+                               <img 
+                                 src={product.image_url} 
+                                 alt={product.name}
+                                 className="w-16 h-16 object-cover rounded-lg border"
+                               />
+                             </div>
+                           )}
+                           <div className="flex-1 min-w-0">
+                             <div className="flex items-start justify-between">
+                               <div>
+                                 <CardTitle className="text-lg">{product.name}</CardTitle>
+                                 <CardDescription>SKU: {product.sku}</CardDescription>
+                               </div>
+                               <div className="flex items-center gap-2">
+                                 {(product.current_stock || 0) <= (product.reorder_point || 0) && (
+                                   <AlertTriangle className="h-5 w-5 text-destructive" />
+                                 )}
+                                 <Button
+                                   variant="ghost"
+                                   size="sm"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     setSelectedProduct(product);
+                                     setShowUpdateDialog(true);
+                                   }}
+                                 >
+                                   <Edit className="h-4 w-4" />
+                                 </Button>
+                                 {canDeleteProducts && (
+                                   <Button
+                                     variant="ghost"
+                                     size="sm"
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       handleDeleteProduct(product);
+                                     }}
+                                     className="text-destructive hover:text-destructive"
+                                   >
+                                     <Trash2 className="h-4 w-4" />
+                                   </Button>
+                                 )}
+                               </div>
+                             </div>
+                           </div>
+                         </div>
+                       </CardHeader>
                       <CardContent
                         onClick={() => {
                           setSelectedProduct(product);
@@ -779,17 +792,30 @@ export const Inventory: React.FC = () => {
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {lowStockProducts.map((product) => (
-                    <Card key={product.id} className="border-destructive">
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="text-lg">{product.name}</CardTitle>
-                            <CardDescription>SKU: {product.sku}</CardDescription>
-                          </div>
-                          <AlertTriangle className="h-5 w-5 text-destructive" />
-                        </div>
-                      </CardHeader>
+                   {lowStockProducts.map((product) => (
+                     <Card key={product.id} className="border-destructive">
+                       <CardHeader>
+                         <div className="flex items-start gap-3">
+                           {product.image_url && (
+                             <div className="flex-shrink-0">
+                               <img 
+                                 src={product.image_url} 
+                                 alt={product.name}
+                                 className="w-16 h-16 object-cover rounded-lg border"
+                               />
+                             </div>
+                           )}
+                           <div className="flex-1 min-w-0">
+                             <div className="flex items-start justify-between">
+                               <div>
+                                 <CardTitle className="text-lg">{product.name}</CardTitle>
+                                 <CardDescription>SKU: {product.sku}</CardDescription>
+                               </div>
+                               <AlertTriangle className="h-5 w-5 text-destructive" />
+                             </div>
+                           </div>
+                         </div>
+                       </CardHeader>
                       <CardContent>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center">

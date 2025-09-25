@@ -55,6 +55,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const [scanCooldown, setScanCooldown] = useState(false);
   const [scanAttempts, setScanAttempts] = useState(0);
   const [isProcessingCurved, setIsProcessingCurved] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const frameSkipCounter = useRef(0);
 
   useEffect(() => {
     // Initialize the reader with enhanced hints for curved surfaces
@@ -218,6 +220,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         undefined,
         videoRef.current,
         async (result, error) => {
+          // Skip frames for performance - only process every 3rd frame
+          frameSkipCounter.current = (frameSkipCounter.current + 1) % 3;
+          if (frameSkipCounter.current !== 0) return;
+
+          // Don't process if paused
+          if (isPaused) return;
+
           if (result) {
             const barcodeText = result.getText();
             const format = result.getBarcodeFormat().toString();
@@ -229,21 +238,22 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
             if (barcodeText !== lastScan || !scanCooldown) {
               setLastScan(barcodeText);
               setScanCooldown(true);
+              setIsPaused(true); // Pause scanning to prevent overwrites
               const normalizedGtin = normalizeGtin(barcodeText, format);
               onScan(normalizedGtin, format);
               
               setTimeout(() => {
                 setScanCooldown(false);
-                setDebugInfo('Camera live - enhanced curved surface scanning...');
-              }, 3000);
+                setDebugInfo('Paused - click Resume to continue scanning');
+              }, 1000);
             }
-          } else if (error) {
+          } else if (error && !isPaused) {
             // Increment scan attempts for fallback logic
             setScanAttempts(prev => prev + 1);
             
-            // After several failed attempts, try multi-frame approach
+            // After several failed attempts, try multi-frame approach (less frequently)
             const now = Date.now();
-            if (scanAttempts > 10 && (now - lastFailureTime) > FAILURE_RETRY_INTERVAL) {
+            if (scanAttempts > 15 && (now - lastFailureTime) > FAILURE_RETRY_INTERVAL) {
               lastFailureTime = now;
               setDebugInfo('Trying enhanced curve detection...');
               
@@ -263,6 +273,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       setIsScanning(false);
       onError?.(error.message);
     }
+  };
+
+  const resumeScanning = () => {
+    setIsPaused(false);
+    setDebugInfo('Resumed scanning...');
   };
 
   const stopScanning = () => {
@@ -334,6 +349,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                   Scanned! ✓
                 </div>
               )}
+              {isPaused && !scanCooldown && (
+                <div className="absolute top-2 left-2 bg-orange-500 text-white px-2 py-1 rounded text-sm">
+                  Paused
+                </div>
+              )}
               {isProcessingCurved && (
                 <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-sm flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -382,6 +402,16 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
               </>
             )}
           </Button>
+          
+          {isScanning && isPaused && (
+            <Button
+              onClick={resumeScanning}
+              variant="outline"
+              size="sm"
+            >
+              Resume
+            </Button>
+          )}
         </div>
 
         {lastScan && (

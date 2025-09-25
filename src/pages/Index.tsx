@@ -81,6 +81,9 @@ const Index = () => {
                 <Button variant="outline" size="sm" onClick={() => navigate('/integrations')} className="text-xs whitespace-nowrap">
                   Integrations
                 </Button>
+                <Button variant="outline" size="sm" onClick={() => navigate('/pos-sales')} className="text-xs whitespace-nowrap">
+                  POS Sales
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => navigate('/recipes')} className="text-xs whitespace-nowrap">
                   Recipes
                 </Button>

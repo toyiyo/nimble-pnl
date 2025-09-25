@@ -9,6 +9,7 @@ import Auth from "./pages/Auth";
 import Team from "./pages/Team";
 import Integrations from "./pages/Integrations";
 import Recipes from "./pages/Recipes";
+import POSSales from "./pages/POSSales";
 import SquareCallback from "./pages/SquareCallback";
 import { AcceptInvitation } from "./pages/AcceptInvitation";
 import { Inventory } from "./pages/Inventory";
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/team" element={<Team />} />
             <Route path="/integrations" element={<Integrations />} />
             <Route path="/recipes" element={<Recipes />} />
+            <Route path="/pos-sales" element={<POSSales />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />

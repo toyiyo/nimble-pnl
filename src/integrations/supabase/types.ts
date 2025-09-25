@@ -1018,6 +1018,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "square_order_line_items_order_fkey"
+            columns: ["order_id", "restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "square_orders"
+            referencedColumns: ["order_id", "restaurant_id"]
+          },
+          {
             foreignKeyName: "square_order_line_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
@@ -1299,6 +1306,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      unified_sales: {
+        Row: {
+          created_at: string
+          external_item_id: string | null
+          external_order_id: string
+          id: string
+          item_name: string
+          pos_category: string | null
+          pos_system: string
+          quantity: number
+          raw_data: Json | null
+          restaurant_id: string
+          sale_date: string
+          sale_time: string | null
+          synced_at: string
+          total_price: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          created_at?: string
+          external_item_id?: string | null
+          external_order_id: string
+          id?: string
+          item_name: string
+          pos_category?: string | null
+          pos_system: string
+          quantity?: number
+          raw_data?: Json | null
+          restaurant_id: string
+          sale_date: string
+          sale_time?: string | null
+          synced_at?: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          created_at?: string
+          external_item_id?: string | null
+          external_order_id?: string
+          id?: string
+          item_name?: string
+          pos_category?: string | null
+          pos_system?: string
+          quantity?: number
+          raw_data?: Json | null
+          restaurant_id?: string
+          sale_date?: string
+          sale_time?: string | null
+          synced_at?: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Relationships: []
       }
       unit_conversions: {
         Row: {

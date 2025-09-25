@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { Plus, Download, Upload, Search, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Download, Search, Calendar, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
-import { useSquareSales } from '@/hooks/useSquareSales';
-import { useSquareIntegration } from '@/hooks/useSquareIntegration';
+import { useUnifiedSales } from '@/hooks/useUnifiedSales';
+import { usePOSIntegrations } from '@/hooks/usePOSIntegrations';
 import { useInventoryDeduction } from '@/hooks/useInventoryDeduction';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { POSSaleDialog } from '@/components/POSSaleDialog';
@@ -16,8 +16,8 @@ import { InventoryDeductionDialog } from '@/components/InventoryDeductionDialog'
 export default function POSSales() {
   const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
   const [selectedRestaurant, setSelectedRestaurant] = useState<UserRestaurant | null>(null);
-  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems } = useSquareSales(selectedRestaurant?.restaurant_id || null);
-  const { isConnected } = useSquareIntegration(selectedRestaurant?.restaurant_id || null);
+  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, createManualSale } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
+  const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(selectedRestaurant?.restaurant_id || null);
   const { simulateDeduction } = useInventoryDeduction();
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,15 +28,26 @@ export default function POSSales() {
   const [deductionDialogOpen, setDeductionDialogOpen] = useState(false);
   const [selectedItemForDeduction, setSelectedItemForDeduction] = useState<{name: string; quantity: number} | null>(null);
 
+  // Auto-sync when restaurant is selected
+  useEffect(() => {
+    if (selectedRestaurant?.restaurant_id && hasAnyConnectedSystem()) {
+      syncAllSystems();
+    }
+  }, [selectedRestaurant?.restaurant_id, hasAnyConnectedSystem, syncAllSystems]);
+
   const filteredSales = sales.filter(sale =>
-    sale.items.some(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    sale.itemName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const dateFilteredSales = startDate && endDate 
     ? getSalesByDateRange(startDate, endDate)
     : filteredSales;
 
-  const allSaleItems = dateFilteredSales.flatMap(order => order.items);
+  const handleSyncSales = async () => {
+    if (selectedRestaurant?.restaurant_id) {
+      await syncAllSystems();
+    }
+  };
 
   const groupedSales = getSalesGroupedByItem();
 
@@ -73,18 +84,37 @@ export default function POSSales() {
           <div>
             <h1 className="text-3xl font-bold">POS Sales</h1>
             <p className="text-muted-foreground">
-              Manage sales data and automatic inventory deductions for {selectedRestaurant.restaurant.name}
+              Unified sales data from all connected POS systems for {selectedRestaurant.restaurant.name}
             </p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {integrationStatuses.map(status => (
+                <Badge 
+                  key={status.system} 
+                  variant={status.isConnected ? 'default' : 'secondary'}
+                >
+                  {status.system} {status.isConnected ? '✓' : '○'}
+                </Badge>
+              ))}
+            </div>
           </div>
         <div className="flex gap-2">
-          {!isConnected && (
+          <Button
+            variant="outline"
+            onClick={() => setShowSaleDialog(true)}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Record Manual Sale
+          </Button>
+          {hasAnyConnectedSystem() && (
             <Button
               variant="outline"
-              onClick={() => setShowSaleDialog(true)}
+              onClick={handleSyncSales}
+              disabled={isSyncing}
               className="flex items-center gap-2"
             >
-              <Plus className="h-4 w-4" />
-              Record Sale
+              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Syncing...' : 'Sync Sales'}
             </Button>
           )}
           <Button variant="outline" className="flex items-center gap-2">
@@ -170,49 +200,53 @@ export default function POSSales() {
             <CardTitle>Sales Transactions</CardTitle>
           </CardHeader>
           <CardContent>
-            {!isConnected ? (
+            {!hasAnyConnectedSystem() ? (
               <div className="text-center py-8 text-muted-foreground">
-                Connect to Square to see your POS sales data automatically.
+                <p className="mb-2">No POS systems connected.</p>
+                <p>Connect to Square or record manual sales to get started.</p>
               </div>
-            ) : allSaleItems.length === 0 ? (
+            ) : dateFilteredSales.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No sales found for the selected date range.
               </div>
             ) : (
               <div className="space-y-4">
-                {allSaleItems.map((item) => (
+                {dateFilteredSales.map((sale) => (
                   <div
-                    key={`${item.order_id}-${item.id}`}
+                    key={sale.id}
                     className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-medium">{item.name}</h3>
+                        <h3 className="font-medium">{sale.itemName}</h3>
                         <Badge variant="secondary">
-                          Qty: {item.quantity}
+                          Qty: {sale.quantity}
                         </Badge>
-                        {item.total_money && (
+                        {sale.totalPrice && (
                           <Badge variant="outline">
-                            ${(item.total_money / 100).toFixed(2)}
+                            ${sale.totalPrice.toFixed(2)}
                           </Badge>
                         )}
-                        {unmappedItems.includes(item.name) && (
+                        <Badge variant="outline" className="text-xs">
+                          {sale.posSystem}
+                        </Badge>
+                        {unmappedItems.includes(sale.itemName) && (
                           <Badge variant="destructive">
                             No Recipe
                           </Badge>
                         )}
                       </div>
                       <div className="text-sm text-muted-foreground mt-1">
-                        {item.service_date && format(new Date(item.service_date), 'MMM d, yyyy')}
-                        {item.catalog_object_id && ` • Item ID: ${item.catalog_object_id}`}
-                        <span className="ml-2">Order: {item.order_id}</span>
+                        {format(new Date(sale.saleDate), 'MMM d, yyyy')}
+                        {sale.saleTime && ` at ${sale.saleTime}`}
+                        {sale.externalOrderId && ` • Order: ${sale.externalOrderId}`}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleSimulateDeduction(item.name, item.quantity)}
+                        onClick={() => handleSimulateDeduction(sale.itemName, sale.quantity)}
                       >
                         Simulate Impact
                       </Button>

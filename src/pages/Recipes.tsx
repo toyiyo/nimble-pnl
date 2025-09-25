@@ -19,7 +19,7 @@ import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeDialog } from '@/components/RecipeDialog';
 import { DeleteRecipeDialog } from '@/components/DeleteRecipeDialog';
 import { RecipeSuggestions } from '@/components/RecipeSuggestions';
-import { useSquareSales } from '@/hooks/useSquareSales';
+import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -28,7 +28,7 @@ export default function Recipes() {
   const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
   const [selectedRestaurant, setSelectedRestaurant] = useState<any>(null);
   const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || selectedRestaurant?.id || null);
-  const { unmappedItems } = useSquareSales(selectedRestaurant?.restaurant_id || selectedRestaurant?.id || null);
+  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || selectedRestaurant?.id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);

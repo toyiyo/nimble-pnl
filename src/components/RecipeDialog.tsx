@@ -63,7 +63,7 @@ interface RecipeDialogProps {
 }
 
 export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDialogProps) {
-  const { createRecipe, updateRecipe, fetchRecipeIngredients } = useRecipes(restaurantId);
+  const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
   const { products } = useProducts(restaurantId);
   const [loading, setLoading] = useState(false);
   const [estimatedCost, setEstimatedCost] = useState(0);
@@ -154,7 +154,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
     try {
       if (recipe) {
         // Update existing recipe
-        await updateRecipe(recipe.id, {
+        const updateSuccess = await updateRecipe(recipe.id, {
           name: data.name,
           description: data.description,
           pos_item_name: data.pos_item_name,
@@ -162,7 +162,24 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
           serving_size: data.serving_size,
         });
         
-        // TODO: Update ingredients (would need additional API endpoints)
+        if (updateSuccess) {
+          // Update ingredients - filter out empty ingredients
+          const validIngredients = data.ingredients.filter(ing => 
+            ing.product_id && ing.quantity && ing.quantity > 0
+          ) as {
+            product_id: string;
+            quantity: number;
+            unit: 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+            notes?: string;
+          }[];
+          await updateRecipeIngredients(recipe.id, validIngredients);
+          
+          // Recalculate and update recipe cost
+          const cost = await calculateRecipeCost(recipe.id);
+          if (cost !== null) {
+            await updateRecipe(recipe.id, { estimated_cost: cost });
+          }
+        }
       } else {
         // Create new recipe
         await createRecipe(data as CreateRecipeData);

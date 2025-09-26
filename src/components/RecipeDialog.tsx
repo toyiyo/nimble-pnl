@@ -102,7 +102,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
               ? ingredients.map(ing => ({
                   product_id: ing.product_id,
                   quantity: ing.quantity,
-                  unit: ing.unit as 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving',
+                  unit: (measurementUnits.includes(ing.unit as any) ? ing.unit : 'oz') as 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving',
                   notes: ing.notes || '',
                 }))
               : [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
@@ -387,7 +387,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue />
+                                  <SelectValue placeholder="Select unit" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>

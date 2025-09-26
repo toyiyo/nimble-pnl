@@ -88,9 +88,11 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
   // Load recipe data for editing
   useEffect(() => {
     if (recipe && isOpen) {
+      console.log('Loading recipe data for recipe:', recipe.id);
       const loadRecipeData = async () => {
         try {
           const ingredients = await fetchRecipeIngredients(recipe.id);
+          console.log('Loaded ingredients:', ingredients);
           
           form.reset({
             name: recipe.name,
@@ -114,6 +116,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
 
       loadRecipeData();
     } else if (!recipe && isOpen) {
+      console.log('Resetting form for new recipe');
       form.reset({
         name: '',
         description: '',
@@ -123,7 +126,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
         ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
       });
     }
-  }, [recipe, isOpen, fetchRecipeIngredients]);
+  }, [recipe?.id, isOpen]); // Only depend on recipe.id, not the whole recipe object or fetchRecipeIngredients
 
   // Calculate estimated cost when ingredients change using proper unit conversions
   useEffect(() => {

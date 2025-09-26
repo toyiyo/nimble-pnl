@@ -144,7 +144,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
       }
     });
     return () => subscription.unsubscribe();
-  }, [form, products]);
+  }, [products]);
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);

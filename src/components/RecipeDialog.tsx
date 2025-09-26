@@ -66,6 +66,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
   const { createRecipe, updateRecipe, fetchRecipeIngredients } = useRecipes(restaurantId);
   const { products } = useProducts(restaurantId);
   const [loading, setLoading] = useState(false);
+  const [estimatedCost, setEstimatedCost] = useState(0);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -125,23 +126,25 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
   }, [recipe, isOpen, fetchRecipeIngredients]);
 
   // Calculate estimated cost when ingredients change using proper unit conversions
-  const watchedIngredients = form.watch('ingredients');
-  
-  const estimatedCost = useMemo(() => {
-    if (!watchedIngredients) return 0;
-    
-    return watchedIngredients.reduce((total, ingredient) => {
-      if (ingredient?.product_id && ingredient?.quantity) {
-        const product = products.find(p => p.id === ingredient.product_id);
-        if (product?.cost_per_unit && product?.conversion_factor) {
-          // Calculate cost per recipe unit = cost per purchase unit / conversion factor
-          const costPerRecipeUnit = product.cost_per_unit / (product.conversion_factor || 1);
-          return total + (ingredient.quantity * costPerRecipeUnit);
-        }
+  useEffect(() => {
+    const subscription = form.watch((value) => {
+      if (value.ingredients) {
+        const cost = value.ingredients.reduce((total, ingredient) => {
+          if (ingredient?.product_id && ingredient?.quantity) {
+            const product = products.find(p => p.id === ingredient.product_id);
+            if (product?.cost_per_unit && product?.conversion_factor) {
+              // Calculate cost per recipe unit = cost per purchase unit / conversion factor
+              const costPerRecipeUnit = product.cost_per_unit / (product.conversion_factor || 1);
+              return total + (ingredient.quantity * costPerRecipeUnit);
+            }
+          }
+          return total;
+        }, 0);
+        setEstimatedCost(cost);
       }
-      return total;
-    }, 0);
-  }, [watchedIngredients, products]);
+    });
+    return () => subscription.unsubscribe();
+  }, [products]);
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
@@ -170,15 +173,15 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
     }
   };
 
-  const addIngredient = () => {
+  const addIngredient = useCallback(() => {
     append({ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' });
-  };
+  }, [append]);
 
-  const removeIngredient = (index: number) => {
+  const removeIngredient = useCallback((index: number) => {
     if (fields.length > 1) {
       remove(index);
     }
-  };
+  }, [fields.length, remove]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

@@ -10,6 +10,19 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
   // Initialize adapters
   const squareAdapter = useSquareSalesAdapter(restaurantId);
 
+  // Use useMemo to stabilize the manual adapter object
+  const manualAdapter = useCallback(() => ({
+    system: 'manual' as POSSystemType,
+    isConnected: true,
+    fetchSales: async () => [],
+    syncToUnified: async () => 0,
+    getIntegrationStatus: () => ({
+      system: 'manual' as POSSystemType,
+      isConnected: true,
+      isConfigured: true,
+    }),
+  }), []);
+
   useEffect(() => {
     const adapterMap: Partial<Record<POSSystemType, POSAdapter>> = {
       square: squareAdapter,
@@ -17,17 +30,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
       // toast: useToastSalesAdapter(restaurantId),
       // clover: useCloverSalesAdapter(restaurantId),
       // resy: useResySalesAdapter(restaurantId),
-      manual: {
-        system: 'manual',
-        isConnected: true,
-        fetchSales: async () => [],
-        syncToUnified: async () => 0,
-        getIntegrationStatus: () => ({
-          system: 'manual',
-          isConnected: true,
-          isConfigured: true,
-        }),
-      },
+      manual: manualAdapter(),
     };
 
     setAdapters(adapterMap as Record<POSSystemType, POSAdapter>);
@@ -37,7 +40,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
       adapter!.getIntegrationStatus()
     );
     setIntegrationStatuses(statuses);
-  }, [squareAdapter]);
+  }, [squareAdapter, manualAdapter]);
 
   const getConnectedSystems = useCallback((): POSSystemType[] => {
     return integrationStatuses

@@ -23,8 +23,6 @@ interface ScannerState {
   scanCooldown: boolean;
   isPaused: boolean;
   isUsingGrokOCR: boolean;
-  scanAttempts: number;
-  showAIButton: boolean;
 }
 
 type ScannerAction = 
@@ -33,12 +31,10 @@ type ScannerAction =
   | { type: 'SET_PERMISSION'; payload: boolean }
   | { type: 'SET_DEBUG_INFO'; payload: string }
   | { type: 'SCAN_SUCCESS'; payload: { result: string; format: string } }
-  | { type: 'SCAN_ERROR' }
   | { type: 'SET_COOLDOWN'; payload: boolean }
   | { type: 'SET_PAUSED'; payload: boolean }
-  | { type: 'SET_GROK_OCR'; payload: boolean }
-  | { type: 'RESET_ATTEMPTS' }
-  | { type: 'SHOW_AI_BUTTON'; payload: boolean };
+  | { type: 'TOGGLE_GROK_OCR' }
+  | { type: 'RESET_STATE' };
 
 const initialState: ScannerState = {
   isScanning: false,
@@ -47,17 +43,15 @@ const initialState: ScannerState = {
   lastScan: '',
   scanCooldown: false,
   isPaused: false,
-  isUsingGrokOCR: false,
-  scanAttempts: 0,
-  showAIButton: false
+  isUsingGrokOCR: false
 };
 
 const scannerReducer = (state: ScannerState, action: ScannerAction): ScannerState => {
   switch (action.type) {
     case 'START_SCANNING':
-      return { ...state, isScanning: true, debugInfo: 'Starting scanner...', scanAttempts: 0, showAIButton: false };
+      return { ...state, isScanning: true, debugInfo: 'Starting scanner...', isUsingGrokOCR: false };
     case 'STOP_SCANNING':
-      return { ...state, isScanning: false, debugInfo: 'Stopped', showAIButton: false };
+      return { ...state, isScanning: false, debugInfo: 'Stopped' };
     case 'SET_PERMISSION':
       return { ...state, hasPermission: action.payload };
     case 'SET_DEBUG_INFO':
@@ -69,25 +63,20 @@ const scannerReducer = (state: ScannerState, action: ScannerAction): ScannerStat
         scanCooldown: true,
         isPaused: true,
         debugInfo: `Found ${action.payload.format}: ${action.payload.result}`,
-        scanAttempts: 0,
-        showAIButton: false
-      };
-    case 'SCAN_ERROR':
-      return { 
-        ...state, 
-        scanAttempts: state.scanAttempts + 1,
-        showAIButton: state.scanAttempts >= 10 // Show AI button after 10+ failed attempts
+        isUsingGrokOCR: false
       };
     case 'SET_COOLDOWN':
       return { ...state, scanCooldown: action.payload };
     case 'SET_PAUSED':
       return { ...state, isPaused: action.payload };
-    case 'SET_GROK_OCR':
-      return { ...state, isUsingGrokOCR: action.payload };
-    case 'RESET_ATTEMPTS':
-      return { ...state, scanAttempts: 0, showAIButton: false };
-    case 'SHOW_AI_BUTTON':
-      return { ...state, showAIButton: action.payload };
+    case 'TOGGLE_GROK_OCR':
+      return { 
+        ...state, 
+        isUsingGrokOCR: !state.isUsingGrokOCR,
+        debugInfo: !state.isUsingGrokOCR ? 'AI mode enabled' : 'Regular scanning mode'
+      };
+    case 'RESET_STATE':
+      return { ...initialState, hasPermission: state.hasPermission };
     default:
       return state;
   }
@@ -205,12 +194,16 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     CanvasPool.cleanup();
   }, []);
 
-  // Manual AI OCR triggered by user button
-  const attemptGrokOCR = useCallback(async (): Promise<boolean> => {
-    if (!videoRef.current) return false;
+  // Toggle between AI and regular scanning
+  const toggleAIMode = useCallback(() => {
+    dispatch({ type: 'TOGGLE_GROK_OCR' });
+  }, []);
 
-    dispatch({ type: 'SET_GROK_OCR', payload: true });
-    dispatch({ type: 'SET_DEBUG_INFO', payload: 'Using AI to read barcode...' });
+  // AI OCR function
+  const attemptGrokOCR = useCallback(async (): Promise<boolean> => {
+    if (!videoRef.current || !state.isUsingGrokOCR) return false;
+
+    dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI reading barcode...' });
 
     try {
       const video = videoRef.current;
@@ -244,7 +237,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           onScan(normalizedGtin, 'AI');
           
           dispatch({ type: 'SCAN_SUCCESS', payload: { result: barcodeText, format: 'AI' } });
-          dispatch({ type: 'SET_DEBUG_INFO', payload: `AI found barcode: ${barcodeText}` });
 
           setTimeout(() => {
             dispatch({ type: 'SET_COOLDOWN', payload: false });
@@ -254,29 +246,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         return true;
       }
       
-      dispatch({ type: 'SET_GROK_OCR', payload: false });
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI could not find barcode - continuing scan' });
-      
-      // Resume regular scanning after AI attempt
-      setTimeout(() => {
-        dispatch({ type: 'RESET_ATTEMPTS' });
-        dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
-      }, 2000);
-      
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI mode - no barcode found' });
       return false;
     } catch (error) {
-      dispatch({ type: 'SET_GROK_OCR', payload: false });
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI barcode reading failed - continuing scan' });
-      
-      // Resume regular scanning after AI attempt fails
-      setTimeout(() => {
-        dispatch({ type: 'RESET_ATTEMPTS' });
-        dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
-      }, 2000);
-      
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI reading failed' });
       return false;
     }
-  }, [state.lastScan, state.scanCooldown, onScan, MAX_WIDTH, MAX_HEIGHT, JPEG_QUALITY]);
+  }, [state.isUsingGrokOCR, state.lastScan, state.scanCooldown, onScan, MAX_WIDTH, MAX_HEIGHT, JPEG_QUALITY]);
 
   // Handle successful barcode scan
   const handleScanSuccess = useCallback((result: any, format: string) => {
@@ -293,49 +269,55 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     }
   }, [state.lastScan, state.scanCooldown, onScan]);
 
-  // Handle scan errors
-  const handleScanError = useCallback(() => {
-    dispatch({ type: 'SCAN_ERROR' });
-  }, []);
+  // AI scanning loop
+  useEffect(() => {
+    if (!state.isUsingGrokOCR || !state.isScanning || state.isPaused) return;
+
+    const aiScanInterval = setInterval(() => {
+      attemptGrokOCR();
+    }, 1000); // Try AI every second
+
+    return () => clearInterval(aiScanInterval);
+  }, [state.isUsingGrokOCR, state.isScanning, state.isPaused, attemptGrokOCR]);
 
   // Start scanning with optimization
   const startScanning = useCallback(async () => {
+    // Reset state completely when starting
+    dispatch({ type: 'RESET_STATE' });
     dispatch({ type: 'START_SCANNING' });
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
-          width: { ideal: 1280, max: 1920 }, // Limit max resolution
+          width: { ideal: 1280, max: 1920 }, 
           height: { ideal: 720, max: 1080 }
         }
       });
       
       streamRef.current = stream;
       dispatch({ type: 'SET_PERMISSION', payload: true });
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - regular scanning mode' });
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
 
-      // Start ZXing continuous scanning with optimized frame processing
+      // Start ZXing continuous scanning
       if (readerRef.current && videoRef.current) {
         await readerRef.current.decodeFromVideoDevice(
           undefined,
           videoRef.current,
           (result, error) => {
-            // Frame skipping for performance - only process every nth frame
+            // Frame skipping for performance 
             frameSkipCounter.current = (frameSkipCounter.current + 1) % FRAME_SKIP_COUNT;
             if (frameSkipCounter.current !== 0) return;
 
-            // Don't process if paused or using AI
+            // Only process if not paused and not using AI mode
             if (state.isPaused || state.isUsingGrokOCR) return;
 
             if (result) {
               handleScanSuccess(result.getText(), result.getBarcodeFormat().toString());
-            } else if (error) {
-              handleScanError();
             }
           }
         );
@@ -347,13 +329,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       dispatch({ type: 'STOP_SCANNING' });
       onError?.(error.message);
     }
-  }, [handleScanSuccess, handleScanError, state.isPaused, state.isUsingGrokOCR, FRAME_SKIP_COUNT]);
+  }, [handleScanSuccess, state.isPaused, state.isUsingGrokOCR, FRAME_SKIP_COUNT]);
 
   const resumeScanning = useCallback(() => {
     dispatch({ type: 'SET_PAUSED', payload: false });
-    dispatch({ type: 'RESET_ATTEMPTS' });
-    dispatch({ type: 'SET_DEBUG_INFO', payload: 'Resumed scanning...' });
-  }, []);
+    const mode = state.isUsingGrokOCR ? 'AI mode' : 'regular scanning mode';
+    dispatch({ type: 'SET_DEBUG_INFO', payload: `Resumed ${mode}` });
+  }, [state.isUsingGrokOCR]);
 
   const stopScanning = useCallback(() => {
     dispatch({ type: 'STOP_SCANNING' });
@@ -414,13 +396,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
               {state.isUsingGrokOCR && (
                 <div className="absolute top-2 right-2 bg-purple-500 text-white px-2 py-1 rounded text-sm flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  AI Reading...
-                </div>
-              )}
-              {state.showAIButton && !state.isUsingGrokOCR && (
-                <div className="absolute bottom-2 left-2 right-2 bg-blue-500/90 text-white px-2 py-1 rounded text-xs text-center">
-                  <AlertCircle className="h-3 w-3 inline mr-1" />
-                  Having trouble? Try the AI button below
+                  AI Mode
                 </div>
               )}
             </>
@@ -464,18 +440,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
             </Button>
           )}
 
-          {state.showAIButton && state.isScanning && !state.isPaused && !state.isUsingGrokOCR && (
+          {state.isScanning && !state.isPaused && (
             <Button 
-              onClick={attemptGrokOCR} 
-              variant="secondary"
+              onClick={toggleAIMode} 
+              variant={state.isUsingGrokOCR ? "destructive" : "secondary"}
               className="flex-shrink-0"
-              disabled={state.isUsingGrokOCR}
             >
-              {state.isUsingGrokOCR ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                'Try AI'
-              )}
+              {state.isUsingGrokOCR ? 'Regular' : 'AI Mode'}
             </Button>
           )}
         </div>

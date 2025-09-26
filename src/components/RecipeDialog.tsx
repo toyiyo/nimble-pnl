@@ -213,7 +213,11 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                       <FormItem>
                         <FormLabel>Recipe Name *</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., Margarita" {...field} />
+                          <Input 
+                            placeholder="e.g., Margarita" 
+                            id="recipe-name"
+                            {...field} 
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -230,6 +234,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                           <Textarea 
                             placeholder="Brief description of the recipe..."
                             rows={3}
+                            id="recipe-description"
                             {...field} 
                           />
                         </FormControl>
@@ -249,6 +254,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                             type="number" 
                             step="0.1"
                             placeholder="1"
+                            id="recipe-serving-size"
                             {...field}
                             onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
                           />
@@ -273,7 +279,11 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                       <FormItem>
                         <FormLabel>POS Item Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., Margarita - Large" {...field} />
+                          <Input 
+                            placeholder="e.g., Margarita - Large" 
+                            id="pos-item-name"
+                            {...field} 
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -287,7 +297,11 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                       <FormItem>
                         <FormLabel>POS Item ID</FormLabel>
                         <FormControl>
-                          <Input placeholder="Internal POS system ID" {...field} />
+                          <Input 
+                            placeholder="Internal POS system ID" 
+                            id="pos-item-id"
+                            {...field} 
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -330,7 +344,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                             <FormLabel>Product</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
-                                <SelectTrigger>
+                                <SelectTrigger id={`product-${index}`}>
                                   <SelectValue placeholder="Select product" />
                                 </SelectTrigger>
                               </FormControl>
@@ -369,6 +383,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                               <Input 
                                 type="number" 
                                 step="0.001"
+                                id={`quantity-${index}`}
                                 {...field}
                                 onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                               />
@@ -386,7 +401,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                             <FormLabel>Unit</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
-                                <SelectTrigger>
+                                <SelectTrigger id={`unit-${index}`}>
                                   <SelectValue placeholder="Select unit" />
                                 </SelectTrigger>
                               </FormControl>
@@ -410,7 +425,11 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                           <FormItem className="flex-1">
                             <FormLabel>Notes</FormLabel>
                             <FormControl>
-                              <Input placeholder="Optional notes..." {...field} />
+                              <Input 
+                                placeholder="Optional notes..." 
+                                id={`notes-${index}`}
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>

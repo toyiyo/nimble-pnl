@@ -43,10 +43,54 @@ export const Inventory: React.FC = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
-  const handleBarcodeScanned = async (gtin: string, format: string) => {
-    console.log('📱 Barcode scanned:', gtin, format);
+  const handleBarcodeScanned = async (gtin: string, format: string, aiData?: string) => {
+    console.log('📱 Barcode scanned:', gtin, format, aiData ? 'with AI data' : '');
     setLastScannedGtin(gtin);
     setLookupResult(null);
+    
+    // For manual entry with AI data, create product directly
+    if (gtin === 'MANUAL_ENTRY' && aiData) {
+      // Parse AI data to extract product information
+      const lines = aiData.split('\n').filter(line => line.trim().length > 0);
+      const productName = lines[0] || 'AI Detected Product';
+      const brandMatch = lines.find(line => /brand|company|corp|inc|llc/i.test(line));
+      const sizeMatch = lines.find(line => /\d+\s*(fl oz|oz|ml|gram|kg|lb)/i.test(line));
+      
+      const newProductData: Product = {
+        id: '',
+        restaurant_id: selectedRestaurant!.restaurant!.id,
+        gtin: '',
+        sku: `AI_${Date.now()}`,
+        name: productName,
+        description: lines.slice(1, 4).join(' • '),
+        brand: brandMatch || '',
+        category: '',
+        size_value: null,
+        size_unit: sizeMatch?.match(/fl oz|oz|ml|gram|kg|lb/i)?.[0] || null,
+        package_qty: 1,
+        uom_purchase: null,
+        uom_recipe: null,
+        conversion_factor: 1,
+        cost_per_unit: null,
+        current_stock: 0,
+        par_level_min: 0,
+        par_level_max: 0,
+        reorder_point: 0,
+        supplier_name: null,
+        supplier_sku: null,
+        barcode_data: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      setSelectedProduct(newProductData);
+      setShowUpdateDialog(true);
+      toast({
+        title: "AI Product Detected",
+        description: `${productName} - Add barcode and details`,
+      });
+      return;
+    }
     
     // Check if product already exists in inventory
     const existingProduct = await findProductByGtin(gtin);

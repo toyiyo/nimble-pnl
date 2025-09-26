@@ -373,9 +373,14 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                                   <SelectItem key={product.id} value={product.id}>
                                     <div className="flex flex-col">
                                       <span>{product.name}</span>
-                                      {product.uom_purchase && (
+                                      {product.cost_per_unit && product.conversion_factor && (
                                         <span className="text-xs text-muted-foreground">
-                                          {product.uom_purchase} → {product.uom_recipe || 'recipe unit'}
+                                          ${(product.cost_per_unit / (product.conversion_factor || 1)).toFixed(3)}/{product.uom_recipe || 'unit'}
+                                          {product.uom_purchase && (
+                                            <span className="ml-1">
+                                              (${product.cost_per_unit.toFixed(2)}/{product.uom_purchase})
+                                            </span>
+                                          )}
                                         </span>
                                       )}
                                     </div>

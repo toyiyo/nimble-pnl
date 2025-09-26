@@ -23,8 +23,6 @@ interface ScannerState {
   scanCooldown: boolean;
   isPaused: boolean;
   isUsingGrokOCR: boolean;
-  scanAttempts: number;
-  showAIButton: boolean;
 }
 
 type ScannerAction = 
@@ -36,9 +34,7 @@ type ScannerAction =
   | { type: 'SCAN_ERROR' }
   | { type: 'SET_COOLDOWN'; payload: boolean }
   | { type: 'SET_PAUSED'; payload: boolean }
-  | { type: 'SET_GROK_OCR'; payload: boolean }
-  | { type: 'RESET_ATTEMPTS' }
-  | { type: 'SHOW_AI_BUTTON'; payload: boolean };
+  | { type: 'SET_GROK_OCR'; payload: boolean };
 
 const initialState: ScannerState = {
   isScanning: false, 
@@ -47,17 +43,15 @@ const initialState: ScannerState = {
   lastScan: '',
   scanCooldown: false,
   isPaused: false,
-  isUsingGrokOCR: false,
-  scanAttempts: 0,
-  showAIButton: false
+  isUsingGrokOCR: false
 };
 
 const scannerReducer = (state: ScannerState, action: ScannerAction): ScannerState => {
   switch (action.type) {
     case 'START_SCANNING':
-      return { ...state, isScanning: true, debugInfo: 'Starting scanner...', scanAttempts: 0, showAIButton: false };
+      return { ...state, isScanning: true, debugInfo: 'Starting scanner...' };
     case 'STOP_SCANNING':
-      return { ...state, isScanning: false, debugInfo: 'Stopped', showAIButton: false };
+      return { ...state, isScanning: false, debugInfo: 'Stopped' };
     case 'SET_PERMISSION':
       return { ...state, hasPermission: action.payload };
     case 'SET_DEBUG_INFO':
@@ -68,26 +62,16 @@ const scannerReducer = (state: ScannerState, action: ScannerAction): ScannerStat
         lastScan: action.payload.result,
         scanCooldown: true,
         isPaused: true,
-        debugInfo: `Found ${action.payload.format}: ${action.payload.result}`,
-        scanAttempts: 0,
-        showAIButton: false
+        debugInfo: `Found ${action.payload.format}: ${action.payload.result}`
       };
     case 'SCAN_ERROR':
-      return { 
-        ...state, 
-        scanAttempts: state.scanAttempts + 1,
-        showAIButton: state.scanAttempts >= 10 // Show AI button after 10+ failed attempts
-      };
+      return state;
     case 'SET_COOLDOWN':
       return { ...state, scanCooldown: action.payload };
     case 'SET_PAUSED':
       return { ...state, isPaused: action.payload };
     case 'SET_GROK_OCR':
       return { ...state, isUsingGrokOCR: action.payload };
-    case 'RESET_ATTEMPTS':
-      return { ...state, scanAttempts: 0, showAIButton: false };
-    case 'SHOW_AI_BUTTON':
-      return { ...state, showAIButton: action.payload };
     default:
       return state;
   }
@@ -259,7 +243,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       
       // Resume regular scanning after AI attempt
       setTimeout(() => {
-        dispatch({ type: 'RESET_ATTEMPTS' });
         dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
       }, 2000);
       
@@ -270,7 +253,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       
       // Resume regular scanning after AI attempt fails
       setTimeout(() => {
-        dispatch({ type: 'RESET_ATTEMPTS' });
         dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
       }, 2000);
       
@@ -351,7 +333,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
   const resumeScanning = useCallback(() => {
     dispatch({ type: 'SET_PAUSED', payload: false });
-    dispatch({ type: 'RESET_ATTEMPTS' });
     dispatch({ type: 'SET_DEBUG_INFO', payload: 'Resumed scanning...' });
   }, []);
 
@@ -417,12 +398,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                   AI Reading...
                 </div>
               )}
-              {state.showAIButton && !state.isUsingGrokOCR && (
-                <div className="absolute bottom-2 left-2 right-2 bg-blue-500/90 text-white px-2 py-1 rounded text-xs text-center">
-                  <AlertCircle className="h-3 w-3 inline mr-1" />
-                  Having trouble? Try the AI button below
-                </div>
-              )}
             </>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
@@ -464,7 +439,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
             </Button>
           )}
 
-          {state.showAIButton && state.isScanning && !state.isPaused && !state.isUsingGrokOCR && (
+          {state.isScanning && !state.isPaused && (
             <Button 
               onClick={attemptGrokOCR} 
               variant="secondary"

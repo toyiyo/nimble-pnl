@@ -36,10 +36,15 @@ serve(async (req) => {
       `- ${ing.name} (measured in ${ing.uom_recipe})`
     ).join('\n');
 
+    const validUnits = ['oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 'bottle', 'can', 'bag', 'box', 'piece', 'serving'];
+    
     const prompt = `You are a professional chef and recipe expert. Based on the menu item "${itemName}"${itemDescription ? ` with description: "${itemDescription}"` : ''}, create a realistic recipe using only ingredients from the available inventory list below.
 
 Available Ingredients:
 ${ingredientsList}
+
+IMPORTANT: For the "unit" field, you must use one of these valid measurement units only: ${validUnits.join(', ')}.
+Choose the most appropriate unit for each ingredient based on typical recipe measurements.
 
 Please respond with a JSON object containing:
 {
@@ -49,14 +54,14 @@ Please respond with a JSON object containing:
     {
       "ingredientName": "exact name from the available ingredients list",
       "quantity": number,
-      "unit": "unit from the available ingredients list"
+      "unit": "one of: oz, ml, cup, tbsp, tsp, lb, kg, g, bottle, can, bag, box, piece, serving"
     }
   ],
   "confidence": number between 0-1,
   "reasoning": "brief explanation of your choices"
 }
 
-Only suggest ingredients that are actually in the available ingredients list. If you cannot create a reasonable recipe with the available ingredients, set confidence to 0 and explain why in the reasoning.`;
+Only suggest ingredients that are actually in the available ingredients list. Use realistic quantities and appropriate measurement units for cooking. If you cannot create a reasonable recipe with the available ingredients, set confidence to 0 and explain why in the reasoning.`;
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -99,6 +104,16 @@ Only suggest ingredients that are actually in the available ingredients list. If
     
     try {
       const recipeData = JSON.parse(content);
+      
+      // Validate and fix measurement units
+      if (recipeData.ingredients && Array.isArray(recipeData.ingredients)) {
+        const validUnits = ['oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 'bottle', 'can', 'bag', 'box', 'piece', 'serving'];
+        
+        recipeData.ingredients = recipeData.ingredients.map((ingredient: any) => ({
+          ...ingredient,
+          unit: validUnits.includes(ingredient.unit) ? ingredient.unit : 'piece'
+        }));
+      }
       
       return new Response(JSON.stringify({
         success: true,

@@ -363,6 +363,53 @@ export type Database = {
         }
         Relationships: []
       }
+      pos_sales: {
+        Row: {
+          created_at: string
+          id: string
+          pos_item_id: string | null
+          pos_item_name: string
+          quantity: number
+          raw_data: Json | null
+          restaurant_id: string
+          sale_date: string
+          sale_price: number | null
+          sale_time: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          pos_item_id?: string | null
+          pos_item_name: string
+          quantity?: number
+          raw_data?: Json | null
+          restaurant_id: string
+          sale_date: string
+          sale_price?: number | null
+          sale_time?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          pos_item_id?: string | null
+          pos_item_name?: string
+          quantity?: number
+          raw_data?: Json | null
+          restaurant_id?: string
+          sale_date?: string
+          sale_price?: number | null
+          sale_time?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_sales_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           barcode_data: Json | null
@@ -375,10 +422,12 @@ export type Database = {
           description: string | null
           gtin: string | null
           id: string
+          image_url: string | null
           name: string
           package_qty: number | null
           par_level_max: number | null
           par_level_min: number | null
+          pos_item_name: string | null
           reorder_point: number | null
           restaurant_id: string
           size_unit: string | null
@@ -401,10 +450,12 @@ export type Database = {
           description?: string | null
           gtin?: string | null
           id?: string
+          image_url?: string | null
           name: string
           package_qty?: number | null
           par_level_max?: number | null
           par_level_min?: number | null
+          pos_item_name?: string | null
           reorder_point?: number | null
           restaurant_id: string
           size_unit?: string | null
@@ -427,10 +478,12 @@ export type Database = {
           description?: string | null
           gtin?: string | null
           id?: string
+          image_url?: string | null
           name?: string
           package_qty?: number | null
           par_level_max?: number | null
           par_level_min?: number | null
+          pos_item_name?: string | null
           reorder_point?: number | null
           restaurant_id?: string
           size_unit?: string | null
@@ -479,6 +532,107 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      recipe_ingredients: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          product_id: string
+          quantity: number
+          recipe_id: string
+          unit: Database["public"]["Enums"]["measurement_unit"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          product_id: string
+          quantity: number
+          recipe_id: string
+          unit: Database["public"]["Enums"]["measurement_unit"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          product_id?: string
+          quantity?: number
+          recipe_id?: string
+          unit?: Database["public"]["Enums"]["measurement_unit"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipe_ingredients_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipe_ingredients_recipe_id_fkey"
+            columns: ["recipe_id"]
+            isOneToOne: false
+            referencedRelation: "recipes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recipes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          estimated_cost: number | null
+          id: string
+          is_active: boolean | null
+          name: string
+          pos_item_id: string | null
+          pos_item_name: string | null
+          restaurant_id: string
+          serving_size: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          estimated_cost?: number | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          pos_item_id?: string | null
+          pos_item_name?: string | null
+          restaurant_id: string
+          serving_size?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          estimated_cost?: number | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          pos_item_id?: string | null
+          pos_item_name?: string | null
+          restaurant_id?: string
+          serving_size?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipes_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       restaurants: {
         Row: {
@@ -870,6 +1024,20 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "square_order_line_items_order_fkey"
+            columns: ["order_id", "restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "square_orders"
+            referencedColumns: ["order_id", "restaurant_id"]
+          },
+          {
+            foreignKeyName: "square_order_line_items_order_id_restaurant_id_fkey"
+            columns: ["order_id", "restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "square_orders"
+            referencedColumns: ["order_id", "restaurant_id"]
+          },
+          {
             foreignKeyName: "square_order_line_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
@@ -1152,6 +1320,84 @@ export type Database = {
           },
         ]
       }
+      unified_sales: {
+        Row: {
+          created_at: string
+          external_item_id: string | null
+          external_order_id: string
+          id: string
+          item_name: string
+          pos_category: string | null
+          pos_system: string
+          quantity: number
+          raw_data: Json | null
+          restaurant_id: string
+          sale_date: string
+          sale_time: string | null
+          synced_at: string
+          total_price: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          created_at?: string
+          external_item_id?: string | null
+          external_order_id: string
+          id?: string
+          item_name: string
+          pos_category?: string | null
+          pos_system: string
+          quantity?: number
+          raw_data?: Json | null
+          restaurant_id: string
+          sale_date: string
+          sale_time?: string | null
+          synced_at?: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          created_at?: string
+          external_item_id?: string | null
+          external_order_id?: string
+          id?: string
+          item_name?: string
+          pos_category?: string | null
+          pos_system?: string
+          quantity?: number
+          raw_data?: Json | null
+          restaurant_id?: string
+          sale_date?: string
+          sale_time?: string | null
+          synced_at?: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Relationships: []
+      }
+      unit_conversions: {
+        Row: {
+          created_at: string
+          factor: number
+          from_unit: Database["public"]["Enums"]["measurement_unit"]
+          id: string
+          to_unit: Database["public"]["Enums"]["measurement_unit"]
+        }
+        Insert: {
+          created_at?: string
+          factor: number
+          from_unit: Database["public"]["Enums"]["measurement_unit"]
+          id?: string
+          to_unit: Database["public"]["Enums"]["measurement_unit"]
+        }
+        Update: {
+          created_at?: string
+          factor?: number
+          from_unit?: Database["public"]["Enums"]["measurement_unit"]
+          id?: string
+          to_unit?: Database["public"]["Enums"]["measurement_unit"]
+        }
+        Relationships: []
+      }
       user_restaurants: {
         Row: {
           created_at: string
@@ -1189,9 +1435,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      aggregate_unified_sales_to_daily: {
+        Args: { p_date: string; p_restaurant_id: string }
+        Returns: undefined
+      }
       calculate_daily_pnl: {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: string
+      }
+      calculate_recipe_cost: {
+        Args: { recipe_id: string }
+        Returns: number
       }
       calculate_square_daily_pnl: {
         Args: { p_restaurant_id: string; p_service_date: string }
@@ -1214,9 +1468,43 @@ export type Database = {
         }
         Returns: string
       }
+      get_product_cost_per_recipe_unit: {
+        Args: { product_id: string }
+        Returns: number
+      }
       is_restaurant_owner: {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: boolean
+      }
+      process_inventory_deduction: {
+        Args: {
+          p_pos_item_name: string
+          p_quantity_sold: number
+          p_restaurant_id: string
+          p_sale_date: string
+        }
+        Returns: Json
+      }
+      process_unified_inventory_deduction: {
+        Args: {
+          p_pos_item_name: string
+          p_quantity_sold: number
+          p_restaurant_id: string
+          p_sale_date: string
+        }
+        Returns: Json
+      }
+      simulate_inventory_deduction: {
+        Args: {
+          p_pos_item_name: string
+          p_quantity_sold: number
+          p_restaurant_id: string
+        }
+        Returns: Json
+      }
+      sync_square_to_unified_sales: {
+        Args: { p_restaurant_id: string }
+        Returns: number
       }
       trigger_square_periodic_sync: {
         Args: Record<PropertyKey, never>
@@ -1224,7 +1512,21 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      measurement_unit:
+        | "oz"
+        | "ml"
+        | "cup"
+        | "tbsp"
+        | "tsp"
+        | "lb"
+        | "kg"
+        | "g"
+        | "bottle"
+        | "can"
+        | "bag"
+        | "box"
+        | "piece"
+        | "serving"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1351,6 +1653,23 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      measurement_unit: [
+        "oz",
+        "ml",
+        "cup",
+        "tbsp",
+        "tsp",
+        "lb",
+        "kg",
+        "g",
+        "bottle",
+        "can",
+        "bag",
+        "box",
+        "piece",
+        "serving",
+      ],
+    },
   },
 } as const

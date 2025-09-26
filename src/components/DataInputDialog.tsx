@@ -162,18 +162,44 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
     e.preventDefault();
     setLoading(true);
 
-    await upsertSales({
-      restaurant_id: restaurantId,
-      date: selectedDate,
-      source: selectedSource,
-      gross_revenue: Number(salesData.gross_revenue) || 0,
-      discounts: Number(salesData.discounts) || 0,
-      comps: Number(salesData.comps) || 0,
-      transaction_count: Number(salesData.transaction_count) || 0,
-    });
+    try {
+      // Validate and sanitize numeric inputs to prevent overflow
+      const grossRevenue = Math.round((Number(salesData.gross_revenue) || 0) * 100) / 100;
+      const discounts = Math.round((Number(salesData.discounts) || 0) * 100) / 100;
+      const comps = Math.round((Number(salesData.comps) || 0) * 100) / 100;
+      const transactionCount = Math.floor(Number(salesData.transaction_count) || 0);
 
-    setLoading(false);
-    onDataUpdated?.();
+      // Validate reasonable ranges to prevent database overflow
+      if (grossRevenue > 999999999.99 || grossRevenue < 0) {
+        throw new Error('Gross revenue must be between $0 and $999,999,999.99');
+      }
+      if (discounts > 999999999.99 || discounts < 0) {
+        throw new Error('Discounts must be between $0 and $999,999,999.99');
+      }
+      if (comps > 999999999.99 || comps < 0) {
+        throw new Error('Comps must be between $0 and $999,999,999.99');
+      }
+      if (transactionCount > 999999 || transactionCount < 0) {
+        throw new Error('Transaction count must be between 0 and 999,999');
+      }
+
+      await upsertSales({
+        restaurant_id: restaurantId,
+        date: selectedDate,
+        source: selectedSource,
+        gross_revenue: grossRevenue,
+        discounts: discounts,
+        comps: comps,
+        transaction_count: transactionCount,
+      });
+
+      onDataUpdated?.();
+    } catch (error: any) {
+      console.error('Sales submit error:', error);
+      // Error will be handled by the useDailyPnL hook
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleFoodCostsSubmit = async (e: React.FormEvent) => {

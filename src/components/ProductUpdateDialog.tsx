@@ -22,7 +22,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Sparkles, CheckCircle, X } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Loader2, Sparkles, CheckCircle, X, Upload } from 'lucide-react';
 import { 
   Select,
   SelectContent,
@@ -32,6 +33,7 @@ import {
 } from '@/components/ui/select';
 import { Product } from '@/hooks/useProducts';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 const updateSchema = z.object({
   quantity_to_add: z.coerce.number().min(0, 'Quantity must be positive').optional(),
@@ -52,6 +54,7 @@ const updateSchema = z.object({
   par_level_min: z.coerce.number().int().min(0).optional(),
   par_level_max: z.coerce.number().int().min(0).optional(),
   reorder_point: z.coerce.number().int().min(0).optional(),
+  image_url: z.string().optional(),
 });
 
 type UpdateFormData = z.infer<typeof updateSchema>;
@@ -92,6 +95,8 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const { toast } = useToast();
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhancedData, setEnhancedData] = useState<any>(null);
+  const [uploading, setUploading] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string>('');
 
   const form = useForm<UpdateFormData>({
     resolver: zodResolver(updateSchema),
@@ -114,6 +119,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       par_level_min: product.par_level_min || undefined,
       par_level_max: product.par_level_max || undefined,
       reorder_point: product.reorder_point || undefined,
+      image_url: product.image_url || '',
     },
   });
 
@@ -138,7 +144,9 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       par_level_min: product.par_level_min || undefined,
       par_level_max: product.par_level_max || undefined,
       reorder_point: product.reorder_point || undefined,
+      image_url: product.image_url || '',
     });
+    setImageUrl(product.image_url || '');
     setEnhancedData(null); // Clear any enhanced data from previous product
   }, [product, form]);
 
@@ -177,6 +185,45 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
     }
   };
 
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `${product.restaurant_id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(filePath);
+
+      setImageUrl(data.publicUrl);
+      form.setValue('image_url', data.publicUrl);
+      
+      toast({
+        title: "Image uploaded",
+        description: "Product image updated successfully",
+      });
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload image",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const applyEnhancedField = (field: string, value: any) => {
     form.setValue(field as any, value);
     setEnhancedData((prev: any) => ({
@@ -207,6 +254,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       par_level_min: data.par_level_min || 0,
       par_level_max: data.par_level_max || 0,
       reorder_point: data.reorder_point || 0,
+      image_url: imageUrl || data.image_url,
       // For new products, quantity_to_add becomes the initial stock
       // For existing products, add to current stock
       current_stock: isNewProduct ? quantityToAdd : (product.current_stock || 0) + quantityToAdd,
@@ -224,37 +272,50 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4">
             <div className="flex-1">
-              <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <span>Update Product: {product.name}</span>
-                <Badge variant="secondary" className="w-fit">Current Stock: {currentStock}</Badge>
-              </DialogTitle>
-              <DialogDescription className="mt-1">
-                Add inventory quantity and update product information
-              </DialogDescription>
-            </div>
-            {onEnhance && (
-              <Button 
-                onClick={handleEnhance}
-                disabled={isEnhancing}
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2 w-fit"
-              >
-                {isEnhancing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Enhancing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    AI Enhance
-                  </>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="flex-1">
+                  <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <span>Update Product: {product.name}</span>
+                    <Badge variant="secondary" className="w-fit">Current Stock: {currentStock}</Badge>
+                  </DialogTitle>
+                  <DialogDescription className="mt-1">
+                    Add inventory quantity and update product information
+                  </DialogDescription>
+                </div>
+                {onEnhance && (
+                  <Button 
+                    onClick={handleEnhance}
+                    disabled={isEnhancing}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2 w-fit"
+                  >
+                    {isEnhancing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Enhancing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        AI Enhance
+                      </>
+                    )}
+                  </Button>
                 )}
-              </Button>
-            )}
+              </div>
+            </div>
+            {product.image_url || imageUrl ? (
+              <div className="flex-shrink-0">
+                <img 
+                  src={imageUrl || product.image_url} 
+                  alt={product.name}
+                  className="w-24 h-24 object-cover rounded-lg border border-border"
+                />
+              </div>
+            ) : null}
           </div>
         </DialogHeader>
 
@@ -447,6 +508,57 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                     </FormItem>
                   )}
                 />
+
+                {/* Image Upload Section */}
+                <div className="space-y-2">
+                  <Label>Product Image</Label>
+                  <div className="flex items-center space-x-4">
+                    <div className="relative">
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        disabled={uploading}
+                        className="hidden"
+                        id="image-upload-update"
+                      />
+                      <Label
+                        htmlFor="image-upload-update"
+                        className="flex items-center justify-center w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors"
+                      >
+                        {imageUrl || product.image_url ? (
+                          <img
+                            src={imageUrl || product.image_url}
+                            alt="Product preview"
+                            className="w-full h-full object-cover rounded-lg"
+                          />
+                        ) : (
+                          <div className="text-center">
+                            <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                            <span className="text-sm text-gray-500">
+                              {uploading ? 'Uploading...' : 'Upload Image'}
+                            </span>
+                          </div>
+                        )}
+                      </Label>
+                    </div>
+                    {(imageUrl || product.image_url) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setImageUrl('');
+                          form.setValue('image_url', '');
+                        }}
+                        className="h-8"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField

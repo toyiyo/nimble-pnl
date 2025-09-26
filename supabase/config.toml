@@ -53,6 +53,9 @@ verify_jwt = true
 [functions.enhanced-ocr]
 verify_jwt = true
 
+[functions.grok-ocr]
+verify_jwt = true
+
 [functions.generate-scim-token]
 verify_jwt = true
 

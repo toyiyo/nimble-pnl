@@ -43,10 +43,54 @@ export const Inventory: React.FC = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
-  const handleBarcodeScanned = async (gtin: string, format: string) => {
-    console.log('📱 Barcode scanned:', gtin, format);
+  const handleBarcodeScanned = async (gtin: string, format: string, aiData?: string) => {
+    console.log('📱 Barcode scanned:', gtin, format, aiData ? 'with AI data' : '');
     setLastScannedGtin(gtin);
     setLookupResult(null);
+    
+    // For manual entry with AI data, create product directly
+    if (gtin === 'MANUAL_ENTRY' && aiData) {
+      // Parse AI data to extract product information
+      const lines = aiData.split('\n').filter(line => line.trim().length > 0);
+      const productName = lines[0] || 'AI Detected Product';
+      const brandMatch = lines.find(line => /brand|company|corp|inc|llc/i.test(line));
+      const sizeMatch = lines.find(line => /\d+\s*(fl oz|oz|ml|gram|kg|lb)/i.test(line));
+      
+      const newProductData: Product = {
+        id: '',
+        restaurant_id: selectedRestaurant!.restaurant!.id,
+        gtin: '',
+        sku: `AI_${Date.now()}`,
+        name: productName,
+        description: lines.slice(1, 4).join(' • '),
+        brand: brandMatch || '',
+        category: '',
+        size_value: null,
+        size_unit: sizeMatch?.match(/fl oz|oz|ml|gram|kg|lb/i)?.[0] || null,
+        package_qty: 1,
+        uom_purchase: null,
+        uom_recipe: null,
+        conversion_factor: 1,
+        cost_per_unit: null,
+        current_stock: 0,
+        par_level_min: 0,
+        par_level_max: 0,
+        reorder_point: 0,
+        supplier_name: null,
+        supplier_sku: null,
+        barcode_data: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      setSelectedProduct(newProductData);
+      setShowUpdateDialog(true);
+      toast({
+        title: "AI Product Detected",
+        description: `${productName} - Add barcode and details`,
+      });
+      return;
+    }
     
     // Check if product already exists in inventory
     const existingProduct = await findProductByGtin(gtin);
@@ -126,22 +170,90 @@ export const Inventory: React.FC = () => {
     setIsLookingUp(true);
 
     try {
-      // First try OCR to extract text and identify product
-      const ocrResult = await productLookupService.identifyFromImage(imageBlob, ocrService);
+      // Upload image to storage first
+      const uploadedImageUrl = await uploadImageToStorage(imageBlob);
       
-      // Create a new product object with OCR data for the update dialog
+      // Enhanced flow: Grok OCR → Web Search → AI Enhancement
+      console.log('🚀 Starting enhanced product identification...');
+      
+      // Step 1: Use Grok OCR to extract text
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new Image();
+      
+      const grokOCRResult = await new Promise<{ text: string; confidence: number }>((resolve, reject) => {
+        img.onload = async () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          
+          const imageData = canvas.toDataURL('image/png');
+          
+          console.log('🔍 Processing with Grok OCR...');
+          const response = await supabase.functions.invoke('grok-ocr', {
+            body: { imageData }
+          });
+          
+          if (response.error) {
+            reject(new Error(response.error.message));
+            return;
+          }
+          
+          resolve(response.data);
+        };
+        
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = imageUrl;
+      });
+      
+      console.log('✅ Grok OCR completed:', grokOCRResult);
+      
+      // Step 2: Use OCR text for web search to get structured data
+      let enhancedData = null;
+      if (grokOCRResult.text?.trim()) {
+        console.log('🌐 Searching for product information...');
+        const searchResponse = await supabase.functions.invoke('web-search', {
+          body: { 
+            query: `${grokOCRResult.text} product information nutrition ingredients`,
+            maxResults: 5 
+          }
+        });
+        
+        if (!searchResponse.error && searchResponse.data?.results?.length > 0) {
+          // Step 3: Use AI to enhance product data with search results
+          console.log('🤖 Enhancing product data with AI...');
+          const enhanceResponse = await supabase.functions.invoke('enhance-product-ai', {
+            body: {
+              searchText: searchResponse.data.results.map((r: any) => r.content).join('\n\n'),
+              productName: grokOCRResult.text,
+              brand: '',
+              category: '',
+              currentDescription: ''
+            }
+          });
+          
+          if (!enhanceResponse.error) {
+            enhancedData = enhanceResponse.data;
+            console.log('✅ AI enhancement completed:', enhancedData);
+          }
+        }
+      }
+      
+      // Create product data with enhanced information and image
       const newProductData: Product = {
         id: '', // Will be generated on creation
         restaurant_id: selectedRestaurant!.restaurant!.id,
-        gtin: ocrResult?.gtin || '',
-        sku: ocrResult?.gtin || '',
-        name: ocrResult?.product_name || 'New Product',
-        description: null,
-        brand: ocrResult?.brand || '',
-        category: ocrResult?.category || '',
-        size_value: ocrResult?.package_size_value || null,
-        size_unit: ocrResult?.package_size_unit || null,
-        package_qty: ocrResult?.package_qty || 1,
+        gtin: enhancedData?.gtin || '',
+        sku: enhancedData?.gtin || Date.now().toString(),
+        name: enhancedData?.productName || grokOCRResult.text || 'New Product',
+        description: enhancedData?.description || null,
+        brand: enhancedData?.brand || '',
+        category: enhancedData?.category || '',
+        size_value: enhancedData?.sizeValue || null,
+        size_unit: enhancedData?.sizeUnit || null,
+        package_qty: enhancedData?.packageQty || 1,
         uom_purchase: null,
         uom_recipe: null,
         conversion_factor: 1,
@@ -152,6 +264,8 @@ export const Inventory: React.FC = () => {
         reorder_point: 0,
         supplier_name: null,
         supplier_sku: null,
+        pos_item_name: enhancedData?.productName || grokOCRResult.text || '',
+        image_url: uploadedImageUrl, // Use the captured image
         barcode_data: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -160,27 +274,85 @@ export const Inventory: React.FC = () => {
       setSelectedProduct(newProductData);
       setShowUpdateDialog(true);
       
-      if (ocrResult && ocrResult.product_name) {
+      if (enhancedData?.productName || grokOCRResult.text) {
         toast({
           title: "Product identified from image",
-          description: `Found: ${ocrResult.product_name} - Add details and quantity`,
+          description: `Found: ${enhancedData?.productName || grokOCRResult.text} - Review and save`,
         });
       } else {
         toast({
-          title: "Image analyzed",
-          description: "Add product details and initial quantity",
+          title: "Image captured",
+          description: "Add product details manually",
         });
       }
     } catch (error) {
-      console.error('Image analysis error:', error);
+      console.error('Enhanced image analysis error:', error);
       toast({
-        title: "Analysis failed",
-        description: "Failed to analyze image. Please try again.",
+        title: "Analysis failed", 
+        description: "Failed to analyze image. You can still add the product manually.",
         variant: "destructive",
       });
+      
+      // Fallback: still allow manual entry with the image
+      try {
+        const uploadedImageUrl = await uploadImageToStorage(imageBlob);
+        const fallbackProductData: Product = {
+          id: '',
+          restaurant_id: selectedRestaurant!.restaurant!.id,
+          gtin: '',
+          sku: Date.now().toString(),
+          name: 'New Product',
+          description: null,
+          brand: '',
+          category: '',
+          size_value: null,
+          size_unit: null,
+          package_qty: 1,
+          uom_purchase: null,
+          uom_recipe: null,
+          conversion_factor: 1,
+          cost_per_unit: null,
+          current_stock: 0,
+          par_level_min: 0,
+          par_level_max: 0,
+          reorder_point: 0,
+          supplier_name: null,
+          supplier_sku: null,
+          pos_item_name: '',
+          image_url: uploadedImageUrl,
+          barcode_data: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        
+        setSelectedProduct(fallbackProductData);
+        setShowUpdateDialog(true);
+      } catch (uploadError) {
+        console.error('Image upload failed:', uploadError);
+      }
     } finally {
       setIsLookingUp(false);
     }
+  };
+
+  const uploadImageToStorage = async (imageBlob: Blob): Promise<string> => {
+    const { supabase } = await import('@/integrations/supabase/client');
+    
+    const fileExt = 'jpg';
+    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `${selectedRestaurant?.restaurant?.id}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('product-images')
+      .upload(filePath, imageBlob);
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+      .from('product-images')
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
   };
 
   const handleCreateProduct = async (productData: CreateProductData) => {
@@ -558,45 +730,58 @@ export const Inventory: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredProducts.map((product) => (
-                    <Card key={product.id} className="cursor-pointer hover:shadow-md transition-shadow">
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="text-lg">{product.name}</CardTitle>
-                            <CardDescription>SKU: {product.sku}</CardDescription>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {(product.current_stock || 0) <= (product.reorder_point || 0) && (
-                              <AlertTriangle className="h-5 w-5 text-destructive" />
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedProduct(product);
-                                setShowUpdateDialog(true);
-                              }}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            {canDeleteProducts && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteProduct(product);
-                                }}
-                                className="text-destructive hover:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </CardHeader>
+                   {filteredProducts.map((product) => (
+                     <Card key={product.id} className="cursor-pointer hover:shadow-md transition-shadow">
+                       <CardHeader>
+                         <div className="flex items-start gap-3">
+                           {product.image_url && (
+                             <div className="flex-shrink-0">
+                               <img 
+                                 src={product.image_url} 
+                                 alt={product.name}
+                                 className="w-16 h-16 object-cover rounded-lg border"
+                               />
+                             </div>
+                           )}
+                           <div className="flex-1 min-w-0">
+                             <div className="flex items-start justify-between">
+                               <div>
+                                 <CardTitle className="text-lg">{product.name}</CardTitle>
+                                 <CardDescription>SKU: {product.sku}</CardDescription>
+                               </div>
+                               <div className="flex items-center gap-2">
+                                 {(product.current_stock || 0) <= (product.reorder_point || 0) && (
+                                   <AlertTriangle className="h-5 w-5 text-destructive" />
+                                 )}
+                                 <Button
+                                   variant="ghost"
+                                   size="sm"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     setSelectedProduct(product);
+                                     setShowUpdateDialog(true);
+                                   }}
+                                 >
+                                   <Edit className="h-4 w-4" />
+                                 </Button>
+                                 {canDeleteProducts && (
+                                   <Button
+                                     variant="ghost"
+                                     size="sm"
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       handleDeleteProduct(product);
+                                     }}
+                                     className="text-destructive hover:text-destructive"
+                                   >
+                                     <Trash2 className="h-4 w-4" />
+                                   </Button>
+                                 )}
+                               </div>
+                             </div>
+                           </div>
+                         </div>
+                       </CardHeader>
                       <CardContent
                         onClick={() => {
                           setSelectedProduct(product);
@@ -651,17 +836,30 @@ export const Inventory: React.FC = () => {
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {lowStockProducts.map((product) => (
-                    <Card key={product.id} className="border-destructive">
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="text-lg">{product.name}</CardTitle>
-                            <CardDescription>SKU: {product.sku}</CardDescription>
-                          </div>
-                          <AlertTriangle className="h-5 w-5 text-destructive" />
-                        </div>
-                      </CardHeader>
+                   {lowStockProducts.map((product) => (
+                     <Card key={product.id} className="border-destructive">
+                       <CardHeader>
+                         <div className="flex items-start gap-3">
+                           {product.image_url && (
+                             <div className="flex-shrink-0">
+                               <img 
+                                 src={product.image_url} 
+                                 alt={product.name}
+                                 className="w-16 h-16 object-cover rounded-lg border"
+                               />
+                             </div>
+                           )}
+                           <div className="flex-1 min-w-0">
+                             <div className="flex items-start justify-between">
+                               <div>
+                                 <CardTitle className="text-lg">{product.name}</CardTitle>
+                                 <CardDescription>SKU: {product.sku}</CardDescription>
+                               </div>
+                               <AlertTriangle className="h-5 w-5 text-destructive" />
+                             </div>
+                           </div>
+                         </div>
+                       </CardHeader>
                       <CardContent>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center">

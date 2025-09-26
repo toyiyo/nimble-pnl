@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -27,7 +27,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Upload } from 'lucide-react';
 import { CreateProductData, Product } from '@/hooks/useProducts';
+import { supabase } from '@/integrations/supabase/client';
 
 const productSchema = z.object({
   sku: z.string().min(1, 'SKU is required'),
@@ -44,10 +47,12 @@ const productSchema = z.object({
   cost_per_unit: z.number().positive().optional(),
   supplier_name: z.string().optional(),
   supplier_sku: z.string().optional(),
-  par_level_min: z.number().int().min(0).optional(),
-  par_level_max: z.number().int().min(0).optional(),
-  current_stock: z.number().int().min(0).optional(),
-  reorder_point: z.number().int().min(0).optional(),
+  par_level_min: z.number().min(0).optional(),
+  par_level_max: z.number().min(0).optional(),
+  current_stock: z.number().min(0).optional(),
+  reorder_point: z.number().min(0).optional(),
+  pos_item_name: z.string().optional(),
+  image_url: z.string().optional(),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -91,6 +96,9 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   initialData,
   editProduct,
 }) => {
+  const [uploading, setUploading] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string>('');
+
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
     defaultValues: editProduct ? {
@@ -112,6 +120,8 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       par_level_max: editProduct.par_level_max || 0,
       current_stock: editProduct.current_stock || 0,
       reorder_point: editProduct.reorder_point || 0,
+      pos_item_name: editProduct.pos_item_name || '',
+      image_url: editProduct.image_url || '',
     } : {
       sku: initialData?.sku || '',
       name: initialData?.name || '',
@@ -121,8 +131,45 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       par_level_max: 0,
       current_stock: 0,
       reorder_point: 0,
+      pos_item_name: '',
+      image_url: '',
     },
   });
+
+  React.useEffect(() => {
+    if (editProduct?.image_url) {
+      setImageUrl(editProduct.image_url);
+    }
+  }, [editProduct]);
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `${restaurantId}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(filePath);
+
+      setImageUrl(data.publicUrl);
+      form.setValue('image_url', data.publicUrl);
+    } catch (error) {
+      console.error('Error uploading image:', error);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSubmit = async (data: ProductFormData) => {
     const productData: CreateProductData = {
@@ -146,11 +193,14 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       par_level_max: data.par_level_max,
       current_stock: data.current_stock,
       reorder_point: data.reorder_point,
+      pos_item_name: data.pos_item_name,
+      image_url: imageUrl || data.image_url,
     };
 
     await onSubmit(productData);
     onOpenChange(false);
     form.reset();
+    setImageUrl('');
   };
 
   return (
@@ -198,6 +248,55 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   </FormItem>
                 )}
               />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="pos_item_name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>POS Item Name</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Name used in POS system (if different)" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="space-y-2">
+              <Label>Product Image</Label>
+              <div className="flex items-center space-x-4">
+                <div className="relative">
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    disabled={uploading}
+                    className="hidden"
+                    id="image-upload"
+                  />
+                  <Label
+                    htmlFor="image-upload"
+                    className="flex items-center justify-center w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors"
+                  >
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt="Product preview"
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                    ) : (
+                      <div className="text-center">
+                        <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                        <span className="text-sm text-gray-500">
+                          {uploading ? 'Uploading...' : 'Upload Image'}
+                        </span>
+                      </div>
+                    )}
+                  </Label>
+                </div>
+              </div>
             </div>
 
             <FormField
@@ -357,6 +456,72 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                       <Input
                         {...field}
                         type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="par_level_min"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Par Level (Min)</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="par_level_max"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Par Level (Max)</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="reorder_point"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Reorder Point</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="number"
+                        step="0.01"
                         min="0"
                         placeholder="0"
                         onChange={(e) => field.onChange(Number(e.target.value))}

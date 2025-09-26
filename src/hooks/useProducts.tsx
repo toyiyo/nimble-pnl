@@ -26,6 +26,8 @@ export interface Product {
   current_stock?: number;
   reorder_point?: number;
   barcode_data?: any;
+  image_url?: string;
+  pos_item_name?: string;
   created_at: string;
   updated_at: string;
 }
@@ -52,6 +54,8 @@ export interface CreateProductData {
   current_stock?: number;
   reorder_point?: number;
   barcode_data?: any;
+  image_url?: string;
+  pos_item_name?: string;
 }
 
 export const useProducts = (restaurantId: string | null) => {

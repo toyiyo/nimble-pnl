@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRecipes } from '@/hooks/useRecipes';
@@ -22,6 +22,7 @@ import { RecipeSuggestions } from '@/components/RecipeSuggestions';
 import { AutoDeductionSettings } from '@/components/AutoDeductionSettings';
 import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDeduction';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
+import { supabase } from '@/integrations/supabase/client';
 import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings } from 'lucide-react';
 
 export default function Recipes() {
@@ -41,6 +42,27 @@ export default function Recipes() {
     console.log('Selected restaurant object:', restaurant);
     setSelectedRestaurant(restaurant);
   };
+
+  // Debug logging for restaurant ID issues
+  console.log('Selected restaurant in Recipes:', selectedRestaurant);
+  console.log('Restaurant ID being passed:', selectedRestaurant?.restaurant_id);
+  
+  // Add effect to debug restaurant selection
+  useEffect(() => {
+    if (selectedRestaurant?.restaurant_id) {
+      console.log('DEBUG: Restaurant selected, checking user permissions...');
+      const debugAsync = async () => {
+        const { data: userRestaurant } = await supabase
+          .from('user_restaurants')
+          .select('*')
+          .eq('restaurant_id', selectedRestaurant.restaurant_id)
+          .eq('user_id', user?.id)
+          .single();
+        console.log('DEBUG: User restaurant relationship:', userRestaurant);
+      };
+      debugAsync();
+    }
+  }, [selectedRestaurant?.restaurant_id, user?.id]);
 
   if (!user) {
     return (

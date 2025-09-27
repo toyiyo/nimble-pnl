@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,9 +12,17 @@ import { ProductDialog } from '@/components/ProductDialog';
 import { ProductCard } from '@/components/ProductCard';
 import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
 import { DeleteProductDialog } from '@/components/DeleteProductDialog';
+import { WasteDialog } from '@/components/WasteDialog';
+import { TransferDialog } from '@/components/TransferDialog';
+import { RestaurantSelector } from '@/components/RestaurantSelector';
+import { InventorySettings } from '@/components/InventorySettings';
+import { InventoryValueBadge } from '@/components/InventoryValueBadge';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
-import { useRestaurants } from '@/hooks/useRestaurants';
+import { useInventoryAudit } from '@/hooks/useInventoryAudit';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
+import { useInventoryMetrics } from '@/hooks/useInventoryMetrics';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
 import { ProductEnhancementService } from '@/services/productEnhancementService';
@@ -23,12 +31,12 @@ import { ocrService } from '@/services/ocrService';
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { restaurants } = useRestaurants();
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { toast } = useToast();
   
-  // For now, use the first restaurant. In a full app, you'd have restaurant selection
-  const selectedRestaurant = restaurants[0];
-  const { products, loading, createProduct, updateProduct, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant?.id || null);
+  const { products, loading, createProduct, updateProductWithQuantity, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const { updateProductStockWithAudit } = useInventoryAudit();
+  const inventoryMetrics = useInventoryMetrics(selectedRestaurant?.restaurant_id || null, products);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showProductDialog, setShowProductDialog] = useState(false);
@@ -42,6 +50,34 @@ export const Inventory: React.FC = () => {
   const [capturedImage, setCapturedImage] = useState<{ blob: Blob; url: string } | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [showWasteDialog, setShowWasteDialog] = useState(false);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [wasteProduct, setWasteProduct] = useState<Product | null>(null);
+  const [transferProduct, setTransferProduct] = useState<Product | null>(null);
+
+  const handleRestaurantSelect = (restaurant: any) => {
+    setSelectedRestaurant(restaurant);
+  };
+
+  if (!selectedRestaurant) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold mb-2">Inventory Management</h1>
+          <p className="text-muted-foreground">
+            Manage your restaurant's inventory and track stock levels
+          </p>
+        </div>
+        <RestaurantSelector
+          restaurants={restaurants}
+          selectedRestaurant={selectedRestaurant}
+          onSelectRestaurant={handleRestaurantSelect}
+          loading={restaurantsLoading}
+          createRestaurant={createRestaurant}
+        />
+      </div>
+    );
+  }
 
   const handleBarcodeScanned = async (gtin: string, format: string, aiData?: string) => {
     console.log('📱 Barcode scanned:', gtin, format, aiData ? 'with AI data' : '');
@@ -443,14 +479,77 @@ export const Inventory: React.FC = () => {
         setSelectedProduct(null);
       }
     } else {
-      // Update existing product
-      const success = await updateProduct(selectedProduct.id, updates);
-      if (success && quantityToAdd > 0) {
+      // Update existing product with proper audit trail
+      const currentStock = selectedProduct.current_stock || 0;
+      const finalStock = updates.current_stock || 0;
+      const difference = finalStock - currentStock;
+      
+      try {
+        // First update the product in database
+        const { error } = await supabase
+          .from('products')
+          .update({
+            ...updates,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', selectedProduct.id);
+        
+        if (error) throw error;
+        
+        // Then create audit trail if there's a stock change
+        if (difference !== 0) {
+          let transactionType: 'purchase' | 'adjustment' | 'waste';
+          let reason: string;
+          
+          if (difference === quantityToAdd && quantityToAdd > 0) {
+            // This is an additive purchase
+            transactionType = 'purchase';
+            reason = 'Purchase - Inventory addition';
+          } else {
+            // This is an adjustment (exact count was set)
+            transactionType = 'adjustment';
+            reason = difference >= 0 
+              ? 'Adjustment - Manual correction (count increase)'
+              : 'Adjustment - Manual correction (count decrease)';
+          }
+          
+          await updateProductStockWithAudit(
+            selectedRestaurant!.restaurant_id!,
+            selectedProduct.id,
+            finalStock,
+            currentStock,
+            updates.cost_per_unit || selectedProduct.cost_per_unit || 0,
+            transactionType,
+            reason,
+            `${transactionType}_${selectedProduct.id}_${Date.now()}`
+          );
+        }
+        
+        // Show success message
+        const quantityDifference = finalStock - currentStock;
+        const isAdjustment = difference !== quantityToAdd;
+        if (quantityDifference !== 0) {
+          toast({
+            title: "Inventory updated",
+            description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference} units. New total: ${finalStock}`,
+          });
+        } else {
+          toast({
+            title: "Product updated", 
+            description: "Product information has been updated",
+          });
+        }
+        
+      } catch (error: any) {
+        console.error('Error updating product:', error);
         toast({
-          title: "Inventory updated",
-          description: `Added ${quantityToAdd} units. New total: ${(selectedProduct.current_stock || 0) + quantityToAdd}`,
+          title: "Error updating product",
+          description: error.message,
+          variant: "destructive",
         });
+        return;
       }
+      
       setShowUpdateDialog(false);
       setSelectedProduct(null);
     }
@@ -561,7 +660,7 @@ export const Inventory: React.FC = () => {
               )}
             </TabsTrigger>
             <TabsTrigger value="categories" className="flex-col py-2 px-1">
-              <span className="text-xs md:text-sm">Categories</span>
+              <span className="text-xs md:text-sm">Settings</span>
             </TabsTrigger>
           </TabsList>
 
@@ -698,6 +797,58 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="products" className="mt-6">
             <div className="space-y-6">
+              {/* Inventory Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Total Inventory Cost</CardTitle>
+                    <CardDescription>Total value of all stock at cost price</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-600">
+                      {inventoryMetrics.loading ? (
+                        <div className="animate-pulse bg-muted h-8 w-24 rounded"></div>
+                      ) : (
+                        `$${inventoryMetrics.totalInventoryCost.toFixed(2)}`
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Total Inventory Value</CardTitle>
+                    <CardDescription>Potential revenue from all stock</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600">
+                      {inventoryMetrics.loading ? (
+                        <div className="animate-pulse bg-muted h-8 w-24 rounded"></div>
+                      ) : (
+                        `$${inventoryMetrics.totalInventoryValue.toFixed(2)}`
+                      )}
+                    </div>
+                    {!inventoryMetrics.loading && (
+                      <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                        <div className="flex justify-between">
+                          <span>Recipe-based:</span>
+                          <span>{inventoryMetrics.calculationSummary.recipeBasedCount} products</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Estimated:</span>
+                          <span>{inventoryMetrics.calculationSummary.estimatedCount} products</span>
+                        </div>
+                        {inventoryMetrics.calculationSummary.mixedCount > 0 && (
+                          <div className="flex justify-between">
+                            <span>Mixed:</span>
+                            <span>{inventoryMetrics.calculationSummary.mixedCount} products</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
               <div className="flex items-center gap-4">
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -743,43 +894,72 @@ export const Inventory: React.FC = () => {
                                />
                              </div>
                            )}
-                           <div className="flex-1 min-w-0">
-                             <div className="flex items-start justify-between">
-                               <div>
-                                 <CardTitle className="text-lg">{product.name}</CardTitle>
-                                 <CardDescription>SKU: {product.sku}</CardDescription>
-                               </div>
-                               <div className="flex items-center gap-2">
-                                 {(product.current_stock || 0) <= (product.reorder_point || 0) && (
-                                   <AlertTriangle className="h-5 w-5 text-destructive" />
-                                 )}
-                                 <Button
-                                   variant="ghost"
-                                   size="sm"
-                                   onClick={(e) => {
-                                     e.stopPropagation();
-                                     setSelectedProduct(product);
-                                     setShowUpdateDialog(true);
-                                   }}
-                                 >
-                                   <Edit className="h-4 w-4" />
-                                 </Button>
-                                 {canDeleteProducts && (
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <CardTitle className="text-lg truncate">{product.name}</CardTitle>
+                                  <CardDescription className="truncate">SKU: {product.sku}</CardDescription>
+                                </div>
+                                 <div className="flex-shrink-0 flex flex-wrap items-center gap-1 max-w-[120px] sm:max-w-none">
+                                   {(product.current_stock || 0) <= (product.reorder_point || 0) && (
+                                     <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+                                   )}
                                    <Button
                                      variant="ghost"
                                      size="sm"
                                      onClick={(e) => {
                                        e.stopPropagation();
-                                       handleDeleteProduct(product);
+                                       setSelectedProduct(product);
+                                       setShowUpdateDialog(true);
                                      }}
-                                     className="text-destructive hover:text-destructive"
+                                     className="h-7 w-7 p-0 flex-shrink-0"
+                                     title="Edit"
                                    >
-                                     <Trash2 className="h-4 w-4" />
+                                     <Edit className="h-3 w-3" />
                                    </Button>
-                                 )}
-                               </div>
-                             </div>
-                           </div>
+                                   <Button
+                                     variant="ghost"
+                                     size="sm"
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       setWasteProduct(product);
+                                       setShowWasteDialog(true);
+                                     }}
+                                     className="h-7 w-7 p-0 flex-shrink-0"
+                                     title="Waste"
+                                   >
+                                     <Trash className="h-3 w-3" />
+                                   </Button>
+                                   <Button
+                                     variant="ghost"
+                                     size="sm"
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       setTransferProduct(product);
+                                       setShowTransferDialog(true);
+                                     }}
+                                     className="h-7 w-7 p-0 flex-shrink-0"
+                                     title="Transfer"
+                                   >
+                                     <ArrowRightLeft className="h-3 w-3" />
+                                   </Button>
+                                   {canDeleteProducts && (
+                                     <Button
+                                       variant="ghost"
+                                       size="sm"
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         handleDeleteProduct(product);
+                                       }}
+                                       className="h-7 w-7 p-0 flex-shrink-0 text-destructive hover:text-destructive"
+                                       title="Delete"
+                                     >
+                                       <Trash2 className="h-3 w-3" />
+                                     </Button>
+                                   )}
+                                 </div>
+                              </div>
+                            </div>
                          </div>
                        </CardHeader>
                       <CardContent
@@ -788,30 +968,53 @@ export const Inventory: React.FC = () => {
                           setShowUpdateDialog(true);
                         }}
                       >
-                        <div className="space-y-2">
-                          {product.brand && (
-                            <p className="text-sm text-muted-foreground">Brand: {product.brand}</p>
-                          )}
-                          {product.category && (
-                            <Badge variant="secondary">{product.category}</Badge>
-                          )}
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm">Stock:</span>
-                            <span className={`font-medium ${
-                              (product.current_stock || 0) <= (product.reorder_point || 0) 
-                                ? 'text-destructive' 
-                                : 'text-foreground'
-                            }`}>
-                              {product.current_stock || 0} {product.size_unit || 'units'}
-                            </span>
-                          </div>
-                          {product.cost_per_unit && (
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm">Cost:</span>
-                              <span className="font-medium">${product.cost_per_unit}</span>
-                            </div>
-                          )}
-                        </div>
+                         <div className="space-y-2">
+                           {product.brand && (
+                             <p className="text-sm text-muted-foreground">Brand: {product.brand}</p>
+                           )}
+                           {product.category && (
+                             <Badge variant="secondary">{product.category}</Badge>
+                           )}
+                           <div className="flex justify-between items-center">
+                             <span className="text-sm">Stock:</span>
+                             <span className={`font-medium ${
+                               (product.current_stock || 0) <= (product.reorder_point || 0) 
+                                 ? 'text-destructive' 
+                                 : 'text-foreground'
+                             }`}>
+                               {product.current_stock || 0} {product.size_unit || 'units'}
+                             </span>
+                           </div>
+                           {product.cost_per_unit && (
+                             <div className="flex justify-between items-center">
+                               <span className="text-sm">Unit Cost:</span>
+                               <span className="font-medium">${product.cost_per_unit}</span>
+                             </div>
+                           )}
+                           {inventoryMetrics.productMetrics[product.id] && (
+                             <>
+                               <div className="flex justify-between items-center">
+                                 <span className="text-sm">Inventory Cost:</span>
+                                 <span className="font-medium text-orange-600">
+                                   ${inventoryMetrics.productMetrics[product.id].inventoryCost.toFixed(2)}
+                                 </span>
+                               </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm">Inventory Value:</span>
+                                  <span className="font-medium text-green-600">
+                                    ${inventoryMetrics.productMetrics[product.id].inventoryValue.toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="mt-2">
+                                  <InventoryValueBadge
+                                    calculationMethod={inventoryMetrics.productMetrics[product.id].calculationMethod}
+                                    markupUsed={inventoryMetrics.productMetrics[product.id].markupUsed}
+                                    category={product.category}
+                                  />
+                                </div>
+                             </>
+                           )}
+                         </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -860,25 +1063,54 @@ export const Inventory: React.FC = () => {
                            </div>
                          </div>
                        </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm">Current Stock:</span>
-                            <span className="font-medium text-destructive">
-                              {product.current_stock || 0} {product.size_unit || 'units'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm">Reorder Point:</span>
-                            <span className="font-medium">
-                              {product.reorder_point || 0} {product.size_unit || 'units'}
-                            </span>
-                          </div>
-                          <Button className="w-full mt-4" size="sm">
-                            Reorder Now
-                          </Button>
-                        </div>
-                      </CardContent>
+                       <CardContent>
+                         <div className="space-y-2">
+                           <div className="flex justify-between items-center">
+                             <span className="text-sm">Current Stock:</span>
+                             <span className="font-medium text-destructive">
+                               {product.current_stock || 0} {product.size_unit || 'units'}
+                             </span>
+                           </div>
+                           <div className="flex justify-between items-center">
+                             <span className="text-sm">Reorder Point:</span>
+                             <span className="font-medium">
+                               {product.reorder_point || 0} {product.size_unit || 'units'}
+                             </span>
+                           </div>
+                           {product.cost_per_unit && (
+                             <div className="flex justify-between items-center">
+                               <span className="text-sm">Unit Cost:</span>
+                               <span className="font-medium">${product.cost_per_unit}</span>
+                             </div>
+                           )}
+                           {inventoryMetrics.productMetrics[product.id] && (
+                             <>
+                               <div className="flex justify-between items-center">
+                                 <span className="text-sm">Inventory Cost:</span>
+                                 <span className="font-medium text-orange-600">
+                                   ${inventoryMetrics.productMetrics[product.id].inventoryCost.toFixed(2)}
+                                 </span>
+                               </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm">Inventory Value:</span>
+                                  <span className="font-medium text-green-600">
+                                    ${inventoryMetrics.productMetrics[product.id].inventoryValue.toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="mt-2">
+                                  <InventoryValueBadge
+                                    calculationMethod={inventoryMetrics.productMetrics[product.id].calculationMethod}
+                                    markupUsed={inventoryMetrics.productMetrics[product.id].markupUsed}
+                                    category={product.category}
+                                  />
+                                </div>
+                             </>
+                           )}
+                           <Button className="w-full mt-4" size="sm">
+                             Reorder Now
+                           </Button>
+                         </div>
+                       </CardContent>
                     </Card>
                   ))}
                 </div>
@@ -887,10 +1119,9 @@ export const Inventory: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="categories" className="mt-6">
-            <div className="text-center py-8">
-              <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">Category management coming soon...</p>
-            </div>
+            {selectedRestaurant && (
+              <InventorySettings restaurantId={selectedRestaurant.restaurant_id} />
+            )}
           </TabsContent>
         </Tabs>
       </div>
@@ -919,6 +1150,32 @@ export const Inventory: React.FC = () => {
         product={productToDelete}
         onConfirm={handleConfirmDelete}
       />
+
+      {/* Waste Dialog */}
+      {showWasteDialog && wasteProduct && selectedRestaurant && (
+        <WasteDialog
+          open={showWasteDialog}
+          onOpenChange={setShowWasteDialog}
+          product={wasteProduct}
+          restaurantId={selectedRestaurant.restaurant_id}
+          onWasteReported={() => {
+            window.location.reload();
+          }}
+        />
+      )}
+
+      {/* Transfer Dialog */}
+      {showTransferDialog && transferProduct && selectedRestaurant && (
+        <TransferDialog
+          open={showTransferDialog}
+          onOpenChange={setShowTransferDialog}
+          product={transferProduct}
+          restaurantId={selectedRestaurant.restaurant_id}
+          onTransferCompleted={() => {
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 };

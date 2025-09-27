@@ -37,6 +37,8 @@ import { supabase } from '@/integrations/supabase/client';
 
 const updateSchema = z.object({
   quantity_to_add: z.coerce.number().min(0, 'Quantity must be positive').optional(),
+  exact_count: z.coerce.number().min(0, 'Count must be positive').optional(),
+  adjustment_mode: z.enum(['add', 'set_exact']).default('add'),
   sku: z.string().min(1, 'SKU is required'),
   name: z.string().min(1, 'Product name is required'),
   description: z.string().optional(),
@@ -97,11 +99,14 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const [enhancedData, setEnhancedData] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string>('');
+  const [adjustmentMode, setAdjustmentMode] = useState<'add' | 'set_exact'>('add');
 
   const form = useForm<UpdateFormData>({
     resolver: zodResolver(updateSchema),
     defaultValues: {
       quantity_to_add: undefined,
+      exact_count: product.current_stock || 0,
+      adjustment_mode: 'add',
       sku: product.sku,
       name: product.name,
       description: product.description || '',
@@ -127,6 +132,8 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   useEffect(() => {
     form.reset({
       quantity_to_add: undefined,
+      exact_count: product.current_stock || 0,
+      adjustment_mode: 'add',
       sku: product.sku,
       name: product.name,
       description: product.description || '',
@@ -233,8 +240,21 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   };
 
   const handleSubmit = async (data: UpdateFormData) => {
-    const quantityToAdd = data.quantity_to_add || 0;
-    const isNewProduct = !product.id; // Check if this is a new product
+    const isNewProduct = !product.id;
+    const currentStock = product.current_stock || 0;
+    
+    let quantityToAdd = 0;
+    let finalStock = currentStock;
+    
+    if (data.adjustment_mode === 'set_exact') {
+      // For exact count adjustments (count reconciliation)
+      finalStock = data.exact_count || 0;
+      quantityToAdd = finalStock - currentStock; // This can be negative for decreases
+    } else {
+      // For additive quantities (purchases)
+      quantityToAdd = data.quantity_to_add || 0;
+      finalStock = isNewProduct ? quantityToAdd : currentStock + quantityToAdd;
+    }
     
     const updates: Partial<Product> = {
       sku: data.sku,
@@ -255,9 +275,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       par_level_max: data.par_level_max || 0,
       reorder_point: data.reorder_point || 0,
       image_url: imageUrl || data.image_url,
-      // For new products, quantity_to_add becomes the initial stock
-      // For existing products, add to current stock
-      current_stock: isNewProduct ? quantityToAdd : (product.current_stock || 0) + quantityToAdd,
+      current_stock: finalStock,
     };
 
     await onUpdate(updates, quantityToAdd);
@@ -266,7 +284,9 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
 
   const currentStock = product.current_stock || 0;
   const newQuantity = form.watch('quantity_to_add') || 0;
-  const totalAfterUpdate = currentStock + newQuantity;
+  const exactCount = form.watch('exact_count') || 0;
+  const mode = form.watch('adjustment_mode') || 'add';
+  const totalAfterUpdate = mode === 'set_exact' ? exactCount : currentStock + newQuantity;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -388,36 +408,90 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
             {/* Quantity Section */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Add to Inventory</CardTitle>
+                <CardTitle className="text-lg">Inventory Update</CardTitle>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    type="button"
+                    variant={adjustmentMode === 'add' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      setAdjustmentMode('add');
+                      form.setValue('adjustment_mode', 'add');
+                    }}
+                  >
+                    Add Quantity
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={adjustmentMode === 'set_exact' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      setAdjustmentMode('set_exact');
+                      form.setValue('adjustment_mode', 'set_exact');
+                    }}
+                  >
+                    Set Exact Count
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="quantity_to_add"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          {product.id ? 'Quantity to Add' : 'Initial Stock Quantity'}
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            placeholder="Enter quantity"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {adjustmentMode === 'add' ? (
+                    <FormField
+                      control={form.control}
+                      name="quantity_to_add"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            {product.id ? 'Quantity to Add' : 'Initial Stock Quantity'}
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              placeholder="Enter quantity"
+                              value={field.value ?? ''}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                field.onChange(value === '' ? undefined : Number(value));
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : (
+                    <FormField
+                      control={form.control}
+                      name="exact_count"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Exact Stock Count</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              placeholder="Enter exact count"
+                              value={field.value ?? ''}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                field.onChange(value === '' ? undefined : Number(value));
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                          <p className="text-xs text-muted-foreground">
+                            This will trigger an "adjustment" transaction for count reconciliation
+                          </p>
+                        </FormItem>
+                      )}
+                    />
+                  )}
 
                   <FormField
                     control={form.control}
@@ -445,13 +519,15 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                   />
                 </div>
 
-                {newQuantity > 0 && (
+                {(newQuantity > 0 || adjustmentMode === 'set_exact') && (
                   <div className="p-3 bg-muted rounded-md">
                     <p className="text-sm">
                       <strong>Stock Update Preview:</strong><br />
                       {product.id 
-                        ? `Current: ${currentStock} → New Total: ${totalAfterUpdate} ${form.getValues('size_unit')}`
-                        : `Initial Stock: ${newQuantity} ${form.getValues('size_unit')}`
+                        ? adjustmentMode === 'set_exact'
+                          ? `Current: ${currentStock} → Set to: ${exactCount} ${form.getValues('size_unit')} (${exactCount - currentStock >= 0 ? '+' : ''}${exactCount - currentStock} adjustment)`
+                          : `Current: ${currentStock} → New Total: ${totalAfterUpdate} ${form.getValues('size_unit')}`
+                        : `Initial Stock: ${adjustmentMode === 'set_exact' ? exactCount : newQuantity} ${form.getValues('size_unit')}`
                       }
                     </p>
                   </div>

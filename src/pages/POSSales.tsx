@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { usePOSIntegrations } from '@/hooks/usePOSIntegrations';
 import { useInventoryDeduction } from '@/hooks/useInventoryDeduction';
@@ -14,8 +14,7 @@ import { format } from 'date-fns';
 import { InventoryDeductionDialog } from '@/components/InventoryDeductionDialog';
 
 export default function POSSales() {
-  const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
-  const [selectedRestaurant, setSelectedRestaurant] = useState<UserRestaurant | null>(null);
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, createManualSale } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(selectedRestaurant?.restaurant_id || null);
   const { simulateDeduction } = useInventoryDeduction();
@@ -27,6 +26,10 @@ export default function POSSales() {
   const [selectedView, setSelectedView] = useState<'sales' | 'grouped'>('sales');
   const [deductionDialogOpen, setDeductionDialogOpen] = useState(false);
   const [selectedItemForDeduction, setSelectedItemForDeduction] = useState<{name: string; quantity: number} | null>(null);
+
+  const handleRestaurantSelect = (restaurant: any) => {
+    setSelectedRestaurant(restaurant);
+  };
 
   // Auto-sync when restaurant is selected
   useEffect(() => {
@@ -60,44 +63,44 @@ export default function POSSales() {
 
   if (!selectedRestaurant) {
     return (
-      <div className="container mx-auto py-8">
+      <div className="space-y-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold mb-4">POS Sales</h1>
           <p className="text-muted-foreground mb-8">
             Select a restaurant to manage POS sales and inventory deductions.
           </p>
-          <RestaurantSelector 
-            selectedRestaurant={selectedRestaurant}
-            onSelectRestaurant={setSelectedRestaurant}
-            restaurants={restaurants} 
-            loading={restaurantsLoading}
-            createRestaurant={createRestaurant}
-          />
         </div>
+        <RestaurantSelector 
+          selectedRestaurant={selectedRestaurant}
+          onSelectRestaurant={handleRestaurantSelect}
+          restaurants={restaurants} 
+          loading={restaurantsLoading}
+          createRestaurant={createRestaurant}
+        />
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-4 md:py-8">
-        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6 md:mb-8">
-          <div className="text-center lg:text-left">
-            <h1 className="text-2xl md:text-3xl font-bold">POS Sales</h1>
-            <p className="text-sm md:text-base text-muted-foreground">
-              Unified sales data from all connected POS systems for {selectedRestaurant.restaurant.name}
-            </p>
-            <div className="flex flex-wrap gap-1 md:gap-2 mt-2 justify-center lg:justify-start">
-              {integrationStatuses.map(status => (
-                <Badge 
-                  key={status.system} 
-                  variant={status.isConnected ? 'default' : 'secondary'}
-                  className="text-xs"
-                >
-                  {status.system} {status.isConnected ? '✓' : '○'}
-                </Badge>
-              ))}
-            </div>
+    <div className="space-y-6 md:space-y-8">
+      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+        <div className="text-center lg:text-left">
+          <h1 className="text-2xl md:text-3xl font-bold">POS Sales</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
+            Unified sales data from all connected POS systems for {selectedRestaurant.restaurant.name}
+          </p>
+          <div className="flex flex-wrap gap-1 md:gap-2 mt-2 justify-center lg:justify-start">
+            {integrationStatuses.map(status => (
+              <Badge 
+                key={status.system} 
+                variant={status.isConnected ? 'default' : 'secondary'}
+                className="text-xs"
+              >
+                {status.system} {status.isConnected ? '✓' : '○'}
+              </Badge>
+            ))}
           </div>
+        </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
@@ -132,7 +135,7 @@ export default function POSSales() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:gap-6 mb-6 md:mb-8">
+      <div className="grid gap-4 md:gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-base md:text-lg">Filters & Search</CardTitle>
@@ -316,25 +319,25 @@ export default function POSSales() {
         </Card>
       )}
 
-        <POSSaleDialog
-          open={showSaleDialog}
-          onOpenChange={setShowSaleDialog}
-          restaurantId={selectedRestaurant.restaurant_id}
-        />
+      <POSSaleDialog
+        open={showSaleDialog}
+        onOpenChange={setShowSaleDialog}
+        restaurantId={selectedRestaurant.restaurant_id}
+      />
 
-        {/* Inventory Deduction Dialog */}
-        {selectedItemForDeduction && (
-          <InventoryDeductionDialog
-            isOpen={deductionDialogOpen}
-            onClose={() => {
-              setDeductionDialogOpen(false);
-              setSelectedItemForDeduction(null);
-            }}
-            restaurantId={selectedRestaurant.restaurant_id}
-            posItemName={selectedItemForDeduction.name}
-            quantitySold={selectedItemForDeduction.quantity}
-          />
-        )}
+      {/* Inventory Deduction Dialog */}
+      {selectedItemForDeduction && (
+        <InventoryDeductionDialog
+          isOpen={deductionDialogOpen}
+          onClose={() => {
+            setDeductionDialogOpen(false);
+            setSelectedItemForDeduction(null);
+          }}
+          restaurantId={selectedRestaurant.restaurant_id}
+          posItemName={selectedItemForDeduction.name}
+          quantitySold={selectedItemForDeduction.quantity}
+        />
+      )}
     </div>
   );
 }

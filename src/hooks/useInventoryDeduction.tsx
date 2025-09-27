@@ -14,6 +14,7 @@ export interface DeductionResult {
     remaining_stock_purchase_units: number;
   }[];
   total_cost: number;
+  already_processed?: boolean;
 }
 
 export const useInventoryDeduction = () => {
@@ -63,7 +64,7 @@ export const useInventoryDeduction = () => {
           product:products(name, sku)
         `)
         .eq('restaurant_id', restaurantId)
-        .eq('transaction_type', 'sale_deduction')
+        .eq('transaction_type', 'usage')
         .order('created_at', { ascending: false });
 
       if (startDate) {
@@ -107,10 +108,33 @@ export const useInventoryDeduction = () => {
     }
   }, []);
 
+  const checkSaleProcessed = useCallback(async (
+    restaurantId: string,
+    posItemName: string,
+    quantitySold: number,
+    saleDate: string
+  ) => {
+    try {
+      const { data, error } = await supabase.rpc('check_sale_already_processed' as any, {
+        p_restaurant_id: restaurantId,
+        p_pos_item_name: posItemName,
+        p_quantity_sold: quantitySold,
+        p_sale_date: saleDate
+      });
+
+      if (error) throw error;
+      return data as boolean;
+    } catch (error: any) {
+      console.error('Error checking if sale processed:', error);
+      return false;
+    }
+  }, []);
+
   return {
     loading,
     processDeduction,
     getDeductionHistory,
     simulateDeduction,
+    checkSaleProcessed,
   };
 };

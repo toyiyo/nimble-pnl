@@ -31,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useRecipes, Recipe, CreateRecipeData } from '@/hooks/useRecipes';
 import { useProducts } from '@/hooks/useProducts';
+import { usePOSItems } from '@/hooks/usePOSItems';
 import { Plus, Trash2, DollarSign } from 'lucide-react';
 import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
 
@@ -65,6 +66,7 @@ interface RecipeDialogProps {
 export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDialogProps) {
   const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
   const { products } = useProducts(restaurantId);
+  const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
   const [loading, setLoading] = useState(false);
   const [estimatedCost, setEstimatedCost] = useState(0);
 
@@ -181,8 +183,24 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
           }
         }
       } else {
-        // Create new recipe
-        await createRecipe(data as CreateRecipeData);
+        // Create new recipe - add restaurant_id to form data
+        const createData: CreateRecipeData = {
+          name: data.name,
+          description: data.description,
+          pos_item_name: data.pos_item_name,
+          pos_item_id: data.pos_item_id,
+          serving_size: data.serving_size,
+          restaurant_id: restaurantId,
+          ingredients: data.ingredients.filter(ing => 
+            ing.product_id && ing.quantity && ing.quantity > 0
+          ) as {
+            product_id: string;
+            quantity: number;
+            unit: 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+            notes?: string;
+          }[],
+        };
+        await createRecipe(createData);
       }
       
       onClose();
@@ -298,13 +316,32 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>POS Item Name</FormLabel>
-                        <FormControl>
-                          <Input 
-                            placeholder="e.g., Margarita - Large" 
-                            id="pos-item-name"
-                            {...field} 
-                          />
-                        </FormControl>
+                        <Select onValueChange={(value) => {
+                          field.onChange(value);
+                          // Auto-fill POS item ID if available
+                          const selectedItem = posItems.find(item => item.item_name === value);
+                          if (selectedItem?.item_id) {
+                            form.setValue('pos_item_id', selectedItem.item_id);
+                          }
+                        }} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger id="pos-item-name">
+                              <SelectValue placeholder={posItemsLoading ? "Loading POS items..." : "Select POS item or leave blank"} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="max-h-[200px]">
+                            {posItems.map((item) => (
+                              <SelectItem key={item.item_name} value={item.item_name}>
+                                <div className="flex flex-col">
+                                  <span>{item.item_name}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {item.sales_count} sales • {item.source === 'pos_sales' ? 'POS' : 'Unified'} • Last: {item.last_sold}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}

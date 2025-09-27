@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from './useAuth';
-import { useToast } from './use-toast';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { useInventoryAudit } from '@/hooks/useInventoryAudit';
 
 export interface Product {
   id: string;
@@ -9,25 +10,25 @@ export interface Product {
   gtin?: string;
   sku: string;
   name: string;
-  description?: string;
-  brand?: string;
-  category?: string;
-  size_value?: number;
-  size_unit?: string;
-  package_qty?: number;
-  uom_purchase?: string;
-  uom_recipe?: string;
-  conversion_factor?: number;
-  cost_per_unit?: number;
-  supplier_name?: string;
-  supplier_sku?: string;
-  par_level_min?: number;
-  par_level_max?: number;
-  current_stock?: number;
-  reorder_point?: number;
-  barcode_data?: any;
-  image_url?: string;
-  pos_item_name?: string;
+  description?: string | null;
+  brand?: string | null;
+  category?: string | null;
+  size_value?: number | null;
+  size_unit?: string | null;
+  package_qty?: number | null;
+  uom_purchase?: string | null;
+  uom_recipe?: string | null;
+  conversion_factor?: number | null;
+  cost_per_unit?: number | null;
+  current_stock?: number | null;
+  par_level_min?: number | null;
+  par_level_max?: number | null;
+  reorder_point?: number | null;
+  supplier_name?: string | null;
+  supplier_sku?: string | null;
+  pos_item_name?: string | null;
+  image_url?: string | null;
+  barcode_data?: any | null;
   created_at: string;
   updated_at: string;
 }
@@ -37,35 +38,39 @@ export interface CreateProductData {
   gtin?: string;
   sku: string;
   name: string;
-  description?: string;
-  brand?: string;
-  category?: string;
-  size_value?: number;
-  size_unit?: string;
-  package_qty?: number;
-  uom_purchase?: string;
-  uom_recipe?: string;
-  conversion_factor?: number;
-  cost_per_unit?: number;
-  supplier_name?: string;
-  supplier_sku?: string;
-  par_level_min?: number;
-  par_level_max?: number;
-  current_stock?: number;
-  reorder_point?: number;
-  barcode_data?: any;
-  image_url?: string;
-  pos_item_name?: string;
+  description?: string | null;
+  brand?: string | null;
+  category?: string | null;
+  size_value?: number | null;
+  size_unit?: string | null;
+  package_qty?: number | null;
+  uom_purchase?: string | null;
+  uom_recipe?: string | null;
+  conversion_factor?: number | null;
+  cost_per_unit?: number | null;
+  current_stock?: number | null;
+  par_level_min?: number | null;
+  par_level_max?: number | null;
+  reorder_point?: number | null;
+  supplier_name?: string | null;
+  supplier_sku?: string | null;
+  pos_item_name?: string | null;
+  image_url?: string | null;
+  barcode_data?: any | null;
 }
 
 export const useProducts = (restaurantId: string | null) => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
+  const { logPurchase, updateProductStockWithAudit } = useInventoryAudit();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const fetchProducts = useCallback(async () => {
-    if (!restaurantId || !user) return;
+    if (!restaurantId || !user) {
+      setProducts([]);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -73,7 +78,7 @@ export const useProducts = (restaurantId: string | null) => {
         .from('products')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .order('name');
+        .order('name', { ascending: true });
 
       if (error) throw error;
       setProducts(data || []);
@@ -101,6 +106,18 @@ export const useProducts = (restaurantId: string | null) => {
 
       if (error) throw error;
 
+      // Log initial stock as purchase if there's stock being added
+      if (data && (productData.current_stock || 0) > 0) {
+        await logPurchase(
+          data.restaurant_id,
+          data.id,
+          productData.current_stock || 0,
+          productData.cost_per_unit || 0,
+          `Initial stock for new product: ${productData.name}`,
+          `product_create_${data.id}`
+        );
+      }
+
       toast({
         title: "Product created",
         description: `${productData.name} has been added to inventory`,
@@ -119,20 +136,74 @@ export const useProducts = (restaurantId: string | null) => {
     }
   };
 
-  const updateProduct = async (id: string, updates: Partial<CreateProductData>): Promise<boolean> => {
-    if (!user) return false;
+  const updateProductWithQuantity = async (
+    id: string, 
+    updates: Partial<CreateProductData>, 
+    currentStock: number,
+    newStock: number,
+    transactionType: 'purchase' | 'adjustment' | 'waste' = 'purchase',
+    reason: string = 'Inventory update'
+  ): Promise<boolean> => {
+    if (!user || !restaurantId) return false;
 
     try {
+      // Get current product data for comparison
+      const { data: currentProduct, error: fetchError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const quantityDifference = newStock - currentStock;
+
+      // Update the product with new stock level
+      const updatedData = {
+        ...updates,
+        current_stock: newStock,
+        updated_at: new Date().toISOString()
+      };
+
       const { error } = await supabase
         .from('products')
-        .update(updates)
+        .update(updatedData)
         .eq('id', id);
 
       if (error) throw error;
 
+      // Log inventory transaction based on type
+      if (quantityDifference !== 0) {
+        const unitCost = updates.cost_per_unit || currentProduct.cost_per_unit || 0;
+        
+        if (transactionType === 'purchase' && quantityDifference > 0) {
+          await logPurchase(
+            restaurantId,
+            id,
+            quantityDifference,
+            unitCost,
+            reason,
+            `purchase_${id}_${Date.now()}`
+          );
+        } else if (transactionType === 'adjustment') {
+          // Use updateProductStockWithAudit from the calling component
+          // This will be handled by the calling component
+        }
+      }
+
+      const transactionDescription = transactionType === 'adjustment' 
+        ? quantityDifference >= 0 
+          ? `Adjustment: +${quantityDifference} units (${reason})`
+          : `Adjustment: ${quantityDifference} units (${reason})`
+        : quantityDifference > 0 
+          ? `Added ${quantityDifference} units`
+          : `Removed ${Math.abs(quantityDifference)} units`;
+
       toast({
         title: "Product updated",
-        description: "Product information has been updated",
+        description: quantityDifference !== 0 
+          ? `${currentProduct.name} updated. ${transactionDescription}`
+          : "Product information has been updated",
       });
 
       await fetchProducts();
@@ -146,6 +217,20 @@ export const useProducts = (restaurantId: string | null) => {
       });
       return false;
     }
+  };
+
+  // Keep the original updateProduct for backwards compatibility
+  const updateProduct = async (id: string, updates: Partial<CreateProductData>): Promise<boolean> => {
+    // Get current product to determine current stock
+    const { data: currentProduct } = await supabase
+      .from('products')
+      .select('current_stock')
+      .eq('id', id)
+      .single();
+    
+    const currentStock = currentProduct?.current_stock || 0;
+    const newStock = updates.current_stock ?? currentStock;
+    return updateProductWithQuantity(id, updates, currentStock, newStock, 'adjustment', 'Product information update');
   };
 
   const findProductByGtin = useCallback(async (gtin: string): Promise<Product | null> => {
@@ -241,6 +326,7 @@ export const useProducts = (restaurantId: string | null) => {
     loading,
     createProduct,
     updateProduct,
+    updateProductWithQuantity,
     deleteProduct,
     findProductByGtin,
     findProductBySku,

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useRestaurants } from '@/hooks/useRestaurants';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRecipes } from '@/hooks/useRecipes';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,22 +19,26 @@ import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeDialog } from '@/components/RecipeDialog';
 import { DeleteRecipeDialog } from '@/components/DeleteRecipeDialog';
 import { RecipeSuggestions } from '@/components/RecipeSuggestions';
+import { AutoDeductionSettings } from '@/components/AutoDeductionSettings';
+import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDeduction';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
-import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings } from 'lucide-react';
 
 export default function Recipes() {
   const { user } = useAuth();
-  const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
-  const [selectedRestaurant, setSelectedRestaurant] = useState<any>(null);
-  const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || selectedRestaurant?.id || null);
-  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || selectedRestaurant?.id || null);
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
+  const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
+  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [deletingRecipe, setDeletingRecipe] = useState<any>(null);
+  const [showAutoSettings, setShowAutoSettings] = useState(false);
+
+  const { setupAutoDeduction } = useAutomaticInventoryDeduction();
 
   const handleRestaurantSelect = (restaurant: any) => {
+    console.log('Selected restaurant object:', restaurant);
     setSelectedRestaurant(restaurant);
   };
 
@@ -53,8 +57,8 @@ export default function Recipes() {
 
   if (!selectedRestaurant) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
+      <div className="space-y-6">
+        <div className="text-center">
           <h1 className="text-3xl font-bold mb-2">Recipes</h1>
           <p className="text-muted-foreground">
             Create and manage recipes for your menu items
@@ -80,22 +84,25 @@ export default function Recipes() {
   const mappedRecipes = filteredRecipes.filter(recipe => recipe.pos_item_name);
 
   return (
-    <div className="container mx-auto px-4 py-4 md:py-8">
+    <div className="space-y-6 md:space-y-8">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 md:mb-8">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="text-center lg:text-left">
           <h1 className="text-2xl md:text-3xl font-bold mb-2">Recipes</h1>
           <p className="text-sm md:text-base text-muted-foreground">
-            Create and manage recipes for {selectedRestaurant.name || selectedRestaurant.restaurant?.name}
+            Create and manage recipes for {selectedRestaurant.restaurant?.name}
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
-          <Link to="/" className="w-full sm:w-auto">
-            <Button variant="outline" className="w-full sm:w-auto">
-              <span className="hidden sm:inline">Back to Dashboard</span>
-              <span className="sm:hidden">Dashboard</span>
-            </Button>
-          </Link>
+        <div className="flex justify-center lg:justify-start gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowAutoSettings(!showAutoSettings)}
+            size="sm"
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            <span className="hidden sm:inline">Auto Deduction</span>
+            <span className="sm:hidden">Auto</span>
+          </Button>
           <Button onClick={() => setIsCreateDialogOpen(true)} className="w-full sm:w-auto">
             <Plus className="w-4 h-4 mr-2" />
             <span className="hidden sm:inline">Create Recipe</span>
@@ -104,38 +111,29 @@ export default function Recipes() {
         </div>
       </div>
 
-      {/* Restaurant Selector */}
-      <div className="mb-6">
-        <RestaurantSelector
-          restaurants={restaurants}
-          selectedRestaurant={selectedRestaurant}
-          onSelectRestaurant={handleRestaurantSelect}
-          loading={restaurantsLoading}
-          createRestaurant={createRestaurant}
-        />
-      </div>
+      {/* Auto Deduction Settings */}
+      {showAutoSettings && (
+        <AutoDeductionSettings />
+      )}
 
-      {/* Search */}
+      {/* Recipe Suggestions */}
       {unmappedItems.length > 0 && (
-        <div className="mb-6">
-          <RecipeSuggestions
-            unmappedItems={unmappedItems}
-            restaurantId={selectedRestaurant?.restaurant_id || selectedRestaurant?.id}
-            onRecipeCreated={fetchRecipes}
-          />
-        </div>
+        <RecipeSuggestions
+          unmappedItems={unmappedItems}
+          restaurantId={selectedRestaurant?.restaurant_id}
+          onRecipeCreated={fetchRecipes}
+        />
       )}
       
-      <div className="mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input
-            placeholder="Search recipes..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+        <Input
+          placeholder="Search recipes..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10"
+        />
       </div>
 
       {/* Tabs */}
@@ -194,13 +192,13 @@ export default function Recipes() {
       <RecipeDialog
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
-        restaurantId={selectedRestaurant?.restaurant_id || selectedRestaurant?.id}
+        restaurantId={selectedRestaurant?.restaurant_id}
       />
 
       <RecipeDialog
         isOpen={!!editingRecipe}
         onClose={() => setEditingRecipe(null)}
-        restaurantId={selectedRestaurant?.restaurant_id || selectedRestaurant?.id}
+        restaurantId={selectedRestaurant?.restaurant_id}
         recipe={editingRecipe}
       />
 
@@ -281,7 +279,18 @@ function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
                     <Badge variant="outline" className="text-xs">Not mapped</Badge>
                   )}
                   <Badge variant="outline" className="text-xs">Size: {recipe.serving_size || 1}</Badge>
-                  <Badge variant="outline" className="text-xs">${recipe.estimated_cost?.toFixed(2) || '0.00'}</Badge>
+                  <Badge variant="outline" className="text-xs">Cost: ${recipe.estimated_cost?.toFixed(2) || '0.00'}</Badge>
+                  {recipe.avg_sale_price && (
+                    <>
+                      <Badge variant="outline" className="text-xs">Sale: ${recipe.avg_sale_price.toFixed(2)}</Badge>
+                      <Badge 
+                        variant={recipe.profit_margin && recipe.profit_margin > 0 ? "default" : "destructive"} 
+                        className="text-xs"
+                      >
+                        {recipe.profit_margin ? `${recipe.profit_margin.toFixed(1)}%` : 'No profit data'}
+                      </Badge>
+                    </>
+                  )}
                 </div>
                 
                 <div className="text-xs text-muted-foreground">
@@ -300,7 +309,10 @@ function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
                 <TableHead>Recipe Name</TableHead>
                 <TableHead>POS Item</TableHead>
                 <TableHead>Serving Size</TableHead>
-                <TableHead>Estimated Cost</TableHead>
+                <TableHead>Cost</TableHead>
+                <TableHead>Avg Sale Price</TableHead>
+                <TableHead>Profit</TableHead>
+                <TableHead>Margin %</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -331,6 +343,35 @@ function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
                       <DollarSign className="w-4 h-4 mr-1" />
                       ${recipe.estimated_cost?.toFixed(2) || '0.00'}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {recipe.avg_sale_price ? (
+                      <div className="flex items-center">
+                        <DollarSign className="w-4 h-4 mr-1" />
+                        ${recipe.avg_sale_price.toFixed(2)}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">No sales data</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {recipe.profit_per_serving !== undefined ? (
+                      <div className={`flex items-center ${recipe.profit_per_serving > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        <DollarSign className="w-4 h-4 mr-1" />
+                        {recipe.profit_per_serving > 0 ? '+' : ''}${recipe.profit_per_serving.toFixed(2)}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {recipe.profit_margin !== undefined ? (
+                      <Badge variant={recipe.profit_margin > 0 ? "default" : "destructive"}>
+                        {recipe.profit_margin.toFixed(1)}%
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center text-sm text-muted-foreground">

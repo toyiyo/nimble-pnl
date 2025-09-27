@@ -15,6 +15,8 @@ import { DeleteProductDialog } from '@/components/DeleteProductDialog';
 import { WasteDialog } from '@/components/WasteDialog';
 import { TransferDialog } from '@/components/TransferDialog';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
+import { InventorySettings } from '@/components/InventorySettings';
+import { InventoryValueBadge } from '@/components/InventoryValueBadge';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
 import { useInventoryAudit } from '@/hooks/useInventoryAudit';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -658,7 +660,7 @@ export const Inventory: React.FC = () => {
               )}
             </TabsTrigger>
             <TabsTrigger value="categories" className="flex-col py-2 px-1">
-              <span className="text-xs md:text-sm">Categories</span>
+              <span className="text-xs md:text-sm">Settings</span>
             </TabsTrigger>
           </TabsList>
 
@@ -825,6 +827,24 @@ export const Inventory: React.FC = () => {
                         `$${inventoryMetrics.totalInventoryValue.toFixed(2)}`
                       )}
                     </div>
+                    {!inventoryMetrics.loading && (
+                      <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                        <div className="flex justify-between">
+                          <span>Recipe-based:</span>
+                          <span>{inventoryMetrics.calculationSummary.recipeBasedCount} products</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Estimated:</span>
+                          <span>{inventoryMetrics.calculationSummary.estimatedCount} products</span>
+                        </div>
+                        {inventoryMetrics.calculationSummary.mixedCount > 0 && (
+                          <div className="flex justify-between">
+                            <span>Mixed:</span>
+                            <span>{inventoryMetrics.calculationSummary.mixedCount} products</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -979,12 +999,19 @@ export const Inventory: React.FC = () => {
                                    ${inventoryMetrics.productMetrics[product.id].inventoryCost.toFixed(2)}
                                  </span>
                                </div>
-                               <div className="flex justify-between items-center">
-                                 <span className="text-sm">Inventory Value:</span>
-                                 <span className="font-medium text-green-600">
-                                   ${inventoryMetrics.productMetrics[product.id].inventoryValue.toFixed(2)}
-                                 </span>
-                               </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm">Inventory Value:</span>
+                                  <span className="font-medium text-green-600">
+                                    ${inventoryMetrics.productMetrics[product.id].inventoryValue.toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="mt-2">
+                                  <InventoryValueBadge
+                                    calculationMethod={inventoryMetrics.productMetrics[product.id].calculationMethod}
+                                    markupUsed={inventoryMetrics.productMetrics[product.id].markupUsed}
+                                    category={product.category}
+                                  />
+                                </div>
                              </>
                            )}
                          </div>
@@ -1064,12 +1091,19 @@ export const Inventory: React.FC = () => {
                                    ${inventoryMetrics.productMetrics[product.id].inventoryCost.toFixed(2)}
                                  </span>
                                </div>
-                               <div className="flex justify-between items-center">
-                                 <span className="text-sm">Inventory Value:</span>
-                                 <span className="font-medium text-green-600">
-                                   ${inventoryMetrics.productMetrics[product.id].inventoryValue.toFixed(2)}
-                                 </span>
-                               </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm">Inventory Value:</span>
+                                  <span className="font-medium text-green-600">
+                                    ${inventoryMetrics.productMetrics[product.id].inventoryValue.toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="mt-2">
+                                  <InventoryValueBadge
+                                    calculationMethod={inventoryMetrics.productMetrics[product.id].calculationMethod}
+                                    markupUsed={inventoryMetrics.productMetrics[product.id].markupUsed}
+                                    category={product.category}
+                                  />
+                                </div>
                              </>
                            )}
                            <Button className="w-full mt-4" size="sm">
@@ -1085,10 +1119,9 @@ export const Inventory: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="categories" className="mt-6">
-            <div className="text-center py-8">
-              <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">Category management coming soon...</p>
-            </div>
+            {selectedRestaurant && (
+              <InventorySettings restaurantId={selectedRestaurant.restaurant_id} />
+            )}
           </TabsContent>
         </Tabs>
       </div>

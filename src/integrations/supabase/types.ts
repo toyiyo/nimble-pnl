@@ -658,6 +658,41 @@ export type Database = {
           },
         ]
       }
+      restaurant_inventory_settings: {
+        Row: {
+          created_at: string
+          default_markup_multiplier: number
+          id: string
+          markup_by_category: Json | null
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_markup_multiplier?: number
+          id?: string
+          markup_by_category?: Json | null
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_markup_multiplier?: number
+          id?: string
+          markup_by_category?: Json | null
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_inventory_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurants: {
         Row: {
           address: string | null

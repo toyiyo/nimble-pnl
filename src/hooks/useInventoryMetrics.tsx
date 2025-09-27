@@ -1,10 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Product } from '@/hooks/useProducts';
+import { useInventorySettings } from '@/hooks/useInventorySettings';
 
 interface ProductMetrics {
   inventoryCost: number;
   inventoryValue: number;
+  calculationMethod: 'recipe-based' | 'estimated' | 'mixed';
+  markupUsed?: number;
 }
 
 interface InventoryMetrics {
@@ -12,6 +15,11 @@ interface InventoryMetrics {
   totalInventoryCost: number;
   totalInventoryValue: number;
   loading: boolean;
+  calculationSummary: {
+    recipeBasedCount: number;
+    estimatedCount: number;
+    mixedCount: number;
+  };
 }
 
 interface Recipe {
@@ -38,11 +46,17 @@ interface UnifiedSale {
 }
 
 export const useInventoryMetrics = (restaurantId: string | null, products: Product[]) => {
+  const { getMarkupForCategory } = useInventorySettings(restaurantId);
   const [metrics, setMetrics] = useState<InventoryMetrics>({
     productMetrics: {},
     totalInventoryCost: 0,
     totalInventoryValue: 0,
     loading: true,
+    calculationSummary: {
+      recipeBasedCount: 0,
+      estimatedCount: 0,
+      mixedCount: 0
+    }
   });
 
   const calculateMetrics = async () => {
@@ -157,19 +171,34 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
           }
         }
 
-        // If no recipe-based value found, use a simple markup on cost
+        // If no recipe-based value found, use configurable markup on cost
         if (inventoryValue === 0 && costPerUnit > 0) {
-          // Assume 2.5x markup as fallback
-          inventoryValue = currentStock * costPerUnit * 2.5;
+          const markup = getMarkupForCategory(product.category);
+          inventoryValue = currentStock * costPerUnit * markup;
+          
+          productMetrics[product.id] = {
+            inventoryCost,
+            inventoryValue,
+            calculationMethod: 'estimated',
+            markupUsed: markup
+          };
+        } else if (inventoryValue > 0) {
+          productMetrics[product.id] = {
+            inventoryCost,
+            inventoryValue,
+            calculationMethod: productRecipes.length === 1 ? 'recipe-based' : 'mixed'
+          };
+        } else {
+          productMetrics[product.id] = {
+            inventoryCost,
+            inventoryValue: 0,
+            calculationMethod: 'estimated',
+            markupUsed: 0
+          };
         }
-
-        productMetrics[product.id] = {
-          inventoryCost,
-          inventoryValue,
-        };
       }
 
-      // Calculate totals
+      // Calculate totals and summary
       const totalInventoryCost = Object.values(productMetrics).reduce(
         (sum, metrics) => sum + metrics.inventoryCost, 0
       );
@@ -177,11 +206,20 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
         (sum, metrics) => sum + metrics.inventoryValue, 0
       );
 
+      const calculationSummary = Object.values(productMetrics).reduce(
+        (summary, metrics) => {
+          summary[`${metrics.calculationMethod}Count`]++;
+          return summary;
+        },
+        { recipeBasedCount: 0, estimatedCount: 0, mixedCount: 0 }
+      );
+
       setMetrics({
         productMetrics,
         totalInventoryCost,
         totalInventoryValue,
         loading: false,
+        calculationSummary
       });
 
     } catch (error) {

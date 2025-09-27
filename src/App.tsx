@@ -2,8 +2,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/hooks/useAuth";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { RestaurantProvider } from "@/contexts/RestaurantContext";
+import { AppHeader } from "@/components/AppHeader";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Team from "./pages/Team";
@@ -18,6 +20,36 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+// Protected Route Component
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <p className="text-xl text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  return (
+    <RestaurantProvider>
+      <div className="min-h-screen bg-background">
+        <AppHeader />
+        <main className="container px-4 py-4 md:py-6">
+          {children}
+        </main>
+      </div>
+    </RestaurantProvider>
+  );
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -26,14 +58,14 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/team" element={<Team />} />
-            <Route path="/integrations" element={<Integrations />} />
-            <Route path="/recipes" element={<Recipes />} />
-            <Route path="/pos-sales" element={<POSSales />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/inventory" element={<Inventory />} />
+            <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
+            <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
+            <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
+            <Route path="/pos-sales" element={<ProtectedRoute><POSSales /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+            <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

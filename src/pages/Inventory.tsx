@@ -12,8 +12,9 @@ import { ProductDialog } from '@/components/ProductDialog';
 import { ProductCard } from '@/components/ProductCard';
 import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
 import { DeleteProductDialog } from '@/components/DeleteProductDialog';
+import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
-import { useRestaurants } from '@/hooks/useRestaurants';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
@@ -23,12 +24,10 @@ import { ocrService } from '@/services/ocrService';
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { restaurants } = useRestaurants();
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { toast } = useToast();
   
-  // For now, use the first restaurant. In a full app, you'd have restaurant selection
-  const selectedRestaurant = restaurants[0];
-  const { products, loading, createProduct, updateProduct, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant?.id || null);
+  const { products, loading, createProduct, updateProduct, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant_id || null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showProductDialog, setShowProductDialog] = useState(false);
@@ -42,6 +41,30 @@ export const Inventory: React.FC = () => {
   const [capturedImage, setCapturedImage] = useState<{ blob: Blob; url: string } | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+
+  const handleRestaurantSelect = (restaurant: any) => {
+    setSelectedRestaurant(restaurant);
+  };
+
+  if (!selectedRestaurant) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold mb-2">Inventory Management</h1>
+          <p className="text-muted-foreground">
+            Manage your restaurant's inventory and track stock levels
+          </p>
+        </div>
+        <RestaurantSelector
+          restaurants={restaurants}
+          selectedRestaurant={selectedRestaurant}
+          onSelectRestaurant={handleRestaurantSelect}
+          loading={restaurantsLoading}
+          createRestaurant={createRestaurant}
+        />
+      </div>
+    );
+  }
 
   const handleBarcodeScanned = async (gtin: string, format: string, aiData?: string) => {
     console.log('📱 Barcode scanned:', gtin, format, aiData ? 'with AI data' : '');

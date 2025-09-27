@@ -175,7 +175,66 @@ export const useReceiptImport = () => {
       return [];
     }
 
-    return data as ReceiptLineItem[];
+    const lineItems = data as ReceiptLineItem[];
+    
+    // Try to auto-match items that haven't been mapped yet
+    await autoMatchLineItems(lineItems);
+    
+    // Re-fetch the items to get updated mapping status
+    const { data: updatedData, error: updatedError } = await supabase
+      .from('receipt_line_items')
+      .select('*')
+      .eq('receipt_id', receiptId)
+      .order('created_at', { ascending: true });
+
+    if (updatedError) {
+      console.error('Error fetching updated receipt line items:', updatedError);
+      return lineItems; // Return original data if re-fetch fails
+    }
+
+    return updatedData as ReceiptLineItem[];
+  };
+
+  const autoMatchLineItems = async (lineItems: ReceiptLineItem[]) => {
+    if (!selectedRestaurant?.restaurant_id) return;
+
+    for (const item of lineItems) {
+      // Skip items that are already mapped
+      if (item.mapping_status !== 'pending') continue;
+
+      const searchTerm = item.parsed_name || item.raw_text;
+      if (!searchTerm || searchTerm.length < 2) continue;
+
+      try {
+        // Search for products that might match this receipt item
+        const { data: matchingProducts, error } = await supabase.rpc('search_products_by_name', {
+          p_restaurant_id: selectedRestaurant.restaurant_id,
+          p_search_term: searchTerm
+        });
+
+        if (error) {
+          console.error('Error auto-matching receipt item:', error);
+          continue;
+        }
+
+        // Find the best match (exact match in receipt_item_names gets highest priority)
+        const exactMatch = matchingProducts?.find((product: any) => 
+          product.receipt_item_names?.some((name: string) => 
+            name.toLowerCase() === searchTerm.toLowerCase()
+          )
+        );
+
+        // If we found an exact match, update the line item
+        if (exactMatch) {
+          await updateLineItemMapping(item.id, {
+            matched_product_id: exactMatch.id,
+            mapping_status: 'mapped'
+          });
+        }
+      } catch (error) {
+        console.error('Error in auto-matching process:', error);
+      }
+    }
   };
 
   const updateLineItemMapping = async (
@@ -245,13 +304,34 @@ export const useReceiptImport = () => {
             continue;
           }
 
-          // Update existing product stock
+          // Update existing product stock and store receipt item mapping
           const newStock = (currentProduct.current_stock || 0) + (item.parsed_quantity || 0);
+          
+          // Get current receipt_item_names to add the new mapping
+          const { data: currentProductData, error: currentProductError } = await supabase
+            .from('products')
+            .select('receipt_item_names')
+            .eq('id', item.matched_product_id)
+            .single();
+
+          if (currentProductError) {
+            console.error('Error fetching current product data:', currentProductError);
+            continue;
+          }
+
+          // Add the receipt item name to the product's mapping list if not already present
+          const currentMappings = currentProductData.receipt_item_names || [];
+          const receiptItemName = item.parsed_name || item.raw_text;
+          const updatedMappings = currentMappings.includes(receiptItemName) 
+            ? currentMappings 
+            : [...currentMappings, receiptItemName];
+
           const { error: stockError } = await supabase
             .from('products')
             .update({
               current_stock: newStock,
               cost_per_unit: item.parsed_price || 0,
+              receipt_item_names: updatedMappings,
               updated_at: new Date().toISOString()
             })
             .eq('id', item.matched_product_id);
@@ -275,7 +355,8 @@ export const useReceiptImport = () => {
 
           importedCount++;
         } else if (item.mapping_status === 'new_item') {
-          // Create new product
+          // Create new product with receipt item mapping
+          const receiptItemName = item.parsed_name || item.raw_text;
           const { data: newProduct, error: productError } = await supabase
             .from('products')
             .insert({
@@ -284,7 +365,8 @@ export const useReceiptImport = () => {
               sku: `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               current_stock: item.parsed_quantity || 0,
               cost_per_unit: item.parsed_price || 0,
-              uom_purchase: item.parsed_unit || 'unit'
+              uom_purchase: item.parsed_unit || 'unit',
+              receipt_item_names: [receiptItemName]
             })
             .select()
             .single();

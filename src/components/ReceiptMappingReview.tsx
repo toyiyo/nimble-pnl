@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableProductSelector } from '@/components/SearchableProductSelector';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useReceiptImport, ReceiptLineItem } from '@/hooks/useReceiptImport';
@@ -225,56 +225,18 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
               <div className="space-y-3">
                 <div>
                   <Label htmlFor={`mapping-${item.id}`}>Map to Inventory</Label>
-                  <Select
+                  <SearchableProductSelector
                     value={
                       item.mapping_status === 'new_item' ? 'new_item' :
                       item.mapping_status === 'skipped' ? 'skip' :
-                      item.matched_product_id || ''
+                      item.matched_product_id
                     }
                     onValueChange={(value) => handleMappingChange(item.id, value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select mapping option" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="new_item">
-                        <div className="flex items-center gap-2">
-                          <Plus className="w-4 h-4" />
-                          Create New Item
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="skip">Skip This Item</SelectItem>
-                      <Separator />
-                      {products.map((product) => (
-                        <SelectItem key={product.id} value={product.id}>
-                          <div className="flex items-center gap-2">
-                            <Package className="w-4 h-4" />
-                            {product.name} ({product.sku})
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    searchTerm={item.parsed_name || item.raw_text}
+                    placeholder="Search existing products or create new..."
+                  />
                 </div>
 
-                {/* Show matched product info */}
-                {item.matched_product_id && item.mapping_status === 'mapped' && (
-                  <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded border border-green-200 dark:border-green-800">
-                    {(() => {
-                      const product = products.find(p => p.id === item.matched_product_id);
-                      return product ? (
-                        <div className="text-sm">
-                          <div className="font-medium text-green-700 dark:text-green-300">
-                            Will update: {product.name}
-                          </div>
-                          <div className="text-green-600 dark:text-green-400">
-                            Current stock: {product.current_stock} {product.uom_purchase}
-                          </div>
-                        </div>
-                      ) : null;
-                    })()}
-                  </div>
-                )}
 
                 {/* Show new item info */}
                 {item.mapping_status === 'new_item' && (

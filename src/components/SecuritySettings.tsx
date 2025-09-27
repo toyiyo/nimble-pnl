@@ -47,22 +47,34 @@ export const SecuritySettings = () => {
       severity: 'medium'
     },
     {
-      id: 'leaked_passwords',
-      title: 'Leaked Password Protection',
-      description: 'Enable protection against compromised passwords',
-      status: 'pending',
-      severity: 'medium',
-      action: 'Enable in Supabase Auth Settings',
-      link: 'https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection'
+      id: 'email_exposure_fix',
+      title: 'Email Privacy Protection',
+      description: 'Fixed critical vulnerability where invitation emails could be exposed to unauthorized users',
+      status: 'completed',
+      severity: 'high'
     },
     {
       id: 'extensions_schema',
       title: 'Database Extensions Security',
-      description: 'Move extensions from public schema to dedicated schema',
+      description: 'Moved pg_net extension from public schema to dedicated extensions schema',
+      status: 'completed',
+      severity: 'low'
+    },
+    {
+      id: 'enhanced_security_logging',
+      title: 'Enhanced Security Event Logging',
+      description: 'Implemented comprehensive security event tracking and rate limiting',
+      status: 'completed',
+      severity: 'medium'
+    },
+    {
+      id: 'leaked_passwords',
+      title: 'Leaked Password Protection',
+      description: 'Enable protection against compromised passwords in Supabase Auth settings',
       status: 'pending',
-      severity: 'low',
-      action: 'Move extensions to separate schema',
-      link: 'https://supabase.com/docs/guides/database/database-linter?lint=0014_extension_in_public'
+      severity: 'medium',
+      action: 'Enable in Supabase Dashboard → Auth → Settings',
+      link: 'https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection'
     }
   ];
 
@@ -236,6 +248,36 @@ export const SecuritySettings = () => {
                   </p>
                 </div>
               </div>
+
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="font-medium text-green-900">Critical Email Exposure Fixed</p>
+                  <p className="text-sm text-green-700">
+                    Updated invitation RLS policies to prevent unauthorized access to email addresses
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="font-medium text-green-900">Extension Security Hardening</p>
+                  <p className="text-sm text-green-700">
+                    Moved database extensions from public schema to dedicated extensions schema
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="font-medium text-green-900">Enhanced Security Monitoring</p>
+                  <p className="text-sm text-green-700">
+                    Added comprehensive security event logging and rate limiting infrastructure
+                  </p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -243,13 +285,11 @@ export const SecuritySettings = () => {
         <Alert>
           <Shield className="h-4 w-4" />
           <AlertDescription>
-            <strong>Remaining Actions:</strong> To complete the security setup, please:
+            <strong>Security Status:</strong> Critical vulnerabilities have been resolved! 
             <br />
-            • Enable leaked password protection in your Supabase Auth settings
+            <strong>Remaining Action:</strong> Enable leaked password protection in your Supabase Dashboard → Authentication → Settings to complete the security hardening.
             <br />
-            • Move database extensions from public schema (low priority)
-            <br />
-            Most critical security vulnerabilities have been resolved automatically.
+            All other security issues have been automatically resolved.
           </AlertDescription>
         </Alert>
       </div>

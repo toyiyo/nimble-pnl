@@ -54,12 +54,12 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
           </div>
           
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Cost per {product.uom_purchase}:</span>
+            <span className="text-muted-foreground">Cost per {product.uom_purchase || 'purchase unit'}:</span>
             <span className="font-medium">${product.cost_per_unit.toFixed(2)}</span>
           </div>
           
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Cost per {product.uom_recipe}:</span>
+            <span className="text-muted-foreground">Cost per {product.uom_recipe || 'recipe unit'}:</span>
             <span className="font-medium">${costPerRecipeUnit.toFixed(3)}</span>
           </div>
         </div>

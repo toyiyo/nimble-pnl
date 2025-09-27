@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -63,7 +63,7 @@ interface RecipeDialogProps {
 }
 
 export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDialogProps) {
-  const { createRecipe, updateRecipe, fetchRecipeIngredients } = useRecipes(restaurantId);
+  const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
   const { products } = useProducts(restaurantId);
   const [loading, setLoading] = useState(false);
   const [estimatedCost, setEstimatedCost] = useState(0);
@@ -88,9 +88,11 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
   // Load recipe data for editing
   useEffect(() => {
     if (recipe && isOpen) {
+      console.log('Loading recipe data for recipe:', recipe.id);
       const loadRecipeData = async () => {
         try {
           const ingredients = await fetchRecipeIngredients(recipe.id);
+          console.log('Loaded ingredients:', ingredients);
           
           form.reset({
             name: recipe.name,
@@ -102,7 +104,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
               ? ingredients.map(ing => ({
                   product_id: ing.product_id,
                   quantity: ing.quantity,
-                  unit: ing.unit as 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving',
+                  unit: (measurementUnits.includes(ing.unit as any) ? ing.unit : 'oz') as 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving',
                   notes: ing.notes || '',
                 }))
               : [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
@@ -113,7 +115,8 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
       };
 
       loadRecipeData();
-    } else if (!recipe) {
+    } else if (!recipe && isOpen) {
+      console.log('Resetting form for new recipe');
       form.reset({
         name: '',
         description: '',
@@ -123,7 +126,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
         ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
       });
     }
-  }, [recipe, isOpen, form, fetchRecipeIngredients]);
+  }, [recipe?.id, isOpen]); // Only depend on recipe.id, not the whole recipe object or fetchRecipeIngredients
 
   // Calculate estimated cost when ingredients change using proper unit conversions
   useEffect(() => {
@@ -144,14 +147,14 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
       }
     });
     return () => subscription.unsubscribe();
-  }, [form, products]);
+  }, [products]);
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
     try {
       if (recipe) {
         // Update existing recipe
-        await updateRecipe(recipe.id, {
+        const updateSuccess = await updateRecipe(recipe.id, {
           name: data.name,
           description: data.description,
           pos_item_name: data.pos_item_name,
@@ -159,7 +162,24 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
           serving_size: data.serving_size,
         });
         
-        // TODO: Update ingredients (would need additional API endpoints)
+        if (updateSuccess) {
+          // Update ingredients - filter out empty ingredients
+          const validIngredients = data.ingredients.filter(ing => 
+            ing.product_id && ing.quantity && ing.quantity > 0
+          ) as {
+            product_id: string;
+            quantity: number;
+            unit: 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+            notes?: string;
+          }[];
+          await updateRecipeIngredients(recipe.id, validIngredients);
+          
+          // Recalculate and update recipe cost
+          const cost = await calculateRecipeCost(recipe.id);
+          if (cost !== null) {
+            await updateRecipe(recipe.id, { estimated_cost: cost });
+          }
+        }
       } else {
         // Create new recipe
         await createRecipe(data as CreateRecipeData);
@@ -173,15 +193,15 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
     }
   };
 
-  const addIngredient = () => {
+  const addIngredient = useCallback(() => {
     append({ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' });
-  };
+  }, [append]);
 
-  const removeIngredient = (index: number) => {
+  const removeIngredient = useCallback((index: number) => {
     if (fields.length > 1) {
       remove(index);
     }
-  };
+  }, [fields.length, remove]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -213,7 +233,11 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                       <FormItem>
                         <FormLabel>Recipe Name *</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., Margarita" {...field} />
+                          <Input 
+                            placeholder="e.g., Margarita" 
+                            id="recipe-name"
+                            {...field} 
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -230,6 +254,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                           <Textarea 
                             placeholder="Brief description of the recipe..."
                             rows={3}
+                            id="recipe-description"
                             {...field} 
                           />
                         </FormControl>
@@ -249,6 +274,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                             type="number" 
                             step="0.1"
                             placeholder="1"
+                            id="recipe-serving-size"
                             {...field}
                             onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
                           />
@@ -273,7 +299,11 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                       <FormItem>
                         <FormLabel>POS Item Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., Margarita - Large" {...field} />
+                          <Input 
+                            placeholder="e.g., Margarita - Large" 
+                            id="pos-item-name"
+                            {...field} 
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -287,7 +317,11 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                       <FormItem>
                         <FormLabel>POS Item ID</FormLabel>
                         <FormControl>
-                          <Input placeholder="Internal POS system ID" {...field} />
+                          <Input 
+                            placeholder="Internal POS system ID" 
+                            id="pos-item-id"
+                            {...field} 
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -330,7 +364,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                             <FormLabel>Product</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
-                                <SelectTrigger>
+                                <SelectTrigger id={`product-${index}`}>
                                   <SelectValue placeholder="Select product" />
                                 </SelectTrigger>
                               </FormControl>
@@ -369,6 +403,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                               <Input 
                                 type="number" 
                                 step="0.001"
+                                id={`quantity-${index}`}
                                 {...field}
                                 onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                               />
@@ -386,8 +421,8 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                             <FormLabel>Unit</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue />
+                                <SelectTrigger id={`unit-${index}`}>
+                                  <SelectValue placeholder="Select unit" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
@@ -410,7 +445,11 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                           <FormItem className="flex-1">
                             <FormLabel>Notes</FormLabel>
                             <FormControl>
-                              <Input placeholder="Optional notes..." {...field} />
+                              <Input 
+                                placeholder="Optional notes..." 
+                                id={`notes-${index}`}
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>

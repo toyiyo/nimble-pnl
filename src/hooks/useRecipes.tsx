@@ -206,6 +206,47 @@ export const useRecipes = (restaurantId: string | null) => {
     }
   };
 
+  const updateRecipeIngredients = async (recipeId: string, ingredients: {
+    product_id: string;
+    quantity: number;
+    unit: 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+    notes?: string;
+  }[]): Promise<boolean> => {
+    try {
+      // Delete existing ingredients
+      const { error: deleteError } = await supabase
+        .from('recipe_ingredients')
+        .delete()
+        .eq('recipe_id', recipeId);
+
+      if (deleteError) throw deleteError;
+
+      // Insert new ingredients
+      if (ingredients.length > 0) {
+        const ingredientsWithRecipeId = ingredients.map(ingredient => ({
+          ...ingredient,
+          recipe_id: recipeId,
+        }));
+
+        const { error: insertError } = await supabase
+          .from('recipe_ingredients')
+          .insert(ingredientsWithRecipeId);
+
+        if (insertError) throw insertError;
+      }
+
+      return true;
+    } catch (error: any) {
+      console.error('Error updating recipe ingredients:', error);
+      toast({
+        title: "Error updating recipe ingredients",
+        description: error.message,
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+
   const deleteRecipe = async (id: string): Promise<boolean> => {
     try {
       const { error } = await supabase
@@ -258,6 +299,7 @@ export const useRecipes = (restaurantId: string | null) => {
     fetchRecipeIngredients,
     createRecipe,
     updateRecipe,
+    updateRecipeIngredients,
     deleteRecipe,
     calculateRecipeCost,
   };

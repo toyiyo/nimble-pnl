@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { POSAdapter, POSIntegrationStatus, UnifiedSaleItem } from '@/types/pos';
@@ -99,11 +99,11 @@ export const useSquareSalesAdapter = (restaurantId: string | null): POSAdapter =
     };
   }, [isConnected, connection]);
 
-  return {
-    system: 'square',
+  return useMemo(() => ({
+    system: 'square' as const,
     isConnected,
     fetchSales,
     syncToUnified,
     getIntegrationStatus,
-  };
+  }), [isConnected, fetchSales, syncToUnified, getIntegrationStatus]);
 };

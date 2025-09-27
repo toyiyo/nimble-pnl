@@ -116,7 +116,7 @@ export function InventoryDeductionDialog({
                     <div>
                       <div className="text-sm text-muted-foreground">Total Cost</div>
                       <div className="font-medium text-green-600">
-                        ${simulationResult.total_cost.toFixed(2)}
+                        ${(simulationResult.total_cost || 0).toFixed(2)}
                       </div>
                     </div>
                   </div>
@@ -154,27 +154,27 @@ export function InventoryDeductionDialog({
                                 {ingredient.quantity_recipe_units} {ingredient.recipe_unit}
                               </Badge>
                             </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">
-                                {ingredient.quantity_purchase_units.toFixed(3)} {ingredient.purchase_unit}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="text-sm">
-                                <div>1 {ingredient.purchase_unit} = </div>
-                                <div>{ingredient.conversion_factor} {ingredient.recipe_unit}</div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className={`font-medium ${
-                                ingredient.remaining_stock_purchase_units < 1 ? 'text-red-600' : 'text-green-600'
-                              }`}>
-                                {ingredient.remaining_stock_purchase_units.toFixed(2)} {ingredient.purchase_unit}
-                              </div>
-                              {ingredient.remaining_stock_purchase_units < 1 && (
-                                <div className="text-xs text-red-500 mt-1">Low stock!</div>
-                              )}
-                            </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {(ingredient.quantity_purchase_units || 0).toFixed(3)} {ingredient.purchase_unit}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <div>1 {ingredient.purchase_unit} = </div>
+                              <div>{ingredient.conversion_factor || 1} {ingredient.recipe_unit}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className={`font-medium ${
+                              (ingredient.remaining_stock_purchase_units || 0) < 1 ? 'text-red-600' : 'text-green-600'
+                            }`}>
+                              {(ingredient.remaining_stock_purchase_units || 0).toFixed(2)} {ingredient.purchase_unit}
+                            </div>
+                            {(ingredient.remaining_stock_purchase_units || 0) < 1 && (
+                              <div className="text-xs text-red-500 mt-1">Low stock!</div>
+                            )}
+                          </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

@@ -410,6 +410,30 @@ export type Database = {
           },
         ]
       }
+      product_abbreviations: {
+        Row: {
+          abbreviation: string
+          created_at: string | null
+          full_term: string
+          id: string
+          restaurant_id: string
+        }
+        Insert: {
+          abbreviation: string
+          created_at?: string | null
+          full_term: string
+          id?: string
+          restaurant_id: string
+        }
+        Update: {
+          abbreviation?: string
+          created_at?: string | null
+          full_term?: string
+          id?: string
+          restaurant_id?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           barcode_data: Json | null
@@ -1644,6 +1668,26 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      advanced_product_search: {
+        Args: {
+          p_limit?: number
+          p_restaurant_id: string
+          p_search_term: string
+          p_similarity_threshold?: number
+        }
+        Returns: {
+          combined_score: number
+          current_stock: number
+          id: string
+          levenshtein_score: number
+          match_type: string
+          name: string
+          receipt_item_names: string[]
+          similarity_score: number
+          sku: string
+          uom_purchase: string
+        }[]
+      }
       aggregate_unified_sales_to_daily: {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: undefined

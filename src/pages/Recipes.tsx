@@ -27,14 +27,15 @@ export default function Recipes() {
   const { user } = useAuth();
   const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
   const [selectedRestaurant, setSelectedRestaurant] = useState<any>(null);
-  const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || selectedRestaurant?.id || null);
-  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || selectedRestaurant?.id || null);
+  const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.id || selectedRestaurant?.restaurant_id || null);
+  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.id || selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [deletingRecipe, setDeletingRecipe] = useState<any>(null);
 
   const handleRestaurantSelect = (restaurant: any) => {
+    console.log('Selected restaurant object:', restaurant);
     setSelectedRestaurant(restaurant);
   };
 
@@ -120,7 +121,7 @@ export default function Recipes() {
         <div className="mb-6">
           <RecipeSuggestions
             unmappedItems={unmappedItems}
-            restaurantId={selectedRestaurant?.restaurant_id || selectedRestaurant?.id}
+            restaurantId={selectedRestaurant?.id || selectedRestaurant?.restaurant_id}
             onRecipeCreated={fetchRecipes}
           />
         </div>
@@ -194,13 +195,13 @@ export default function Recipes() {
       <RecipeDialog
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
-        restaurantId={selectedRestaurant?.restaurant_id || selectedRestaurant?.id}
+        restaurantId={selectedRestaurant?.id || selectedRestaurant?.restaurant_id}
       />
 
       <RecipeDialog
         isOpen={!!editingRecipe}
         onClose={() => setEditingRecipe(null)}
-        restaurantId={selectedRestaurant?.restaurant_id || selectedRestaurant?.id}
+        restaurantId={selectedRestaurant?.id || selectedRestaurant?.restaurant_id}
         recipe={editingRecipe}
       />
 

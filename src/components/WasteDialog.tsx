@@ -9,10 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useInventoryAudit } from '@/hooks/useInventoryAudit';
+import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { useToast } from '@/hooks/use-toast';
-import { AlertTriangle, Calendar } from 'lucide-react';
+import { AlertTriangle, Calendar, TrendingDown } from 'lucide-react';
 import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -22,6 +24,7 @@ const wasteSchema = z.object({
   wasteType: z.enum(['expired', 'damaged', 'spoiled', 'spilled', 'contaminated', 'other']),
   expiryDate: z.string().optional(),
   notes: z.string().optional(),
+  includeInPnL: z.boolean().default(true),
 });
 
 type WasteFormData = z.infer<typeof wasteSchema>;
@@ -46,6 +49,7 @@ const WASTE_TYPES = [
 export function WasteDialog({ open, onOpenChange, product, restaurantId, onWasteReported }: WasteDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { updateProductStockWithAudit } = useInventoryAudit();
+  const { upsertFoodCosts } = useDailyPnL(restaurantId);
   const { toast } = useToast();
 
   const form = useForm<WasteFormData>({
@@ -56,6 +60,7 @@ export function WasteDialog({ open, onOpenChange, product, restaurantId, onWaste
       wasteType: 'other',
       expiryDate: '',
       notes: '',
+      includeInPnL: true,
     }
   });
 
@@ -77,6 +82,7 @@ export function WasteDialog({ open, onOpenChange, product, restaurantId, onWaste
 
       const newStock = currentStock - wasteQuantity;
       const unitCost = product.cost_per_unit || 0;
+      const totalWasteCost = wasteQuantity * unitCost;
       
       const wasteReason = `${WASTE_TYPES.find(t => t.value === data.wasteType)?.label}: ${data.reason}${data.notes ? ` - ${data.notes}` : ''}`;
 
@@ -92,9 +98,31 @@ export function WasteDialog({ open, onOpenChange, product, restaurantId, onWaste
       );
 
       if (success) {
+        // If user wants to include in P&L, update daily food costs
+        if (data.includeInPnL && totalWasteCost > 0) {
+          const today = new Date().toISOString().split('T')[0];
+          
+          // Get existing food costs for today or create new entry
+          const { data: existingFoodCosts } = await supabase
+            .from('daily_food_costs')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('date', today)
+            .eq('source', 'manual')
+            .single();
+
+          await upsertFoodCosts({
+            restaurant_id: restaurantId,
+            date: today,
+            source: 'manual',
+            purchases: existingFoodCosts?.purchases || 0,
+            inventory_adjustments: (existingFoodCosts?.inventory_adjustments || 0) + totalWasteCost,
+          });
+        }
+
         toast({
           title: "Waste reported",
-          description: `${wasteQuantity} ${product.size_unit || 'units'} of ${product.name} marked as waste`,
+          description: `${wasteQuantity} ${product.size_unit || 'units'} of ${product.name} marked as waste${data.includeInPnL ? ' and reflected in P&L' : ''}`,
         });
         
         form.reset();
@@ -236,10 +264,35 @@ export function WasteDialog({ open, onOpenChange, product, restaurantId, onWaste
               )}
             />
 
+            <FormField
+              control={form.control}
+              name="includeInPnL"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel className="flex items-center gap-2 cursor-pointer">
+                      <TrendingDown className="h-4 w-4" />
+                      Include in daily P&L
+                    </FormLabel>
+                    <p className="text-xs text-muted-foreground">
+                      This will automatically add the waste cost (${((form.watch('quantity') || 0) * (product.cost_per_unit || 0)).toFixed(2)}) to today's food costs in your P&L
+                    </p>
+                  </div>
+                </FormItem>
+              )}
+            />
+
             <div className="bg-orange-50 border border-orange-200 rounded p-3">
               <p className="text-sm text-orange-800">
                 <strong>Impact:</strong> This will reduce stock by {form.watch('quantity') || 0} units 
                 and record a waste transaction of ${((form.watch('quantity') || 0) * (product.cost_per_unit || 0)).toFixed(2)}
+                {form.watch('includeInPnL') && <span>, which will be reflected in today's P&L</span>}
               </p>
             </div>
 

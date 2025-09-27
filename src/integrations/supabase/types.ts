@@ -557,6 +557,114 @@ export type Database = {
         }
         Relationships: []
       }
+      receipt_imports: {
+        Row: {
+          created_at: string
+          file_name: string | null
+          file_size: number | null
+          id: string
+          processed_at: string | null
+          processed_by: string | null
+          raw_file_url: string | null
+          raw_ocr_data: Json | null
+          restaurant_id: string
+          status: string
+          total_amount: number | null
+          updated_at: string
+          vendor_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          raw_file_url?: string | null
+          raw_ocr_data?: Json | null
+          restaurant_id: string
+          status?: string
+          total_amount?: number | null
+          updated_at?: string
+          vendor_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          raw_file_url?: string | null
+          raw_ocr_data?: Json | null
+          restaurant_id?: string
+          status?: string
+          total_amount?: number | null
+          updated_at?: string
+          vendor_name?: string | null
+        }
+        Relationships: []
+      }
+      receipt_line_items: {
+        Row: {
+          confidence_score: number | null
+          created_at: string
+          id: string
+          mapping_status: string
+          matched_product_id: string | null
+          parsed_name: string | null
+          parsed_price: number | null
+          parsed_quantity: number | null
+          parsed_unit: string | null
+          raw_text: string
+          receipt_id: string
+          updated_at: string
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          mapping_status?: string
+          matched_product_id?: string | null
+          parsed_name?: string | null
+          parsed_price?: number | null
+          parsed_quantity?: number | null
+          parsed_unit?: string | null
+          raw_text: string
+          receipt_id: string
+          updated_at?: string
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          mapping_status?: string
+          matched_product_id?: string | null
+          parsed_name?: string | null
+          parsed_price?: number | null
+          parsed_quantity?: number | null
+          parsed_unit?: string | null
+          raw_text?: string
+          receipt_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_line_items_matched_product_id_fkey"
+            columns: ["matched_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_line_items_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipt_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       recipe_ingredients: {
         Row: {
           created_at: string

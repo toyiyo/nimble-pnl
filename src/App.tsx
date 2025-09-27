@@ -4,9 +4,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
-import { RestaurantProvider } from "@/contexts/RestaurantContext";
-import { AppHeader } from "@/components/AppHeader";
-import { useAuth } from "@/hooks/useAuth";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Team from "./pages/Team";
@@ -21,38 +18,16 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-function AppContent() {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <Routes>
-        <Route path="/auth" element={<Auth />} />
-        <Route path="/square/callback" element={<SquareCallback />} />
-        <Route path="/accept-invitation" element={<AcceptInvitation />} />
-        <Route path="*" element={<Auth />} />
-      </Routes>
-    );
-  }
-
-  return (
-    <RestaurantProvider>
-      <div className="min-h-screen bg-background">
-        <AppHeader />
-        <main className="container mx-auto px-4">
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/auth" element={<Auth />} />
             <Route path="/team" element={<Team />} />
             <Route path="/integrations" element={<Integrations />} />
             <Route path="/recipes" element={<Recipes />} />
@@ -61,22 +36,9 @@ function AppContent() {
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </main>
-      </div>
-    </RestaurantProvider>
-  );
-}
-
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AppContent />
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

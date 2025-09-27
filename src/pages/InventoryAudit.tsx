@@ -10,7 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Download, TrendingDown, TrendingUp, Package, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
-import { AppHeader } from '@/components/AppHeader';
 
 const TRANSACTION_TYPES = [
   { value: 'all', label: 'All Types' },
@@ -73,7 +72,6 @@ export default function InventoryAudit() {
   if (!selectedRestaurant) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <AppHeader />
         <div className="text-center space-y-4">
           <Package className="mx-auto h-16 w-16 text-muted-foreground" />
           <h2 className="text-2xl font-semibold">Select a Restaurant</h2>
@@ -92,8 +90,6 @@ export default function InventoryAudit() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <AppHeader />
-      
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">Inventory Audit Trail</h1>
         <p className="text-muted-foreground">

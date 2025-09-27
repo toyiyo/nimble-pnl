@@ -31,7 +31,7 @@ export const useAutomaticInventoryDeduction = () => {
         const { data, error } = await supabase.rpc('process_unified_inventory_deduction', {
           p_restaurant_id: selectedRestaurant.restaurant_id,
           p_pos_item_name: sale.pos_item_name,
-          p_quantity_sold: sale.quantity,
+          p_quantity_sold: Math.round(sale.quantity),
           p_sale_date: sale.sale_date
         });
 
@@ -91,7 +91,7 @@ export const useAutomaticInventoryDeduction = () => {
       const { data: alreadyProcessed } = await supabase.rpc('check_sale_already_processed', {
         p_restaurant_id: selectedRestaurant.restaurant_id,
         p_pos_item_name: sale.item_name,
-        p_quantity_sold: sale.quantity,
+        p_quantity_sold: Math.round(sale.quantity),
         p_sale_date: sale.sale_date
       });
 
@@ -135,7 +135,7 @@ export const useAutomaticInventoryDeduction = () => {
           setTimeout(async () => {
             await processBatchDeductions([{
               pos_item_name: newSale.item_name,
-              quantity: newSale.quantity,
+              quantity: Math.round(newSale.quantity),
               sale_date: newSale.sale_date,
               external_order_id: newSale.external_order_id
             }]);

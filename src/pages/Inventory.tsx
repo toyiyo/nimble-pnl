@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -778,35 +778,59 @@ export const Inventory: React.FC = () => {
                                  <CardTitle className="text-lg">{product.name}</CardTitle>
                                  <CardDescription>SKU: {product.sku}</CardDescription>
                                </div>
-                               <div className="flex items-center gap-2">
-                                 {(product.current_stock || 0) <= (product.reorder_point || 0) && (
-                                   <AlertTriangle className="h-5 w-5 text-destructive" />
-                                 )}
-                                 <Button
-                                   variant="ghost"
-                                   size="sm"
-                                   onClick={(e) => {
-                                     e.stopPropagation();
-                                     setSelectedProduct(product);
-                                     setShowUpdateDialog(true);
-                                   }}
-                                 >
-                                   <Edit className="h-4 w-4" />
-                                 </Button>
-                                 {canDeleteProducts && (
-                                   <Button
-                                     variant="ghost"
-                                     size="sm"
-                                     onClick={(e) => {
-                                       e.stopPropagation();
-                                       handleDeleteProduct(product);
-                                     }}
-                                     className="text-destructive hover:text-destructive"
-                                   >
-                                     <Trash2 className="h-4 w-4" />
-                                   </Button>
-                                 )}
-                               </div>
+                                <div className="flex items-center gap-2">
+                                  {(product.current_stock || 0) <= (product.reorder_point || 0) && (
+                                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedProduct(product);
+                                      setShowUpdateDialog(true);
+                                    }}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setWasteProduct(product);
+                                      setShowWasteDialog(true);
+                                    }}
+                                    title="Report Waste"
+                                  >
+                                    <Trash className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTransferProduct(product);
+                                      setShowTransferDialog(true);
+                                    }}
+                                    title="Transfer Stock"
+                                  >
+                                    <ArrowRightLeft className="h-4 w-4" />
+                                  </Button>
+                                  {canDeleteProducts && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteProduct(product);
+                                      }}
+                                      className="text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
                              </div>
                            </div>
                          </div>

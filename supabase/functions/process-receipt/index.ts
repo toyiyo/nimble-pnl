@@ -58,7 +58,7 @@ serve(async (req) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        "model": "mistralai/mistral-small-latest",
+        "model": "mistralai/mistral-small-3.1-24b-instruct:free",
         "messages": [
           {
             "role": "system",
@@ -121,9 +121,23 @@ IMPORTANT: Even if you're uncertain, include items that look like products. Bett
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenRouter API error:', response.status, errorText);
+      console.error('OpenRouter API error details:');
+      console.error('Status:', response.status);
+      console.error('Status Text:', response.statusText);
+      console.error('Error Response:', errorText);
+      console.error('Request Headers:', JSON.stringify({
+        "Authorization": "Bearer [REDACTED]",
+        "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+        "X-Title": "EasyShiftHQ Receipt Parser",
+        "Content-Type": "application/json"
+      }));
+      console.error('Model used:', "mistralai/mistral-small-3.1-24b-instruct:free");
+      
       return new Response(
-        JSON.stringify({ error: `OpenRouter API error: ${response.status}` }),
+        JSON.stringify({ 
+          error: `OpenRouter API error: ${response.status} - ${response.statusText}`,
+          details: errorText 
+        }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: response.status 

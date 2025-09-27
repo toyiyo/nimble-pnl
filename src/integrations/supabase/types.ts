@@ -431,6 +431,7 @@ export type Database = {
           receipt_item_names: string[] | null
           reorder_point: number | null
           restaurant_id: string
+          searchable_text: string | null
           size_unit: string | null
           size_value: number | null
           sku: string
@@ -460,6 +461,7 @@ export type Database = {
           receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id: string
+          searchable_text?: string | null
           size_unit?: string | null
           size_value?: number | null
           sku: string
@@ -489,6 +491,7 @@ export type Database = {
           receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id?: string
+          searchable_text?: string | null
           size_unit?: string | null
           size_value?: number | null
           sku?: string
@@ -1687,9 +1690,41 @@ export type Database = {
         }
         Returns: string
       }
+      daitch_mokotoff: {
+        Args: { "": string }
+        Returns: string[]
+      }
+      dmetaphone: {
+        Args: { "": string }
+        Returns: string
+      }
+      dmetaphone_alt: {
+        Args: { "": string }
+        Returns: string
+      }
       get_product_cost_per_recipe_unit: {
         Args: { product_id: string }
         Returns: number
+      }
+      gtrgm_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_decompress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_options: {
+        Args: { "": unknown }
+        Returns: undefined
+      }
+      gtrgm_out: {
+        Args: { "": unknown }
+        Returns: unknown
       }
       is_restaurant_owner: {
         Args: { p_restaurant_id: string; p_user_id: string }
@@ -1733,6 +1768,18 @@ export type Database = {
           uom_purchase: string
         }[]
       }
+      set_limit: {
+        Args: { "": number }
+        Returns: number
+      }
+      show_limit: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      show_trgm: {
+        Args: { "": string }
+        Returns: string[]
+      }
       simulate_inventory_deduction: {
         Args: {
           p_pos_item_name: string
@@ -1741,13 +1788,29 @@ export type Database = {
         }
         Returns: Json
       }
+      soundex: {
+        Args: { "": string }
+        Returns: string
+      }
       sync_square_to_unified_sales: {
         Args: { p_restaurant_id: string }
         Returns: number
       }
+      text_soundex: {
+        Args: { "": string }
+        Returns: string
+      }
       trigger_square_periodic_sync: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      unaccent: {
+        Args: { "": string }
+        Returns: string
+      }
+      unaccent_init: {
+        Args: { "": unknown }
+        Returns: unknown
       }
     }
     Enums: {

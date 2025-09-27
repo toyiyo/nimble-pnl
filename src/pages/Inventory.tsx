@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +12,8 @@ import { ProductDialog } from '@/components/ProductDialog';
 import { ProductCard } from '@/components/ProductCard';
 import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
 import { DeleteProductDialog } from '@/components/DeleteProductDialog';
+import { WasteDialog } from '@/components/WasteDialog';
+import { TransferDialog } from '@/components/TransferDialog';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -27,7 +29,7 @@ export const Inventory: React.FC = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { toast } = useToast();
   
-  const { products, loading, createProduct, updateProduct, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const { products, loading, createProduct, updateProductWithQuantity, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant_id || null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showProductDialog, setShowProductDialog] = useState(false);
@@ -41,6 +43,10 @@ export const Inventory: React.FC = () => {
   const [capturedImage, setCapturedImage] = useState<{ blob: Blob; url: string } | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [showWasteDialog, setShowWasteDialog] = useState(false);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [wasteProduct, setWasteProduct] = useState<Product | null>(null);
+  const [transferProduct, setTransferProduct] = useState<Product | null>(null);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -467,7 +473,7 @@ export const Inventory: React.FC = () => {
       }
     } else {
       // Update existing product
-      const success = await updateProduct(selectedProduct.id, updates);
+      const success = await updateProductWithQuantity(selectedProduct.id, updates, quantityToAdd);
       if (success && quantityToAdd > 0) {
         toast({
           title: "Inventory updated",
@@ -942,6 +948,32 @@ export const Inventory: React.FC = () => {
         product={productToDelete}
         onConfirm={handleConfirmDelete}
       />
+
+      {/* Waste Dialog */}
+      {showWasteDialog && wasteProduct && selectedRestaurant && (
+        <WasteDialog
+          open={showWasteDialog}
+          onOpenChange={setShowWasteDialog}
+          product={wasteProduct}
+          restaurantId={selectedRestaurant.restaurant_id}
+          onWasteReported={() => {
+            window.location.reload();
+          }}
+        />
+      )}
+
+      {/* Transfer Dialog */}
+      {showTransferDialog && transferProduct && selectedRestaurant && (
+        <TransferDialog
+          open={showTransferDialog}
+          onOpenChange={setShowTransferDialog}
+          product={transferProduct}
+          restaurantId={selectedRestaurant.restaurant_id}
+          onTransferCompleted={() => {
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 };

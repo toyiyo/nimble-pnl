@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useRestaurants } from '@/hooks/useRestaurants';
 import { useRecipes } from '@/hooks/useRecipes';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,29 +15,22 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeDialog } from '@/components/RecipeDialog';
 import { DeleteRecipeDialog } from '@/components/DeleteRecipeDialog';
 import { RecipeSuggestions } from '@/components/RecipeSuggestions';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
-import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock } from 'lucide-react';
+import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Store } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function Recipes() {
   const { user } = useAuth();
-  const { restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurants();
-  const [selectedRestaurant, setSelectedRestaurant] = useState<any>(null);
+  const { selectedRestaurant } = useRestaurantContext();
   const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.id || selectedRestaurant?.restaurant_id || null);
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.id || selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [deletingRecipe, setDeletingRecipe] = useState<any>(null);
-
-  const handleRestaurantSelect = (restaurant: any) => {
-    console.log('Selected restaurant object:', restaurant);
-    setSelectedRestaurant(restaurant);
-  };
 
   if (!user) {
     return (
@@ -54,20 +47,14 @@ export default function Recipes() {
 
   if (!selectedRestaurant) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Recipes</h1>
+      <div className="py-8">
+        <div className="text-center">
+          <Store className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No Restaurant Selected</h3>
           <p className="text-muted-foreground">
-            Create and manage recipes for your menu items
+            Please select a restaurant from the header to view recipes.
           </p>
         </div>
-        <RestaurantSelector
-          restaurants={restaurants}
-          selectedRestaurant={selectedRestaurant}
-          onSelectRestaurant={handleRestaurantSelect}
-          loading={restaurantsLoading}
-          createRestaurant={createRestaurant}
-        />
       </div>
     );
   }
@@ -81,13 +68,13 @@ export default function Recipes() {
   const mappedRecipes = filteredRecipes.filter(recipe => recipe.pos_item_name);
 
   return (
-    <div className="container mx-auto px-4 py-4 md:py-8">
+    <div className="py-4 md:py-8">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 md:mb-8">
         <div className="text-center lg:text-left">
           <h1 className="text-2xl md:text-3xl font-bold mb-2">Recipes</h1>
           <p className="text-sm md:text-base text-muted-foreground">
-            Create and manage recipes for {selectedRestaurant.name || selectedRestaurant.restaurant?.name}
+            Create and manage recipes for {selectedRestaurant.restaurant?.name}
           </p>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
@@ -105,18 +92,7 @@ export default function Recipes() {
         </div>
       </div>
 
-      {/* Restaurant Selector */}
-      <div className="mb-6">
-        <RestaurantSelector
-          restaurants={restaurants}
-          selectedRestaurant={selectedRestaurant}
-          onSelectRestaurant={handleRestaurantSelect}
-          loading={restaurantsLoading}
-          createRestaurant={createRestaurant}
-        />
-      </div>
-
-      {/* Search */}
+      {/* Recipe Suggestions */}
       {unmappedItems.length > 0 && (
         <div className="mb-6">
           <RecipeSuggestions
@@ -127,6 +103,7 @@ export default function Recipes() {
         </div>
       )}
       
+      {/* Search */}
       <div className="mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />

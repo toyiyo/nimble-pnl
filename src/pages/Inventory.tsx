@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +13,7 @@ import { ProductCard } from '@/components/ProductCard';
 import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
 import { DeleteProductDialog } from '@/components/DeleteProductDialog';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
-import { useRestaurants } from '@/hooks/useRestaurants';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
@@ -23,11 +23,9 @@ import { ocrService } from '@/services/ocrService';
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { restaurants } = useRestaurants();
+  const { selectedRestaurant } = useRestaurantContext();
   const { toast } = useToast();
   
-  // For now, use the first restaurant. In a full app, you'd have restaurant selection
-  const selectedRestaurant = restaurants[0];
   const { products, loading, createProduct, updateProduct, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant?.id || null);
   
   const [searchTerm, setSearchTerm] = useState('');

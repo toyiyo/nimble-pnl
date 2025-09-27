@@ -428,6 +428,7 @@ export type Database = {
           par_level_max: number | null
           par_level_min: number | null
           pos_item_name: string | null
+          receipt_item_names: string[] | null
           reorder_point: number | null
           restaurant_id: string
           size_unit: string | null
@@ -456,6 +457,7 @@ export type Database = {
           par_level_max?: number | null
           par_level_min?: number | null
           pos_item_name?: string | null
+          receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id: string
           size_unit?: string | null
@@ -484,6 +486,7 @@ export type Database = {
           par_level_max?: number | null
           par_level_min?: number | null
           pos_item_name?: string | null
+          receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id?: string
           size_unit?: string | null
@@ -1718,6 +1721,17 @@ export type Database = {
           p_sale_date: string
         }
         Returns: Json
+      }
+      search_products_by_name: {
+        Args: { p_restaurant_id: string; p_search_term: string }
+        Returns: {
+          current_stock: number
+          id: string
+          name: string
+          receipt_item_names: string[]
+          sku: string
+          uom_purchase: string
+        }[]
       }
       simulate_inventory_deduction: {
         Args: {

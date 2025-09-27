@@ -18,6 +18,7 @@ import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
+import { useInventoryMetrics } from '@/hooks/useInventoryMetrics';
 import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
 import { ProductEnhancementService } from '@/services/productEnhancementService';
@@ -30,6 +31,7 @@ export const Inventory: React.FC = () => {
   const { toast } = useToast();
   
   const { products, loading, createProduct, updateProductWithQuantity, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const inventoryMetrics = useInventoryMetrics(selectedRestaurant?.restaurant_id || null, products);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showProductDialog, setShowProductDialog] = useState(false);
@@ -727,6 +729,40 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="products" className="mt-6">
             <div className="space-y-6">
+              {/* Inventory Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Total Inventory Cost</CardTitle>
+                    <CardDescription>Total value of all stock at cost price</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-600">
+                      {inventoryMetrics.loading ? (
+                        <div className="animate-pulse bg-muted h-8 w-24 rounded"></div>
+                      ) : (
+                        `$${inventoryMetrics.totalInventoryCost.toFixed(2)}`
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Total Inventory Value</CardTitle>
+                    <CardDescription>Potential revenue from all stock</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600">
+                      {inventoryMetrics.loading ? (
+                        <div className="animate-pulse bg-muted h-8 w-24 rounded"></div>
+                      ) : (
+                        `$${inventoryMetrics.totalInventoryValue.toFixed(2)}`
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
               <div className="flex items-center gap-4">
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -841,30 +877,46 @@ export const Inventory: React.FC = () => {
                           setShowUpdateDialog(true);
                         }}
                       >
-                        <div className="space-y-2">
-                          {product.brand && (
-                            <p className="text-sm text-muted-foreground">Brand: {product.brand}</p>
-                          )}
-                          {product.category && (
-                            <Badge variant="secondary">{product.category}</Badge>
-                          )}
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm">Stock:</span>
-                            <span className={`font-medium ${
-                              (product.current_stock || 0) <= (product.reorder_point || 0) 
-                                ? 'text-destructive' 
-                                : 'text-foreground'
-                            }`}>
-                              {product.current_stock || 0} {product.size_unit || 'units'}
-                            </span>
-                          </div>
-                          {product.cost_per_unit && (
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm">Cost:</span>
-                              <span className="font-medium">${product.cost_per_unit}</span>
-                            </div>
-                          )}
-                        </div>
+                         <div className="space-y-2">
+                           {product.brand && (
+                             <p className="text-sm text-muted-foreground">Brand: {product.brand}</p>
+                           )}
+                           {product.category && (
+                             <Badge variant="secondary">{product.category}</Badge>
+                           )}
+                           <div className="flex justify-between items-center">
+                             <span className="text-sm">Stock:</span>
+                             <span className={`font-medium ${
+                               (product.current_stock || 0) <= (product.reorder_point || 0) 
+                                 ? 'text-destructive' 
+                                 : 'text-foreground'
+                             }`}>
+                               {product.current_stock || 0} {product.size_unit || 'units'}
+                             </span>
+                           </div>
+                           {product.cost_per_unit && (
+                             <div className="flex justify-between items-center">
+                               <span className="text-sm">Unit Cost:</span>
+                               <span className="font-medium">${product.cost_per_unit}</span>
+                             </div>
+                           )}
+                           {inventoryMetrics.productMetrics[product.id] && (
+                             <>
+                               <div className="flex justify-between items-center">
+                                 <span className="text-sm">Inventory Cost:</span>
+                                 <span className="font-medium text-orange-600">
+                                   ${inventoryMetrics.productMetrics[product.id].inventoryCost.toFixed(2)}
+                                 </span>
+                               </div>
+                               <div className="flex justify-between items-center">
+                                 <span className="text-sm">Inventory Value:</span>
+                                 <span className="font-medium text-green-600">
+                                   ${inventoryMetrics.productMetrics[product.id].inventoryValue.toFixed(2)}
+                                 </span>
+                               </div>
+                             </>
+                           )}
+                         </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -913,25 +965,47 @@ export const Inventory: React.FC = () => {
                            </div>
                          </div>
                        </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm">Current Stock:</span>
-                            <span className="font-medium text-destructive">
-                              {product.current_stock || 0} {product.size_unit || 'units'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm">Reorder Point:</span>
-                            <span className="font-medium">
-                              {product.reorder_point || 0} {product.size_unit || 'units'}
-                            </span>
-                          </div>
-                          <Button className="w-full mt-4" size="sm">
-                            Reorder Now
-                          </Button>
-                        </div>
-                      </CardContent>
+                       <CardContent>
+                         <div className="space-y-2">
+                           <div className="flex justify-between items-center">
+                             <span className="text-sm">Current Stock:</span>
+                             <span className="font-medium text-destructive">
+                               {product.current_stock || 0} {product.size_unit || 'units'}
+                             </span>
+                           </div>
+                           <div className="flex justify-between items-center">
+                             <span className="text-sm">Reorder Point:</span>
+                             <span className="font-medium">
+                               {product.reorder_point || 0} {product.size_unit || 'units'}
+                             </span>
+                           </div>
+                           {product.cost_per_unit && (
+                             <div className="flex justify-between items-center">
+                               <span className="text-sm">Unit Cost:</span>
+                               <span className="font-medium">${product.cost_per_unit}</span>
+                             </div>
+                           )}
+                           {inventoryMetrics.productMetrics[product.id] && (
+                             <>
+                               <div className="flex justify-between items-center">
+                                 <span className="text-sm">Inventory Cost:</span>
+                                 <span className="font-medium text-orange-600">
+                                   ${inventoryMetrics.productMetrics[product.id].inventoryCost.toFixed(2)}
+                                 </span>
+                               </div>
+                               <div className="flex justify-between items-center">
+                                 <span className="text-sm">Inventory Value:</span>
+                                 <span className="font-medium text-green-600">
+                                   ${inventoryMetrics.productMetrics[product.id].inventoryValue.toFixed(2)}
+                                 </span>
+                               </div>
+                             </>
+                           )}
+                           <Button className="w-full mt-4" size="sm">
+                             Reorder Now
+                           </Button>
+                         </div>
+                       </CardContent>
                     </Card>
                   ))}
                 </div>

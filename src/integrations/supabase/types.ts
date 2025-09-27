@@ -533,6 +533,30 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limit_log: {
+        Row: {
+          action_type: string
+          created_at: string | null
+          id: string
+          ip_address: unknown | null
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          created_at?: string | null
+          id?: string
+          ip_address?: unknown | null
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          created_at?: string | null
+          id?: string
+          ip_address?: unknown | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       recipe_ingredients: {
         Row: {
           created_at: string
@@ -815,6 +839,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      security_events: {
+        Row: {
+          created_at: string | null
+          details: Json | null
+          event_type: string
+          id: string
+          ip_address: unknown | null
+          restaurant_id: string | null
+          severity: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          details?: Json | null
+          event_type: string
+          id?: string
+          ip_address?: unknown | null
+          restaurant_id?: string | null
+          severity?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          details?: Json | null
+          event_type?: string
+          id?: string
+          ip_address?: unknown | null
+          restaurant_id?: string | null
+          severity?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       square_catalog_objects: {
         Row: {
@@ -1468,6 +1528,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      cleanup_rate_limit_logs: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       create_restaurant_with_owner: {
         Args: {
           restaurant_address?: string
@@ -1484,6 +1548,15 @@ export type Database = {
       is_restaurant_owner: {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: boolean
+      }
+      log_security_event: {
+        Args: {
+          p_details?: Json
+          p_event_type: string
+          p_restaurant_id?: string
+          p_severity?: string
+        }
+        Returns: undefined
       }
       process_inventory_deduction: {
         Args: {

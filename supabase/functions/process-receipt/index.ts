@@ -73,6 +73,13 @@ CRITICAL INSTRUCTIONS:
 6. If quantity isn't explicit, assume 1 unit
 7. If unit isn't clear, use "each" as default
 
+CONFIDENCE SCORING (CRITICAL):
+- Assign realistic confidence scores based on text clarity and completeness
+- High confidence (0.85-0.95): Clear, complete text with obvious product name, quantity, and price
+- Medium confidence (0.65-0.84): Readable but some ambiguity in parsing or abbreviations  
+- Low confidence (0.40-0.64): Partially readable, significant guessing required
+- Very low confidence (0.20-0.39): Poor quality text, major uncertainty
+
 LOOK FOR THESE PATTERNS:
 - Product lines with prices (e.g., "BANANAS 5 LB @ 0.68/LB $3.40")
 - Simple format (e.g., "Milk Gallon $4.99")
@@ -92,12 +99,19 @@ Return ONLY valid JSON in this exact format:
       "parsedQuantity": 5,
       "parsedUnit": "lb",
       "parsedPrice": 3.40,
-      "confidenceScore": 0.9
-    }
+      "confidenceScore": 0.92
+    },
+    {
+      "rawText": "CHKN BRST $12.99", 
+      "parsedName": "Chicken Breast",
+      "parsedQuantity": 1,
+      "parsedUnit": "each",
+      "parsedPrice": 12.99,
+      "confidenceScore": 0.78
   ]
 }
 
-IMPORTANT: Even if you're uncertain, include items that look like products. Better to include too many than too few.`
+IMPORTANT: Vary confidence scores realistically based on actual text quality and parsing difficulty.`
           },
           {
             "role": "user",

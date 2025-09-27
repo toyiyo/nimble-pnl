@@ -16,6 +16,9 @@ export interface Recipe {
   created_at: string;
   updated_at: string;
   created_by?: string;
+  avg_sale_price?: number;
+  profit_margin?: number;
+  profit_per_serving?: number;
 }
 
 export interface RecipeIngredient {
@@ -72,7 +75,21 @@ export const useRecipes = (restaurantId: string | null) => {
         .order('name');
 
       if (error) throw error;
-      setRecipes(data || []);
+      
+      // Enhance recipes with profitability data
+      const enhancedRecipes = await Promise.all(
+        (data || []).map(async (recipe) => {
+          const profitData = await calculateRecipeProfitability(recipe);
+          return {
+            ...recipe,
+            avg_sale_price: profitData?.avg_sale_price,
+            profit_margin: profitData?.profit_margin,
+            profit_per_serving: profitData?.profit_per_serving
+          };
+        })
+      );
+
+      setRecipes(enhancedRecipes);
     } catch (error: any) {
       console.error('Error fetching recipes:', error);
       toast({
@@ -113,6 +130,12 @@ export const useRecipes = (restaurantId: string | null) => {
     if (!user) return null;
 
     try {
+      // Debug RLS issues in development
+      if (process.env.NODE_ENV === 'development') {
+        const { debugRecipeCreationRLS } = await import('@/utils/debugRLS');
+        await debugRecipeCreationRLS(recipeData.restaurant_id);
+      }
+
       // Create the recipe
       const { data: recipe, error: recipeError } = await supabase
         .from('recipes')
@@ -128,7 +151,18 @@ export const useRecipes = (restaurantId: string | null) => {
         .select()
         .single();
 
-      if (recipeError) throw recipeError;
+      if (recipeError) {
+        console.error('Recipe creation error:', recipeError);
+        if (recipeError.message.includes('row-level security')) {
+          toast({
+            title: "Permission Error",
+            description: "You don't have permission to create recipes for this restaurant. Please contact the restaurant owner to add you with proper permissions.",
+            variant: "destructive",
+          });
+          return null;
+        }
+        throw recipeError;
+      }
 
         // Create recipe ingredients
         if (recipeData.ingredients.length > 0) {
@@ -155,14 +189,23 @@ export const useRecipes = (restaurantId: string | null) => {
         recipe.estimated_cost = cost;
       }
 
-      setRecipes(prev => [...prev, recipe]);
+      // Calculate profitability
+      const profitData = await calculateRecipeProfitability(recipe);
+      const enhancedRecipe = {
+        ...recipe,
+        avg_sale_price: profitData?.avg_sale_price,
+        profit_margin: profitData?.profit_margin,
+        profit_per_serving: profitData?.profit_per_serving
+      };
+
+      setRecipes(prev => [...prev, enhancedRecipe]);
       
       toast({
         title: "Recipe created",
         description: `${recipe.name} has been created successfully.`,
       });
 
-      return recipe;
+      return enhancedRecipe;
     } catch (error: any) {
       console.error('Error creating recipe:', error);
       toast({
@@ -288,6 +331,43 @@ export const useRecipes = (restaurantId: string | null) => {
     }
   };
 
+  const calculateRecipeProfitability = async (recipe: Recipe): Promise<{ avg_sale_price: number; profit_margin: number; profit_per_serving: number } | null> => {
+    if (!recipe.pos_item_name) return null;
+
+    try {
+      // Get sales data for this POS item
+      const { data: salesData, error } = await supabase
+        .from('unified_sales')
+        .select('unit_price, total_price, quantity')
+        .eq('restaurant_id', recipe.restaurant_id)
+        .eq('item_name', recipe.pos_item_name)
+        .not('unit_price', 'is', null);
+
+      if (error) throw error;
+
+      if (!salesData || salesData.length === 0) return null;
+
+      // Calculate average sale price
+      const totalRevenue = salesData.reduce((sum, sale) => sum + (sale.total_price || 0), 0);
+      const totalQuantity = salesData.reduce((sum, sale) => sum + (sale.quantity || 1), 0);
+      const avgSalePrice = totalQuantity > 0 ? totalRevenue / totalQuantity : 0;
+
+      // Calculate profit metrics
+      const recipeCost = recipe.estimated_cost || 0;
+      const profitPerServing = avgSalePrice - recipeCost;
+      const profitMargin = avgSalePrice > 0 ? (profitPerServing / avgSalePrice) * 100 : 0;
+
+      return {
+        avg_sale_price: avgSalePrice,
+        profit_margin: profitMargin,
+        profit_per_serving: profitPerServing
+      };
+    } catch (error: any) {
+      console.error('Error calculating recipe profitability:', error);
+      return null;
+    }
+  };
+
   useEffect(() => {
     fetchRecipes();
   }, [fetchRecipes]);
@@ -302,5 +382,6 @@ export const useRecipes = (restaurantId: string | null) => {
     updateRecipeIngredients,
     deleteRecipe,
     calculateRecipeCost,
+    calculateRecipeProfitability,
   };
 };

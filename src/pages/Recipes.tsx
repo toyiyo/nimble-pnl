@@ -281,7 +281,18 @@ function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
                     <Badge variant="outline" className="text-xs">Not mapped</Badge>
                   )}
                   <Badge variant="outline" className="text-xs">Size: {recipe.serving_size || 1}</Badge>
-                  <Badge variant="outline" className="text-xs">${recipe.estimated_cost?.toFixed(2) || '0.00'}</Badge>
+                  <Badge variant="outline" className="text-xs">Cost: ${recipe.estimated_cost?.toFixed(2) || '0.00'}</Badge>
+                  {recipe.avg_sale_price && (
+                    <>
+                      <Badge variant="outline" className="text-xs">Sale: ${recipe.avg_sale_price.toFixed(2)}</Badge>
+                      <Badge 
+                        variant={recipe.profit_margin && recipe.profit_margin > 0 ? "default" : "destructive"} 
+                        className="text-xs"
+                      >
+                        {recipe.profit_margin ? `${recipe.profit_margin.toFixed(1)}%` : 'No profit data'}
+                      </Badge>
+                    </>
+                  )}
                 </div>
                 
                 <div className="text-xs text-muted-foreground">
@@ -300,7 +311,10 @@ function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
                 <TableHead>Recipe Name</TableHead>
                 <TableHead>POS Item</TableHead>
                 <TableHead>Serving Size</TableHead>
-                <TableHead>Estimated Cost</TableHead>
+                <TableHead>Cost</TableHead>
+                <TableHead>Avg Sale Price</TableHead>
+                <TableHead>Profit</TableHead>
+                <TableHead>Margin %</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -331,6 +345,35 @@ function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
                       <DollarSign className="w-4 h-4 mr-1" />
                       ${recipe.estimated_cost?.toFixed(2) || '0.00'}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {recipe.avg_sale_price ? (
+                      <div className="flex items-center">
+                        <DollarSign className="w-4 h-4 mr-1" />
+                        ${recipe.avg_sale_price.toFixed(2)}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">No sales data</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {recipe.profit_per_serving !== undefined ? (
+                      <div className={`flex items-center ${recipe.profit_per_serving > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        <DollarSign className="w-4 h-4 mr-1" />
+                        {recipe.profit_per_serving > 0 ? '+' : ''}${recipe.profit_per_serving.toFixed(2)}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {recipe.profit_margin !== undefined ? (
+                      <Badge variant={recipe.profit_margin > 0 ? "default" : "destructive"}>
+                        {recipe.profit_margin.toFixed(1)}%
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center text-sm text-muted-foreground">

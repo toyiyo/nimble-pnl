@@ -46,9 +46,9 @@ serve(async (req) => {
       );
     }
 
-    console.log('🧾 Processing receipt with Grok AI...');
+    console.log('🧾 Processing receipt with Mistral AI...');
 
-    // Use Grok for receipt parsing with reasoning
+    // Use Mistral for receipt parsing with better OCR performance
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -58,7 +58,7 @@ serve(async (req) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        "model": "x-ai/grok-4-fast:free",
+        "model": "mistralai/mistral-small-3.2-24b-instruct:free",
         "messages": [
           {
             "role": "system",
@@ -146,7 +146,7 @@ IMPORTANT: Even if you're uncertain, include items that look like products. Bett
     }
 
     const content = data.choices[0].message.content;
-    console.log('✅ Grok parsing completed. Raw response:', content);
+    console.log('✅ Mistral parsing completed. Raw response:', content);
 
     let parsedData;
     try {
@@ -157,7 +157,7 @@ IMPORTANT: Even if you're uncertain, include items that look like products. Bett
       }
       parsedData = JSON.parse(jsonMatch[0]);
     } catch (parseError) {
-      console.error('Failed to parse JSON from Grok response:', parseError);
+      console.error('Failed to parse JSON from Mistral response:', parseError);
       return new Response(
         JSON.stringify({ error: 'Failed to parse receipt data' }),
         { 

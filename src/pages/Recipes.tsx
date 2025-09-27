@@ -19,8 +19,10 @@ import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeDialog } from '@/components/RecipeDialog';
 import { DeleteRecipeDialog } from '@/components/DeleteRecipeDialog';
 import { RecipeSuggestions } from '@/components/RecipeSuggestions';
+import { AutoDeductionSettings } from '@/components/AutoDeductionSettings';
+import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDeduction';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
-import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock } from 'lucide-react';
+import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings } from 'lucide-react';
 
 export default function Recipes() {
   const { user } = useAuth();
@@ -31,6 +33,9 @@ export default function Recipes() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [deletingRecipe, setDeletingRecipe] = useState<any>(null);
+  const [showAutoSettings, setShowAutoSettings] = useState(false);
+
+  const { setupAutoDeduction } = useAutomaticInventoryDeduction();
 
   const handleRestaurantSelect = (restaurant: any) => {
     console.log('Selected restaurant object:', restaurant);
@@ -88,7 +93,16 @@ export default function Recipes() {
             Create and manage recipes for {selectedRestaurant.restaurant?.name}
           </p>
         </div>
-        <div className="flex justify-center lg:justify-start">
+        <div className="flex justify-center lg:justify-start gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowAutoSettings(!showAutoSettings)}
+            size="sm"
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            <span className="hidden sm:inline">Auto Deduction</span>
+            <span className="sm:hidden">Auto</span>
+          </Button>
           <Button onClick={() => setIsCreateDialogOpen(true)} className="w-full sm:w-auto">
             <Plus className="w-4 h-4 mr-2" />
             <span className="hidden sm:inline">Create Recipe</span>
@@ -96,6 +110,11 @@ export default function Recipes() {
           </Button>
         </div>
       </div>
+
+      {/* Auto Deduction Settings */}
+      {showAutoSettings && (
+        <AutoDeductionSettings />
+      )}
 
       {/* Recipe Suggestions */}
       {unmappedItems.length > 0 && (

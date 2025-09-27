@@ -62,7 +62,7 @@ export interface CreateProductData {
 export const useProducts = (restaurantId: string | null) => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { logPurchase } = useInventoryAudit();
+  const { logPurchase, updateProductStockWithAudit } = useInventoryAudit();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -139,7 +139,10 @@ export const useProducts = (restaurantId: string | null) => {
   const updateProductWithQuantity = async (
     id: string, 
     updates: Partial<CreateProductData>, 
-    quantityToAdd: number = 0
+    currentStock: number,
+    newStock: number,
+    transactionType: 'purchase' | 'adjustment' | 'waste' = 'purchase',
+    reason: string = 'Inventory update'
   ): Promise<boolean> => {
     if (!user || !restaurantId) return false;
 
@@ -153,8 +156,7 @@ export const useProducts = (restaurantId: string | null) => {
 
       if (fetchError) throw fetchError;
 
-      const oldStock = currentProduct.current_stock || 0;
-      const newStock = oldStock + quantityToAdd;
+      const quantityDifference = newStock - currentStock;
 
       // Update the product with new stock level
       const updatedData = {
@@ -170,22 +172,37 @@ export const useProducts = (restaurantId: string | null) => {
 
       if (error) throw error;
 
-      // Log inventory transaction if quantity was added
-      if (quantityToAdd > 0) {
-        await logPurchase(
-          restaurantId,
-          id,
-          quantityToAdd,
-          updates.cost_per_unit || currentProduct.cost_per_unit || 0,
-          `Inventory addition: ${currentProduct.name}`,
-          `product_update_${id}_${Date.now()}`
-        );
+      // Log inventory transaction based on type
+      if (quantityDifference !== 0) {
+        const unitCost = updates.cost_per_unit || currentProduct.cost_per_unit || 0;
+        
+        if (transactionType === 'purchase' && quantityDifference > 0) {
+          await logPurchase(
+            restaurantId,
+            id,
+            quantityDifference,
+            unitCost,
+            reason,
+            `purchase_${id}_${Date.now()}`
+          );
+        } else if (transactionType === 'adjustment') {
+          // Use updateProductStockWithAudit from the calling component
+          // This will be handled by the calling component
+        }
       }
+
+      const transactionDescription = transactionType === 'adjustment' 
+        ? quantityDifference >= 0 
+          ? `Adjustment: +${quantityDifference} units (${reason})`
+          : `Adjustment: ${quantityDifference} units (${reason})`
+        : quantityDifference > 0 
+          ? `Added ${quantityDifference} units`
+          : `Removed ${Math.abs(quantityDifference)} units`;
 
       toast({
         title: "Product updated",
-        description: quantityToAdd > 0 
-          ? `${currentProduct.name} updated. Added ${quantityToAdd} units.`
+        description: quantityDifference !== 0 
+          ? `${currentProduct.name} updated. ${transactionDescription}`
           : "Product information has been updated",
       });
 
@@ -204,7 +221,16 @@ export const useProducts = (restaurantId: string | null) => {
 
   // Keep the original updateProduct for backwards compatibility
   const updateProduct = async (id: string, updates: Partial<CreateProductData>): Promise<boolean> => {
-    return updateProductWithQuantity(id, updates, 0);
+    // Get current product to determine current stock
+    const { data: currentProduct } = await supabase
+      .from('products')
+      .select('current_stock')
+      .eq('id', id)
+      .single();
+    
+    const currentStock = currentProduct?.current_stock || 0;
+    const newStock = updates.current_stock ?? currentStock;
+    return updateProductWithQuantity(id, updates, currentStock, newStock, 'adjustment', 'Product information update');
   };
 
   const findProductByGtin = useCallback(async (gtin: string): Promise<Product | null> => {

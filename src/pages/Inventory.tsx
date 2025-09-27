@@ -16,9 +16,11 @@ import { WasteDialog } from '@/components/WasteDialog';
 import { TransferDialog } from '@/components/TransferDialog';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
+import { useInventoryAudit } from '@/hooks/useInventoryAudit';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useInventoryMetrics } from '@/hooks/useInventoryMetrics';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
 import { ProductEnhancementService } from '@/services/productEnhancementService';
@@ -31,6 +33,7 @@ export const Inventory: React.FC = () => {
   const { toast } = useToast();
   
   const { products, loading, createProduct, updateProductWithQuantity, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const { updateProductStockWithAudit } = useInventoryAudit();
   const inventoryMetrics = useInventoryMetrics(selectedRestaurant?.restaurant_id || null, products);
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -474,14 +477,77 @@ export const Inventory: React.FC = () => {
         setSelectedProduct(null);
       }
     } else {
-      // Update existing product
-      const success = await updateProductWithQuantity(selectedProduct.id, updates, quantityToAdd);
-      if (success && quantityToAdd > 0) {
+      // Update existing product with proper audit trail
+      const currentStock = selectedProduct.current_stock || 0;
+      const finalStock = updates.current_stock || 0;
+      const difference = finalStock - currentStock;
+      
+      try {
+        // First update the product in database
+        const { error } = await supabase
+          .from('products')
+          .update({
+            ...updates,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', selectedProduct.id);
+        
+        if (error) throw error;
+        
+        // Then create audit trail if there's a stock change
+        if (difference !== 0) {
+          let transactionType: 'purchase' | 'adjustment' | 'waste';
+          let reason: string;
+          
+          if (difference === quantityToAdd && quantityToAdd > 0) {
+            // This is an additive purchase
+            transactionType = 'purchase';
+            reason = 'Purchase - Inventory addition';
+          } else {
+            // This is an adjustment (exact count was set)
+            transactionType = 'adjustment';
+            reason = difference >= 0 
+              ? 'Adjustment - Manual correction (count increase)'
+              : 'Adjustment - Manual correction (count decrease)';
+          }
+          
+          await updateProductStockWithAudit(
+            selectedRestaurant!.restaurant_id!,
+            selectedProduct.id,
+            finalStock,
+            currentStock,
+            updates.cost_per_unit || selectedProduct.cost_per_unit || 0,
+            transactionType,
+            reason,
+            `${transactionType}_${selectedProduct.id}_${Date.now()}`
+          );
+        }
+        
+        // Show success message
+        const quantityDifference = finalStock - currentStock;
+        const isAdjustment = difference !== quantityToAdd;
+        if (quantityDifference !== 0) {
+          toast({
+            title: "Inventory updated",
+            description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference} units. New total: ${finalStock}`,
+          });
+        } else {
+          toast({
+            title: "Product updated", 
+            description: "Product information has been updated",
+          });
+        }
+        
+      } catch (error: any) {
+        console.error('Error updating product:', error);
         toast({
-          title: "Inventory updated",
-          description: `Added ${quantityToAdd} units. New total: ${(selectedProduct.current_stock || 0) + quantityToAdd}`,
+          title: "Error updating product",
+          description: error.message,
+          variant: "destructive",
         });
+        return;
       }
+      
       setShowUpdateDialog(false);
       setSelectedProduct(null);
     }
@@ -808,67 +874,72 @@ export const Inventory: React.FC = () => {
                                />
                              </div>
                            )}
-                           <div className="flex-1 min-w-0">
-                             <div className="flex items-start justify-between">
-                               <div>
-                                 <CardTitle className="text-lg">{product.name}</CardTitle>
-                                 <CardDescription>SKU: {product.sku}</CardDescription>
-                               </div>
-                                <div className="flex items-center gap-2">
-                                  {(product.current_stock || 0) <= (product.reorder_point || 0) && (
-                                    <AlertTriangle className="h-5 w-5 text-destructive" />
-                                  )}
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedProduct(product);
-                                      setShowUpdateDialog(true);
-                                    }}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setWasteProduct(product);
-                                      setShowWasteDialog(true);
-                                    }}
-                                    title="Report Waste"
-                                  >
-                                    <Trash className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setTransferProduct(product);
-                                      setShowTransferDialog(true);
-                                    }}
-                                    title="Transfer Stock"
-                                  >
-                                    <ArrowRightLeft className="h-4 w-4" />
-                                  </Button>
-                                  {canDeleteProducts && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteProduct(product);
-                                      }}
-                                      className="text-destructive hover:text-destructive"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <CardTitle className="text-lg truncate">{product.name}</CardTitle>
+                                  <CardDescription className="truncate">SKU: {product.sku}</CardDescription>
                                 </div>
-                             </div>
-                           </div>
+                                 <div className="flex-shrink-0 flex flex-wrap items-center gap-1 max-w-[120px] sm:max-w-none">
+                                   {(product.current_stock || 0) <= (product.reorder_point || 0) && (
+                                     <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+                                   )}
+                                   <Button
+                                     variant="ghost"
+                                     size="sm"
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       setSelectedProduct(product);
+                                       setShowUpdateDialog(true);
+                                     }}
+                                     className="h-7 w-7 p-0 flex-shrink-0"
+                                     title="Edit"
+                                   >
+                                     <Edit className="h-3 w-3" />
+                                   </Button>
+                                   <Button
+                                     variant="ghost"
+                                     size="sm"
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       setWasteProduct(product);
+                                       setShowWasteDialog(true);
+                                     }}
+                                     className="h-7 w-7 p-0 flex-shrink-0"
+                                     title="Waste"
+                                   >
+                                     <Trash className="h-3 w-3" />
+                                   </Button>
+                                   <Button
+                                     variant="ghost"
+                                     size="sm"
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       setTransferProduct(product);
+                                       setShowTransferDialog(true);
+                                     }}
+                                     className="h-7 w-7 p-0 flex-shrink-0"
+                                     title="Transfer"
+                                   >
+                                     <ArrowRightLeft className="h-3 w-3" />
+                                   </Button>
+                                   {canDeleteProducts && (
+                                     <Button
+                                       variant="ghost"
+                                       size="sm"
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         handleDeleteProduct(product);
+                                       }}
+                                       className="h-7 w-7 p-0 flex-shrink-0 text-destructive hover:text-destructive"
+                                       title="Delete"
+                                     >
+                                       <Trash2 className="h-3 w-3" />
+                                     </Button>
+                                   )}
+                                 </div>
+                              </div>
+                            </div>
                          </div>
                        </CardHeader>
                       <CardContent

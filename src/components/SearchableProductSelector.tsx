@@ -7,6 +7,7 @@ import { Check, ChevronsUpDown, Package, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { SupplierBadge } from '@/components/SupplierBadge';
 
 interface Product {
   id: string;
@@ -17,6 +18,15 @@ interface Product {
   receipt_item_names: string[];
   similarity_score?: number;
   match_type?: string;
+  supplier?: {
+    id: string;
+    name: string;
+    contact_email: string | null;
+    contact_phone: string | null;
+    address: string | null;
+    website: string | null;
+    is_active: boolean;
+  } | null;
 }
 
 interface SearchableProductSelectorProps {
@@ -238,6 +248,11 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
               <div className="text-green-600 dark:text-green-400">
                 Current stock: {selectedProduct.current_stock} {selectedProduct.uom_purchase || 'units'}
               </div>
+              {selectedProduct.supplier && (
+                <div className="mt-1">
+                  <SupplierBadge supplier={selectedProduct.supplier} />
+                </div>
+              )}
             </div>
             <Button
               variant="ghost"

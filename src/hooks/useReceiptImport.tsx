@@ -7,6 +7,7 @@ export interface ReceiptImport {
   id: string;
   restaurant_id: string;
   vendor_name: string | null;
+  supplier_id: string | null;
   raw_file_url: string | null;
   file_name: string | null;
   file_size: number | null;
@@ -17,6 +18,20 @@ export interface ReceiptImport {
   created_at: string;
   updated_at: string;
   processed_by: string | null;
+}
+
+export interface Supplier {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  contact_email: string | null;
+  contact_phone: string | null;
+  address: string | null;
+  website: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ReceiptLineItem {

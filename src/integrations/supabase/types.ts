@@ -459,6 +459,7 @@ export type Database = {
           size_unit: string | null
           size_value: number | null
           sku: string
+          supplier_id: string | null
           supplier_name: string | null
           supplier_sku: string | null
           uom_purchase: string | null
@@ -489,6 +490,7 @@ export type Database = {
           size_unit?: string | null
           size_value?: number | null
           sku: string
+          supplier_id?: string | null
           supplier_name?: string | null
           supplier_sku?: string | null
           uom_purchase?: string | null
@@ -519,13 +521,22 @@ export type Database = {
           size_unit?: string | null
           size_value?: number | null
           sku?: string
+          supplier_id?: string | null
           supplier_name?: string | null
           supplier_sku?: string | null
           uom_purchase?: string | null
           uom_recipe?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -599,6 +610,7 @@ export type Database = {
           raw_ocr_data: Json | null
           restaurant_id: string
           status: string
+          supplier_id: string | null
           total_amount: number | null
           updated_at: string
           vendor_name: string | null
@@ -614,6 +626,7 @@ export type Database = {
           raw_ocr_data?: Json | null
           restaurant_id: string
           status?: string
+          supplier_id?: string | null
           total_amount?: number | null
           updated_at?: string
           vendor_name?: string | null
@@ -629,11 +642,20 @@ export type Database = {
           raw_ocr_data?: Json | null
           restaurant_id?: string
           status?: string
+          supplier_id?: string | null
           total_amount?: number | null
           updated_at?: string
           vendor_name?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "receipt_imports_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       receipt_line_items: {
         Row: {
@@ -1552,6 +1574,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      suppliers: {
+        Row: {
+          address: string | null
+          contact_email: string | null
+          contact_phone: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          notes: string | null
+          restaurant_id: string
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          address?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          restaurant_id: string
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          address?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          restaurant_id?: string
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: []
       }
       unified_sales: {
         Row: {

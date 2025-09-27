@@ -185,7 +185,56 @@ IMPORTANT: Even if you're uncertain, include items that look like products. Bett
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Update receipt with parsed data
+    // Get receipt info to find restaurant_id
+    const { data: receiptInfo, error: receiptInfoError } = await supabase
+      .from('receipt_imports')
+      .select('restaurant_id')
+      .eq('id', receiptId)
+      .single();
+
+    if (receiptInfoError || !receiptInfo) {
+      console.error('Error fetching receipt info:', receiptInfoError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch receipt info' }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500 
+        }
+      );
+    }
+
+    // Find or create supplier
+    let supplierId: string | null = null;
+    if (parsedData.vendor) {
+      // Try to find existing supplier
+      const { data: existingSupplier } = await supabase
+        .from('suppliers')
+        .select('id')
+        .eq('restaurant_id', receiptInfo.restaurant_id)
+        .eq('name', parsedData.vendor)
+        .single();
+
+      if (existingSupplier) {
+        supplierId = existingSupplier.id;
+      } else {
+        // Create new supplier
+        const { data: newSupplier, error: supplierError } = await supabase
+          .from('suppliers')
+          .insert({
+            restaurant_id: receiptInfo.restaurant_id,
+            name: parsedData.vendor,
+            is_active: true
+          })
+          .select('id')
+          .single();
+
+        if (!supplierError && newSupplier) {
+          supplierId = newSupplier.id;
+        }
+      }
+    }
+
+    // Update receipt with parsed data and supplier
     const { error: updateError } = await supabase
       .from('receipt_imports')
       .update({
@@ -193,7 +242,8 @@ IMPORTANT: Even if you're uncertain, include items that look like products. Bett
         total_amount: parsedData.totalAmount,
         raw_ocr_data: parsedData,
         status: 'processed',
-        processed_at: new Date().toISOString()
+        processed_at: new Date().toISOString(),
+        supplier_id: supplierId
       })
       .eq('id', receiptId);
 

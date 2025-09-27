@@ -222,7 +222,14 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
 
       const calculationSummary = Object.values(productMetrics).reduce(
         (summary, metrics) => {
-          summary[`${metrics.calculationMethod}Count`]++;
+          const method = metrics.calculationMethod;
+          if (method === 'recipe-based') {
+            summary.recipeBasedCount++;
+          } else if (method === 'estimated') {
+            summary.estimatedCount++;
+          } else if (method === 'mixed') {
+            summary.mixedCount++;
+          }
           return summary;
         },
         { recipeBasedCount: 0, estimatedCount: 0, mixedCount: 0 }

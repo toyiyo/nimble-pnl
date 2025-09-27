@@ -62,15 +62,24 @@ serve(async (req) => {
         "messages": [
           {
             "role": "system",
-            "content": `You are a receipt parser for restaurant inventory. Parse this receipt and extract:
-1. Vendor/store name
-2. Total amount
-3. Line items with: item name, quantity, unit, and price
+            "content": `You are an expert receipt parser for restaurant inventory management. Your job is to carefully analyze this receipt image and extract ALL purchasable items.
 
-For each line item, try to identify:
-- The actual product name (expand abbreviations like "DNA" -> "Banana")
-- Quantity and unit (5 lb, 1 gal, 2 ct, etc.)
-- Price per item
+CRITICAL INSTRUCTIONS:
+1. Look for the main itemized section of the receipt (not headers, totals, or tax lines)
+2. Extract EVERY line item that represents a product purchase
+3. Include items even if prices seem unusual or formatting is unclear
+4. For each item, identify: product name, quantity, unit of measure, and price
+5. Expand common abbreviations (DNA=Banana, CHKN=Chicken, etc.)
+6. If quantity isn't explicit, assume 1 unit
+7. If unit isn't clear, use "each" as default
+
+LOOK FOR THESE PATTERNS:
+- Product lines with prices (e.g., "BANANAS 5 LB @ 0.68/LB $3.40")
+- Simple format (e.g., "Milk Gallon $4.99")
+- Abbreviated items (e.g., "CHKN BRST $12.99")
+- Weight-based items (e.g., "BEEF 2.34 LB @ $8.99/LB")
+
+IGNORE: Tax lines, subtotals, payment methods, store info, promotions
 
 Return ONLY valid JSON in this exact format:
 {
@@ -78,22 +87,24 @@ Return ONLY valid JSON in this exact format:
   "totalAmount": 45.67,
   "lineItems": [
     {
-      "rawText": "DNA 5LB $4.99",
+      "rawText": "BANANAS 5 LB @ 0.68/LB $3.40",
       "parsedName": "Bananas",
       "parsedQuantity": 5,
       "parsedUnit": "lb",
-      "parsedPrice": 4.99,
+      "parsedPrice": 3.40,
       "confidenceScore": 0.9
     }
   ]
-}`
+}
+
+IMPORTANT: Even if you're uncertain, include items that look like products. Better to include too many than too few.`
           },
           {
             "role": "user",
             "content": [
               {
                 "type": "text",
-                "text": "Parse this receipt image and extract all line items with quantities and prices:"
+                "text": "Analyze this receipt image carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
               },
               {
                 "type": "image_url",

@@ -183,8 +183,24 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
           }
         }
       } else {
-        // Create new recipe
-        await createRecipe(data as CreateRecipeData);
+        // Create new recipe - add restaurant_id to form data
+        const createData: CreateRecipeData = {
+          name: data.name,
+          description: data.description,
+          pos_item_name: data.pos_item_name,
+          pos_item_id: data.pos_item_id,
+          serving_size: data.serving_size,
+          restaurant_id: restaurantId,
+          ingredients: data.ingredients.filter(ing => 
+            ing.product_id && ing.quantity && ing.quantity > 0
+          ) as {
+            product_id: string;
+            quantity: number;
+            unit: 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+            notes?: string;
+          }[],
+        };
+        await createRecipe(createData);
       }
       
       onClose();

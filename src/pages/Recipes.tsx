@@ -25,8 +25,8 @@ import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock } from 'lucide-r
 export default function Recipes() {
   const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
-  const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.id || selectedRestaurant?.restaurant_id || null);
-  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.id || selectedRestaurant?.restaurant_id || null);
+  const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
+  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
@@ -101,7 +101,7 @@ export default function Recipes() {
       {unmappedItems.length > 0 && (
         <RecipeSuggestions
           unmappedItems={unmappedItems}
-          restaurantId={selectedRestaurant?.id || selectedRestaurant?.restaurant_id}
+          restaurantId={selectedRestaurant?.restaurant_id}
           onRecipeCreated={fetchRecipes}
         />
       )}
@@ -173,13 +173,13 @@ export default function Recipes() {
       <RecipeDialog
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
-        restaurantId={selectedRestaurant?.id || selectedRestaurant?.restaurant_id}
+        restaurantId={selectedRestaurant?.restaurant_id}
       />
 
       <RecipeDialog
         isOpen={!!editingRecipe}
         onClose={() => setEditingRecipe(null)}
-        restaurantId={selectedRestaurant?.id || selectedRestaurant?.restaurant_id}
+        restaurantId={selectedRestaurant?.restaurant_id}
         recipe={editingRecipe}
       />
 

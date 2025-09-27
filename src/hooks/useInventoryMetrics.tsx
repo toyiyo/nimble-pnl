@@ -116,6 +116,7 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
 
         // Calculate Inventory Value
         let inventoryValue = 0;
+        let hasRecipeData = false;
 
         // Find recipes that use this product
         const productRecipes = (recipeIngredients || []).filter(
@@ -123,6 +124,7 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
         );
 
         if (productRecipes.length > 0) {
+          hasRecipeData = true;
           // Calculate potential value from recipes
           let totalPotentialValue = 0;
           let totalUsageRatio = 0;
@@ -171,24 +173,36 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
           }
         }
 
-        // If no recipe-based value found, use configurable markup on cost
-        if (inventoryValue === 0 && costPerUnit > 0) {
+        // Determine calculation method and final value
+        if (hasRecipeData && inventoryValue > 0) {
+          // Has recipes with pricing data
+          productMetrics[product.id] = {
+            inventoryCost,
+            inventoryValue,
+            calculationMethod: 'recipe-based'
+          };
+        } else if (hasRecipeData && inventoryValue === 0 && costPerUnit > 0) {
+          // Has recipes but no pricing data, use markup as fallback
           const markup = getMarkupForCategory(product.category);
           inventoryValue = currentStock * costPerUnit * markup;
-          
+          productMetrics[product.id] = {
+            inventoryCost,
+            inventoryValue,
+            calculationMethod: 'mixed',
+            markupUsed: markup
+          };
+        } else if (!hasRecipeData && costPerUnit > 0) {
+          // No recipes, pure markup estimation
+          const markup = getMarkupForCategory(product.category);
+          inventoryValue = currentStock * costPerUnit * markup;
           productMetrics[product.id] = {
             inventoryCost,
             inventoryValue,
             calculationMethod: 'estimated',
             markupUsed: markup
           };
-        } else if (inventoryValue > 0) {
-          productMetrics[product.id] = {
-            inventoryCost,
-            inventoryValue,
-            calculationMethod: 'recipe-based'
-          };
         } else {
+          // No recipes and no cost data
           productMetrics[product.id] = {
             inventoryCost,
             inventoryValue: 0,

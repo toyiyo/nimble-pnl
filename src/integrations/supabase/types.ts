@@ -1451,6 +1451,15 @@ export type Database = {
         Args: { p_restaurant_id: string; p_service_date: string }
         Returns: string
       }
+      check_sale_already_processed: {
+        Args: {
+          p_pos_item_name: string
+          p_quantity_sold: number
+          p_restaurant_id: string
+          p_sale_date: string
+        }
+        Returns: boolean
+      }
       cleanup_expired_invitations: {
         Args: Record<PropertyKey, never>
         Returns: undefined

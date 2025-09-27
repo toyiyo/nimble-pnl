@@ -93,7 +93,22 @@ export function InventoryDeductionDialog({
             </div>
           )}
 
-          {simulationResult && (
+          {simulationResult?.already_processed && (
+            <Card className="border-orange-200 bg-orange-50">
+              <CardContent className="text-center py-8">
+                <ChefHat className="w-12 h-12 text-orange-500 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2 text-orange-700">Sale Already Processed</h3>
+                <p className="text-orange-600 mb-4">
+                  This sale has already been deducted from inventory on {new Date().toLocaleDateString()}
+                </p>
+                <div className="text-sm text-orange-500">
+                  Duplicate processing is prevented to maintain inventory accuracy
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {simulationResult && !simulationResult.already_processed && (
             <>
               {/* Summary Card */}
               <Card>
@@ -200,14 +215,14 @@ export function InventoryDeductionDialog({
                 <Button variant="outline" onClick={handleClose}>
                   Close
                 </Button>
-                {!hasProcessed && simulationResult.ingredients_deducted.length > 0 && (
+                {!hasProcessed && !simulationResult.already_processed && simulationResult.ingredients_deducted.length > 0 && (
                   <Button onClick={handleProcess} disabled={loading}>
                     {loading ? 'Processing...' : 'Process Deduction'}
                   </Button>
                 )}
-                {hasProcessed && (
+                {(hasProcessed || simulationResult.already_processed) && (
                   <Badge variant="default" className="px-4 py-2">
-                    ✓ Processed Successfully
+                    ✓ {simulationResult.already_processed ? 'Previously Processed' : 'Processed Successfully'}
                   </Badge>
                 )}
               </div>

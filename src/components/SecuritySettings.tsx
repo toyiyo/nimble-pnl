@@ -14,7 +14,7 @@ export const SecuritySettings = () => {
     {
       id: 'encryption',
       title: 'Token Encryption',
-      description: 'Square OAuth tokens are now encrypted at rest',
+      description: 'Square OAuth tokens are encrypted at rest using AES-256-GCM',
       status: 'completed',
       severity: 'high'
     },
@@ -22,6 +22,27 @@ export const SecuritySettings = () => {
       id: 'audit_logging',
       title: 'Security Audit Logging',
       description: 'All security events are logged for monitoring',
+      status: 'completed',
+      severity: 'medium'
+    },
+    {
+      id: 'rls_policies',
+      title: 'Row Level Security',
+      description: 'Database access properly restricted by user roles and authentication',
+      status: 'completed',
+      severity: 'high'
+    },
+    {
+      id: 'data_access_control',
+      title: 'Data Access Control',
+      description: 'Unit conversions and sensitive data now require authentication',
+      status: 'completed',
+      severity: 'high'
+    },
+    {
+      id: 'function_security',
+      title: 'Database Function Security',
+      description: 'All database functions hardened with proper search paths',
       status: 'completed',
       severity: 'medium'
     },
@@ -35,11 +56,13 @@ export const SecuritySettings = () => {
       link: 'https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection'
     },
     {
-      id: 'rls_policies',
-      title: 'Row Level Security',
-      description: 'Database access is properly restricted by user roles',
-      status: 'completed',
-      severity: 'high'
+      id: 'extensions_schema',
+      title: 'Database Extensions Security',
+      description: 'Move extensions from public schema to dedicated schema',
+      status: 'pending',
+      severity: 'low',
+      action: 'Move extensions to separate schema',
+      link: 'https://supabase.com/docs/guides/database/database-linter?lint=0014_extension_in_public'
     }
   ];
 
@@ -193,6 +216,26 @@ export const SecuritySettings = () => {
                   </p>
                 </div>
               </div>
+
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="font-medium text-green-900">Data Access Control Fixed</p>
+                  <p className="text-sm text-green-700">
+                    Unit conversions table now requires authentication, preventing unauthorized access to recipe data
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="font-medium text-green-900">Database Function Security</p>
+                  <p className="text-sm text-green-700">
+                    All database functions hardened with proper search paths to prevent SQL injection
+                  </p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -200,9 +243,13 @@ export const SecuritySettings = () => {
         <Alert>
           <Shield className="h-4 w-4" />
           <AlertDescription>
-            <strong>Next Steps:</strong> To complete the security setup, please enable leaked password protection 
-            in your Supabase Auth settings. This will prevent users from using passwords that have been 
-            compromised in data breaches.
+            <strong>Remaining Actions:</strong> To complete the security setup, please:
+            <br />
+            • Enable leaked password protection in your Supabase Auth settings
+            <br />
+            • Move database extensions from public schema (low priority)
+            <br />
+            Most critical security vulnerabilities have been resolved automatically.
           </AlertDescription>
         </Alert>
       </div>

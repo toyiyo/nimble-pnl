@@ -58,7 +58,7 @@ serve(async (req) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        "model": "mistralai/mistral-small-3.2-24b-instruct:free",
+        "model": "mistralai/mistral-small-latest",
         "messages": [
           {
             "role": "system",
@@ -115,8 +115,7 @@ IMPORTANT: Even if you're uncertain, include items that look like products. Bett
             ]
           }
         ],
-        "max_completion_tokens": 2000,
-        "temperature": 0.1
+        "max_completion_tokens": 2000
       })
     });
 

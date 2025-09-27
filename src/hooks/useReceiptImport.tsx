@@ -41,7 +41,7 @@ export const useReceiptImport = () => {
   const { selectedRestaurant } = useRestaurantContext();
 
   const uploadReceipt = async (file: File) => {
-    if (!selectedRestaurant?.id) {
+    if (!selectedRestaurant?.restaurant_id) {
       toast({
         title: "Error",
         description: "Please select a restaurant first",
@@ -54,7 +54,7 @@ export const useReceiptImport = () => {
     try {
       // Upload file to storage
       const fileName = `${Date.now()}-${file.name}`;
-      const filePath = `${selectedRestaurant.id}/${fileName}`;
+      const filePath = `${selectedRestaurant.restaurant_id}/${fileName}`;
       
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('receipt-images')
@@ -73,7 +73,7 @@ export const useReceiptImport = () => {
       const { data: receiptData, error: receiptError } = await supabase
         .from('receipt_imports')
         .insert({
-          restaurant_id: selectedRestaurant.id,
+          restaurant_id: selectedRestaurant.restaurant_id,
           raw_file_url: publicUrl,
           file_name: file.name,
           file_size: file.size,
@@ -147,12 +147,12 @@ export const useReceiptImport = () => {
   };
 
   const getReceiptImports = async () => {
-    if (!selectedRestaurant?.id) return [];
+    if (!selectedRestaurant?.restaurant_id) return [];
 
     const { data, error } = await supabase
       .from('receipt_imports')
       .select('*')
-      .eq('restaurant_id', selectedRestaurant.id)
+      .eq('restaurant_id', selectedRestaurant.restaurant_id)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -208,7 +208,7 @@ export const useReceiptImport = () => {
   };
 
   const bulkImportLineItems = async (receiptId: string) => {
-    if (!selectedRestaurant?.id) {
+    if (!selectedRestaurant?.restaurant_id) {
       toast({
         title: "Error",
         description: "Please select a restaurant first",
@@ -263,7 +263,7 @@ export const useReceiptImport = () => {
 
           // Log inventory transaction
           await supabase.from('inventory_transactions').insert({
-            restaurant_id: selectedRestaurant.id,
+            restaurant_id: selectedRestaurant.restaurant_id,
             product_id: item.matched_product_id,
             quantity: item.parsed_quantity || 0,
             unit_cost: item.parsed_price || 0,
@@ -279,7 +279,7 @@ export const useReceiptImport = () => {
           const { data: newProduct, error: productError } = await supabase
             .from('products')
             .insert({
-              restaurant_id: selectedRestaurant.id,
+              restaurant_id: selectedRestaurant.restaurant_id,
               name: item.parsed_name || item.raw_text,
               sku: `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               current_stock: item.parsed_quantity || 0,
@@ -296,7 +296,7 @@ export const useReceiptImport = () => {
 
           // Log inventory transaction for new product
           await supabase.from('inventory_transactions').insert({
-            restaurant_id: selectedRestaurant.id,
+            restaurant_id: selectedRestaurant.restaurant_id,
             product_id: newProduct.id,
             quantity: item.parsed_quantity || 0,
             unit_cost: item.parsed_price || 0,

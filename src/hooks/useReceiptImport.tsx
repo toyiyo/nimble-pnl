@@ -198,6 +198,10 @@ export const useReceiptImport = () => {
   const autoMatchLineItems = async (lineItems: ReceiptLineItem[]) => {
     if (!selectedRestaurant?.restaurant_id) return;
 
+    // Load custom abbreviation mappings for this restaurant
+    const { ReceiptTextNormalizer } = await import('@/services/receiptTextNormalizer');
+    await ReceiptTextNormalizer.loadCustomMappings(selectedRestaurant.restaurant_id);
+
     for (const item of lineItems) {
       // Skip items that are already mapped
       if (item.mapping_status !== 'pending') continue;
@@ -206,30 +210,53 @@ export const useReceiptImport = () => {
       if (!searchTerm || searchTerm.length < 2) continue;
 
       try {
-        // Search for products that might match this receipt item
-        const { data: matchingProducts, error } = await supabase.rpc('search_products_by_name', {
-          p_restaurant_id: selectedRestaurant.restaurant_id,
-          p_search_term: searchTerm
-        });
+        // Generate multiple search variants using the normalizer
+        const searchVariants = ReceiptTextNormalizer.generateSearchVariants(searchTerm);
+        
+        let bestMatch = null;
+        let highestScore = 0;
 
-        if (error) {
-          console.error('Error auto-matching receipt item:', error);
-          continue;
+        // Try each search variant
+        for (const variant of searchVariants) {
+          const { data: matchingProducts, error } = await supabase.rpc('advanced_product_search', {
+            p_restaurant_id: selectedRestaurant.restaurant_id,
+            p_search_term: variant,
+            p_similarity_threshold: 0.2, // Lower threshold for auto-matching
+            p_limit: 5
+          });
+
+          if (error) {
+            console.error('Error auto-matching receipt item:', error);
+            continue;
+          }
+
+          // Find the best match from this variant
+          const topMatch = matchingProducts?.[0];
+          if (topMatch && topMatch.combined_score > highestScore) {
+            highestScore = topMatch.combined_score;
+            bestMatch = topMatch;
+          }
         }
 
-        // Find the best match (exact match in receipt_item_names gets highest priority)
-        const exactMatch = matchingProducts?.find((product: any) => 
-          product.receipt_item_names?.some((name: string) => 
-            name.toLowerCase() === searchTerm.toLowerCase()
-          )
-        );
-
-        // If we found an exact match, update the line item
-        if (exactMatch) {
+        // Auto-map if we found a confident match
+        if (bestMatch && (
+          bestMatch.match_type === 'receipt_exact' ||  // Exact previous mapping
+          bestMatch.match_type === 'exact' ||          // Exact name match
+          highestScore > 0.7                           // High confidence fuzzy match
+        )) {
           await updateLineItemMapping(item.id, {
-            matched_product_id: exactMatch.id,
+            matched_product_id: bestMatch.id,
             mapping_status: 'mapped'
           });
+
+          // Learn from this auto-match for future improvements
+          if (bestMatch.match_type !== 'receipt_exact') {
+            await ReceiptTextNormalizer.learnFromCorrection(
+              selectedRestaurant.restaurant_id,
+              searchTerm,
+              bestMatch.name
+            );
+          }
         }
       } catch (error) {
         console.error('Error in auto-matching process:', error);

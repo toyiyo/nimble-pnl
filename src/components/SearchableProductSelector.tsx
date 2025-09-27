@@ -15,6 +15,8 @@ interface Product {
   current_stock: number;
   uom_purchase: string | null;
   receipt_item_names: string[];
+  similarity_score?: number;
+  match_type?: string;
 }
 
 interface SearchableProductSelectorProps {
@@ -54,16 +56,29 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc('search_products_by_name', {
+      const { data, error } = await supabase.rpc('advanced_product_search', {
         p_restaurant_id: selectedRestaurant.restaurant_id,
-        p_search_term: term
+        p_search_term: term,
+        p_similarity_threshold: 0.25,
+        p_limit: 15
       });
 
       if (error) {
         console.error('Error searching products:', error);
         setProducts([]);
       } else {
-        setProducts(data || []);
+        // Convert the advanced search results to our Product interface
+        const mappedProducts = (data || []).map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          sku: item.sku,
+          current_stock: item.current_stock,
+          uom_purchase: item.uom_purchase,
+          receipt_item_names: item.receipt_item_names || [],
+          similarity_score: item.combined_score,
+          match_type: item.match_type
+        }));
+        setProducts(mappedProducts);
       }
     } catch (error) {
       console.error('Error searching products:', error);
@@ -176,11 +191,30 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
                           <span>{product.sku}</span>
                           <span>•</span>
                           <span>{product.current_stock} {product.uom_purchase || 'units'}</span>
+                          {product.similarity_score && (
+                            <>
+                              <span>•</span>
+                              <span className={`font-medium ${
+                                product.similarity_score > 0.8 ? 'text-green-600' :
+                                product.similarity_score > 0.5 ? 'text-yellow-600' : 'text-orange-600'
+                              }`}>
+                                {Math.round(product.similarity_score * 100)}% match
+                              </span>
+                            </>
+                          )}
                         </div>
                         {product.receipt_item_names && product.receipt_item_names.length > 0 && (
-                          <div className="text-xs text-blue-600 mt-1">
-                            Previously mapped: {product.receipt_item_names.slice(0, 2).join(', ')}
-                            {product.receipt_item_names.length > 2 && ` +${product.receipt_item_names.length - 2} more`}
+                          <div className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                            <span>Previously mapped:</span>
+                            <span className="font-medium">
+                              {product.receipt_item_names.slice(0, 2).join(', ')}
+                              {product.receipt_item_names.length > 2 && ` +${product.receipt_item_names.length - 2} more`}
+                            </span>
+                            {product.match_type === 'receipt_exact' && (
+                              <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800">
+                                Exact Match
+                              </Badge>
+                            )}
                           </div>
                         )}
                       </div>

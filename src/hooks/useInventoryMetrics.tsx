@@ -186,7 +186,7 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
           productMetrics[product.id] = {
             inventoryCost,
             inventoryValue,
-            calculationMethod: productRecipes.length === 1 ? 'recipe-based' : 'mixed'
+            calculationMethod: 'recipe-based'
           };
         } else {
           productMetrics[product.id] = {

@@ -679,12 +679,54 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                   <div className="p-3 bg-muted rounded-md">
                     <p className="text-sm">
                       <strong>Stock Update Preview:</strong><br />
-                      {product.id 
-                        ? adjustmentMode === 'set_exact'
-                          ? `Current: ${currentStock} → Set to: ${exactCount} ${form.getValues('size_unit')} (${exactCount - currentStock >= 0 ? '+' : ''}${exactCount - currentStock} adjustment)`
-                          : `Current: ${currentStock} → New Total: ${totalAfterUpdate} ${form.getValues('size_unit')}`
-                        : `Initial Stock: ${adjustmentMode === 'set_exact' ? exactCount : newQuantity} ${form.getValues('size_unit')}`
-                      }
+                      {(() => {
+                        const displayUnit = form.getValues('uom_purchase') || form.getValues('size_unit') || 'units';
+                        const sizeValue = form.getValues('size_value') || 1;
+                        const originalUnit = product.size_unit;
+                        const originalSizeValue = product.size_value || 1;
+                        
+                        // Convert current stock to display units
+                        let displayCurrentStock = currentStock;
+                        if (originalUnit && displayUnit !== originalUnit && displayUnit !== 'units') {
+                          // Convert from original units to the new display units
+                          if (displayUnit === 'bottle' && originalUnit === 'ml' && sizeValue > 0) {
+                            displayCurrentStock = currentStock / sizeValue;
+                          } else if (originalUnit === 'bottle' && displayUnit === 'ml' && originalSizeValue > 0) {
+                            displayCurrentStock = currentStock * originalSizeValue;
+                          }
+                          // Add more conversions as needed
+                        }
+                        
+                        // Convert target values to display units  
+                        let displayExactCount = exactCount;
+                        let displayTotalAfterUpdate = totalAfterUpdate;
+                        
+                        if (adjustmentMode === 'set_exact') {
+                          if (displayUnit === 'bottle' && sizeValue > 0) {
+                            displayExactCount = exactCount / sizeValue;
+                            displayTotalAfterUpdate = totalAfterUpdate / sizeValue;
+                          }
+                        } else {
+                          if (displayUnit === 'bottle' && sizeValue > 0) {
+                            displayTotalAfterUpdate = totalAfterUpdate / sizeValue;
+                          }
+                        }
+                        
+                        const formatValue = (value: number) => {
+                          return value % 1 === 0 ? value.toString() : value.toFixed(2);
+                        };
+                        
+                        if (product.id) {
+                          if (adjustmentMode === 'set_exact') {
+                            return `Current: ${formatValue(displayCurrentStock)} → Set to: ${formatValue(displayExactCount)} ${displayUnit} (${displayExactCount - displayCurrentStock >= 0 ? '+' : ''}${formatValue(displayExactCount - displayCurrentStock)} adjustment)`;
+                          } else {
+                            return `Current: ${formatValue(displayCurrentStock)} → New Total: ${formatValue(displayTotalAfterUpdate)} ${displayUnit}`;
+                          }
+                        } else {
+                          const initialValue = adjustmentMode === 'set_exact' ? displayExactCount : (newQuantity / (sizeValue || 1));
+                          return `Initial Stock: ${formatValue(initialValue)} ${displayUnit}`;
+                        }
+                      })()}
                     </p>
                   </div>
                 )}

@@ -63,9 +63,10 @@ interface RecipeDialogProps {
   onClose: () => void;
   restaurantId: string;
   recipe?: Recipe | null;
+  onRecipeUpdated?: () => void;
 }
 
-export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDialogProps) {
+export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUpdated }: RecipeDialogProps) {
   const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
   const { products } = useProducts(restaurantId);
   const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
@@ -209,6 +210,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
       }
       
       onClose();
+      onRecipeUpdated?.(); // Refresh parent list
     } catch (error) {
       console.error('Error saving recipe:', error);
     } finally {

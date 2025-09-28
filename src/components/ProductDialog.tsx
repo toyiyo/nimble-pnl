@@ -34,6 +34,8 @@ import { CreateProductData, Product } from '@/hooks/useProducts';
 import { useUnitConversion } from '@/hooks/useUnitConversion';
 import { normalizeUnitName, suggestRecipeUnits } from '@/lib/unitConversion';
 import { supabase } from '@/integrations/supabase/client';
+import { SizePackagingSection } from '@/components/SizePackagingSection';
+import { RecipeConversionPreview } from '@/components/RecipeConversionPreview';
 
 const productSchema = z.object({
   sku: z.string().min(1, 'SKU is required'),
@@ -387,111 +389,8 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
               />
             </div>
 
-            {/* Size and Packaging Section */}
-            <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
-              <h4 className="font-medium text-sm flex items-center gap-2">
-                <Package className="h-4 w-4" />
-                Size & Packaging Details
-              </h4>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="size_value"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Package Size</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="number"
-                          step="0.01"
-                          placeholder="e.g., 80"
-                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="size_unit"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Package Unit</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="oz, lb, kg, etc." />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {['oz', 'lb', 'kg', 'g', 'liter', 'ml', 'gallon', 'quart'].map((unit) => (
-                            <SelectItem key={unit} value={unit}>
-                              {unit}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="package_qty"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Packages in Purchase Unit</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="number"
-                          min="1"
-                          placeholder="1"
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              {/* Package Equivalents */}
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Package Weight Equivalents (Optional)</Label>
-                <p className="text-xs text-muted-foreground">
-                  Add package label info like "1/4 cup = 45g" to help with recipe conversions
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  <div className="flex items-center space-x-1">
-                    <Input placeholder="1/4" className="h-8 text-xs" />
-                    <span className="text-xs">cup =</span>
-                    <Input placeholder="45" className="h-8 text-xs" />
-                    <span className="text-xs">g</span>
-                  </div>
-                </div>
-              </div>
-
-              {form.watch('size_value') && form.watch('size_unit') && (
-                <div className="p-3 bg-background border rounded-md">
-                  <p className="text-xs font-medium mb-1">Package Summary:</p>
-                  <p className="text-xs text-muted-foreground">
-                    {form.watch('package_qty') || 1} × {form.watch('size_value')} {form.watch('size_unit')} packages
-                    {form.watch('size_value') && form.watch('size_unit') === 'oz' && (
-                      <> ({((form.watch('size_value') || 0) / 16).toFixed(2)} lb)</>
-                    )}
-                    {form.watch('size_value') && form.watch('size_unit') === 'g' && (
-                      <> ({((form.watch('size_value') || 0) / 1000).toFixed(2)} kg)</>
-                    )}
-                  </p>
-                </div>
-              )}
-            </div>
+            {/* Enhanced Size and Packaging Section */}
+            <SizePackagingSection form={form} />
 
             {/* Unit Conversion Section */}
             <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
@@ -507,17 +406,15 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Purchase Unit</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value || ''}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Purchase unit" />
+                            <SelectValue placeholder="Select unit" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {PURCHASE_UNITS.map((unit) => (
-                            <SelectItem key={unit} value={unit}>
-                              {unit}
-                            </SelectItem>
+                          {PURCHASE_UNITS.map(unit => (
+                            <SelectItem key={unit} value={unit}>{unit}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -525,32 +422,23 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                     </FormItem>
                   )}
                 />
-
+                
                 <FormField
                   control={form.control}
                   name="uom_recipe"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Recipe Unit</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value || ''}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Recipe unit" />
+                            <SelectValue placeholder="Select unit" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {watchedPurchaseUnit ? 
-                            suggestRecipeUnits(watchedPurchaseUnit).map((unit) => (
-                              <SelectItem key={unit} value={unit}>
-                                {unit}
-                              </SelectItem>
-                            )) :
-                            RECIPE_UNITS.map((unit) => (
-                              <SelectItem key={unit} value={unit}>
-                                {unit}
-                              </SelectItem>
-                            ))
-                          }
+                          {RECIPE_UNITS.map(unit => (
+                            <SelectItem key={unit} value={unit}>{unit}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -564,61 +452,55 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Conversion Factor</FormLabel>
-                      <div className="space-y-2">
-                        <FormControl>
+                      <FormControl>
+                        <div className="flex gap-2">
                           <Input
-                            {...field}
                             type="number"
                             step="0.001"
-                            min="0.001"
-                            placeholder="1"
-                            onChange={(e) => field.onChange(Number(e.target.value) || 1)}
+                            {...field}
+                            value={field.value || 1}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
                           />
-                        </FormControl>
-                        {suggestedConversionFactor && (
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs">
-                              Suggested: {suggestedConversionFactor}
-                            </Badge>
+                          {suggestedConversionFactor && (
                             <Button
                               type="button"
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
                               onClick={() => form.setValue('conversion_factor', suggestedConversionFactor)}
-                              className="h-6 px-2 text-xs"
                             >
-                              Use
+                              Use {suggestedConversionFactor.toFixed(3)}
                             </Button>
-                          </div>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
-              
+
               {watchedPurchaseUnit && watchedRecipeUnit && (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    1 {watchedPurchaseUnit} = {form.watch('conversion_factor') || 1} {watchedRecipeUnit}
-                  </p>
-                  {/* Recipe Impact Preview */}
-                  {form.watch('cost_per_unit') && form.watch('conversion_factor') && (
-                    <div className="p-3 bg-background border rounded-md">
-                      <p className="text-xs font-medium mb-2">Recipe Impact Example:</p>
-                      <div className="space-y-1 text-xs text-muted-foreground">
-                        <p>• Using 1 {watchedRecipeUnit} in a recipe will deduct {(1 / (form.watch('conversion_factor') || 1)).toFixed(4)} {watchedPurchaseUnit} from inventory</p>
-                        <p>• Cost per {watchedRecipeUnit}: ${((form.watch('cost_per_unit') || 0) / (form.watch('conversion_factor') || 1)).toFixed(4)}</p>
-                        {form.watch('size_value') && form.watch('size_unit') && watchedPurchaseUnit === 'bag' && (
-                          <p>• 1 bag contains {form.watch('size_value')} {form.watch('size_unit')}</p>
-                        )}
-                      </div>
-                    </div>
+                <div className="text-xs text-muted-foreground">
+                  1 {watchedPurchaseUnit} = {form.watch('conversion_factor') || 1} {watchedRecipeUnit}
+                  {suggestedConversionFactor && (
+                    <span className="ml-2 text-blue-600">
+                      (Suggested: {suggestedConversionFactor.toFixed(3)})
+                    </span>
                   )}
                 </div>
               )}
             </div>
+
+            {/* Recipe Conversion Preview */}
+            {form.watch('name') && form.watch('size_value') && form.watch('size_unit') && form.watch('uom_recipe') && (
+              <RecipeConversionPreview
+                productName={form.watch('name')}
+                purchaseQuantity={form.watch('size_value') * (form.watch('package_qty') || 1)}
+                purchaseUnit={form.watch('size_unit')}
+                recipeUnit={form.watch('uom_recipe')}
+                costPerUnit={form.watch('cost_per_unit')}
+              />
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField

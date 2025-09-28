@@ -6,10 +6,10 @@ import { Label } from '@/components/ui/label';
 import { SearchableProductSelector } from '@/components/SearchableProductSelector';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { useReceiptImport, ReceiptLineItem } from '@/hooks/useReceiptImport';
+import { useReceiptImport, ReceiptLineItem, ReceiptImport } from '@/hooks/useReceiptImport';
 import { useProducts } from '@/hooks/useProducts';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart } from 'lucide-react';
+import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 interface ReceiptMappingReviewProps {
@@ -17,25 +17,33 @@ interface ReceiptMappingReviewProps {
   onImportComplete: () => void;
 }
 
+type FilterType = 'all' | 'mapped' | 'new_item' | 'pending';
+
 export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({ 
   receiptId, 
   onImportComplete 
 }) => {
   const [lineItems, setLineItems] = useState<ReceiptLineItem[]>([]);
+  const [receiptDetails, setReceiptDetails] = useState<ReceiptImport | null>(null);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const { selectedRestaurant } = useRestaurantContext();
-  const { getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
+  const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
   const { products } = useProducts(selectedRestaurant?.id || null);
   const { toast } = useToast();
 
   useEffect(() => {
-    loadLineItems();
+    loadData();
   }, [receiptId]);
 
-  const loadLineItems = async () => {
+  const loadData = async () => {
     setLoading(true);
-    const items = await getReceiptLineItems(receiptId);
+    const [details, items] = await Promise.all([
+      getReceiptDetails(receiptId),
+      getReceiptLineItems(receiptId)
+    ]);
+    setReceiptDetails(details);
     setLineItems(items);
     setLoading(false);
   };
@@ -117,6 +125,16 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const newItemsCount = lineItems.filter(item => item.mapping_status === 'new_item').length;
   const pendingCount = lineItems.filter(item => item.mapping_status === 'pending').length;
 
+  const filteredItems = lineItems.filter(item => {
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'pending') return item.mapping_status === 'pending';
+    return item.mapping_status === activeFilter;
+  });
+
+  const getFilterButtonVariant = (filter: FilterType) => {
+    return activeFilter === filter ? 'default' : 'outline';
+  };
+
   if (loading) {
     return (
       <Card className="w-full max-w-6xl mx-auto">
@@ -131,31 +149,109 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   }
 
   return (
-    <Card className="w-full max-w-6xl mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Package className="h-5 w-5" />
-          Review & Map Receipt Items
-        </CardTitle>
-        <CardDescription>
-          Review the extracted items and map them to your existing inventory or create new items
-        </CardDescription>
-        
-        {/* Summary stats */}
-        <div className="flex gap-4 pt-2">
-          <div className="text-sm">
-            <span className="font-medium text-green-600">{mappedCount}</span> mapped
+    <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Receipt Image */}
+      {receiptDetails?.raw_file_url && (
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Image className="h-4 w-4" />
+              Original Receipt
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <img 
+              src={receiptDetails.raw_file_url} 
+              alt="Receipt" 
+              className="w-full h-auto rounded-lg border shadow-sm"
+            />
+            {receiptDetails.vendor_name && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Vendor: {receiptDetails.vendor_name}
+              </p>
+            )}
+            {receiptDetails.total_amount && (
+              <p className="text-sm text-muted-foreground">
+                Total: ${receiptDetails.total_amount.toFixed(2)}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Receipt Items */}
+      <Card className={receiptDetails?.raw_file_url ? "lg:col-span-2" : "lg:col-span-3"}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Package className="h-5 w-5" />
+            Review & Map Receipt Items
+          </CardTitle>
+          <CardDescription>
+            Review the extracted items and map them to your existing inventory or create new items
+          </CardDescription>
+          
+          {/* Summary stats and filters */}
+          <div className="flex flex-col sm:flex-row gap-4 pt-2">
+            <div className="flex gap-4">
+              <div className="text-sm">
+                <span className="font-medium text-green-600">{mappedCount}</span> mapped
+              </div>
+              <div className="text-sm">
+                <span className="font-medium text-blue-600">{newItemsCount}</span> new items
+              </div>
+              <div className="text-sm">
+                <span className="font-medium text-red-600">{pendingCount}</span> need review
+              </div>
+            </div>
+            
+            {/* Filter buttons */}
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant={getFilterButtonVariant('all')}
+                size="sm"
+                onClick={() => setActiveFilter('all')}
+                className="flex items-center gap-1"
+              >
+                <Filter className="w-3 h-3" />
+                All ({lineItems.length})
+              </Button>
+              <Button
+                variant={getFilterButtonVariant('mapped')}
+                size="sm"
+                onClick={() => setActiveFilter('mapped')}
+                className="flex items-center gap-1"
+              >
+                <CheckCircle className="w-3 h-3" />
+                Mapped ({mappedCount})
+              </Button>
+              <Button
+                variant={getFilterButtonVariant('new_item')}
+                size="sm"
+                onClick={() => setActiveFilter('new_item')}
+                className="flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                New ({newItemsCount})
+              </Button>
+              <Button
+                variant={getFilterButtonVariant('pending')}
+                size="sm"
+                onClick={() => setActiveFilter('pending')}
+                className="flex items-center gap-1"
+              >
+                <AlertCircle className="w-3 h-3" />
+                Review ({pendingCount})
+              </Button>
+            </div>
           </div>
-          <div className="text-sm">
-            <span className="font-medium text-blue-600">{newItemsCount}</span> new items
+        </CardHeader>
+        <CardContent className="space-y-4">
+        {filteredItems.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No items match the current filter.
           </div>
-          <div className="text-sm">
-            <span className="font-medium text-red-600">{pendingCount}</span> need review
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {lineItems.map((item, index) => (
+        ) : (
+          filteredItems.map((item, index) => (
           <div key={item.id} className="border rounded-lg p-4 space-y-4">
             {/* Header with status and confidence */}
             <div className="flex items-center justify-between">
@@ -257,8 +353,9 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 )}
               </div>
             </div>
-          </div>
-        ))}
+            </div>
+          ))
+        )}
 
         {/* Import button */}
         <div className="flex justify-end pt-4">
@@ -283,7 +380,8 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 };

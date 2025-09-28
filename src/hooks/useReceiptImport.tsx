@@ -178,6 +178,21 @@ export const useReceiptImport = () => {
     return data as ReceiptImport[];
   };
 
+  const getReceiptDetails = async (receiptId: string) => {
+    const { data, error } = await supabase
+      .from('receipt_imports')
+      .select('*')
+      .eq('id', receiptId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching receipt details:', error);
+      return null;
+    }
+
+    return data as ReceiptImport;
+  };
+
   const getReceiptLineItems = async (receiptId: string) => {
     const { data, error } = await supabase
       .from('receipt_line_items')
@@ -468,6 +483,7 @@ export const useReceiptImport = () => {
     uploadReceipt,
     processReceipt,
     getReceiptImports,
+    getReceiptDetails,
     getReceiptLineItems,
     updateLineItemMapping,
     bulkImportLineItems,

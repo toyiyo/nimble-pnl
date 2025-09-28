@@ -34,6 +34,8 @@ import {
 import { Product } from '@/hooks/useProducts';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { SizePackagingSection } from '@/components/SizePackagingSection';
+import { RecipeConversionPreview } from '@/components/RecipeConversionPreview';
 
 const updateSchema = z.object({
   quantity_to_add: z.coerce.number().min(0, 'Quantity must be positive').optional(),
@@ -679,117 +681,19 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
               </CardContent>
             </Card>
 
-            {/* Size & Packaging */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Size & Packaging</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="size_value"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Size/Weight</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            step="0.01"
-                            placeholder="e.g., 5"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+            {/* Enhanced Size & Packaging Section */}
+            <SizePackagingSection form={form} />
 
-                  <FormField
-                    control={form.control}
-                    name="package_qty"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Package Qty</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            min="1"
-                            placeholder="1"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="conversion_factor"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Conversion Factor</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            step="0.01"
-                            placeholder="1"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="uom_purchase"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Purchase UOM</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="e.g., case" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="uom_recipe"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Recipe UOM</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="e.g., oz" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+            {/* Recipe Conversion Preview */}
+            {form.watch('name') && form.watch('size_value') && form.watch('uom_purchase') && form.watch('uom_recipe') && (
+              <RecipeConversionPreview
+                productName={form.watch('name')}
+                purchaseQuantity={form.watch('size_value') * (form.watch('package_qty') || 1)}
+                purchaseUnit={form.watch('uom_purchase')}
+                recipeUnit={form.watch('uom_recipe')}
+                costPerUnit={form.watch('cost_per_unit')}
+              />
+            )}
 
             {/* Cost & Supplier */}
             <Card>

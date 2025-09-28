@@ -171,11 +171,21 @@ export const useReceiptImport = () => {
       // Generate signed URLs for all images
       const receiptsWithSignedUrls = await Promise.all(
         (data || []).map(async (receipt) => {
-          if (receipt.raw_file_url && !receipt.raw_file_url.startsWith('http')) {
+          if (receipt.raw_file_url) {
             try {
+              let filePath = receipt.raw_file_url;
+              
+              // If it's a full URL, extract just the path part
+              if (filePath.startsWith('http')) {
+                const urlParts = filePath.split('/storage/v1/object/public/receipt-images/');
+                if (urlParts.length > 1) {
+                  filePath = urlParts[1];
+                }
+              }
+              
               const { data: signedUrlData } = await supabase.storage
                 .from('receipt-images')
-                .createSignedUrl(receipt.raw_file_url, 3600); // 1 hour expiry
+                .createSignedUrl(filePath, 3600); // 1 hour expiry
               
               if (signedUrlData?.signedUrl) {
                 receipt.raw_file_url = signedUrlData.signedUrl;
@@ -205,12 +215,22 @@ export const useReceiptImport = () => {
 
       if (error) throw error;
 
-      // Generate signed URL for displaying the image
-      if (data?.raw_file_url && !data.raw_file_url.startsWith('http')) {
+      // Generate signed URL for displaying the image from private bucket
+      if (data?.raw_file_url) {
         try {
+          let filePath = data.raw_file_url;
+          
+          // If it's a full URL, extract just the path part
+          if (filePath.startsWith('http')) {
+            const urlParts = filePath.split('/storage/v1/object/public/receipt-images/');
+            if (urlParts.length > 1) {
+              filePath = urlParts[1];
+            }
+          }
+          
           const { data: signedUrlData } = await supabase.storage
             .from('receipt-images')
-            .createSignedUrl(data.raw_file_url, 3600); // 1 hour expiry
+            .createSignedUrl(filePath, 3600); // 1 hour expiry
           
           if (signedUrlData?.signedUrl) {
             data.raw_file_url = signedUrlData.signedUrl;

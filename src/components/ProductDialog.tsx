@@ -36,6 +36,8 @@ import { normalizeUnitName, suggestRecipeUnits } from '@/lib/unitConversion';
 import { supabase } from '@/integrations/supabase/client';
 import { SizePackagingSection } from '@/components/SizePackagingSection';
 import { RecipeConversionPreview } from '@/components/RecipeConversionPreview';
+import { useProductRecipes } from '@/hooks/useProductRecipes';
+import { useRestaurants } from '@/hooks/useRestaurants';
 
 const productSchema = z.object({
   sku: z.string().min(1, 'SKU is required'),
@@ -109,6 +111,9 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   const [imageUrl, setImageUrl] = useState<string>('');
   const [suggestedConversionFactor, setSuggestedConversionFactor] = useState<number | null>(null);
   const { suggestConversionFactor } = useUnitConversion(restaurantId);
+  const { restaurants } = useRestaurants();
+  const currentRestaurant = restaurants[0];
+  const { recipes } = useProductRecipes(editProduct?.id || null, currentRestaurant?.id || null);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -469,14 +474,21 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
             </div>
 
             {/* Recipe Conversion Preview */}
-            {form.watch('name') && form.watch('size_value') && form.watch('uom_purchase') && form.watch('uom_recipe') && (
-              <RecipeConversionPreview
-                productName={form.watch('name')}
-                purchaseQuantity={form.watch('size_value') * (form.watch('package_qty') || 1)}
-                purchaseUnit={form.watch('uom_purchase')}
-                recipeUnit={form.watch('uom_recipe')}
-                costPerUnit={form.watch('cost_per_unit')}
-              />
+            {recipes.length > 0 && form.watch('name') && form.watch('size_value') && form.watch('uom_purchase') && (
+              <>
+                {recipes.map((recipeIngredient) => (
+                  <RecipeConversionPreview
+                    key={recipeIngredient.id}
+                    productName={form.watch('name')}
+                    purchaseQuantity={form.watch('size_value') * (form.watch('package_qty') || 1)}
+                    purchaseUnit={form.watch('uom_purchase')}
+                    recipeQuantity={recipeIngredient.quantity}
+                    recipeUnit={recipeIngredient.unit}
+                    costPerUnit={form.watch('cost_per_unit')}
+                    recipeName={recipeIngredient.recipe.name}
+                  />
+                ))}
+              </>
             )}
 
             {/* Cost & Supplier Section */}

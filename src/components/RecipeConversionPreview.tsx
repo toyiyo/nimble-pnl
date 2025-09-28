@@ -8,26 +8,30 @@ interface RecipeConversionPreviewProps {
   productName: string;
   purchaseQuantity: number;
   purchaseUnit: string;
+  recipeQuantity: number;
   recipeUnit: string;
   costPerUnit?: number;
+  recipeName?: string;
 }
 
 export function RecipeConversionPreview({
   productName,
   purchaseQuantity,
   purchaseUnit,
+  recipeQuantity,
   recipeUnit,
-  costPerUnit = 0
+  costPerUnit = 0,
+  recipeName
 }: RecipeConversionPreviewProps) {
   
-  if (!productName || !purchaseQuantity || !purchaseUnit || !recipeUnit) {
+  if (!productName || !purchaseQuantity || !purchaseUnit || !recipeQuantity || !recipeUnit) {
     return null;
   }
 
   try {
-    // Calculate for 1 unit of recipe
+    // Calculate for the actual recipe quantity
     const impact = calculateInventoryImpact(
-      1, // 1 unit of recipe
+      recipeQuantity, // actual recipe quantity
       recipeUnit,
       purchaseQuantity,
       purchaseUnit,
@@ -78,7 +82,7 @@ export function RecipeConversionPreview({
           {/* Detailed Impact */}
           <div className="p-3 bg-white border border-blue-200 rounded-lg">
             <h4 className="text-xs font-medium text-blue-800 mb-2">
-              Using 1 {recipeUnit} in a recipe:
+              Using {recipeQuantity} {recipeUnit} in a recipe{recipeName ? ` (${recipeName})` : ''}:
             </h4>
             <div className="space-y-2 text-xs">
               <div className="flex justify-between">

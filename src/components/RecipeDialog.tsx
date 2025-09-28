@@ -36,6 +36,7 @@ import { useUnitConversion } from '@/hooks/useUnitConversion';
 import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
 import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
 import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
+import { calculateInventoryImpact } from "@/lib/enhancedUnitConversion";
 
 const measurementUnits = [
   'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 
@@ -144,23 +145,18 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
           if (ingredient?.product_id && ingredient?.quantity) {
             const product = products.find(p => p.id === ingredient.product_id);
             if (product?.cost_per_unit) {
-              // Use enhanced unit conversion logic to match database calculation
-              let recipeTourchaseConversion;
+              // Use the same enhanced unit conversion logic as the breakdown
+              const purchaseQuantity = (product.size_value || 1) * (product.package_qty || 1);
+              const result = calculateInventoryImpact(
+                ingredient.quantity,
+                ingredient.unit,
+                purchaseQuantity,
+                product.uom_purchase || 'unit',
+                product.name || '',
+                product.cost_per_unit
+              );
               
-              // Handle product-specific conversions (like rice: 1 cup = 6.3 oz)
-              if (product.name?.toLowerCase().includes('rice') && 
-                  ingredient.unit === 'cup' && 
-                  product.uom_purchase?.toLowerCase() === 'oz') {
-                // Rice-specific conversion: 1 cup = 6.3 oz
-                recipeTourchaseConversion = ingredient.quantity * 6.3;
-              } else {
-                // Standard conversion using conversion_factor
-                recipeTourchaseConversion = ingredient.quantity / (product.conversion_factor || 1);
-              }
-              
-              // Calculate cost impact: units_used * cost_per_purchase_unit
-              const costImpact = recipeTourchaseConversion * product.cost_per_unit;
-              return total + costImpact;
+              return total + result.costImpact;
             }
           }
           return total;

@@ -190,13 +190,18 @@ export const useProducts = (restaurantId: string | null) => {
         }
       }
 
+      // Get the appropriate unit name for display (bottle, case, etc.)
+      const displayUnit = currentProduct.uom_purchase || 'unit';
+      const unitName = Math.abs(quantityDifference) === 1 ? displayUnit : `${displayUnit}s`;
+      const roundedQuantity = Math.round(quantityDifference * 100) / 100;
+      
       const transactionDescription = transactionType === 'adjustment' 
         ? quantityDifference >= 0 
-          ? `Adjustment: +${Math.round(quantityDifference * 100) / 100} units (${reason})`
-          : `Adjustment: ${Math.round(quantityDifference * 100) / 100} units (${reason})`
+          ? `Adjustment: +${roundedQuantity} ${unitName} (${reason})`
+          : `Adjustment: ${roundedQuantity} ${unitName} (${reason})`
         : quantityDifference > 0 
-          ? `Added ${Math.round(quantityDifference * 100) / 100} units`
-          : `Removed ${Math.round(Math.abs(quantityDifference) * 100) / 100} units`;
+          ? `Added ${roundedQuantity} ${unitName}`
+          : `Removed ${Math.round(Math.abs(quantityDifference) * 100) / 100} ${Math.abs(quantityDifference) === 1 ? displayUnit : `${displayUnit}s`}`;
 
       // Update local state immediately with the new data
       setProducts(prev => prev.map(product => 

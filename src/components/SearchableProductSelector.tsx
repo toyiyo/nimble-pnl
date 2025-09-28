@@ -339,7 +339,7 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-full p-0" align="start">
-          <Command>
+          <Command shouldFilter={false}>
             <div className="flex items-center border-b px-3">
             <CommandInput
               placeholder="Type to search products..."

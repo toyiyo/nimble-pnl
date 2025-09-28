@@ -70,49 +70,59 @@ serve(async (req) => {
             "messages": [
               {
                 "role": "system",
-                "content": `You are an expert receipt parser for restaurant inventory management. Your job is to carefully analyze this receipt image and extract ALL purchasable items.
+                "content": `You are an expert receipt parser for restaurant inventory management specializing in food service receipts.
 
-CRITICAL INSTRUCTIONS:
-1. Look for the main itemized section of the receipt (not headers, totals, or tax lines)
-2. Extract EVERY line item that represents a product purchase
-3. Include items even if prices seem unusual or formatting is unclear
-4. For each item, identify: product name, quantity, unit of measure, and price
-5. Expand common abbreviations (DNA=Banana, CHKN=Chicken, etc.)
-6. If quantity isn't explicit, assume 1 unit
-7. If unit isn't clear, use "each" as default
+ANALYSIS TARGET: This receipt image contains itemized purchases for restaurant inventory.
 
-CONFIDENCE SCORING (CRITICAL):
-- Assign realistic confidence scores based on text clarity and completeness
-- High confidence (0.85-0.95): Clear, complete text with obvious product name, quantity, and price
-- Medium confidence (0.65-0.84): Readable but some ambiguity in parsing or abbreviations  
-- Low confidence (0.40-0.64): Partially readable, significant guessing required
-- Very low confidence (0.20-0.39): Poor quality text, major uncertainty
+EXTRACTION METHODOLOGY:
+1. **Locate the itemized section** - Focus on the main purchase list (ignore headers, tax, totals, payment info)
+2. **Extract ALL line items** - Every product purchase, even if formatting is unclear
+3. **Identify key components**: Product name, quantity, unit of measure, price per item or total
+4. **Expand abbreviations**: Common food service abbreviations (CHKN=Chicken, DNA=Banana, BROC=Broccoli, etc.)
+5. **Standardize units**: Convert to standard restaurant units (lb, oz, case, each, gal, etc.)
 
-LOOK FOR THESE PATTERNS:
-- Product lines with prices (e.g., "BANANAS 5 LB @ 0.68/LB $3.40")
-- Simple format (e.g., "Milk Gallon $4.99")
-- Abbreviated items (e.g., "CHKN BRST $12.99")
-- Weight-based items (e.g., "BEEF 2.34 LB @ $8.99/LB")
+CONFIDENCE SCORING MATRIX:
+- **0.90-0.95**: Crystal clear text, complete information, standard formatting
+- **0.80-0.89**: Readable with minor ambiguity in abbreviations or formatting  
+- **0.65-0.79**: Partially clear, some guessing required for quantities or names
+- **0.40-0.64**: Poor quality text, significant interpretation needed
+- **0.20-0.39**: Very unclear, major uncertainty in parsing
 
-IGNORE: Tax lines, subtotals, payment methods, store info, promotions
+PATTERN RECOGNITION:
+- Weight-based: "BEEF CHUCK 2.34 LB @ $8.99/LB = $20.96"
+- Case quantities: "TOMATOES 6/10# CASE $24.50"
+- Simple format: "MILK 1 GAL $4.99"
+- Abbreviated: "CHKN BRST BNLS 5LB $32.45"
 
-Return ONLY valid JSON in this exact format:
+SUPPLIER DETECTION:
+Look for distributor indicators:
+- Company stamps (Sysco, US Foods, Performance Food Group)
+- "Distributed by" or "Packed for" text
+- Supplier codes or route numbers
+
+RESPONSE FORMAT (JSON ONLY):
 {
-  "vendor": "Store Name",
-  "totalAmount": 45.67,
+  "vendor": "Exact vendor/supplier name from receipt",
+  "totalAmount": numeric_total,
+  "supplierInfo": {
+    "name": "distributor name if detected",
+    "code": "supplier code if visible",
+    "confidence": 0.0-1.0
+  },
   "lineItems": [
     {
-      "rawText": "BANANAS 5 LB @ 0.68/LB $3.40",
-      "parsedName": "Bananas",
-      "parsedQuantity": 5,
-      "parsedUnit": "lb",
-      "parsedPrice": 3.40,
-      "confidenceScore": 0.92
+      "rawText": "exact text from receipt",
+      "parsedName": "standardized product name",
+      "parsedQuantity": numeric_quantity,
+      "parsedUnit": "standard_unit",
+      "parsedPrice": numeric_price,
+      "confidenceScore": realistic_score_0_to_1,
+      "category": "estimated category (Produce, Meat, Dairy, etc.)"
     }
   ]
 }
 
-IMPORTANT: Vary confidence scores realistically based on actual text quality and parsing difficulty.`
+CRITICAL: Assign confidence scores based on actual text clarity, not wishful thinking.`
               },
               {
                 "role": "user",
@@ -290,11 +300,12 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
 
     let parsedData;
     try {
-      // Clean up the response to extract JSON with better error handling
+      // Enhanced parsing with better error handling
       let jsonContent = content.trim();
       
       // Remove markdown code blocks if present
       jsonContent = jsonContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
+      jsonContent = jsonContent.replace(/```[\w]*\s*/, '').replace(/```\s*$/, '');
       
       // Extract JSON between first { and last }
       const firstBrace = jsonContent.indexOf('{');
@@ -306,25 +317,52 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
       
       jsonContent = jsonContent.substring(firstBrace, lastBrace + 1);
       
-      // Attempt to fix common JSON issues
-      jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
+      // Fix common JSON issues
+      jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1'); // Remove trailing commas
+      jsonContent = jsonContent.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3'); // Quote unquoted keys
       
       // Try to parse the cleaned JSON
       parsedData = JSON.parse(jsonContent);
       
-      // Validate required structure
+      // Enhanced validation for required structure
       if (!parsedData.lineItems || !Array.isArray(parsedData.lineItems)) {
         throw new Error('Invalid JSON structure: missing or invalid lineItems array');
       }
+
+      // Validate each line item has required fields
+      parsedData.lineItems.forEach((item: any, index: number) => {
+        if (!item.parsedName || typeof item.parsedQuantity !== 'number' || typeof item.parsedPrice !== 'number') {
+          console.warn(`Line item ${index} missing required fields:`, item);
+        }
+        // Ensure confidence score is within valid range
+        if (item.confidenceScore > 1.0) item.confidenceScore = 1.0;
+        if (item.confidenceScore < 0.0) item.confidenceScore = 0.0;
+      });
       
     } catch (parseError) {
       console.error('Failed to parse JSON from AI response:', parseError);
       console.error('Content that failed to parse:', content.substring(0, 1000) + '...');
       
+      // Create fallback structured response from raw content
+      const fallbackData = {
+        vendor: 'Unknown Vendor',
+        totalAmount: 0,
+        lineItems: [{
+          rawText: content.substring(0, 200),
+          parsedName: 'Unable to parse receipt',
+          parsedQuantity: 1,
+          parsedUnit: 'each',
+          parsedPrice: 0,
+          confidenceScore: 0.1,
+          category: 'Other'
+        }]
+      };
+      
       return new Response(
         JSON.stringify({ 
-          error: 'Failed to parse receipt data. The AI response was malformed. Please try again.',
-          details: parseError instanceof Error ? parseError.message : String(parseError)
+          error: 'Failed to parse receipt data. Using fallback parsing.',
+          details: parseError instanceof Error ? parseError.message : String(parseError),
+          fallbackData: fallbackData
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -48,21 +48,27 @@ serve(async (req) => {
 
     console.log('🧾 Processing receipt with Mistral AI...');
 
-    // Use Mistral for receipt parsing with better OCR performance
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${openRouterApiKey}`,
-        "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-        "X-Title": "EasyShiftHQ Receipt Parser",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        "model": "mistralai/mistral-small-3.2-24b-instruct:free",
-        "messages": [
-          {
-            "role": "system",
-            "content": `You are an expert receipt parser for restaurant inventory management. Your job is to carefully analyze this receipt image and extract ALL purchasable items.
+    // Use Mistral for receipt parsing with better OCR performance and retry logic
+    let response: Response | undefined;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+      try {
+        response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${openRouterApiKey}`,
+            "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+            "X-Title": "EasyShiftHQ Receipt Parser",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            "model": "mistralai/mistral-small-3.2-24b-instruct:free",
+            "messages": [
+              {
+                "role": "system",
+                "content": `You are an expert receipt parser for restaurant inventory management. Your job is to carefully analyze this receipt image and extract ALL purchasable items.
 
 CRITICAL INSTRUCTIONS:
 1. Look for the main itemized section of the receipt (not headers, totals, or tax lines)
@@ -112,26 +118,64 @@ Return ONLY valid JSON in this exact format:
 }
 
 IMPORTANT: Vary confidence scores realistically based on actual text quality and parsing difficulty.`
-          },
-          {
-            "role": "user",
-            "content": [
-              {
-                "type": "text",
-                "text": "Analyze this receipt image carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
               },
               {
-                "type": "image_url",
-                "image_url": {
-                  "url": imageData
-                }
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Analyze this receipt image carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
+                  },
+                  {
+                    "type": "image_url",
+                    "image_url": {
+                      "url": imageData
+                    }
+                  }
+                ]
               }
-            ]
+            ],
+            "max_completion_tokens": 4000
+          })
+        });
+
+        // If successful, break
+        if (response.ok) {
+          break;
+        }
+
+        // Rate limited - wait and retry
+        if (response.status === 429) {
+          console.log(`🔄 Rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
+          retryCount++;
+          if (retryCount < maxRetries) {
+            // Exponential backoff: wait 2^retryCount seconds
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
           }
-        ],
-        "max_completion_tokens": 4000
-      })
-    });
+        } else {
+          // Non-retryable error, break
+          break;
+        }
+      } catch (error) {
+        console.error(`Attempt ${retryCount + 1} failed:`, error);
+        retryCount++;
+        if (retryCount >= maxRetries) {
+          throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+      }
+    }
+
+    // If we still don't have a successful response after all retries
+    if (!response) {
+      return new Response(
+        JSON.stringify({ error: 'Failed to get response from OpenRouter API after retries' }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500 
+        }
+      );
+    }
 
     if (!response.ok) {
       const errorText = await response.text();

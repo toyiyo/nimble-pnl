@@ -123,7 +123,8 @@ export const useProducts = (restaurantId: string | null) => {
         description: `${productData.name} has been added to inventory`,
       });
 
-      await fetchProducts();
+      // Update local state immediately
+      setProducts(prev => [...prev, data]);
       return data;
     } catch (error: any) {
       console.error('Error creating product:', error);
@@ -199,6 +200,13 @@ export const useProducts = (restaurantId: string | null) => {
           ? `Added ${quantityDifference} units`
           : `Removed ${Math.abs(quantityDifference)} units`;
 
+      // Update local state immediately with the new data
+      setProducts(prev => prev.map(product => 
+        product.id === id 
+          ? { ...product, ...updatedData }
+          : product
+      ));
+
       toast({
         title: "Product updated",
         description: quantityDifference !== 0 
@@ -206,7 +214,6 @@ export const useProducts = (restaurantId: string | null) => {
           : "Product information has been updated",
       });
 
-      await fetchProducts();
       return true;
     } catch (error: any) {
       console.error('Error updating product:', error);

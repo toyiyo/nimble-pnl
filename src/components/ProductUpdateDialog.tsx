@@ -449,14 +449,14 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                           const packageQty = form.watch('package_qty') || 1;
                           const sizeValue = form.watch('size_value') || 1;
                           const purchaseUnit = form.watch('uom_purchase') || 'units';
-                          const hasPackaging = packageQty > 1 || purchaseUnit !== 'units';
+                          const hasPackaging = sizeValue > 1 && purchaseUnit !== 'units';
                           
-                          // Calculate packages from total units
+                          // Calculate packages from total units  
                           const totalUnits = field.value || 0;
-                          const packagesFromTotal = hasPackaging ? totalUnits / (sizeValue * packageQty) : totalUnits;
+                          const packagesFromTotal = hasPackaging ? totalUnits / sizeValue : totalUnits;
                           
                           const handlePackageChange = (packages: number) => {
-                            const totalUnits = packages * sizeValue * packageQty;
+                            const totalUnits = packages * sizeValue;
                             field.onChange(totalUnits);
                           };
                           
@@ -493,7 +493,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                                     </FormControl>
                                     {packagesFromTotal > 0 && (
                                       <p className="text-xs text-muted-foreground mt-1">
-                                        = {(packagesFromTotal * sizeValue * packageQty).toFixed(2)} {form.watch('size_unit')} total
+                                        = {(packagesFromTotal * sizeValue).toFixed(2)} {form.watch('size_unit')} total
                                       </p>
                                     )}
                                   </div>
@@ -549,14 +549,14 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                           const packageQty = form.watch('package_qty') || 1;
                           const sizeValue = form.watch('size_value') || 1;
                           const purchaseUnit = form.watch('uom_purchase') || 'units';
-                          const hasPackaging = packageQty > 1 || purchaseUnit !== 'units';
+                          const hasPackaging = sizeValue > 1 && purchaseUnit !== 'units';
                           
                           // Calculate packages from total units
                           const totalUnits = field.value || 0;
-                          const packagesFromTotal = hasPackaging ? totalUnits / (sizeValue * packageQty) : totalUnits;
+                          const packagesFromTotal = hasPackaging ? totalUnits / sizeValue : totalUnits;
                           
                           const handlePackageChange = (packages: number) => {
-                            const totalUnits = packages * sizeValue * packageQty;
+                            const totalUnits = packages * sizeValue;
                             field.onChange(totalUnits);
                           };
                           
@@ -591,7 +591,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                                     </FormControl>
                                     {packagesFromTotal > 0 && (
                                       <p className="text-xs text-muted-foreground mt-1">
-                                        = {(packagesFromTotal * sizeValue * packageQty).toFixed(2)} {form.watch('size_unit')} total
+                                        = {(packagesFromTotal * sizeValue).toFixed(2)} {form.watch('size_unit')} total
                                       </p>
                                     )}
                                   </div>

@@ -77,15 +77,19 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
   const sizeValue = form.watch('size_value') || 0;
   const sizeUnit = form.watch('size_unit') || '';  // Weight unit (oz, lb, etc.)
   const purchaseUnit = form.watch('uom_purchase') || '';  // Package type (bag, case, etc.)
-  const packageQty = form.watch('package_qty') || 1;
   const productName = form.watch('name') || '';
+  
+  // Set package_qty to equal size_value (base units per package)
+  React.useEffect(() => {
+    form.setValue('package_qty', sizeValue || 1);
+  }, [sizeValue, form]);
 
-  // Calculate alternative units
+  // Calculate alternative units  
   const alternativeUnits = useMemo(() => {
     if (!sizeValue || !sizeUnit) return [];
 
     const alternatives = [];
-    const totalValue = sizeValue * packageQty;
+    const totalValue = sizeValue; // Just the size per package
 
     // Weight conversions
     if (sizeUnit === 'oz') {
@@ -118,12 +122,12 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
     }
 
     return alternatives;
-  }, [sizeValue, sizeUnit, packageQty]);
+  }, [sizeValue, sizeUnit]);
 
   // Get product-specific conversions
   const productConversions = useMemo(() => {
-    return getProductSpecificConversions(productName, sizeValue * packageQty, sizeUnit);
-  }, [productName, sizeValue, packageQty, sizeUnit]);
+    return getProductSpecificConversions(productName, sizeValue, sizeUnit);
+  }, [productName, sizeValue, sizeUnit]);
 
   return (
     <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
@@ -239,29 +243,11 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="package_qty"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel className="flex items-center gap-2">
-                Quantity
-                <span className="text-xs text-muted-foreground font-normal">(how many)</span>
-              </FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  type="number"
-                  min="1"
-                  placeholder="1"
-                  className="text-center"
-                  onChange={(e) => field.onChange(Number(e.target.value))}
-                />
-              </FormControl>
-              <p className="text-xs text-muted-foreground">Number of packages</p>
-              <FormMessage />
-            </FormItem>
-          )}
+        {/* Hidden field to store base units per package */}
+        <input 
+          type="hidden" 
+          {...form.register('package_qty')}
+          value={sizeValue || 1}
         />
       </div>
       
@@ -269,17 +255,13 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
       {sizeValue && sizeUnit && purchaseUnit && (
         <div className="p-3 bg-green-50 border border-green-200 rounded-md">
           <div className="flex items-center gap-2 mb-2">
-            <Label className="text-sm font-medium text-green-800">✓ Example interpretation:</Label>
+            <Label className="text-sm font-medium text-green-800">✓ Package definition:</Label>
           </div>
           <div className="text-sm text-green-700">
-            You're buying <strong>{packageQty}</strong> {purchaseUnit}{packageQty !== 1 ? 's' : ''}, 
-            each containing <strong>{sizeValue} {sizeUnit}</strong>
-            {packageQty > 1 && (
-              <span>, for a total of <strong>{(sizeValue * packageQty).toFixed(2)} {sizeUnit}</strong></span>
-            )}
+            Each <strong>{purchaseUnit}</strong> contains <strong>{sizeValue} {sizeUnit}</strong>
           </div>
           <div className="text-xs text-green-600 mt-1">
-            Example: "1 bag containing 80 oz" or "6 bottles, each 16 oz = 96 oz total"
+            Example: "1 bottle containing 750 ml" or "1 bag containing 80 oz"
           </div>
         </div>
       )}
@@ -288,11 +270,11 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
       {sizeValue && sizeUnit && purchaseUnit && (
         <div className="p-3 bg-background border rounded-md">
           <div className="flex items-center gap-2 mb-2">
-            <Label className="text-sm font-medium">Package Summary</Label>
+            <Label className="text-sm font-medium">Package Definition</Label>
           </div>
           <div className="text-sm text-muted-foreground space-y-1">
             <div>
-              Total: {packageQty} {purchaseUnit}{packageQty !== 1 ? 's' : ''} × {sizeValue} {sizeUnit} = {(sizeValue * packageQty).toFixed(2)} {sizeUnit}
+              Each {purchaseUnit} contains: <strong>{sizeValue} {sizeUnit}</strong>
             </div>
             
             {/* Alternative units */}
@@ -340,9 +322,9 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
             Recipe Impact Example
           </Label>
           <div className="text-xs text-green-700 space-y-1">
-            <div>• 1 cup of rice = 6.3 oz = {((6.3 / (sizeValue * packageQty)) * 100).toFixed(1)}% of this package</div>
-            <div>• Cost per cup = ${((6.3 / (sizeValue * packageQty)) * (form.watch('cost_per_unit') || 0)).toFixed(2)} (if package costs ${(form.watch('cost_per_unit') || 0).toFixed(2)})</div>
-            <div>• Package contains ~{((sizeValue * packageQty) / 6.3).toFixed(1)} cups of rice</div>
+            <div>• 1 cup of rice = 6.3 oz = {((6.3 / sizeValue) * 100).toFixed(1)}% of this package</div>
+            <div>• Cost per cup = ${((6.3 / sizeValue) * (form.watch('cost_per_unit') || 0)).toFixed(2)} (if package costs ${(form.watch('cost_per_unit') || 0).toFixed(2)})</div>
+            <div>• Package contains ~{(sizeValue / 6.3).toFixed(1)} cups of rice</div>
           </div>
         </div>
       )}

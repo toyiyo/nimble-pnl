@@ -131,22 +131,39 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
         Size & Packaging Details
       </h4>
       
+      {/* Clear explanation */}
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+        <p className="text-sm text-blue-800 mb-2">
+          <strong>How to enter package information:</strong>
+        </p>
+        <div className="text-xs text-blue-700 space-y-1">
+          <div>• <strong>Weight per unit:</strong> How much does ONE item weigh? (e.g., 80 for an 80oz bag)</div>
+          <div>• <strong>Unit:</strong> What unit is that weight in? (e.g., oz, lb, kg)</div>
+          <div>• <strong>Quantity:</strong> How many of those items are you buying? (e.g., 1 bag, 6 bottles)</div>
+        </div>
+      </div>
+      
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <FormField
           control={form.control}
           name="size_value"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Package Size</FormLabel>
+              <FormLabel className="flex items-center gap-2">
+                Weight per unit
+                <span className="text-xs text-muted-foreground font-normal">(per bag, bottle, etc.)</span>
+              </FormLabel>
               <FormControl>
                 <Input
                   {...field}
                   type="number"
                   step="0.01"
-                  placeholder="e.g., 80"
+                  placeholder="80"
+                  className="text-center"
                   onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
                 />
               </FormControl>
+              <p className="text-xs text-muted-foreground">Enter the weight of ONE item</p>
               <FormMessage />
             </FormItem>
           )}
@@ -157,21 +174,28 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
           name="uom_purchase"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Purchase Unit</FormLabel>
+              <FormLabel className="flex items-center gap-2">
+                Unit
+                <span className="text-xs text-muted-foreground font-normal">(weight measurement)</span>
+              </FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="bag, oz, lb, etc." />
+                    <SelectValue placeholder="oz" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {['bag', 'case', 'box', 'bottle', 'can', 'jar', 'pack', 'oz', 'lb', 'kg', 'g', 'L', 'ml', 'gal', 'qt'].map((unit) => (
-                    <SelectItem key={unit} value={unit}>
-                      {unit}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="oz">oz (ounces)</SelectItem>
+                  <SelectItem value="lb">lb (pounds)</SelectItem>
+                  <SelectItem value="g">g (grams)</SelectItem>
+                  <SelectItem value="kg">kg (kilograms)</SelectItem>
+                  <SelectItem value="ml">ml (milliliters)</SelectItem>
+                  <SelectItem value="L">L (liters)</SelectItem>
+                  <SelectItem value="gal">gal (gallons)</SelectItem>
+                  <SelectItem value="qt">qt (quarts)</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">The unit of measurement</p>
               <FormMessage />
             </FormItem>
           )}
@@ -182,21 +206,45 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
           name="package_qty"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Quantity</FormLabel>
+              <FormLabel className="flex items-center gap-2">
+                Quantity
+                <span className="text-xs text-muted-foreground font-normal">(how many items)</span>
+              </FormLabel>
               <FormControl>
                 <Input
                   {...field}
                   type="number"
                   min="1"
                   placeholder="1"
+                  className="text-center"
                   onChange={(e) => field.onChange(Number(e.target.value))}
                 />
               </FormControl>
+              <p className="text-xs text-muted-foreground">Number of bags, bottles, etc.</p>
               <FormMessage />
             </FormItem>
           )}
         />
       </div>
+      
+      {/* Live example */}
+      {sizeValue && purchaseUnit && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+          <div className="flex items-center gap-2 mb-2">
+            <Label className="text-sm font-medium text-green-800">✓ Example interpretation:</Label>
+          </div>
+          <div className="text-sm text-green-700">
+            You're buying <strong>{packageQty}</strong> item{packageQty !== 1 ? 's' : ''}, 
+            each weighing <strong>{sizeValue} {purchaseUnit}</strong>
+            {packageQty > 1 && (
+              <span>, for a total of <strong>{(sizeValue * packageQty).toFixed(2)} {purchaseUnit}</strong></span>
+            )}
+          </div>
+          <div className="text-xs text-green-600 mt-1">
+            Example: "1 bag weighing 80 oz" or "6 bottles, each 16 oz = 96 oz total"
+          </div>
+        </div>
+      )}
 
       {/* Package Summary */}
       {sizeValue && purchaseUnit && (

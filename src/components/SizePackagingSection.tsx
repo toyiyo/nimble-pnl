@@ -77,12 +77,8 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
   const sizeValue = form.watch('size_value') || 0;
   const sizeUnit = form.watch('size_unit') || '';  // Weight unit (oz, lb, etc.)
   const purchaseUnit = form.watch('uom_purchase') || '';  // Package type (bag, case, etc.)
+  const packageQty = form.watch('package_qty') || 1;  // How many packages you're buying
   const productName = form.watch('name') || '';
-  
-  // Set package_qty to equal size_value (base units per package)
-  React.useEffect(() => {
-    form.setValue('package_qty', sizeValue || 1);
-  }, [sizeValue, form]);
 
   // Calculate alternative units  
   const alternativeUnits = useMemo(() => {
@@ -139,16 +135,20 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
       {/* Clear explanation */}
       <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
         <p className="text-sm text-blue-800 mb-2">
-          <strong>How to enter package information:</strong>
+          <strong>📦 How to enter package information correctly:</strong>
         </p>
         <div className="text-xs text-blue-700 space-y-1">
-          <div>• <strong>Amount:</strong> How much is in ONE package? (e.g., 80 for an 80oz bag)</div>
-          <div>• <strong>Weight Unit:</strong> What unit is that amount in? (e.g., oz, lb, kg)</div>
-          <div>• <strong>Package Type:</strong> What kind of package are you buying? (e.g., bag, case, bottle)</div>
-          <div>• <strong>Quantity:</strong> How many packages are you buying? (e.g., 1 bag, 6 bottles)</div>
+          <div>• <strong>Amount per Package:</strong> How much is in ONE single package? (e.g., 750 for a 750ml bottle)</div>
+          <div>• <strong>Unit:</strong> What unit is that amount measured in? (e.g., ml, oz, lb)</div>
+          <div>• <strong>Package Type:</strong> What type of container? (e.g., bottle, bag, case)</div>
+          <div>• <strong>Quantity:</strong> How many of those packages are you buying? (usually 1)</div>
         </div>
-        <div className="text-xs text-blue-600 mt-2 font-medium">
-          Example: "1 bag containing 80 oz of rice" = Amount: 80, Unit: oz, Type: bag, Quantity: 1
+        <div className="text-xs text-blue-600 mt-2 p-2 bg-blue-100 rounded border-l-2 border-blue-400">
+          <strong>✅ Correct Example:</strong> "1 bottle containing 750 ml"<br/>
+          Amount: <code>750</code>, Unit: <code>ml</code>, Type: <code>bottle</code>, Quantity: <code>1</code>
+        </div>
+        <div className="text-xs text-red-600 mt-1 p-2 bg-red-50 rounded border-l-2 border-red-400">
+          <strong>❌ Common Mistake:</strong> Don't enter 750 in the quantity field - that means 750 bottles!
         </div>
       </div>
       
@@ -159,20 +159,20 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
           render={({ field }) => (
             <FormItem>
               <FormLabel className="flex items-center gap-2">
-                Amount
-                <span className="text-xs text-muted-foreground font-normal">(per package)</span>
+                <span className="text-base font-medium">Amount per Package</span>
+                <span className="text-xs text-muted-foreground font-normal">📦</span>
               </FormLabel>
               <FormControl>
                 <Input
                   {...field}
                   type="number"
                   step="0.01"
-                  placeholder="80"
-                  className="text-center"
+                  placeholder="750"
+                  className="text-center text-lg font-mono"
                   onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
                 />
               </FormControl>
-              <p className="text-xs text-muted-foreground">Amount in each package</p>
+              <p className="text-xs text-muted-foreground">How much is in one single package</p>
               <FormMessage />
             </FormItem>
           )}
@@ -184,22 +184,22 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
           render={({ field }) => (
             <FormItem>
               <FormLabel className="flex items-center gap-2">
-                Weight Unit
-                <span className="text-xs text-muted-foreground font-normal">(measurement)</span>
+                <span className="text-base font-medium">Unit</span>
+                <span className="text-xs text-muted-foreground font-normal">📏</span>
               </FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="oz" />
+                  <SelectTrigger className="text-center">
+                    <SelectValue placeholder="Select unit" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
+                  <SelectItem value="ml">ml (milliliters)</SelectItem>
+                  <SelectItem value="L">L (liters)</SelectItem>
                   <SelectItem value="oz">oz (ounces)</SelectItem>
                   <SelectItem value="lb">lb (pounds)</SelectItem>
                   <SelectItem value="g">g (grams)</SelectItem>
                   <SelectItem value="kg">kg (kilograms)</SelectItem>
-                  <SelectItem value="ml">ml (milliliters)</SelectItem>
-                  <SelectItem value="L">L (liters)</SelectItem>
                   <SelectItem value="gal">gal (gallons)</SelectItem>
                   <SelectItem value="qt">qt (quarts)</SelectItem>
                 </SelectContent>
@@ -216,78 +216,98 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
           render={({ field }) => (
             <FormItem>
               <FormLabel className="flex items-center gap-2">
-                Package Type
-                <span className="text-xs text-muted-foreground font-normal">(what you buy)</span>
+                <span className="text-base font-medium">Package Type</span>
+                <span className="text-xs text-muted-foreground font-normal">📦</span>
               </FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="bag" />
+                  <SelectTrigger className="text-center">
+                    <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
+                  <SelectItem value="bottle">bottle</SelectItem>
                   <SelectItem value="bag">bag</SelectItem>
                   <SelectItem value="case">case</SelectItem>
                   <SelectItem value="box">box</SelectItem>
-                  <SelectItem value="bottle">bottle</SelectItem>
                   <SelectItem value="can">can</SelectItem>
                   <SelectItem value="jar">jar</SelectItem>
                   <SelectItem value="pack">pack</SelectItem>
+                  <SelectItem value="container">container</SelectItem>
                   <SelectItem value="unit">unit</SelectItem>
                   <SelectItem value="each">each</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">Type of package you buy</p>
+              <p className="text-xs text-muted-foreground">Type of container/package</p>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {/* Hidden field to store base units per package */}
-        <input 
-          type="hidden" 
-          {...form.register('package_qty')}
-          value={sizeValue || 1}
+        <FormField
+          control={form.control}
+          name="package_qty"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="flex items-center gap-2">
+                <span className="text-base font-medium">Quantity</span>
+                <span className="text-xs text-muted-foreground font-normal">🔢</span>
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="1"
+                  className="text-center text-lg font-mono"
+                  onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : 1)}
+                />
+              </FormControl>
+              <p className="text-xs text-muted-foreground">How many packages you're buying</p>
+              <FormMessage />
+            </FormItem>
+          )}
         />
       </div>
       
       {/* Live example */}
       {sizeValue && sizeUnit && purchaseUnit && (
-        <div className="p-3 bg-green-50 border border-green-200 rounded-md">
-          <div className="flex items-center gap-2 mb-2">
-            <Label className="text-sm font-medium text-green-800">✓ Package definition:</Label>
+        <div className="p-4 bg-green-50 border-2 border-green-300 rounded-md">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center">
+              <span className="text-white text-sm font-bold">✓</span>
+            </div>
+            <Label className="text-base font-semibold text-green-800">Your Package Definition:</Label>
           </div>
-          <div className="text-sm text-green-700">
-            Each <strong>{purchaseUnit}</strong> contains <strong>{sizeValue} {sizeUnit}</strong>
+          <div className="text-lg font-medium text-green-800 mb-2">
+            <span className="bg-green-200 px-2 py-1 rounded">{packageQty}</span> {purchaseUnit}{packageQty !== 1 ? 's' : ''}, 
+            each containing <span className="bg-green-200 px-2 py-1 rounded">{sizeValue} {sizeUnit}</span>
           </div>
-          <div className="text-xs text-green-600 mt-1">
-            Example: "1 bottle containing 750 ml" or "1 bag containing 80 oz"
+          <div className="text-sm text-green-700 bg-green-100 p-2 rounded">
+            <strong>Total you're buying:</strong> {(sizeValue * packageQty).toLocaleString()} {sizeUnit} 
+            ({packageQty} × {sizeValue} {sizeUnit})
           </div>
         </div>
       )}
 
-      {/* Package Summary */}
-      {sizeValue && sizeUnit && purchaseUnit && (
+      {/* Alternative unit conversions */}
+      {sizeValue && sizeUnit && purchaseUnit && alternativeUnits.length > 0 && (
         <div className="p-3 bg-background border rounded-md">
           <div className="flex items-center gap-2 mb-2">
-            <Label className="text-sm font-medium">Package Definition</Label>
+            <Label className="text-sm font-medium">💡 Alternative Measurements</Label>
           </div>
           <div className="text-sm text-muted-foreground space-y-1">
-            <div>
-              Each {purchaseUnit} contains: <strong>{sizeValue} {sizeUnit}</strong>
+            <div className="mb-2">
+              Each {purchaseUnit} ({sizeValue} {sizeUnit}) also equals:
             </div>
-            
-            {/* Alternative units */}
-            {alternativeUnits.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                <span className="text-xs font-medium">Also equals:</span>
-                {alternativeUnits.map((alt, idx) => (
-                  <Badge key={idx} variant="secondary" className="text-xs">
-                    {alt.value.toFixed(alt.value < 1 ? 3 : 2)} {alt.unit}
-                  </Badge>
-                ))}
-              </div>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {alternativeUnits.map((alt, idx) => (
+                <Badge key={idx} variant="secondary" className="text-xs">
+                  {alt.value.toFixed(alt.value < 1 ? 3 : 2)} {alt.unit}
+                </Badge>
+              ))}
+            </div>
           </div>
         </div>
       )}

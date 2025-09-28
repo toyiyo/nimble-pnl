@@ -141,7 +141,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
     } : {
       sku: initialData?.sku || '',
       name: initialData?.name || '',
-      package_qty: 1,
+      package_qty: 1,  // Default to buying 1 package
       
       par_level_min: 0,
       par_level_max: 0,

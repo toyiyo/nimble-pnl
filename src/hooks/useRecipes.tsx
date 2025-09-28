@@ -76,12 +76,27 @@ export const useRecipes = (restaurantId: string | null) => {
 
       if (error) throw error;
       
-      // Enhance recipes with profitability data
+      // Enhance recipes with updated costs and profitability data
       const enhancedRecipes = await Promise.all(
         (data || []).map(async (recipe) => {
-          const profitData = await calculateRecipeProfitability(recipe);
-          return {
+          // Recalculate cost using the updated calculation function
+          const updatedCost = await calculateRecipeCost(recipe.id);
+          const recipeWithUpdatedCost = {
             ...recipe,
+            estimated_cost: updatedCost || recipe.estimated_cost
+          };
+          
+          // If cost was updated, save it to database
+          if (updatedCost !== null && updatedCost !== recipe.estimated_cost) {
+            await supabase
+              .from('recipes')
+              .update({ estimated_cost: updatedCost })
+              .eq('id', recipe.id);
+          }
+          
+          const profitData = await calculateRecipeProfitability(recipeWithUpdatedCost);
+          return {
+            ...recipeWithUpdatedCost,
             avg_sale_price: profitData?.avg_sale_price,
             profit_margin: profitData?.profit_margin,
             profit_per_serving: profitData?.profit_per_serving

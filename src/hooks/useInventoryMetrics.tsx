@@ -162,23 +162,27 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
               // Calculate how much of this product is used per recipe serving
               const quantityPerServing = recipeIngredient.quantity || 0;
               
-              // Use enhanced unit conversion instead of conversion_factor
-              // This will require accessing recipe unit information
-              const purchaseUnitsPerServing = quantityPerServing; // Simplified for now - enhanced conversion will be implemented when we have recipe unit data
-              
-              if (purchaseUnitsPerServing > 0) {
-                // Value per purchase unit = recipe price / purchase units used per serving
-                const valuePerPurchaseUnit = recipePrice / purchaseUnitsPerServing;
-                totalPotentialValue += valuePerPurchaseUnit;
+              if (quantityPerServing > 0) {
+                // Value per recipe unit = recipe price / quantity used per serving
+                const valuePerRecipeUnit = recipePrice / quantityPerServing;
+                totalPotentialValue += valuePerRecipeUnit;
                 totalUsageRatio += 1;
               }
             }
           }
 
           if (totalUsageRatio > 0) {
-            // Average value per unit across all recipes that use this product
-            const averageValuePerUnit = totalPotentialValue / totalUsageRatio;
-            inventoryValue = currentStock * averageValuePerUnit;
+            // Average value per recipe unit across all recipes that use this product
+            const averageValuePerRecipeUnit = totalPotentialValue / totalUsageRatio;
+            
+            // Convert current stock to recipe units for valuation
+            let stockInRecipeUnits = currentStock;
+            if (product.size_value && product.size_value > 1 && product.uom_purchase && product.size_unit !== product.uom_purchase) {
+              // Convert from storage units (e.g., ml) to purchase units (e.g., bottles) 
+              stockInRecipeUnits = currentStock / product.size_value;
+            }
+            
+            inventoryValue = stockInRecipeUnits * averageValuePerRecipeUnit;
           }
         }
 

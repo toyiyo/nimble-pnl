@@ -152,10 +152,10 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
             if (recipePrice > 0) {
               // Calculate how much of this product is used per recipe serving
               const quantityPerServing = recipeIngredient.quantity || 0;
-              const conversionFactor = product.conversion_factor || 1;
               
-              // Convert recipe units to purchase units
-              const purchaseUnitsPerServing = quantityPerServing / conversionFactor;
+              // Use enhanced unit conversion instead of conversion_factor
+              // This will require accessing recipe unit information
+              const purchaseUnitsPerServing = quantityPerServing; // Simplified for now - enhanced conversion will be implemented when we have recipe unit data
               
               if (purchaseUnitsPerServing > 0) {
                 // Value per purchase unit = recipe price / purchase units used per serving

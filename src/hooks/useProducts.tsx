@@ -18,7 +18,6 @@ export interface Product {
   package_qty?: number | null;
   uom_purchase?: string | null;
   uom_recipe?: string | null;
-  conversion_factor?: number | null;
   cost_per_unit?: number | null;
   current_stock?: number | null;
   par_level_min?: number | null;
@@ -46,7 +45,6 @@ export interface CreateProductData {
   package_qty?: number | null;
   uom_purchase?: string | null;
   uom_recipe?: string | null;
-  conversion_factor?: number | null;
   cost_per_unit?: number | null;
   current_stock?: number | null;
   par_level_min?: number | null;

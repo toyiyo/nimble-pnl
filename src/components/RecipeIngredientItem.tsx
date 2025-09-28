@@ -55,9 +55,6 @@ export function RecipeIngredientItem({
                         {product.cost_per_unit && (
                           <span className="text-xs text-muted-foreground">
                             ${product.cost_per_unit.toFixed(2)}/{product.uom_purchase || 'unit'}
-                            {product.conversion_factor && product.conversion_factor !== 1 && (
-                              <> • ${(product.cost_per_unit / product.conversion_factor).toFixed(3)}/{product.uom_recipe || 'recipe unit'}</>
-                            )}
                           </span>
                         )}
                       </div>

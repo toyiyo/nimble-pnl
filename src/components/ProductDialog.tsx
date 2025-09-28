@@ -50,7 +50,7 @@ const productSchema = z.object({
   package_qty: z.number().int().positive().optional(),
   uom_purchase: z.string().optional(),
   uom_recipe: z.string().optional(),
-  conversion_factor: z.number().positive().optional(),
+  
   cost_per_unit: z.number().min(0).optional(),
   supplier_name: z.string().optional(),
   supplier_sku: z.string().optional(),
@@ -128,7 +128,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       package_qty: editProduct.package_qty || 1,
       uom_purchase: editProduct.uom_purchase || '',
       uom_recipe: editProduct.uom_recipe || '',
-      conversion_factor: editProduct.conversion_factor || 1,
+      
       cost_per_unit: editProduct.cost_per_unit || undefined,
       supplier_name: editProduct.supplier_name || '',
       supplier_sku: editProduct.supplier_sku || '',
@@ -142,7 +142,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       sku: initialData?.sku || '',
       name: initialData?.name || '',
       package_qty: 1,
-      conversion_factor: 1,
+      
       par_level_min: 0,
       par_level_max: 0,
       current_stock: 0,
@@ -221,7 +221,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       package_qty: data.package_qty,
       uom_purchase: data.uom_purchase,
       uom_recipe: data.uom_recipe,
-      conversion_factor: data.conversion_factor,
       cost_per_unit: data.cost_per_unit,
       supplier_name: data.supplier_name,
       supplier_sku: data.supplier_sku,
@@ -428,51 +427,9 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="conversion_factor"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Conversion Factor</FormLabel>
-                      <FormControl>
-                        <div className="flex gap-2">
-                          <Input
-                            type="number"
-                            step="0.001"
-                            {...field}
-                            value={field.value || 1}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
-                          />
-                          {suggestedConversionFactor && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => form.setValue('conversion_factor', suggestedConversionFactor)}
-                            >
-                              Use {suggestedConversionFactor.toFixed(3)}
-                            </Button>
-                          )}
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
-
-              {form.watch('uom_purchase') && form.watch('uom_recipe') && (
-                <div className="text-xs text-muted-foreground">
-                  1 {form.watch('uom_purchase')} = {form.watch('conversion_factor') || 1} {form.watch('uom_recipe')}
-                  {suggestedConversionFactor && (
-                    <span className="ml-2 text-blue-600">
-                      (Suggested: {suggestedConversionFactor.toFixed(3)})
-                    </span>
-                  )}
-                </div>
-              )}
             </div>
-
+            
             {/* Recipe Conversion Preview */}
             {recipes.length > 0 && form.watch('name') && form.watch('size_value') && form.watch('uom_purchase') && (
               <>

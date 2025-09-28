@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/integrations/supabase/client';
+import { convertUnits } from '@/lib/enhancedUnitConversion';
 
 // Standard conversion factors for common units
 const STANDARD_CONVERSIONS: Record<string, Record<string, number>> = {
@@ -19,17 +19,28 @@ const STANDARD_CONVERSIONS: Record<string, Record<string, number>> = {
   'g': { 'lb': 0.00220462, 'kg': 0.001, 'oz': 0.035274 }
 };
 
+/**
+ * @deprecated This hook is deprecated. Use convertUnits and calculateInventoryImpact from @/lib/enhancedUnitConversion instead.
+ * The new system provides product-specific conversions and better accuracy.
+ */
 export function useUnitConversion(restaurantId: string | null) {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   
   const getConversionFactor = useCallback((
     fromUnit: string,
-    toUnit: string
+    toUnit: string,
+    productName?: string
   ): number => {
     if (fromUnit === toUnit) return 1;
     
-    // Normalize units to lowercase for matching
+    // Use enhanced conversion system instead
+    const conversionResult = convertUnits(1, fromUnit, toUnit, productName);
+    if (conversionResult) {
+      return conversionResult.value;
+    }
+    
+    // Fallback to old system for backward compatibility
     const from = fromUnit.toLowerCase().trim();
     const to = toUnit.toLowerCase().trim();
     
@@ -47,41 +58,27 @@ export function useUnitConversion(restaurantId: string | null) {
     return 1;
   }, []);
   
+  /**
+   * @deprecated This function is deprecated. The enhanced conversion system no longer uses conversion_factor field.
+   */
   const updateProductConversion = useCallback(async (
     productId: string,
     conversionFactor: number
   ) => {
-    try {
-      setLoading(true);
-      
-      const { error } = await supabase
-        .from('products')
-        .update({ conversion_factor: conversionFactor })
-        .eq('id', productId);
-        
-      if (error) throw error;
-      
-      toast({
-        title: "Conversion updated",
-        description: "Product conversion factor has been updated successfully.",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error updating conversion",
-        description: error.message,
-        variant: "destructive",
-      });
-      throw error;
-    } finally {
-      setLoading(false);
-    }
+    toast({
+      title: "Feature Deprecated",
+      description: "Manual conversion factors are no longer used. The system now uses enhanced product-specific conversions automatically.",
+      variant: "destructive",
+    });
+    throw new Error("updateProductConversion is deprecated. Use enhanced conversion system instead.");
   }, [toast]);
   
   const suggestConversionFactor = useCallback((
     purchaseUnit: string,
-    recipeUnit: string
+    recipeUnit: string,
+    productName?: string
   ): number => {
-    return getConversionFactor(purchaseUnit, recipeUnit);
+    return getConversionFactor(purchaseUnit, recipeUnit, productName);
   }, [getConversionFactor]);
   
   return {

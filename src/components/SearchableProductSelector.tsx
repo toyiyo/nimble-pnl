@@ -64,6 +64,30 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
       .trim();
   };
 
+  // Enhanced word-based search that handles partial matches better
+  const wordBasedSearch = (products: Product[], searchTerm: string) => {
+    if (!searchTerm.trim()) return [];
+    
+    const searchWords = normalizeSearchTerm(searchTerm).split(' ').filter(word => word.length >= 2);
+    
+    return products.filter(product => {
+      const searchableText = [
+        product.name,
+        product.brand,
+        product.category,
+        product.sku,
+        ...(product.receipt_item_names || [])
+      ].filter(Boolean).join(' ').toLowerCase();
+      
+      // Match if ANY search word is found
+      return searchWords.some(word => searchableText.includes(word));
+    }).map(product => ({
+      ...product,
+      similarity_score: calculateMatchScore(product, searchTerm) / 100,
+      match_type: 'word_match'
+    }));
+  };
+
   const calculateMatchScore = (product: Product, searchTerm: string) => {
     let score = 0;
     const normalizedSearch = normalizeSearchTerm(searchTerm);
@@ -76,10 +100,10 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
     if (normalizedBrand.includes(normalizedSearch)) score += 80;
     if (normalizedSku.includes(normalizedSearch)) score += 60;
     
-    // Word matches get partial scores
+    // Word matches get partial scores - more generous scoring
     const searchWords = normalizedSearch.split(' ').filter(word => word.length >= 2);
     searchWords.forEach(word => {
-      if (normalizedName.includes(word)) score += 25;
+      if (normalizedName.includes(word)) score += word.length >= 4 ? 40 : 25;
       if (normalizedBrand.includes(word)) score += 20;
       if (normalizedSku.includes(word)) score += 15;
       
@@ -94,16 +118,17 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
 
   const fuseOptions = {
     keys: [
-      { name: 'name', weight: 0.4 },
-      { name: 'brand', weight: 0.3 },
-      { name: 'sku', weight: 0.2 },
+      { name: 'name', weight: 0.6 },
+      { name: 'brand', weight: 0.2 },
+      { name: 'sku', weight: 0.1 },
       { name: 'receipt_item_names', weight: 0.1 }
     ],
-    threshold: 0.6,
+    threshold: 0.3, // More lenient for better matches
     includeScore: true,
     minMatchCharLength: 2,
     ignoreLocation: true,
-    findAllMatches: true
+    findAllMatches: true,
+    shouldSort: true
   };
 
   // Load all products initially and auto-search when search term changes
@@ -185,92 +210,70 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
 
     setLoading(true);
     try {
-      // First try the database advanced search
-      const { data: dbResults, error } = await supabase.rpc('advanced_product_search', {
-        p_restaurant_id: selectedRestaurant.restaurant_id,
-        p_search_term: term,
-        p_similarity_threshold: 0.05, // Lower threshold for broader results
-        p_limit: 20
-      });
-
       let searchResults: Product[] = [];
 
-      if (!error && dbResults?.length > 0) {
-        // Map database results
-        searchResults = (dbResults || []).map((item: any) => ({
-          id: item.id,
-          name: item.name,
-          sku: item.sku,
-          brand: item.brand,
-          category: item.category,
-          current_stock: item.current_stock,
-          uom_purchase: item.uom_purchase,
-          receipt_item_names: item.receipt_item_names || [],
-          similarity_score: item.combined_score,
-          match_type: item.match_type
-        }));
+      // Start with word-based search for immediate results
+      if (allProducts.length > 0) {
+        const wordResults = wordBasedSearch(allProducts, term);
+        searchResults = [...wordResults];
       }
 
-      // If database search returns few results, enhance with fuzzy search
-      if (searchResults.length < 5 && allProducts.length > 0) {
+      // Enhance with fuzzy search
+      if (allProducts.length > 0) {
         const fuse = new Fuse(allProducts, fuseOptions);
         const fuzzyResults = fuse.search(term);
         
-        // Add fuzzy search results with custom scoring
-        const additionalResults = fuzzyResults
+        const fuzzyMapped = fuzzyResults
           .filter(result => !searchResults.some(sr => sr.id === result.item.id))
           .map(result => ({
             ...result.item,
-            similarity_score: 1 - (result.score || 0), // Convert Fuse score to similarity
+            similarity_score: 1 - (result.score || 0),
             match_type: 'fuzzy_match'
-          }))
-          .slice(0, 10);
-
-        searchResults = [...searchResults, ...additionalResults];
-      }
-
-      // Also add custom word-based matching for remaining products
-      if (searchResults.length < 10 && allProducts.length > 0) {
-        const customMatches = allProducts
-          .filter(product => !searchResults.some(sr => sr.id === product.id))
-          .map(product => ({
-            ...product,
-            custom_score: calculateMatchScore(product, term)
-          }))
-          .filter(product => product.custom_score > 15)
-          .sort((a, b) => b.custom_score - a.custom_score)
-          .slice(0, 5)
-          .map(product => ({
-            ...product,
-            similarity_score: Math.min(product.custom_score / 100, 0.9),
-            match_type: 'word_match'
           }));
 
-        searchResults = [...searchResults, ...customMatches];
+        searchResults = [...searchResults, ...fuzzyMapped];
       }
 
-      // Sort all results by similarity score
-      searchResults.sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0));
+      // Try database search as enhancement (not primary)
+      try {
+        const { data: dbResults, error } = await supabase.rpc('advanced_product_search', {
+          p_restaurant_id: selectedRestaurant.restaurant_id,
+          p_search_term: term,
+          p_similarity_threshold: 0.05,
+          p_limit: 10
+        });
 
-      setProducts(searchResults.slice(0, 20)); // Limit final results
+        if (!error && dbResults?.length > 0) {
+          const dbMapped = (dbResults || []).map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            sku: item.sku,
+            brand: item.brand,
+            category: item.category,
+            current_stock: item.current_stock,
+            uom_purchase: item.uom_purchase,
+            receipt_item_names: item.receipt_item_names || [],
+            similarity_score: item.combined_score,
+            match_type: item.match_type
+          }));
+
+          // Add database results that aren't already included
+          const additionalDbResults = dbMapped.filter(db => 
+            !searchResults.some(sr => sr.id === db.id)
+          );
+          searchResults = [...searchResults, ...additionalDbResults];
+        }
+      } catch (dbError) {
+        console.log('Database search unavailable, using client search');
+      }
+
+      // Sort by similarity score and limit results
+      searchResults.sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0));
+      setProducts(searchResults.slice(0, 25)); // Show more results
+      
     } catch (error) {
       console.error('Error searching products:', error);
-      
-      // Fallback to client-side search only
-      if (allProducts.length > 0) {
-        const fuse = new Fuse(allProducts, fuseOptions);
-        const fallbackResults = fuse.search(term)
-          .map(result => ({
-            ...result.item,
-            similarity_score: 1 - (result.score || 0),
-            match_type: 'fallback_fuzzy'
-          }))
-          .slice(0, 10);
-        
-        setProducts(fallbackResults);
-      } else {
-        setProducts([]);
-      }
+      setProducts([]);
     } finally {
       setLoading(false);
     }

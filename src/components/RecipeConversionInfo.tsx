@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Product } from '@/hooks/useProducts';
 import { useUnitConversion } from '@/hooks/useUnitConversion';
-import { Calculator, TrendingUp, Edit2 } from 'lucide-react';
+import { calculateInventoryImpact } from '@/lib/enhancedUnitConversion';
+import { Calculator, TrendingUp, Edit2, Info } from 'lucide-react';
 import { useState } from 'react';
 
 interface RecipeConversionInfoProps {
@@ -32,12 +33,44 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
     );
   }
 
-  // Use saved factor if we've updated it, otherwise use product's conversion factor
+  // Calculate enhanced conversions using the enhanced unit conversion system
+  const purchaseQuantity = product.size_value || 1;
+  const purchaseUnit = product.uom_purchase || 'unit';
+  const costPerUnit = product.cost_per_unit || 0;
+
+  // Use enhanced unit conversion for accurate calculations
+  let conversionResult = null;
+  try {
+    conversionResult = calculateInventoryImpact(
+      recipeQuantity,
+      recipeUnit,
+      purchaseQuantity,
+      purchaseUnit,
+      product.name || '',
+      costPerUnit
+    );
+  } catch (error) {
+    console.warn('Enhanced conversion failed, falling back to basic conversion:', error);
+  }
+
+  // Fallback to basic conversion if enhanced calculation fails
   const currentFactor = savedFactor !== (product.conversion_factor || 1) ? savedFactor : (product.conversion_factor || 1);
   const actualFactor = isEditing ? customFactor : currentFactor;
-  const costPerRecipeUnit = product.cost_per_unit / actualFactor;
-  const totalRecipeCost = recipeQuantity * costPerRecipeUnit;
-  const purchaseUnitsNeeded = recipeQuantity / actualFactor;
+  
+  let costPerRecipeUnit, totalRecipeCost, purchaseUnitsNeeded, percentageUsed;
+  
+  if (conversionResult) {
+    costPerRecipeUnit = conversionResult.costImpact;
+    totalRecipeCost = conversionResult.costImpact;
+    purchaseUnitsNeeded = conversionResult.inventoryDeduction;
+    percentageUsed = conversionResult.percentageOfPackage;
+  } else {
+    // Fallback to basic calculation
+    costPerRecipeUnit = costPerUnit / actualFactor;
+    totalRecipeCost = recipeQuantity * costPerRecipeUnit;
+    purchaseUnitsNeeded = recipeQuantity / actualFactor;
+    percentageUsed = (purchaseUnitsNeeded / purchaseQuantity) * 100;
+  }
   
   const handleSaveConversion = async () => {
     try {
@@ -82,46 +115,77 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
 
         <div className="space-y-3 text-sm">
           <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">Conversion Factor:</span>
-            {isEditing ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs">1 {product.uom_purchase || 'unit'} =</span>
-                <Input 
-                  type="number"
-                  value={customFactor}
-                  onChange={(e) => setCustomFactor(parseFloat(e.target.value) || 1)}
-                  className="w-20 h-7 text-xs"
-                  step="0.001"
-                />
-                <span className="text-xs">{product.uom_recipe || recipeUnit}</span>
-                <Button size="sm" onClick={handleSaveConversion} disabled={loading} className="h-7 px-2">
-                  Save
-                </Button>
-                <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-7 px-2">
-                  Cancel
-                </Button>
+            <span className="text-muted-foreground">Package Size:</span>
+            <span className="font-medium">
+              {purchaseQuantity} {purchaseUnit}
+            </span>
+          </div>
+          
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Cost per package:</span>
+            <span className="font-medium">${costPerUnit.toFixed(2)}</span>
+          </div>
+          
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Cost per {recipeUnit}:</span>
+            <span className="font-medium">${(costPerRecipeUnit / recipeQuantity).toFixed(3)}</span>
+          </div>
+
+          {conversionResult && (
+            <div className="pt-2 space-y-2 border-t">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Info className="w-3 h-3" />
+                Enhanced conversion for {product.name?.toLowerCase().includes('rice') ? 'rice' : 'this product'}
               </div>
-            ) : (
+              
+              {product.name?.toLowerCase().includes('rice') && (
+                <div className="text-xs space-y-1">
+                  <div className="flex justify-between">
+                    <span>1 cup rice weighs:</span>
+                    <span>~6.3 oz / 180g</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Package yields:</span>
+                    <span>~{(purchaseQuantity / 6.3).toFixed(1)} cups</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!conversionResult && isEditing && (
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <span className="text-xs">1 {purchaseUnit} =</span>
+              <Input 
+                type="number"
+                value={customFactor}
+                onChange={(e) => setCustomFactor(parseFloat(e.target.value) || 1)}
+                className="w-20 h-7 text-xs"
+                step="0.001"
+              />
+              <span className="text-xs">{recipeUnit}</span>
+              <Button size="sm" onClick={handleSaveConversion} disabled={loading} className="h-7 px-2">
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-7 px-2">
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          {!conversionResult && !isEditing && (
+            <div className="flex justify-between items-center pt-2 border-t">
+              <span className="text-muted-foreground">Manual conversion:</span>
               <div className="flex items-center gap-2">
-                <span className="font-medium">
-                  1 {product.uom_purchase || 'unit'} = {actualFactor} {product.uom_recipe || recipeUnit}
+                <span className="font-medium text-xs">
+                  1 {purchaseUnit} = {actualFactor} {recipeUnit}
                 </span>
                 <Button size="sm" variant="ghost" onClick={() => setIsEditing(true)} className="h-6 w-6 p-0">
                   <Edit2 className="h-3 w-3" />
                 </Button>
               </div>
-            )}
-          </div>
-          
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Cost per {product.uom_purchase || 'purchase unit'}:</span>
-            <span className="font-medium">${product.cost_per_unit.toFixed(2)}</span>
-          </div>
-          
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Cost per {product.uom_recipe || recipeUnit}:</span>
-            <span className="font-medium">${costPerRecipeUnit.toFixed(3)}</span>
-          </div>
+            </div>
+          )}
         </div>
 
         <Separator />
@@ -136,8 +200,12 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
             <span className="font-medium">{recipeQuantity} {recipeUnit}</span>
           </div>
           <div className="flex justify-between">
-            <span>Purchase Units Needed:</span>
-            <span className="font-medium">{purchaseUnitsNeeded.toFixed(3)} {product.uom_purchase || 'unit'}</span>
+            <span>Inventory Deduction:</span>
+            <span className="font-medium">{purchaseUnitsNeeded.toFixed(3)} {purchaseUnit}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Percentage of Package:</span>
+            <span className="font-medium">{percentageUsed.toFixed(1)}%</span>
           </div>
           <div className="flex justify-between">
             <span>Total Cost:</span>

@@ -302,7 +302,13 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                 <div className="flex-1">
                   <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <span>Update Product: {product.name}</span>
-                    <Badge variant="secondary" className="w-fit">Current Stock: {currentStock}</Badge>
+                    <Badge variant="secondary" className="w-fit">
+                      Current Stock: {
+                        product.package_qty && product.package_qty > 1 && product.uom_purchase
+                          ? `${Math.floor(currentStock / product.package_qty)} ${product.uom_purchase} (${currentStock} ${product.size_unit || 'units'} total)`
+                          : `${currentStock} ${product.size_unit || 'units'}`
+                      }
+                    </Badge>
                   </DialogTitle>
                   <DialogDescription className="mt-1">
                     Add inventory quantity and update product information

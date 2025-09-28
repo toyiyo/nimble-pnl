@@ -179,7 +179,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 <div>
                   <Label htmlFor={`name-${item.id}`}>Item Name</Label>
                   <Input
-                    key={`name-${item.id}-${item.parsed_name}`}
+                    key={`name-${item.id}`}
                     id={`name-${item.id}`}
                     defaultValue={item.parsed_name || ''}
                     onChange={(e) => handleNameChange(item.id, e.target.value)}
@@ -191,7 +191,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                   <div>
                     <Label htmlFor={`quantity-${item.id}`}>Quantity</Label>
                     <Input
-                      key={`quantity-${item.id}-${item.parsed_quantity}`}
+                      key={`quantity-${item.id}`}
                       id={`quantity-${item.id}`}
                       type="number"
                       defaultValue={item.parsed_quantity || ''}
@@ -202,7 +202,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                   <div>
                     <Label htmlFor={`unit-${item.id}`}>Unit</Label>
                     <Input
-                      key={`unit-${item.id}-${item.parsed_unit}`}
+                      key={`unit-${item.id}`}
                       id={`unit-${item.id}`}
                       defaultValue={item.parsed_unit || ''}
                       onChange={(e) => handleUnitChange(item.id, e.target.value)}
@@ -214,7 +214,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 <div>
                   <Label htmlFor={`price-${item.id}`}>Price</Label>
                   <Input
-                    key={`price-${item.id}-${item.parsed_price}`}
+                    key={`price-${item.id}`}
                     id={`price-${item.id}`}
                     type="number"
                     step="0.01"

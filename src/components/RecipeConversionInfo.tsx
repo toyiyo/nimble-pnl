@@ -25,7 +25,7 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
   }
 
   // Calculate enhanced conversions using the enhanced unit conversion system
-  const packageQuantity = (product.size_value || 1) * (product.package_qty || 1); // Total amount you're buying
+  const packageQuantity = product.size_value || 1; // Amount in one package (e.g., 750ml in one bottle)
   const purchaseUnit = product.size_unit || 'unit'; // The unit of measurement (ml, oz, etc.)
   const packageType = product.uom_purchase || 'unit'; // What you buy by (bottle, bag, etc.)
   const costPerUnit = product.cost_per_unit || 0; // Cost per package type (per bottle, per bag)
@@ -36,10 +36,10 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
     impact = calculateInventoryImpact(
       recipeQuantity,
       recipeUnit,
-      packageQuantity, // Use total quantity of all packages
+      packageQuantity, // Amount in one package
       purchaseUnit, // Use the actual measurement unit (ml, oz)
       product.name || '',
-      costPerUnit / (product.package_qty || 1) // Cost per unit of measurement, not per package
+      costPerUnit // Cost per package (e.g., $10 per bottle)
     );
   } catch (error) {
     console.warn('Enhanced conversion failed:', error);
@@ -83,7 +83,7 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
                 <span className="font-medium">
                   {packageQuantity} {purchaseUnit}
                   <span className="text-blue-600 ml-2 text-xs">
-                    ({product.package_qty || 1} {packageType}{(product.package_qty || 1) > 1 ? 's' : ''} × {product.size_value || 0} {purchaseUnit})
+                    (per {packageType})
                   </span>
                 </span>
               </div>
@@ -98,19 +98,19 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-blue-200">
-                <span className="text-blue-700">Cost per Unit</span>
+                <span className="text-blue-700">Cost per Package</span>
                 <span className="font-medium">${product.cost_per_unit?.toFixed(2) || '0.00'}/{packageType}</span>
               </div>
               <div className="flex justify-between py-1 bg-blue-100 px-2 rounded">
                 <span className="text-blue-800 font-medium">Total Package Cost</span>
                 <span className="font-bold text-blue-900">
-                  ${((product.cost_per_unit || 0) * (product.package_qty || 1)).toFixed(2)}
+                  ${(product.cost_per_unit || 0).toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between py-1 bg-green-100 px-2 rounded">
-                <span className="text-green-800 font-medium">Cost per Recipe Unit</span>
+                <span className="text-green-800 font-medium">Cost per {purchaseUnit}</span>
                 <span className="font-bold text-green-900">
-                  ${costPerRecipeUnit.toFixed(3)}/{recipeUnit}
+                  ${((product.cost_per_unit || 0) / (product.size_value || 1)).toFixed(4)}/{purchaseUnit}
                 </span>
               </div>
             </div>

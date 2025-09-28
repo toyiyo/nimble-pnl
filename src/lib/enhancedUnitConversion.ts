@@ -183,7 +183,7 @@ export function calculateInventoryImpact(
   purchaseQuantity: number,
   purchaseUnit: string,
   productName: string,
-  costPerPurchaseUnit: number  // This is cost per single purchase unit (e.g., $5.97/lb)
+  costPerPackage: number  // This is cost per package (e.g., $10 per bottle)
 ): {
   inventoryDeduction: number;           // How much to deduct from inventory (in purchase units)
   inventoryDeductionUnit: string;       // Unit of the deduction
@@ -192,7 +192,26 @@ export function calculateInventoryImpact(
   conversionDetails: ConversionResult | null;
 } {
   
-  // Step 1: Convert recipe quantity to purchase units for direct comparison
+  // Step 1: Handle bottle unit conversion
+  if (recipeUnit === 'bottle' && purchaseUnit === 'ml') {
+    // If recipe calls for bottles and purchase unit is ml, convert directly
+    const inventoryDeduction = recipeQuantity * purchaseQuantity; // e.g., 1 bottle = 750ml
+    return {
+      inventoryDeduction,
+      inventoryDeductionUnit: purchaseUnit,
+      costImpact: recipeQuantity * costPerPackage,
+      percentageOfPackage: (recipeQuantity * 100),
+      conversionDetails: {
+        value: inventoryDeduction,
+        fromUnit: recipeUnit,
+        toUnit: purchaseUnit,
+        productSpecific: true,
+        conversionPath: ['bottle', 'ml']
+      }
+    };
+  }
+
+  // Step 2: Convert recipe quantity to purchase units for direct comparison
   const recipeConversion = convertUnits(recipeQuantity, recipeUnit, purchaseUnit, productName);
   
   if (!recipeConversion) {
@@ -206,7 +225,7 @@ export function calculateInventoryImpact(
         return {
           inventoryDeduction: convertedValue,
           inventoryDeductionUnit: purchaseUnit,
-          costImpact: (convertedValue / purchaseQuantity) * costPerPurchaseUnit * purchaseQuantity,
+          costImpact: (convertedValue / purchaseQuantity) * costPerPackage,
           percentageOfPackage: (convertedValue / purchaseQuantity) * 100,
           conversionDetails: {
             value: convertedValue,
@@ -224,7 +243,7 @@ export function calculateInventoryImpact(
         return {
           inventoryDeduction: convertedValue,
           inventoryDeductionUnit: purchaseUnit,
-          costImpact: (convertedValue / purchaseQuantity) * costPerPurchaseUnit * purchaseQuantity,
+          costImpact: (convertedValue / purchaseQuantity) * costPerPackage,
           percentageOfPackage: (convertedValue / purchaseQuantity) * 100,
           conversionDetails: {
             value: convertedValue,
@@ -241,7 +260,7 @@ export function calculateInventoryImpact(
       return {
         inventoryDeduction: recipeQuantity,
         inventoryDeductionUnit: purchaseUnit,
-        costImpact: (recipeQuantity / purchaseQuantity) * costPerPurchaseUnit * purchaseQuantity,
+        costImpact: (recipeQuantity / purchaseQuantity) * costPerPackage,
         percentageOfPackage: (recipeQuantity / purchaseQuantity) * 100,
         conversionDetails: {
           value: recipeQuantity,
@@ -262,8 +281,8 @@ export function calculateInventoryImpact(
   const percentageOfPackage = (inventoryDeduction / purchaseQuantity) * 100;
   
   // Step 4: Calculate cost impact
-  // costPerPurchaseUnit is per unit (e.g., $5.97/lb), so multiply by actual units used
-  const costImpact = inventoryDeduction * costPerPurchaseUnit;
+  // costPerPackage is per package (e.g., $10 per bottle), so calculate based on percentage used
+  const costImpact = (inventoryDeduction / purchaseQuantity) * costPerPackage;
   
   return {
     inventoryDeduction,

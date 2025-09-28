@@ -79,17 +79,12 @@ export const useReceiptImport = () => {
         throw uploadError;
       }
 
-      // Get the public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('receipt-images')
-        .getPublicUrl(filePath);
-
-      // Create receipt import record
+      // Create receipt import record with just the file path (we'll generate signed URLs when displaying)
       const { data: receiptData, error: receiptError } = await supabase
         .from('receipt_imports')
         .insert({
           restaurant_id: selectedRestaurant.restaurant_id,
-          raw_file_url: publicUrl,
+          raw_file_url: filePath, // Store path instead of public URL
           file_name: file.name,
           file_size: file.size,
           status: 'uploaded'
@@ -164,33 +159,72 @@ export const useReceiptImport = () => {
   const getReceiptImports = async () => {
     if (!selectedRestaurant?.restaurant_id) return [];
 
-    const { data, error } = await supabase
-      .from('receipt_imports')
-      .select('*')
-      .eq('restaurant_id', selectedRestaurant.restaurant_id)
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('receipt_imports')
+        .select('*')
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .order('created_at', { ascending: false });
 
-    if (error) {
+      if (error) throw error;
+
+      // Generate signed URLs for all images
+      const receiptsWithSignedUrls = await Promise.all(
+        (data || []).map(async (receipt) => {
+          if (receipt.raw_file_url && !receipt.raw_file_url.startsWith('http')) {
+            try {
+              const { data: signedUrlData } = await supabase.storage
+                .from('receipt-images')
+                .createSignedUrl(receipt.raw_file_url, 3600); // 1 hour expiry
+              
+              if (signedUrlData?.signedUrl) {
+                receipt.raw_file_url = signedUrlData.signedUrl;
+              }
+            } catch (signedUrlError) {
+              console.error('Failed to generate signed URL for receipt:', receipt.id, signedUrlError);
+            }
+          }
+          return receipt;
+        })
+      );
+
+      return receiptsWithSignedUrls as ReceiptImport[];
+    } catch (error) {
       console.error('Error fetching receipt imports:', error);
       return [];
     }
-
-    return data as ReceiptImport[];
   };
 
   const getReceiptDetails = async (receiptId: string) => {
-    const { data, error } = await supabase
-      .from('receipt_imports')
-      .select('*')
-      .eq('id', receiptId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('receipt_imports')
+        .select('*')
+        .eq('id', receiptId)
+        .single();
 
-    if (error) {
+      if (error) throw error;
+
+      // Generate signed URL for displaying the image
+      if (data?.raw_file_url && !data.raw_file_url.startsWith('http')) {
+        try {
+          const { data: signedUrlData } = await supabase.storage
+            .from('receipt-images')
+            .createSignedUrl(data.raw_file_url, 3600); // 1 hour expiry
+          
+          if (signedUrlData?.signedUrl) {
+            data.raw_file_url = signedUrlData.signedUrl;
+          }
+        } catch (signedUrlError) {
+          console.error('Failed to generate signed URL:', signedUrlError);
+        }
+      }
+
+      return data as ReceiptImport;
+    } catch (error) {
       console.error('Error fetching receipt details:', error);
       return null;
     }
-
-    return data as ReceiptImport;
   };
 
   const getReceiptLineItems = async (receiptId: string) => {

@@ -34,7 +34,7 @@ export const Inventory: React.FC = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { toast } = useToast();
   
-  const { products, loading, createProduct, updateProductWithQuantity, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const { products, loading, createProduct, updateProductWithQuantity, deleteProduct, findProductByGtin, refetchProducts } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { updateProductStockWithAudit } = useInventoryAudit();
   const inventoryMetrics = useInventoryMetrics(selectedRestaurant?.restaurant_id || null, products);
   
@@ -106,7 +106,6 @@ export const Inventory: React.FC = () => {
         package_qty: 1,
         uom_purchase: null,
         uom_recipe: null,
-        conversion_factor: 1,
         cost_per_unit: null,
         current_stock: 0,
         par_level_min: 0,
@@ -161,7 +160,6 @@ export const Inventory: React.FC = () => {
         package_qty: result?.package_qty || 1,
         uom_purchase: null,
         uom_recipe: null,
-        conversion_factor: 1,
         cost_per_unit: null,
         current_stock: 0,
         par_level_min: 0,
@@ -292,7 +290,6 @@ export const Inventory: React.FC = () => {
         package_qty: enhancedData?.packageQty || 1,
         uom_purchase: null,
         uom_recipe: null,
-        conversion_factor: 1,
         cost_per_unit: null,
         current_stock: 0,
         par_level_min: 0,
@@ -346,7 +343,6 @@ export const Inventory: React.FC = () => {
           package_qty: 1,
           uom_purchase: null,
           uom_recipe: null,
-          conversion_factor: 1,
           cost_per_unit: null,
           current_stock: 0,
           par_level_min: 0,
@@ -422,7 +418,6 @@ export const Inventory: React.FC = () => {
       package_qty: 1,
       uom_purchase: null,
       uom_recipe: null,
-      conversion_factor: 1,
       cost_per_unit: null,
       current_stock: 0,
       par_level_min: 0,
@@ -458,7 +453,6 @@ export const Inventory: React.FC = () => {
         package_qty: selectedProduct.package_qty,
         uom_purchase: updates.uom_purchase || selectedProduct.uom_purchase,
         uom_recipe: selectedProduct.uom_recipe,
-        conversion_factor: selectedProduct.conversion_factor,
         cost_per_unit: updates.cost_per_unit || selectedProduct.cost_per_unit,
         current_stock: quantityToAdd, // Set initial stock to the quantity being added
         par_level_min: selectedProduct.par_level_min,
@@ -526,12 +520,12 @@ export const Inventory: React.FC = () => {
         }
         
         // Show success message
-        const quantityDifference = finalStock - currentStock;
+        const quantityDifference = Math.round((finalStock - currentStock) * 100) / 100;
         const isAdjustment = difference !== quantityToAdd;
         if (quantityDifference !== 0) {
           toast({
             title: "Inventory updated",
-            description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference} units. New total: ${finalStock}`,
+            description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference} units. New total: ${Math.round(finalStock * 100) / 100}`,
           });
         } else {
           toast({
@@ -550,8 +544,11 @@ export const Inventory: React.FC = () => {
         return;
       }
       
-      setShowUpdateDialog(false);
-      setSelectedProduct(null);
+        // Refresh products to ensure UI is in sync
+        refetchProducts();
+        
+        setShowUpdateDialog(false);
+        setSelectedProduct(null);
     }
   };
 
@@ -986,16 +983,27 @@ export const Inventory: React.FC = () => {
                            {product.category && (
                              <Badge variant="secondary">{product.category}</Badge>
                            )}
-                           <div className="flex justify-between items-center">
-                             <span className="text-sm">Stock:</span>
-                             <span className={`font-medium ${
-                               (product.current_stock || 0) <= (product.reorder_point || 0) 
-                                 ? 'text-destructive' 
-                                 : 'text-foreground'
-                             }`}>
-                               {product.current_stock || 0} {product.size_unit || 'units'}
-                             </span>
-                           </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm">Stock:</span>
+                              <div className={`font-medium text-right ${
+                                (product.current_stock || 0) <= (product.reorder_point || 0) 
+                                  ? 'text-destructive' 
+                                  : 'text-foreground'
+                              }`}>
+                                {product.package_qty && product.package_qty > 1 && product.uom_purchase ? (
+                                  <div className="space-y-0.5">
+                                    <div className="text-sm">
+                                      {Math.floor((product.current_stock || 0) / product.package_qty)} {product.uom_purchase}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {product.current_stock || 0} {product.size_unit || 'units'} total
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span>{product.current_stock || 0} {product.size_unit || 'units'}</span>
+                                )}
+                              </div>
+                            </div>
                            {product.cost_per_unit && (
                              <div className="flex justify-between items-center">
                                <span className="text-sm">Unit Cost:</span>
@@ -1076,12 +1084,23 @@ export const Inventory: React.FC = () => {
                        </CardHeader>
                        <CardContent>
                          <div className="space-y-2">
-                           <div className="flex justify-between items-center">
-                             <span className="text-sm">Current Stock:</span>
-                             <span className="font-medium text-destructive">
-                               {product.current_stock || 0} {product.size_unit || 'units'}
-                             </span>
-                           </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm">Current Stock:</span>
+                              <div className="font-medium text-destructive text-right">
+                                {product.package_qty && product.package_qty > 1 ? (
+                                  <div className="space-y-0.5">
+                                    <div className="text-sm">
+                                      {Math.floor((product.current_stock || 0) / product.package_qty)} {product.uom_purchase || 'packages'}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {product.current_stock || 0} {product.size_unit || 'units'} total
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span>{product.current_stock || 0} {product.size_unit || 'units'}</span>
+                                )}
+                              </div>
+                            </div>
                            <div className="flex justify-between items-center">
                              <span className="text-sm">Reorder Point:</span>
                              <span className="font-medium">

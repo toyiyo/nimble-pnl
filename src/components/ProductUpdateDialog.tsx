@@ -34,6 +34,10 @@ import {
 import { Product } from '@/hooks/useProducts';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { SizePackagingSection } from '@/components/SizePackagingSection';
+import { RecipeConversionPreview } from '@/components/RecipeConversionPreview';
+import { useProductRecipes } from '@/hooks/useProductRecipes';
+import { useRestaurants } from '@/hooks/useRestaurants';
 
 const updateSchema = z.object({
   quantity_to_add: z.coerce.number().min(0, 'Quantity must be positive').optional(),
@@ -49,8 +53,8 @@ const updateSchema = z.object({
   package_qty: z.coerce.number().int().positive().optional(),
   uom_purchase: z.string().optional(),
   uom_recipe: z.string().optional(),
-  conversion_factor: z.coerce.number().positive().optional(),
-  cost_per_unit: z.coerce.number().positive().optional(),
+  
+  cost_per_unit: z.coerce.number().min(0).optional(),
   supplier_name: z.string().optional(),
   supplier_sku: z.string().optional(),
   par_level_min: z.coerce.number().int().min(0).optional(),
@@ -95,6 +99,9 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   onEnhance,
 }) => {
   const { toast } = useToast();
+  const { restaurants } = useRestaurants();
+  const currentRestaurant = restaurants[0];
+  const { recipes } = useProductRecipes(product.id, currentRestaurant?.id || null);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhancedData, setEnhancedData] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
@@ -117,7 +124,6 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       package_qty: product.package_qty || undefined,
       uom_purchase: product.uom_purchase || '',
       uom_recipe: product.uom_recipe || '',
-      conversion_factor: product.conversion_factor || undefined,
       cost_per_unit: product.cost_per_unit || undefined,
       supplier_name: product.supplier_name || '',
       supplier_sku: product.supplier_sku || '',
@@ -144,7 +150,6 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       package_qty: product.package_qty || undefined,
       uom_purchase: product.uom_purchase || '',
       uom_recipe: product.uom_recipe || '',
-      conversion_factor: product.conversion_factor || undefined,
       cost_per_unit: product.cost_per_unit || undefined,
       supplier_name: product.supplier_name || '',
       supplier_sku: product.supplier_sku || '',
@@ -267,7 +272,6 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       package_qty: data.package_qty || 1,
       uom_purchase: data.uom_purchase,
       uom_recipe: data.uom_recipe,
-      conversion_factor: data.conversion_factor || 1,
       cost_per_unit: data.cost_per_unit,
       supplier_name: data.supplier_name,
       supplier_sku: data.supplier_sku,
@@ -298,7 +302,13 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                 <div className="flex-1">
                   <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <span>Update Product: {product.name}</span>
-                    <Badge variant="secondary" className="w-fit">Current Stock: {currentStock}</Badge>
+                    <Badge variant="secondary" className="w-fit">
+                      Current Stock: {
+                        product.package_qty && product.package_qty > 1 && product.uom_purchase
+                          ? `${Math.floor(currentStock / product.package_qty)} ${product.uom_purchase} (${currentStock} ${product.size_unit || 'units'} total)`
+                          : `${currentStock} ${product.size_unit || 'units'}`
+                      }
+                    </Badge>
                   </DialogTitle>
                   <DialogDescription className="mt-1">
                     Add inventory quantity and update product information
@@ -437,60 +447,206 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {adjustmentMode === 'add' ? (
-                    <FormField
-                      control={form.control}
-                      name="quantity_to_add"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>
-                            {product.id ? 'Quantity to Add' : 'Initial Stock Quantity'}
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              placeholder="Enter quantity"
-                              value={field.value ?? ''}
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                field.onChange(value === '' ? undefined : Number(value));
-                              }}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    <div className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="quantity_to_add"
+                        render={({ field }) => {
+                          const packageQty = form.watch('package_qty') || 1;
+                          const sizeValue = form.watch('size_value') || 1;
+                          const purchaseUnit = form.watch('uom_purchase') || 'units';
+                          const hasPackaging = sizeValue > 1 && purchaseUnit !== 'units';
+                          
+                          // Calculate packages from total units  
+                          const totalUnits = field.value || 0;
+                          const packagesFromTotal = hasPackaging ? totalUnits / sizeValue : totalUnits;
+                          
+                          const handlePackageChange = (packages: number) => {
+                            const totalUnits = packages * sizeValue;
+                            field.onChange(totalUnits);
+                          };
+                          
+                          const handleUnitsChange = (units: number) => {
+                            field.onChange(units);
+                          };
+                          
+                          return (
+                            <FormItem>
+                              <FormLabel>
+                                {product.id ? 'Quantity to Add' : 'Initial Stock Quantity'}
+                              </FormLabel>
+                              
+                              {hasPackaging && sizeValue > 0 ? (
+                                <div className="space-y-3">
+                                  {/* Package input */}
+                                  <div>
+                                    <Label className="text-sm text-muted-foreground mb-1 block">
+                                      Number of {purchaseUnit}s to add
+                                    </Label>
+                                    <FormControl>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        placeholder={`Enter number of ${purchaseUnit}s`}
+                                        value={packagesFromTotal > 0 ? Math.round(packagesFromTotal * 100) / 100 : ''}
+                                        onChange={(e) => {
+                                          const packages = e.target.value === '' ? 0 : Number(e.target.value);
+                                          handlePackageChange(packages);
+                                        }}
+                                        className="text-lg font-medium"
+                                      />
+                                    </FormControl>
+                                    {packagesFromTotal > 0 && (
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        = {(packagesFromTotal * sizeValue).toFixed(2)} {form.watch('size_unit')} total
+                                      </p>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Alternative: direct units input */}
+                                  <div>
+                                    <Label className="text-sm text-muted-foreground mb-1 block">
+                                      Or enter total {form.watch('size_unit')} directly
+                                    </Label>
+                                    <FormControl>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        placeholder={`Enter total ${form.watch('size_unit')}`}
+                                        value={totalUnits > 0 ? totalUnits : ''}
+                                        onChange={(e) => {
+                                          const units = e.target.value === '' ? 0 : Number(e.target.value);
+                                          handleUnitsChange(units);
+                                        }}
+                                      />
+                                    </FormControl>
+                                  </div>
+                                </div>
+                              ) : (
+                                <FormControl>
+                                  <Input
+                                    {...field}
+                                    type="number"
+                                    min="0"
+                                    step="0.1"
+                                    placeholder="Enter quantity"
+                                    value={field.value ?? ''}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      field.onChange(value === '' ? undefined : Number(value));
+                                    }}
+                                  />
+                                </FormControl>
+                              )}
+                              <FormMessage />
+                            </FormItem>
+                          );
+                        }}
+                      />
+                    </div>
                   ) : (
-                    <FormField
-                      control={form.control}
-                      name="exact_count"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Exact Stock Count</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              placeholder="Enter exact count"
-                              value={field.value ?? ''}
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                field.onChange(value === '' ? undefined : Number(value));
-                              }}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                          <p className="text-xs text-muted-foreground">
-                            This will trigger an "adjustment" transaction for count reconciliation
-                          </p>
-                        </FormItem>
-                      )}
-                    />
+                    <div className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="exact_count"
+                        render={({ field }) => {
+                          const packageQty = form.watch('package_qty') || 1;
+                          const sizeValue = form.watch('size_value') || 1;
+                          const purchaseUnit = form.watch('uom_purchase') || 'units';
+                          const hasPackaging = sizeValue > 1 && purchaseUnit !== 'units';
+                          
+                          // Calculate packages from total units
+                          const totalUnits = field.value || 0;
+                          const packagesFromTotal = hasPackaging ? totalUnits / sizeValue : totalUnits;
+                          
+                          const handlePackageChange = (packages: number) => {
+                            const totalUnits = packages * sizeValue;
+                            field.onChange(totalUnits);
+                          };
+                          
+                          const handleUnitsChange = (units: number) => {
+                            field.onChange(units);
+                          };
+                          
+                          return (
+                            <FormItem>
+                              <FormLabel>Exact Stock Count</FormLabel>
+                              
+                              {hasPackaging && sizeValue > 0 ? (
+                                <div className="space-y-3">
+                                  {/* Package input */}
+                                  <div>
+                                    <Label className="text-sm text-muted-foreground mb-1 block">
+                                      Number of {purchaseUnit}s you have
+                                    </Label>
+                                    <FormControl>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        placeholder={`Enter number of ${purchaseUnit}s`}
+                                        value={packagesFromTotal > 0 ? Math.round(packagesFromTotal * 100) / 100 : ''}
+                                        onChange={(e) => {
+                                          const packages = e.target.value === '' ? 0 : Number(e.target.value);
+                                          handlePackageChange(packages);
+                                        }}
+                                        className="text-lg font-medium"
+                                      />
+                                    </FormControl>
+                                    {packagesFromTotal > 0 && (
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        = {(packagesFromTotal * sizeValue).toFixed(2)} {form.watch('size_unit')} total
+                                      </p>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Alternative: direct units input */}
+                                  <div>
+                                    <Label className="text-sm text-muted-foreground mb-1 block">
+                                      Or enter total {form.watch('size_unit')} directly
+                                    </Label>
+                                    <FormControl>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        placeholder={`Enter total ${form.watch('size_unit')}`}
+                                        value={totalUnits > 0 ? totalUnits : ''}
+                                        onChange={(e) => {
+                                          const units = e.target.value === '' ? 0 : Number(e.target.value);
+                                          handleUnitsChange(units);
+                                        }}
+                                      />
+                                    </FormControl>
+                                  </div>
+                                </div>
+                              ) : (
+                                <FormControl>
+                                  <Input
+                                    {...field}
+                                    type="number"
+                                    min="0"
+                                    step="0.1"
+                                    placeholder="Enter exact count"
+                                    value={field.value ?? ''}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      field.onChange(value === '' ? undefined : Number(value));
+                                    }}
+                                  />
+                                </FormControl>
+                              )}
+                              <FormMessage />
+                              <p className="text-xs text-muted-foreground">
+                                This will trigger an "adjustment" transaction for count reconciliation
+                              </p>
+                            </FormItem>
+                          );
+                        }}
+                      />
+                    </div>
                   )}
 
                   <FormField
@@ -679,117 +835,26 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
               </CardContent>
             </Card>
 
-            {/* Size & Packaging */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Size & Packaging</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="size_value"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Size/Weight</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            step="0.01"
-                            placeholder="e.g., 5"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+            {/* Enhanced Size & Packaging Section */}
+            <SizePackagingSection form={form} />
 
-                  <FormField
-                    control={form.control}
-                    name="package_qty"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Package Qty</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            min="1"
-                            placeholder="1"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+            {/* Recipe Conversion Preview */}
+            {recipes.length > 0 && form.watch('name') && form.watch('size_value') && form.watch('uom_purchase') && (
+              <>
+                {recipes.map((recipeIngredient) => (
+                  <RecipeConversionPreview
+                    key={recipeIngredient.id}
+                    productName={form.watch('name')}
+                    purchaseQuantity={form.watch('size_value') * (form.watch('package_qty') || 1)}
+                    purchaseUnit={form.watch('uom_purchase')}
+                    recipeQuantity={recipeIngredient.quantity}
+                    recipeUnit={recipeIngredient.unit}
+                    costPerUnit={form.watch('cost_per_unit')}
+                    recipeName={recipeIngredient.recipe.name}
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="conversion_factor"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Conversion Factor</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            step="0.01"
-                            placeholder="1"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="uom_purchase"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Purchase UOM</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="e.g., case" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="uom_recipe"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Recipe UOM</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="e.g., oz" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+                ))}
+              </>
+            )}
 
             {/* Cost & Supplier */}
             <Card>
@@ -803,7 +868,9 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                     name="cost_per_unit"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Cost per Unit ($)</FormLabel>
+                        <FormLabel>
+                          Cost per {form.watch('uom_purchase') || 'Purchase Unit'} ($)
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}

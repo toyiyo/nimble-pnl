@@ -18,7 +18,6 @@ export interface Product {
   package_qty?: number | null;
   uom_purchase?: string | null;
   uom_recipe?: string | null;
-  conversion_factor?: number | null;
   cost_per_unit?: number | null;
   current_stock?: number | null;
   par_level_min?: number | null;
@@ -46,7 +45,6 @@ export interface CreateProductData {
   package_qty?: number | null;
   uom_purchase?: string | null;
   uom_recipe?: string | null;
-  conversion_factor?: number | null;
   cost_per_unit?: number | null;
   current_stock?: number | null;
   par_level_min?: number | null;
@@ -123,7 +121,8 @@ export const useProducts = (restaurantId: string | null) => {
         description: `${productData.name} has been added to inventory`,
       });
 
-      await fetchProducts();
+      // Update local state immediately
+      setProducts(prev => [...prev, data]);
       return data;
     } catch (error: any) {
       console.error('Error creating product:', error);
@@ -191,13 +190,25 @@ export const useProducts = (restaurantId: string | null) => {
         }
       }
 
+      // Get the appropriate unit name for display (bottle, case, etc.)
+      const displayUnit = currentProduct.uom_purchase || 'unit';
+      const unitName = Math.abs(quantityDifference) === 1 ? displayUnit : `${displayUnit}s`;
+      const roundedQuantity = Math.round(quantityDifference * 100) / 100;
+      
       const transactionDescription = transactionType === 'adjustment' 
         ? quantityDifference >= 0 
-          ? `Adjustment: +${quantityDifference} units (${reason})`
-          : `Adjustment: ${quantityDifference} units (${reason})`
+          ? `Adjustment: +${roundedQuantity} ${unitName} (${reason})`
+          : `Adjustment: ${roundedQuantity} ${unitName} (${reason})`
         : quantityDifference > 0 
-          ? `Added ${quantityDifference} units`
-          : `Removed ${Math.abs(quantityDifference)} units`;
+          ? `Added ${roundedQuantity} ${unitName}`
+          : `Removed ${Math.round(Math.abs(quantityDifference) * 100) / 100} ${Math.abs(quantityDifference) === 1 ? displayUnit : `${displayUnit}s`}`;
+
+      // Update local state immediately with the new data
+      setProducts(prev => prev.map(product => 
+        product.id === id 
+          ? { ...product, ...updatedData }
+          : product
+      ));
 
       toast({
         title: "Product updated",
@@ -206,7 +217,6 @@ export const useProducts = (restaurantId: string | null) => {
           : "Product information has been updated",
       });
 
-      await fetchProducts();
       return true;
     } catch (error: any) {
       console.error('Error updating product:', error);

@@ -193,6 +193,7 @@ export default function Recipes() {
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
         restaurantId={selectedRestaurant?.restaurant_id}
+        onRecipeUpdated={fetchRecipes}
       />
 
       <RecipeDialog
@@ -200,6 +201,7 @@ export default function Recipes() {
         onClose={() => setEditingRecipe(null)}
         restaurantId={selectedRestaurant?.restaurant_id}
         recipe={editingRecipe}
+        onRecipeUpdated={fetchRecipes}
       />
 
       <DeleteRecipeDialog

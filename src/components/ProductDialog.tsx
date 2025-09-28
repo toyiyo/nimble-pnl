@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -28,9 +28,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Upload } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Upload, Calculator, Package } from 'lucide-react';
 import { CreateProductData, Product } from '@/hooks/useProducts';
+import { useUnitConversion } from '@/hooks/useUnitConversion';
+import { normalizeUnitName, suggestRecipeUnits } from '@/lib/unitConversion';
 import { supabase } from '@/integrations/supabase/client';
+import { SizePackagingSection } from '@/components/SizePackagingSection';
+import { RecipeConversionPreview } from '@/components/RecipeConversionPreview';
+import { useProductRecipes } from '@/hooks/useProductRecipes';
+import { useRestaurants } from '@/hooks/useRestaurants';
 
 const productSchema = z.object({
   sku: z.string().min(1, 'SKU is required'),
@@ -43,8 +50,8 @@ const productSchema = z.object({
   package_qty: z.number().int().positive().optional(),
   uom_purchase: z.string().optional(),
   uom_recipe: z.string().optional(),
-  conversion_factor: z.number().positive().optional(),
-  cost_per_unit: z.number().positive().optional(),
+  
+  cost_per_unit: z.number().min(0).optional(),
   supplier_name: z.string().optional(),
   supplier_sku: z.string().optional(),
   par_level_min: z.number().min(0).optional(),
@@ -83,9 +90,13 @@ const CATEGORIES = [
   'Other',
 ];
 
-const UNITS = [
+const PURCHASE_UNITS = [
   'pieces', 'lbs', 'oz', 'kg', 'g', 'mL', 'L', 'gal', 'qt', 'pt', 'cup', 'tbsp', 'tsp',
   'case', 'box', 'bag', 'bottle', 'can', 'jar', 'pack',
+];
+
+const RECIPE_UNITS = [
+  'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'g', 'each', 'piece', 'serving'
 ];
 
 export const ProductDialog: React.FC<ProductDialogProps> = ({
@@ -98,6 +109,11 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
 }) => {
   const [uploading, setUploading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string>('');
+  const [suggestedConversionFactor, setSuggestedConversionFactor] = useState<number | null>(null);
+  const { suggestConversionFactor } = useUnitConversion(restaurantId);
+  const { restaurants } = useRestaurants();
+  const currentRestaurant = restaurants[0];
+  const { recipes } = useProductRecipes(editProduct?.id || null, currentRestaurant?.id || null);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -112,7 +128,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       package_qty: editProduct.package_qty || 1,
       uom_purchase: editProduct.uom_purchase || '',
       uom_recipe: editProduct.uom_recipe || '',
-      conversion_factor: editProduct.conversion_factor || 1,
+      
       cost_per_unit: editProduct.cost_per_unit || undefined,
       supplier_name: editProduct.supplier_name || '',
       supplier_sku: editProduct.supplier_sku || '',
@@ -125,8 +141,8 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
     } : {
       sku: initialData?.sku || '',
       name: initialData?.name || '',
-      package_qty: 1,
-      conversion_factor: 1,
+      package_qty: 1,  // Default to buying 1 package
+      
       par_level_min: 0,
       par_level_max: 0,
       current_stock: 0,
@@ -141,6 +157,26 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       setImageUrl(editProduct.image_url);
     }
   }, [editProduct]);
+
+  // Watch for unit changes and suggest conversion factor
+  const watchedPurchaseUnit = form.watch('uom_purchase');
+  const watchedRecipeUnit = form.watch('uom_recipe');
+
+  useEffect(() => {
+    if (watchedPurchaseUnit && watchedRecipeUnit) {
+      const normalizedPurchase = normalizeUnitName(watchedPurchaseUnit);
+      const normalizedRecipe = normalizeUnitName(watchedRecipeUnit);
+      const suggested = suggestConversionFactor(normalizedPurchase, normalizedRecipe);
+      
+      if (suggested !== 1) {
+        setSuggestedConversionFactor(suggested);
+      } else {
+        setSuggestedConversionFactor(null);
+      }
+    } else {
+      setSuggestedConversionFactor(null);
+    }
+  }, [watchedPurchaseUnit, watchedRecipeUnit, suggestConversionFactor]);
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -185,7 +221,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       package_qty: data.package_qty,
       uom_purchase: data.uom_purchase,
       uom_recipe: data.uom_recipe,
-      conversion_factor: data.conversion_factor,
       cost_per_unit: data.cost_per_unit,
       supplier_name: data.supplier_name,
       supplier_sku: data.supplier_sku,
@@ -358,179 +393,215 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name="size_value"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Size/Weight</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g., 5"
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Enhanced Size and Packaging Section with Unit Conversion */}
+            <SizePackagingSection form={form} />
 
-              <FormField
-                control={form.control}
-                name="size_unit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+            {/* Recipe Unit Conversion */}
+            <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Calculator className="h-4 w-4" />
+                Recipe Unit Conversion
+              </h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="uom_recipe"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Recipe Unit</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ''}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select unit" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {RECIPE_UNITS.map(unit => (
+                            <SelectItem key={unit} value={unit}>{unit}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+              </div>
+            </div>
+            
+            {/* Recipe Conversion Preview */}
+            {recipes.length > 0 && form.watch('name') && form.watch('size_value') && form.watch('uom_purchase') && (
+              <>
+                {recipes.map((recipeIngredient) => (
+                  <RecipeConversionPreview
+                    key={recipeIngredient.id}
+                    productName={form.watch('name')}
+                    purchaseQuantity={form.watch('size_value') * (form.watch('package_qty') || 1)}
+                    purchaseUnit={form.watch('uom_purchase')}
+                    recipeQuantity={recipeIngredient.quantity}
+                    recipeUnit={recipeIngredient.unit}
+                    costPerUnit={form.watch('cost_per_unit')}
+                    recipeName={recipeIngredient.recipe.name}
+                  />
+                ))}
+              </>
+            )}
+
+            {/* Cost & Supplier Section */}
+            <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Cost & Supplier
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="cost_per_unit"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Cost per {form.watch('uom_purchase') || 'Purchase Unit'} ($)
+                      </FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Unit" />
-                        </SelectTrigger>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
                       </FormControl>
-                      <SelectContent>
-                        {UNITS.map((unit) => (
-                          <SelectItem key={unit} value={unit}>
-                            {unit}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="package_qty"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Package Qty</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        min="1"
-                        placeholder="1"
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="supplier_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Supplier</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Supplier name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="supplier_sku"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Supplier SKU</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Supplier's product code" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="cost_per_unit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cost per Unit ($)</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Inventory Levels Section */}
+            <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Inventory Levels
+              </h4>
 
-              <FormField
-                control={form.control}
-                name="current_stock"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Current Stock</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0"
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="current_stock"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Current Stock</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0"
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name="par_level_min"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Par Level (Min)</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0"
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="reorder_point"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Reorder Point</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0"
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
-              <FormField
-                control={form.control}
-                name="par_level_max"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Par Level (Max)</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0"
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="par_level_min"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Min Par Level</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0"
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="reorder_point"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Reorder Point</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0"
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="par_level_max"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Max Par Level</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0"
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
             <div className="flex justify-end gap-2">

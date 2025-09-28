@@ -1,8 +1,9 @@
-import { Badge } from '@/components/ui/badge';
+import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { Calculator, Package } from 'lucide-react';
 import { Product } from '@/hooks/useProducts';
-import { Calculator, TrendingUp, Package } from 'lucide-react';
+import { calculateInventoryImpact } from '@/lib/enhancedUnitConversion';
 
 interface RecipeConversionInfoProps {
   product: Product;
@@ -11,79 +12,168 @@ interface RecipeConversionInfoProps {
 }
 
 export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: RecipeConversionInfoProps) {
-  if (!product.conversion_factor || !product.cost_per_unit) {
+  if (!product.cost_per_unit) {
+    return (
+      <Card className="bg-muted/50">
+        <CardContent className="p-4">
+          <div className="text-sm text-muted-foreground">
+            No cost information available for this product.
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Calculate enhanced conversions using the enhanced unit conversion system
+  const packageQuantity = product.size_value || 1; // Amount in one package (e.g., 750ml in one bottle)
+  const purchaseUnit = product.size_unit || 'unit'; // The unit of measurement (ml, oz, etc.)
+  const packageType = product.uom_purchase || 'unit'; // What you buy by (bottle, bag, etc.)
+  const costPerUnit = product.cost_per_unit || 0; // Cost per package type (per bottle, per bag)
+
+  // Use enhanced unit conversion for accurate calculations
+  let impact = null;
+  try {
+    impact = calculateInventoryImpact(
+      recipeQuantity,
+      recipeUnit,
+      packageQuantity, // Amount in one package
+      purchaseUnit, // Use the actual measurement unit (ml, oz)
+      product.name || '',
+      costPerUnit // Cost per package (e.g., $10 per bottle)
+    );
+  } catch (error) {
+    console.warn('Enhanced conversion failed:', error);
+    return (
+      <Card className="bg-red-50 border-red-200">
+        <CardContent className="p-4">
+          <div className="text-sm text-red-600">
+            Unable to calculate conversion between {recipeUnit} and {purchaseUnit} for {product.name}.
+            Please check the units are compatible.
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!impact) {
     return null;
   }
 
-  const costPerRecipeUnit = product.cost_per_unit / product.conversion_factor;
-  const totalRecipeCost = recipeQuantity * costPerRecipeUnit;
-  const purchaseUnitsNeeded = recipeQuantity / product.conversion_factor;
+  const costPerRecipeUnit = impact.costImpact / recipeQuantity;
 
   return (
-    <Card className="bg-muted/50">
+    <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm flex items-center gap-2">
+        <CardTitle className="text-sm flex items-center gap-2 text-blue-800">
           <Calculator className="w-4 h-4" />
-          Conversion Details
+          ✨ Enhanced Conversion Details
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <div className="text-muted-foreground">Purchase Unit</div>
-            <Badge variant="outline">
-              {product.uom_purchase || 'unit'}
-            </Badge>
+      <CardContent className="space-y-6">
+        {/* Package Information */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-3">
+            <h4 className="font-semibold text-blue-900 flex items-center gap-2 text-sm">
+              <Package className="h-4 w-4" />
+              📦 Package Information
+            </h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between py-1 border-b border-blue-200">
+                <span className="text-blue-700">Purchase Unit</span>
+                <span className="font-medium">
+                  {packageQuantity} {purchaseUnit}
+                  <span className="text-blue-600 ml-2 text-xs">
+                    (per {packageType})
+                  </span>
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-blue-200">
+                <span className="text-blue-700">Recipe Unit</span>
+                <span className="font-medium">{recipeQuantity} {recipeUnit}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-blue-200">
+                <span className="text-blue-700">Package Size</span>
+                <span className="font-medium">
+                  {product.size_value || 0} {purchaseUnit} per {packageType}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-blue-200">
+                <span className="text-blue-700">Cost per Package</span>
+                <span className="font-medium">${product.cost_per_unit?.toFixed(2) || '0.00'}/{packageType}</span>
+              </div>
+              <div className="flex justify-between py-1 bg-blue-100 px-2 rounded">
+                <span className="text-blue-800 font-medium">Total Package Cost</span>
+                <span className="font-bold text-blue-900">
+                  ${(product.cost_per_unit || 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 bg-green-100 px-2 rounded">
+                <span className="text-green-800 font-medium">Cost per {purchaseUnit}</span>
+                <span className="font-bold text-green-900">
+                  ${((product.cost_per_unit || 0) / (product.size_value || 1)).toFixed(4)}/{purchaseUnit}
+                </span>
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="text-muted-foreground">Recipe Unit</div>
-            <Badge variant="outline">
-              {product.uom_recipe || recipeUnit}
-            </Badge>
+
+          <div className="space-y-3">
+            <h4 className="font-semibold text-green-900 flex items-center gap-2 text-sm">
+              <Calculator className="h-4 w-4" />
+              🧮 Recipe Impact
+            </h4>
+            <div className="space-y-2 text-sm">
+              <div className="p-3 bg-green-50 rounded">
+                <div className="font-medium text-green-800 mb-2">Recipe Quantity:</div>
+                <div className="text-lg font-bold text-green-900">
+                  {recipeQuantity} {recipeUnit}
+                </div>
+              </div>
+              
+              <div className="p-3 bg-orange-50 rounded">
+                <div className="font-medium text-orange-800 mb-2">Inventory Deduction:</div>
+                <div className="text-lg font-bold text-orange-900">
+                  {impact.inventoryDeduction.toFixed(3)} {impact.inventoryDeductionUnit}
+                </div>
+              </div>
+              
+              <div className="p-3 bg-blue-50 rounded">
+                <div className="font-medium text-blue-800 mb-2">Percentage of Package:</div>
+                <div className="text-lg font-bold text-blue-900">
+                  {impact.percentageOfPackage.toFixed(1)}%
+                </div>
+              </div>
+              
+              <div className="p-3 bg-green-50 rounded">
+                <div className="font-medium text-green-800 mb-2">Total Cost:</div>
+                <div className="text-lg font-bold text-green-900">
+                  ${impact.costImpact.toFixed(2)}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <Separator />
-
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Conversion Factor:</span>
-            <span className="font-medium">
-              1 {product.uom_purchase} = {product.conversion_factor} {product.uom_recipe}
-            </span>
+        {/* Enhanced Conversion */}
+        {impact.conversionDetails && (
+          <div className="p-4 bg-white border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-3">
+              <Badge variant="default" className="bg-blue-600">Enhanced Conversion</Badge>
+              {impact.conversionDetails.productSpecific && (
+                <Badge variant="outline" className="border-green-400 text-green-700">Product-Specific</Badge>
+              )}
+            </div>
+            <div className="text-sm space-y-2">
+              <div className="font-medium">
+                Conversion: {recipeQuantity} {recipeUnit} = {impact.inventoryDeduction.toFixed(3)} {impact.inventoryDeductionUnit}
+              </div>
+              {impact.conversionDetails.conversionPath && (
+                <div className="text-blue-600">
+                  Path: {impact.conversionDetails.conversionPath.join(' → ')}
+                </div>
+              )}
+            </div>
           </div>
-          
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Cost per {product.uom_purchase || 'purchase unit'}:</span>
-            <span className="font-medium">${product.cost_per_unit.toFixed(2)}</span>
-          </div>
-          
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Cost per {product.uom_recipe || 'recipe unit'}:</span>
-            <span className="font-medium">${costPerRecipeUnit.toFixed(3)}</span>
-          </div>
-        </div>
-
-        <Separator />
-
-        <div className="space-y-2 text-sm bg-background p-3 rounded-lg">
-          <div className="flex items-center gap-2 text-muted-foreground mb-2">
-            <TrendingUp className="w-4 h-4" />
-            Recipe Impact
-          </div>
-          <div className="flex justify-between">
-            <span>Recipe Quantity:</span>
-            <span className="font-medium">{recipeQuantity} {recipeUnit}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Purchase Units Needed:</span>
-            <span className="font-medium">{purchaseUnitsNeeded.toFixed(3)} {product.uom_purchase}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Total Cost:</span>
-            <span className="font-medium text-green-600">${totalRecipeCost.toFixed(2)}</span>
-          </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );

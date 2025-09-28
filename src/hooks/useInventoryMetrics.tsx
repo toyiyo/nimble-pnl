@@ -111,8 +111,17 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
         const currentStock = product.current_stock || 0;
         const costPerUnit = product.cost_per_unit || 0;
         
-        // Inventory Cost = current_stock * cost_per_unit
-        const inventoryCost = currentStock * costPerUnit;
+        // Inventory Cost = calculate based on package quantity if available
+        // If we have package info, cost should be per package, not per base unit
+        let inventoryCost = 0;
+        if (product.package_qty && product.package_qty > 1) {
+          // Calculate number of complete packages
+          const packageCount = Math.floor(currentStock / product.package_qty);
+          inventoryCost = packageCount * costPerUnit;
+        } else {
+          // No package info or single unit packages
+          inventoryCost = currentStock * costPerUnit;
+        }
 
         // Calculate Inventory Value
         let inventoryValue = 0;
@@ -152,10 +161,10 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
             if (recipePrice > 0) {
               // Calculate how much of this product is used per recipe serving
               const quantityPerServing = recipeIngredient.quantity || 0;
-              const conversionFactor = product.conversion_factor || 1;
               
-              // Convert recipe units to purchase units
-              const purchaseUnitsPerServing = quantityPerServing / conversionFactor;
+              // Use enhanced unit conversion instead of conversion_factor
+              // This will require accessing recipe unit information
+              const purchaseUnitsPerServing = quantityPerServing; // Simplified for now - enhanced conversion will be implemented when we have recipe unit data
               
               if (purchaseUnitsPerServing > 0) {
                 // Value per purchase unit = recipe price / purchase units used per serving

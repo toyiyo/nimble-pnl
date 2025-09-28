@@ -10,7 +10,6 @@ export interface DeductionResult {
     recipe_unit: string;
     quantity_purchase_units: number;
     purchase_unit: string;
-    conversion_factor: number;
     remaining_stock_purchase_units: number;
   }[];
   total_cost: number;

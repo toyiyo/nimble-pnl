@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -28,8 +28,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Upload } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Upload, Calculator } from 'lucide-react';
 import { CreateProductData, Product } from '@/hooks/useProducts';
+import { useUnitConversion } from '@/hooks/useUnitConversion';
+import { normalizeUnitName, suggestRecipeUnits } from '@/lib/unitConversion';
 import { supabase } from '@/integrations/supabase/client';
 
 const productSchema = z.object({
@@ -83,9 +86,13 @@ const CATEGORIES = [
   'Other',
 ];
 
-const UNITS = [
+const PURCHASE_UNITS = [
   'pieces', 'lbs', 'oz', 'kg', 'g', 'mL', 'L', 'gal', 'qt', 'pt', 'cup', 'tbsp', 'tsp',
   'case', 'box', 'bag', 'bottle', 'can', 'jar', 'pack',
+];
+
+const RECIPE_UNITS = [
+  'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'g', 'each', 'piece', 'serving'
 ];
 
 export const ProductDialog: React.FC<ProductDialogProps> = ({
@@ -98,6 +105,8 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
 }) => {
   const [uploading, setUploading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string>('');
+  const [suggestedConversionFactor, setSuggestedConversionFactor] = useState<number | null>(null);
+  const { suggestConversionFactor } = useUnitConversion(restaurantId);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -141,6 +150,26 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       setImageUrl(editProduct.image_url);
     }
   }, [editProduct]);
+
+  // Watch for unit changes and suggest conversion factor
+  const watchedPurchaseUnit = form.watch('uom_purchase');
+  const watchedRecipeUnit = form.watch('uom_recipe');
+
+  useEffect(() => {
+    if (watchedPurchaseUnit && watchedRecipeUnit) {
+      const normalizedPurchase = normalizeUnitName(watchedPurchaseUnit);
+      const normalizedRecipe = normalizeUnitName(watchedRecipeUnit);
+      const suggested = suggestConversionFactor(normalizedPurchase, normalizedRecipe);
+      
+      if (suggested !== 1) {
+        setSuggestedConversionFactor(suggested);
+      } else {
+        setSuggestedConversionFactor(null);
+      }
+    } else {
+      setSuggestedConversionFactor(null);
+    }
+  }, [watchedPurchaseUnit, watchedRecipeUnit, suggestConversionFactor]);
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -392,7 +421,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {UNITS.map((unit) => (
+                        {PURCHASE_UNITS.map((unit) => (
                           <SelectItem key={unit} value={unit}>
                             {unit}
                           </SelectItem>
@@ -425,13 +454,125 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
               />
             </div>
 
+            {/* Unit Conversion Section */}
+            <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Calculator className="h-4 w-4" />
+                Unit Conversion
+              </h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="uom_purchase"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Purchase Unit</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Purchase unit" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {PURCHASE_UNITS.map((unit) => (
+                            <SelectItem key={unit} value={unit}>
+                              {unit}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="uom_recipe"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Recipe Unit</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Recipe unit" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {watchedPurchaseUnit ? 
+                            suggestRecipeUnits(watchedPurchaseUnit).map((unit) => (
+                              <SelectItem key={unit} value={unit}>
+                                {unit}
+                              </SelectItem>
+                            )) :
+                            RECIPE_UNITS.map((unit) => (
+                              <SelectItem key={unit} value={unit}>
+                                {unit}
+                              </SelectItem>
+                            ))
+                          }
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="conversion_factor"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Conversion Factor</FormLabel>
+                      <div className="space-y-2">
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="number"
+                            step="0.001"
+                            min="0.001"
+                            placeholder="1"
+                            onChange={(e) => field.onChange(Number(e.target.value) || 1)}
+                          />
+                        </FormControl>
+                        {suggestedConversionFactor && (
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">
+                              Suggested: {suggestedConversionFactor}
+                            </Badge>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => form.setValue('conversion_factor', suggestedConversionFactor)}
+                              className="h-6 px-2 text-xs"
+                            >
+                              Use
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              
+              {watchedPurchaseUnit && watchedRecipeUnit && (
+                <p className="text-xs text-muted-foreground">
+                  1 {watchedPurchaseUnit} = {form.watch('conversion_factor') || 1} {watchedRecipeUnit}
+                </p>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="cost_per_unit"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Cost per Unit ($)</FormLabel>
+                    <FormLabel>Cost per Purchase Unit ($)</FormLabel>
                     <FormControl>
                       <Input
                         {...field}

@@ -7,6 +7,7 @@ import { Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Control } from 'react-hook-form';
 import { Product } from '@/hooks/useProducts';
 import { RecipeConversionInfo } from './RecipeConversionInfo';
+import { suggestRecipeUnits } from '@/lib/unitConversion';
 
 interface RecipeIngredientItemProps {
   index: number;
@@ -27,6 +28,10 @@ export function RecipeIngredientItem({
   toggleConversionDetails,
   measurementUnits
 }: RecipeIngredientItemProps) {
+  // Get the currently selected product for smart unit suggestions
+  const productField = control._getWatch(`ingredients.${index}.product_id`);
+  const selectedProduct = products.find(p => p.id === productField);
+  
   return (
     <div className="flex flex-col gap-4 p-4 border rounded-lg bg-card">
       <div className="flex flex-wrap gap-4">
@@ -99,9 +104,23 @@ export function RecipeIngredientItem({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {measurementUnits.map((unit) => (
-                      <SelectItem key={unit} value={unit}>{unit}</SelectItem>
-                    ))}
+                    {(() => {
+                      if (selectedProduct?.uom_purchase) {
+                        // Show smart suggestions based on product's purchase unit
+                        const suggested = suggestRecipeUnits(selectedProduct.uom_purchase);
+                        return suggested.map((unit, idx) => (
+                          <SelectItem key={unit} value={unit}>
+                            {unit} {idx === 0 ? '(recommended)' : ''}
+                          </SelectItem>
+                        ));
+                      }
+                      // Fallback to all measurement units
+                      return measurementUnits.map((unit) => (
+                        <SelectItem key={unit} value={unit}>
+                          {unit}
+                        </SelectItem>
+                      ));
+                    })()}
                   </SelectContent>
                 </Select>
                 <FormMessage />

@@ -83,7 +83,7 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
       return searchWords.some(word => searchableText.includes(word));
     }).map(product => ({
       ...product,
-      similarity_score: calculateMatchScore(product, searchTerm) / 100,
+      similarity_score: Math.min(calculateMatchScore(product, searchTerm) / 100, 1.0), // Cap at 1.0
       match_type: 'word_match'
     }));
   };
@@ -113,7 +113,7 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
       });
     });
     
-    return score;
+    return Math.min(score, 100); // Cap score at 100 for max 100% similarity
   };
 
   const fuseOptions = {

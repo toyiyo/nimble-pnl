@@ -1746,6 +1746,8 @@ export type Database = {
           p_similarity_threshold?: number
         }
         Returns: {
+          brand: string
+          category: string
           combined_score: number
           current_stock: number
           id: string

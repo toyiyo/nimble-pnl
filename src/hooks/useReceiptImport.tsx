@@ -257,7 +257,8 @@ export const useReceiptImport = () => {
         if (bestMatch && (
           bestMatch.match_type === 'receipt_exact' ||  // Exact previous mapping
           bestMatch.match_type === 'exact' ||          // Exact name match
-          highestScore > 0.7                           // High confidence fuzzy match
+          bestMatch.match_type === 'very_similar' ||   // Very similar names (like PREST vs Prst)
+          highestScore > 0.75                          // High confidence fuzzy match (increased from 0.7)
         )) {
           await updateLineItemMapping(item.id, {
             matched_product_id: bestMatch.id,

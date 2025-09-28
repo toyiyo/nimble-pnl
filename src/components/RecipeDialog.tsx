@@ -141,27 +141,49 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
   useEffect(() => {
     const subscription = form.watch((value) => {
       if (value.ingredients) {
-        const cost = value.ingredients.reduce((total, ingredient) => {
-          if (ingredient?.product_id && ingredient?.quantity) {
-            const product = products.find(p => p.id === ingredient.product_id);
-            if (product?.cost_per_unit) {
-              // Use the same enhanced unit conversion logic as the breakdown
-              const purchaseQuantity = (product.size_value || 1) * (product.package_qty || 1);
-              const result = calculateInventoryImpact(
-                ingredient.quantity,
-                ingredient.unit,
-                purchaseQuantity,
-                product.uom_purchase || 'unit',
-                product.name || '',
-                product.cost_per_unit
-              );
-              
-              return total + result.costImpact;
+        let totalCost = 0;
+        let hasValidIngredients = false;
+
+        try {
+          value.ingredients.forEach((ingredient: any) => {
+            if (ingredient?.product_id && ingredient?.quantity && ingredient?.unit) {
+              const product = products.find(p => p.id === ingredient.product_id);
+              if (product?.cost_per_unit) {
+                hasValidIngredients = true;
+                
+                try {
+                  // Use enhanced unit conversion logic with proper unit mapping
+                  const packageQuantity = (product.size_value || 1) * (product.package_qty || 1);
+                  const purchaseUnit = product.size_unit || 'unit'; // The measurement unit (ml, oz, etc.)
+                  const costPerMeasurementUnit = (product.cost_per_unit || 0) / (product.package_qty || 1);
+                  
+                  const result = calculateInventoryImpact(
+                    ingredient.quantity,
+                    ingredient.unit,
+                    packageQuantity,
+                    purchaseUnit,
+                    product.name || '',
+                    costPerMeasurementUnit
+                  );
+                  
+                  totalCost += result.costImpact;
+                } catch (conversionError) {
+                  console.warn(`Conversion error for ${product.name}:`, conversionError);
+                  // Skip this ingredient in cost calculation rather than breaking everything
+                }
+              }
             }
+          });
+
+          if (hasValidIngredients) {
+            setEstimatedCost(totalCost);
+          } else {
+            setEstimatedCost(0);
           }
-          return total;
-        }, 0);
-        setEstimatedCost(cost);
+        } catch (error) {
+          console.warn('Cost calculation error:', error);
+          setEstimatedCost(0);
+        }
       }
     });
     return () => subscription.unsubscribe();

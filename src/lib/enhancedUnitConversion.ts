@@ -196,7 +196,63 @@ export function calculateInventoryImpact(
   const recipeConversion = convertUnits(recipeQuantity, recipeUnit, purchaseUnit, productName);
   
   if (!recipeConversion) {
-    throw new Error(`Cannot convert ${recipeUnit} to ${purchaseUnit} for ${productName}`);
+    // If direct conversion fails, try some common conversions
+    console.warn(`Direct conversion from ${recipeUnit} to ${purchaseUnit} failed for ${productName}. Attempting fallback conversions.`);
+    
+    // Try common liquid conversions first
+    if (recipeUnit === 'oz' && purchaseUnit === 'ml') {
+      // 1 fl oz = 29.5735 ml
+        const convertedValue = recipeQuantity * 29.5735;
+        return {
+          inventoryDeduction: convertedValue,
+          inventoryDeductionUnit: purchaseUnit,
+          costImpact: (convertedValue / purchaseQuantity) * costPerPurchaseUnit * purchaseQuantity,
+          percentageOfPackage: (convertedValue / purchaseQuantity) * 100,
+          conversionDetails: {
+            value: convertedValue,
+            fromUnit: recipeUnit,
+            toUnit: purchaseUnit,
+            productSpecific: false,
+            conversionPath: ['oz', 'ml']
+          }
+        };
+    }
+    
+    // Try ml to oz conversion
+    if (recipeUnit === 'ml' && purchaseUnit === 'oz') {
+        const convertedValue = recipeQuantity / 29.5735;
+        return {
+          inventoryDeduction: convertedValue,
+          inventoryDeductionUnit: purchaseUnit,
+          costImpact: (convertedValue / purchaseQuantity) * costPerPurchaseUnit * purchaseQuantity,
+          percentageOfPackage: (convertedValue / purchaseQuantity) * 100,
+          conversionDetails: {
+            value: convertedValue,
+            fromUnit: recipeUnit,
+            toUnit: purchaseUnit,
+            productSpecific: false,
+            conversionPath: ['ml', 'oz']
+          }
+        };
+    }
+    
+    // If both units are the same, use direct calculation
+    if (recipeUnit === purchaseUnit) {
+      return {
+        inventoryDeduction: recipeQuantity,
+        inventoryDeductionUnit: purchaseUnit,
+        costImpact: (recipeQuantity / purchaseQuantity) * costPerPurchaseUnit * purchaseQuantity,
+        percentageOfPackage: (recipeQuantity / purchaseQuantity) * 100,
+        conversionDetails: {
+          value: recipeQuantity,
+          fromUnit: recipeUnit,
+          toUnit: purchaseUnit,
+          productSpecific: false
+        }
+      };
+    }
+    
+    throw new Error(`Cannot convert ${recipeUnit} to ${purchaseUnit} for ${productName}. Please ensure units are compatible or use the same measurement type.`);
   }
   
   // Step 2: Calculate inventory deduction (how much of the purchase unit we use)

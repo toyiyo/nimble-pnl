@@ -111,12 +111,12 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
         const currentStock = product.current_stock || 0;
         const costPerUnit = product.cost_per_unit || 0;
         
-        // Inventory Cost = calculate based on package quantity if available
-        // If we have package info, cost should be per package, not per base unit
+        // Inventory Cost = calculate based on size value if available
+        // If we have size info, cost should be per package, not per base unit
         let inventoryCost = 0;
-        if (product.package_qty && product.package_qty > 1) {
-          // Calculate number of complete packages
-          const packageCount = Math.floor(currentStock / product.package_qty);
+        if (product.size_value && product.size_value > 1 && product.uom_purchase && product.size_unit !== product.uom_purchase) {
+          // Calculate number of complete packages using size_value
+          const packageCount = Math.floor(currentStock / product.size_value);
           inventoryCost = packageCount * costPerUnit;
         } else {
           // No package info or single unit packages
@@ -193,7 +193,7 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
         } else if (hasRecipeData && inventoryValue === 0 && costPerUnit > 0) {
           // Has recipes but no pricing data, use markup as fallback
           const markup = getMarkupForCategory(product.category);
-          inventoryValue = currentStock * costPerUnit * markup;
+          inventoryValue = inventoryCost * markup;
           productMetrics[product.id] = {
             inventoryCost,
             inventoryValue,
@@ -203,7 +203,7 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
         } else if (!hasRecipeData && costPerUnit > 0) {
           // No recipes, pure markup estimation
           const markup = getMarkupForCategory(product.category);
-          inventoryValue = currentStock * costPerUnit * markup;
+          inventoryValue = inventoryCost * markup;
           productMetrics[product.id] = {
             inventoryCost,
             inventoryValue,

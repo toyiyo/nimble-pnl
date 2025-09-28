@@ -54,7 +54,7 @@ const updateSchema = z.object({
   uom_purchase: z.string().optional(),
   uom_recipe: z.string().optional(),
   conversion_factor: z.coerce.number().positive().optional(),
-  cost_per_unit: z.coerce.number().positive().optional(),
+  cost_per_unit: z.coerce.number().min(0).optional(),
   supplier_name: z.string().optional(),
   supplier_sku: z.string().optional(),
   par_level_min: z.coerce.number().int().min(0).optional(),

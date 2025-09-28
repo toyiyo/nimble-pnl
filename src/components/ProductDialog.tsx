@@ -51,7 +51,7 @@ const productSchema = z.object({
   uom_purchase: z.string().optional(),
   uom_recipe: z.string().optional(),
   conversion_factor: z.number().positive().optional(),
-  cost_per_unit: z.number().positive().optional(),
+  cost_per_unit: z.number().min(0).optional(),
   supplier_name: z.string().optional(),
   supplier_sku: z.string().optional(),
   par_level_min: z.number().min(0).optional(),

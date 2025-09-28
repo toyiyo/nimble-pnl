@@ -990,10 +990,10 @@ export const Inventory: React.FC = () => {
                                   ? 'text-destructive' 
                                   : 'text-foreground'
                               }`}>
-                                {product.package_qty && product.package_qty > 1 ? (
+                                {product.package_qty && product.uom_purchase ? (
                                   <div className="space-y-0.5">
                                     <div className="text-sm">
-                                      {Math.floor((product.current_stock || 0) / product.package_qty)} {product.uom_purchase || 'packages'}
+                                      {Math.floor((product.current_stock || 0) / (product.package_qty || 1))} {product.uom_purchase}
                                     </div>
                                     <div className="text-xs text-muted-foreground">
                                       {product.current_stock || 0} {product.size_unit || 'units'} total

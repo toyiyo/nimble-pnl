@@ -194,11 +194,11 @@ export const useProducts = (restaurantId: string | null) => {
 
       const transactionDescription = transactionType === 'adjustment' 
         ? quantityDifference >= 0 
-          ? `Adjustment: +${quantityDifference} units (${reason})`
-          : `Adjustment: ${quantityDifference} units (${reason})`
+          ? `Adjustment: +${Math.round(quantityDifference * 100) / 100} units (${reason})`
+          : `Adjustment: ${Math.round(quantityDifference * 100) / 100} units (${reason})`
         : quantityDifference > 0 
-          ? `Added ${quantityDifference} units`
-          : `Removed ${Math.abs(quantityDifference)} units`;
+          ? `Added ${Math.round(quantityDifference * 100) / 100} units`
+          : `Removed ${Math.round(Math.abs(quantityDifference) * 100) / 100} units`;
 
       // Update local state immediately with the new data
       setProducts(prev => prev.map(product => 

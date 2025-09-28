@@ -34,7 +34,7 @@ export const Inventory: React.FC = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { toast } = useToast();
   
-  const { products, loading, createProduct, updateProductWithQuantity, deleteProduct, findProductByGtin } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const { products, loading, createProduct, updateProductWithQuantity, deleteProduct, findProductByGtin, refetchProducts } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { updateProductStockWithAudit } = useInventoryAudit();
   const inventoryMetrics = useInventoryMetrics(selectedRestaurant?.restaurant_id || null, products);
   
@@ -526,12 +526,12 @@ export const Inventory: React.FC = () => {
         }
         
         // Show success message
-        const quantityDifference = finalStock - currentStock;
+        const quantityDifference = Math.round((finalStock - currentStock) * 100) / 100;
         const isAdjustment = difference !== quantityToAdd;
         if (quantityDifference !== 0) {
           toast({
             title: "Inventory updated",
-            description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference} units. New total: ${finalStock}`,
+            description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference} units. New total: ${Math.round(finalStock * 100) / 100}`,
           });
         } else {
           toast({
@@ -550,8 +550,11 @@ export const Inventory: React.FC = () => {
         return;
       }
       
-      setShowUpdateDialog(false);
-      setSelectedProduct(null);
+        // Refresh products to ensure UI is in sync
+        refetchProducts();
+        
+        setShowUpdateDialog(false);
+        setSelectedProduct(null);
     }
   };
 

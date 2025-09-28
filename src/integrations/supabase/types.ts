@@ -410,6 +410,30 @@ export type Database = {
           },
         ]
       }
+      product_abbreviations: {
+        Row: {
+          abbreviation: string
+          created_at: string | null
+          full_term: string
+          id: string
+          restaurant_id: string
+        }
+        Insert: {
+          abbreviation: string
+          created_at?: string | null
+          full_term: string
+          id?: string
+          restaurant_id: string
+        }
+        Update: {
+          abbreviation?: string
+          created_at?: string | null
+          full_term?: string
+          id?: string
+          restaurant_id?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           barcode_data: Json | null
@@ -428,11 +452,15 @@ export type Database = {
           par_level_max: number | null
           par_level_min: number | null
           pos_item_name: string | null
+          receipt_item_names: string[] | null
           reorder_point: number | null
           restaurant_id: string
+          search_vector: unknown | null
+          searchable_text: string | null
           size_unit: string | null
           size_value: number | null
           sku: string
+          supplier_id: string | null
           supplier_name: string | null
           supplier_sku: string | null
           uom_purchase: string | null
@@ -456,11 +484,15 @@ export type Database = {
           par_level_max?: number | null
           par_level_min?: number | null
           pos_item_name?: string | null
+          receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id: string
+          search_vector?: unknown | null
+          searchable_text?: string | null
           size_unit?: string | null
           size_value?: number | null
           sku: string
+          supplier_id?: string | null
           supplier_name?: string | null
           supplier_sku?: string | null
           uom_purchase?: string | null
@@ -484,18 +516,30 @@ export type Database = {
           par_level_max?: number | null
           par_level_min?: number | null
           pos_item_name?: string | null
+          receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id?: string
+          search_vector?: unknown | null
+          searchable_text?: string | null
           size_unit?: string | null
           size_value?: number | null
           sku?: string
+          supplier_id?: string | null
           supplier_name?: string | null
           supplier_sku?: string | null
           uom_purchase?: string | null
           uom_recipe?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -556,6 +600,128 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      receipt_imports: {
+        Row: {
+          created_at: string
+          file_name: string | null
+          file_size: number | null
+          id: string
+          processed_at: string | null
+          processed_by: string | null
+          raw_file_url: string | null
+          raw_ocr_data: Json | null
+          restaurant_id: string
+          status: string
+          supplier_id: string | null
+          total_amount: number | null
+          updated_at: string
+          vendor_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          raw_file_url?: string | null
+          raw_ocr_data?: Json | null
+          restaurant_id: string
+          status?: string
+          supplier_id?: string | null
+          total_amount?: number | null
+          updated_at?: string
+          vendor_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          raw_file_url?: string | null
+          raw_ocr_data?: Json | null
+          restaurant_id?: string
+          status?: string
+          supplier_id?: string | null
+          total_amount?: number | null
+          updated_at?: string
+          vendor_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_imports_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_line_items: {
+        Row: {
+          confidence_score: number | null
+          created_at: string
+          id: string
+          line_sequence: number | null
+          mapping_status: string
+          matched_product_id: string | null
+          parsed_name: string | null
+          parsed_price: number | null
+          parsed_quantity: number | null
+          parsed_unit: string | null
+          raw_text: string
+          receipt_id: string
+          updated_at: string
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          line_sequence?: number | null
+          mapping_status?: string
+          matched_product_id?: string | null
+          parsed_name?: string | null
+          parsed_price?: number | null
+          parsed_quantity?: number | null
+          parsed_unit?: string | null
+          raw_text: string
+          receipt_id: string
+          updated_at?: string
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          line_sequence?: number | null
+          mapping_status?: string
+          matched_product_id?: string | null
+          parsed_name?: string | null
+          parsed_price?: number | null
+          parsed_quantity?: number | null
+          parsed_unit?: string | null
+          raw_text?: string
+          receipt_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_line_items_matched_product_id_fkey"
+            columns: ["matched_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_line_items_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipt_imports"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       recipe_ingredients: {
         Row: {
@@ -1415,6 +1581,48 @@ export type Database = {
           },
         ]
       }
+      suppliers: {
+        Row: {
+          address: string | null
+          contact_email: string | null
+          contact_phone: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          notes: string | null
+          restaurant_id: string
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          address?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          restaurant_id: string
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          address?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          restaurant_id?: string
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: []
+      }
       unified_sales: {
         Row: {
           created_at: string
@@ -1530,6 +1738,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      advanced_product_search: {
+        Args: {
+          p_limit?: number
+          p_restaurant_id: string
+          p_search_term: string
+          p_similarity_threshold?: number
+        }
+        Returns: {
+          brand: string
+          category: string
+          combined_score: number
+          current_stock: number
+          id: string
+          levenshtein_score: number
+          match_type: string
+          name: string
+          receipt_item_names: string[]
+          similarity_score: number
+          sku: string
+          uom_purchase: string
+        }[]
+      }
       aggregate_unified_sales_to_daily: {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: undefined
@@ -1576,9 +1806,60 @@ export type Database = {
         }
         Returns: string
       }
+      daitch_mokotoff: {
+        Args: { "": string }
+        Returns: string[]
+      }
+      dmetaphone: {
+        Args: { "": string }
+        Returns: string
+      }
+      dmetaphone_alt: {
+        Args: { "": string }
+        Returns: string
+      }
+      fulltext_product_search: {
+        Args: {
+          p_limit?: number
+          p_restaurant_id: string
+          p_search_term: string
+        }
+        Returns: {
+          brand: string
+          category: string
+          current_stock: number
+          id: string
+          match_type: string
+          name: string
+          receipt_item_names: string[]
+          similarity_score: number
+          sku: string
+          uom_purchase: string
+        }[]
+      }
       get_product_cost_per_recipe_unit: {
         Args: { product_id: string }
         Returns: number
+      }
+      gtrgm_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_decompress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_options: {
+        Args: { "": unknown }
+        Returns: undefined
+      }
+      gtrgm_out: {
+        Args: { "": unknown }
+        Returns: unknown
       }
       is_restaurant_owner: {
         Args: { p_restaurant_id: string; p_user_id: string }
@@ -1611,6 +1892,29 @@ export type Database = {
         }
         Returns: Json
       }
+      search_products_by_name: {
+        Args: { p_restaurant_id: string; p_search_term: string }
+        Returns: {
+          current_stock: number
+          id: string
+          name: string
+          receipt_item_names: string[]
+          sku: string
+          uom_purchase: string
+        }[]
+      }
+      set_limit: {
+        Args: { "": number }
+        Returns: number
+      }
+      show_limit: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      show_trgm: {
+        Args: { "": string }
+        Returns: string[]
+      }
       simulate_inventory_deduction: {
         Args: {
           p_pos_item_name: string
@@ -1619,13 +1923,29 @@ export type Database = {
         }
         Returns: Json
       }
+      soundex: {
+        Args: { "": string }
+        Returns: string
+      }
       sync_square_to_unified_sales: {
         Args: { p_restaurant_id: string }
         Returns: number
       }
+      text_soundex: {
+        Args: { "": string }
+        Returns: string
+      }
       trigger_square_periodic_sync: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      unaccent: {
+        Args: { "": string }
+        Returns: string
+      }
+      unaccent_init: {
+        Args: { "": unknown }
+        Returns: unknown
       }
     }
     Enums: {

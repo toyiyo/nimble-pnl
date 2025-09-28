@@ -628,10 +628,21 @@ export const Inventory: React.FC = () => {
               <ArrowLeft className="h-4 w-4 md:mr-2" />
               <span className="hidden md:inline">Dashboard</span>
             </Button>
-            <Button onClick={handleCreateManually} size="sm">
-              <Plus className="h-4 w-4 md:mr-2" />
-              <span className="hidden sm:inline">Add Product</span>
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => navigate('/receipt-import')}
+                className="p-2 md:px-3"
+              >
+                <Package className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Upload Receipt</span>
+              </Button>
+              <Button onClick={handleCreateManually} size="sm">
+                <Plus className="h-4 w-4 md:mr-2" />
+                <span className="hidden sm:inline">Add Product</span>
+              </Button>
+            </div>
           </div>
           <div className="text-center md:text-left">
             <h1 className="text-xl md:text-2xl font-bold">Inventory Management</h1>

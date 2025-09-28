@@ -18,6 +18,7 @@ import { AcceptInvitation } from "./pages/AcceptInvitation";
 import { Inventory } from "./pages/Inventory";
 import InventoryAudit from "./pages/InventoryAudit";
 import NotFound from "./pages/NotFound";
+import { ReceiptImport } from "@/pages/ReceiptImport";
 
 const queryClient = new QueryClient();
 
@@ -68,6 +69,7 @@ const App = () => (
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
             <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
             <Route path="/inventory-audit" element={<ProtectedRoute><InventoryAudit /></ProtectedRoute>} />
+            <Route path="/receipt-import" element={<ProtectedRoute><ReceiptImport /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

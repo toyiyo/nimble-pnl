@@ -47,29 +47,93 @@ Please extract and return ONLY a JSON object with the following structure (no ad
 
 Only include fields where you have confident information from the search results. Return empty object {} if no reliable information can be extracted.`;
 
-    console.log('🤖 Calling Grok for product enhancement');
+    console.log('🤖 Enhancing product with AI...');
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openRouterApiKey}`,
-        'HTTP-Referer': 'https://ncdujvdgqtaunuyigflp.supabase.co',
-        'X-Title': 'EasyShiftHQ Product Enhancement',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'x-ai/grok-4-fast:free',
-        messages: [
-          { role: 'system', content: 'You are a product data enhancement expert. Extract and enhance product information from search results. Always respond with valid JSON only.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 500
-      }),
-    });
+    // Use Mistral first with retry logic, then Grok as backup
+    let response: Response | undefined;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+      try {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openRouterApiKey}`,
+            'HTTP-Referer': 'https://ncdujvdgqtaunuyigflp.supabase.co',
+            'X-Title': 'EasyShiftHQ Product Enhancement',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'mistralai/mistral-small-3.2-24b-instruct:free',
+            messages: [
+              { role: 'system', content: 'You are a product data enhancement expert. Extract and enhance product information from search results. Always respond with valid JSON only.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.3,
+            max_completion_tokens: 500
+          }),
+        });
 
-    if (!response.ok) {
-      throw new Error(`Grok API error: ${response.statusText}`);
+        if (response.ok) {
+          break;
+        }
+
+        if (response.status === 429) {
+          console.log(`🔄 Rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
+          retryCount++;
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+          }
+        } else {
+          break;
+        }
+      } catch (error) {
+        console.error(`Attempt ${retryCount + 1} failed:`, error);
+        retryCount++;
+        if (retryCount >= maxRetries) {
+          throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+      }
+    }
+
+    // Try Grok as backup if Mistral failed
+    if (!response || !response.ok) {
+      console.log('🔄 Mistral failed, trying Grok as backup...');
+      
+      try {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openRouterApiKey}`,
+            'HTTP-Referer': 'https://ncdujvdgqtaunuyigflp.supabase.co',
+            'X-Title': 'EasyShiftHQ Product Enhancement (Grok Backup)',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'x-ai/grok-4-fast:free',
+            messages: [
+              { role: 'system', content: 'You are a product data enhancement expert. Extract and enhance product information from search results. Always respond with valid JSON only.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.3,
+            max_tokens: 500
+          }),
+        });
+
+        if (response.ok) {
+          console.log('✅ Grok backup succeeded');
+        }
+      } catch (grokError) {
+        console.error('❌ Grok backup error:', grokError);
+      }
+    }
+
+    // If both Mistral and Grok failed
+    if (!response || !response.ok) {
+      const errorMessage = response ? `API error: ${response.status} ${response.statusText}` : 'Failed to get response from both Mistral and Grok';
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();

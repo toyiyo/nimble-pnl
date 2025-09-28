@@ -162,7 +162,7 @@ class ProductLookupService {
           category: item.category,
           image_url: item.images?.[0],
           source: 'upcitemdb',
-          confidence_score: 0.9,
+          confidence_score: Math.min(0.7 + (item.title ? 0.1 : 0) + (item.brand ? 0.05 : 0) + (item.size ? 0.05 : 0) + (item.category ? 0.05 : 0) + (item.images?.[0] ? 0.05 : 0), 0.95),
           resolution: 'external'
         };
       }

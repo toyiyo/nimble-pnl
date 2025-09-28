@@ -30,8 +30,6 @@ serve(async (req) => {
 
     const { itemName, itemDescription, availableIngredients }: RecipeEnhanceRequest = await req.json();
 
-    console.log('Enhancing recipe for:', itemName);
-
     const ingredientsList = availableIngredients.map(ing => 
       `- ${ing.name} (measured in ${ing.uom_recipe})`
     ).join('\n');
@@ -63,35 +61,107 @@ Please respond with a JSON object containing:
 
 Only suggest ingredients that are actually in the available ingredients list. Use realistic quantities and appropriate measurement units for cooking. If you cannot create a reasonable recipe with the available ingredients, set confidence to 0 and explain why in the reasoning.`;
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openRouterApiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://lovable.dev',
-        'X-Title': 'Recipe Enhancement'
-      },
-      body: JSON.stringify({
-        model: 'x-ai/grok-4-fast:free',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a professional chef and recipe consultant. Always respond with valid JSON only.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 1000
-      }),
-    });
+    console.log('🧑‍🍳 Enhancing recipe with AI...');
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenRouter API error:', response.status, errorText);
-      throw new Error(`OpenRouter API error: ${response.status}`);
+    // Use Mistral first with retry logic, then Grok as backup
+    let response: Response | undefined;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+      try {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openRouterApiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://ncdujvdgqtaunuyigflp.supabase.co',
+            'X-Title': 'EasyShiftHQ Recipe Enhancement'
+          },
+          body: JSON.stringify({
+            model: 'mistralai/mistral-small-3.2-24b-instruct:free',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a professional chef and recipe consultant. Always respond with valid JSON only.'
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: 0.3,
+            max_completion_tokens: 1000
+          }),
+        });
+
+        if (response.ok) {
+          break;
+        }
+
+        if (response.status === 429) {
+          console.log(`🔄 Rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
+          retryCount++;
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+          }
+        } else {
+          break;
+        }
+      } catch (error) {
+        console.error(`Attempt ${retryCount + 1} failed:`, error);
+        retryCount++;
+        if (retryCount >= maxRetries) {
+          throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+      }
+    }
+
+    // Try Grok as backup if Mistral failed
+    if (!response || !response.ok) {
+      console.log('🔄 Mistral failed, trying Grok as backup...');
+      
+      try {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openRouterApiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://ncdujvdgqtaunuyigflp.supabase.co',
+            'X-Title': 'EasyShiftHQ Recipe Enhancement (Grok Backup)'
+          },
+          body: JSON.stringify({
+            model: 'x-ai/grok-4-fast:free',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a professional chef and recipe consultant. Always respond with valid JSON only.'
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: 0.3,
+            max_tokens: 1000
+          }),
+        });
+
+        if (response.ok) {
+          console.log('✅ Grok backup succeeded');
+        }
+      } catch (grokError) {
+        console.error('❌ Grok backup error:', grokError);
+      }
+    }
+
+    // If both Mistral and Grok failed
+    if (!response || !response.ok) {
+      const errorMessage = response ? `API error: ${response.status} ${response.statusText}` : 'Failed to get response from both Mistral and Grok';
+      const errorText = response ? await response.text() : '';
+      console.error('OpenRouter API error:', errorMessage, errorText);
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -103,7 +173,27 @@ Only suggest ingredients that are actually in the available ingredients list. Us
     const content = data.choices[0].message.content;
     
     try {
-      const recipeData = JSON.parse(content);
+      // Clean up the response to extract JSON with better error handling
+      let jsonContent = content.trim();
+      
+      // Remove markdown code blocks if present
+      jsonContent = jsonContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
+      
+      // Extract JSON between first { and last }
+      const firstBrace = jsonContent.indexOf('{');
+      const lastBrace = jsonContent.lastIndexOf('}');
+      
+      if (firstBrace === -1 || lastBrace === -1) {
+        throw new Error('No JSON structure found in response');
+      }
+      
+      jsonContent = jsonContent.substring(firstBrace, lastBrace + 1);
+      
+      // Attempt to fix common JSON issues
+      // Remove trailing commas before closing brackets/braces
+      jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
+      
+      const recipeData = JSON.parse(jsonContent);
       
       // Validate and fix measurement units
       if (recipeData.ingredients && Array.isArray(recipeData.ingredients)) {

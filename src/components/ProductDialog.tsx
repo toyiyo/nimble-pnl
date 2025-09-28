@@ -389,40 +389,17 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
               />
             </div>
 
-            {/* Enhanced Size and Packaging Section */}
+            {/* Enhanced Size and Packaging Section with Unit Conversion */}
             <SizePackagingSection form={form} />
 
-            {/* Unit Conversion Section */}
+            {/* Recipe Unit Conversion */}
             <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
               <h4 className="font-medium text-sm flex items-center gap-2">
                 <Calculator className="h-4 w-4" />
-                Unit Conversion
+                Recipe Unit Conversion
               </h4>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="uom_purchase"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Purchase Unit</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ''}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select unit" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {PURCHASE_UNITS.map(unit => (
-                            <SelectItem key={unit} value={unit}>{unit}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="uom_recipe"
@@ -479,9 +456,9 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                 />
               </div>
 
-              {watchedPurchaseUnit && watchedRecipeUnit && (
+              {form.watch('uom_purchase') && form.watch('uom_recipe') && (
                 <div className="text-xs text-muted-foreground">
-                  1 {watchedPurchaseUnit} = {form.watch('conversion_factor') || 1} {watchedRecipeUnit}
+                  1 {form.watch('uom_purchase')} = {form.watch('conversion_factor') || 1} {form.watch('uom_recipe')}
                   {suggestedConversionFactor && (
                     <span className="ml-2 text-blue-600">
                       (Suggested: {suggestedConversionFactor.toFixed(3)})
@@ -492,122 +469,168 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
             </div>
 
             {/* Recipe Conversion Preview */}
-            {form.watch('name') && form.watch('size_value') && form.watch('size_unit') && form.watch('uom_recipe') && (
+            {form.watch('name') && form.watch('size_value') && form.watch('uom_purchase') && form.watch('uom_recipe') && (
               <RecipeConversionPreview
                 productName={form.watch('name')}
                 purchaseQuantity={form.watch('size_value') * (form.watch('package_qty') || 1)}
-                purchaseUnit={form.watch('size_unit')}
+                purchaseUnit={form.watch('uom_purchase')}
                 recipeUnit={form.watch('uom_recipe')}
                 costPerUnit={form.watch('cost_per_unit')}
               />
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="cost_per_unit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cost per Purchase Unit ($)</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Cost & Supplier Section */}
+            <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Cost & Supplier
+              </h4>
 
-              <FormField
-                control={form.control}
-                name="current_stock"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Current Stock</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0"
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="cost_per_unit"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cost per Unit ($)</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="supplier_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Supplier</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Supplier name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="supplier_sku"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Supplier SKU</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Supplier's product code" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name="par_level_min"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Par Level (Min)</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0"
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Inventory Levels Section */}
+            <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Inventory Levels
+              </h4>
 
-              <FormField
-                control={form.control}
-                name="par_level_max"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Par Level (Max)</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0"
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="current_stock"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Current Stock</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0"
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="reorder_point"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Reorder Point</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0"
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="reorder_point"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Reorder Point</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0"
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="par_level_min"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Min Par Level</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0"
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="par_level_max"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Max Par Level</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0"
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
             <div className="flex justify-end gap-2">

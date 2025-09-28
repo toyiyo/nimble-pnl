@@ -75,19 +75,19 @@ const getProductSpecificConversions = (productName: string, sizeValue: number, s
 
 export function SizePackagingSection({ form }: SizePackagingSectionProps) {
   const sizeValue = form.watch('size_value') || 0;
-  const sizeUnit = form.watch('size_unit') || '';
+  const purchaseUnit = form.watch('uom_purchase') || '';  // Use uom_purchase instead of size_unit
   const packageQty = form.watch('package_qty') || 1;
   const productName = form.watch('name') || '';
 
   // Calculate alternative units
   const alternativeUnits = useMemo(() => {
-    if (!sizeValue || !sizeUnit) return [];
+    if (!sizeValue || !purchaseUnit) return [];
 
     const alternatives = [];
     const totalValue = sizeValue * packageQty;
 
     // Weight conversions
-    if (sizeUnit === 'oz') {
+    if (purchaseUnit === 'oz') {
       if (totalValue >= 16) {
         alternatives.push({ unit: 'lb', value: convertUnits(totalValue, 'oz', 'lb') });
       }
@@ -96,17 +96,17 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
         alternatives.push({ unit: 'kg', value: convertUnits(totalValue, 'oz', 'kg') });
       }
     } 
-    else if (sizeUnit === 'lb') {
+    else if (purchaseUnit === 'lb') {
       alternatives.push({ unit: 'oz', value: convertUnits(totalValue, 'lb', 'oz') });
       alternatives.push({ unit: 'g', value: convertUnits(totalValue, 'lb', 'g') });
       alternatives.push({ unit: 'kg', value: convertUnits(totalValue, 'lb', 'kg') });
     }
-    else if (sizeUnit === 'kg') {
+    else if (purchaseUnit === 'kg') {
       alternatives.push({ unit: 'lb', value: convertUnits(totalValue, 'kg', 'lb') });
       alternatives.push({ unit: 'oz', value: convertUnits(totalValue, 'kg', 'oz') });
       alternatives.push({ unit: 'g', value: convertUnits(totalValue, 'kg', 'g') });
     }
-    else if (sizeUnit === 'g') {
+    else if (purchaseUnit === 'g') {
       if (totalValue >= 1000) {
         alternatives.push({ unit: 'kg', value: convertUnits(totalValue, 'g', 'kg') });
       }
@@ -117,12 +117,12 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
     }
 
     return alternatives;
-  }, [sizeValue, sizeUnit, packageQty]);
+  }, [sizeValue, purchaseUnit, packageQty]);
 
   // Get product-specific conversions
   const productConversions = useMemo(() => {
-    return getProductSpecificConversions(productName, sizeValue * packageQty, sizeUnit);
-  }, [productName, sizeValue, packageQty, sizeUnit]);
+    return getProductSpecificConversions(productName, sizeValue * packageQty, purchaseUnit);
+  }, [productName, sizeValue, packageQty, purchaseUnit]);
 
   return (
     <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
@@ -154,18 +154,18 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
 
         <FormField
           control={form.control}
-          name="size_unit"
+          name="uom_purchase"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Package Unit</FormLabel>
+              <FormLabel>Purchase Unit</FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="oz, lb, kg, etc." />
+                    <SelectValue placeholder="bag, oz, lb, etc." />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {['oz', 'lb', 'kg', 'g', 'liter', 'ml', 'gallon', 'quart'].map((unit) => (
+                  {['bag', 'case', 'box', 'bottle', 'can', 'jar', 'pack', 'oz', 'lb', 'kg', 'g', 'L', 'ml', 'gal', 'qt'].map((unit) => (
                     <SelectItem key={unit} value={unit}>
                       {unit}
                     </SelectItem>
@@ -199,14 +199,14 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
       </div>
 
       {/* Package Summary */}
-      {sizeValue && sizeUnit && (
+      {sizeValue && purchaseUnit && (
         <div className="p-3 bg-background border rounded-md">
           <div className="flex items-center gap-2 mb-2">
             <Label className="text-sm font-medium">Package Summary</Label>
           </div>
           <div className="text-sm text-muted-foreground space-y-1">
             <div>
-              Quantity: {packageQty} × {sizeValue} {sizeUnit} = {(sizeValue * packageQty).toFixed(2)} {sizeUnit}
+              Total: {packageQty} × {sizeValue} {purchaseUnit} = {(sizeValue * packageQty).toFixed(2)} {purchaseUnit}
             </div>
             
             {/* Alternative units */}
@@ -248,7 +248,7 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
       )}
 
       {/* Recipe conversion examples */}
-      {productName.toLowerCase().includes('rice') && sizeValue && sizeUnit === 'oz' && (
+      {productName.toLowerCase().includes('rice') && sizeValue && purchaseUnit === 'oz' && (
         <div className="p-3 bg-green-50 border border-green-200 rounded-md">
           <Label className="text-sm font-medium text-green-800 mb-2 block">
             Recipe Impact Example

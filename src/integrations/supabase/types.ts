@@ -662,6 +662,7 @@ export type Database = {
           confidence_score: number | null
           created_at: string
           id: string
+          line_sequence: number | null
           mapping_status: string
           matched_product_id: string | null
           parsed_name: string | null
@@ -676,6 +677,7 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           id?: string
+          line_sequence?: number | null
           mapping_status?: string
           matched_product_id?: string | null
           parsed_name?: string | null
@@ -690,6 +692,7 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           id?: string
+          line_sequence?: number | null
           mapping_status?: string
           matched_product_id?: string | null
           parsed_name?: string | null

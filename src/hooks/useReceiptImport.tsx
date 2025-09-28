@@ -183,7 +183,7 @@ export const useReceiptImport = () => {
       .from('receipt_line_items')
       .select('*')
       .eq('receipt_id', receiptId)
-      .order('created_at', { ascending: true });
+      .order('line_sequence', { ascending: true });
 
     if (error) {
       console.error('Error fetching receipt line items:', error);
@@ -200,7 +200,7 @@ export const useReceiptImport = () => {
       .from('receipt_line_items')
       .select('*')
       .eq('receipt_id', receiptId)
-      .order('created_at', { ascending: true });
+      .order('line_sequence', { ascending: true });
 
     if (updatedError) {
       console.error('Error fetching updated receipt line items:', updatedError);

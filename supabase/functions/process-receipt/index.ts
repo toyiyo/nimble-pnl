@@ -166,10 +166,104 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
       }
     }
 
-    // If we still don't have a successful response after all retries
+    // If we still don't have a successful response after all retries, try Grok as backup
+    if (!response) {
+      console.log('🔄 Mistral failed after retries, trying Grok as backup...');
+      
+      try {
+        const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${openRouterApiKey}`,
+            "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+            "X-Title": "EasyShiftHQ Receipt Parser (Grok Backup)",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            "model": "x-ai/grok-4-fast:free",
+            "messages": [
+              {
+                "role": "system",
+                "content": `You are an expert receipt parser for restaurant inventory management. Your job is to carefully analyze this receipt image and extract ALL purchasable items.
+
+CRITICAL INSTRUCTIONS:
+1. Look for the main itemized section of the receipt (not headers, totals, or tax lines)
+2. Extract EVERY line item that represents a product purchase
+3. Include items even if prices seem unusual or formatting is unclear
+4. For each item, identify: product name, quantity, unit of measure, and price
+5. Expand common abbreviations (DNA=Banana, CHKN=Chicken, etc.)
+6. If quantity isn't explicit, assume 1 unit
+7. If unit isn't clear, use "each" as default
+
+CONFIDENCE SCORING (CRITICAL):
+- Assign realistic confidence scores based on text clarity and completeness
+- High confidence (0.85-0.95): Clear, complete text with obvious product name, quantity, and price
+- Medium confidence (0.65-0.84): Readable but some ambiguity in parsing or abbreviations  
+- Low confidence (0.40-0.64): Partially readable, significant guessing required
+- Very low confidence (0.20-0.39): Poor quality text, major uncertainty
+
+LOOK FOR THESE PATTERNS:
+- Product lines with prices (e.g., "BANANAS 5 LB @ 0.68/LB $3.40")
+- Simple format (e.g., "Milk Gallon $4.99")
+- Abbreviated items (e.g., "CHKN BRST $12.99")
+- Weight-based items (e.g., "BEEF 2.34 LB @ $8.99/LB")
+
+IGNORE: Tax lines, subtotals, payment methods, store info, promotions
+
+Return ONLY valid JSON in this exact format:
+{
+  "vendor": "Store Name",
+  "totalAmount": 45.67,
+  "lineItems": [
+    {
+      "rawText": "BANANAS 5 LB @ 0.68/LB $3.40",
+      "parsedName": "Bananas",
+      "parsedQuantity": 5,
+      "parsedUnit": "lb",
+      "parsedPrice": 3.40,
+      "confidenceScore": 0.92
+    }
+  ]
+}
+
+IMPORTANT: Vary confidence scores realistically based on actual text quality and parsing difficulty.`
+              },
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Analyze this receipt image carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
+                  },
+                  {
+                    "type": "image_url",
+                    "image_url": {
+                      "url": imageData
+                    }
+                  }
+                ]
+              }
+            ],
+            "max_tokens": 4000,
+            "temperature": 0.1
+          })
+        });
+
+        if (grokResponse.ok) {
+          response = grokResponse;
+          console.log('✅ Grok backup succeeded');
+        } else {
+          console.error('❌ Grok backup also failed:', grokResponse.status);
+        }
+      } catch (grokError) {
+        console.error('❌ Grok backup error:', grokError);
+      }
+    }
+
+    // If both Mistral and Grok failed
     if (!response) {
       return new Response(
-        JSON.stringify({ error: 'Failed to get response from OpenRouter API after retries' }),
+        JSON.stringify({ error: 'Failed to get response from both Mistral and Grok after retries' }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 500 
@@ -364,15 +458,16 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
       );
     }
 
-    // Insert line items
-    const lineItems = parsedData.lineItems.map((item: ParsedLineItem) => ({
+    // Insert line items with sequence to preserve order
+    const lineItems = parsedData.lineItems.map((item: ParsedLineItem, index: number) => ({
       receipt_id: receiptId,
       raw_text: item.rawText,
       parsed_name: item.parsedName,
       parsed_quantity: item.parsedQuantity,
       parsed_unit: item.parsedUnit,
       parsed_price: item.parsedPrice,
-      confidence_score: item.confidenceScore
+      confidence_score: item.confidenceScore,
+      line_sequence: index + 1
     }));
 
     const { error: lineItemsError } = await supabase

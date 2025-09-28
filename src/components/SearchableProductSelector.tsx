@@ -130,8 +130,8 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
       const { data, error } = await supabase.rpc('advanced_product_search', {
         p_restaurant_id: selectedRestaurant.restaurant_id,
         p_search_term: term,
-        p_similarity_threshold: 0.25,
-        p_limit: 15
+        p_similarity_threshold: 0.1,
+        p_limit: 20
       });
 
       if (error) {

@@ -46,29 +46,27 @@ serve(async (req) => {
       );
     }
 
-    console.log('🧾 Processing receipt with Mistral AI...');
+    console.log('🧾 Processing receipt with AI...');
 
-    // Use Mistral for receipt parsing with better OCR performance and retry logic
-    let response: Response | undefined;
-    let retryCount = 0;
-    const maxRetries = 3;
+    let finalResponse: Response | undefined;
     
-    while (retryCount < maxRetries) {
-      try {
-        response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${openRouterApiKey}`,
-            "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-            "X-Title": "EasyShiftHQ Receipt Parser",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            "model": "mistralai/mistral-small-3.2-24b-instruct:free",
-            "messages": [
-              {
-                "role": "system",
-                "content": `You are an expert receipt parser for restaurant inventory management. Your job is to carefully analyze this receipt image and extract ALL purchasable items.
+    // Try Grok first (as it seems more reliable than Mistral free tier)
+    console.log('🚀 Trying Grok first...');
+    try {
+      const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterApiKey}`,
+          "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+          "X-Title": "EasyShiftHQ Receipt Parser",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          "model": "x-ai/grok-4-fast:free",
+          "messages": [
+            {
+              "role": "system",
+              "content": `You are an expert receipt parser for restaurant inventory management. Your job is to carefully analyze this receipt image and extract ALL purchasable items.
 
 CRITICAL INSTRUCTIONS:
 1. Look for the main itemized section of the receipt (not headers, totals, or tax lines)
@@ -106,203 +104,180 @@ Return ONLY valid JSON in this exact format:
       "parsedUnit": "lb",
       "parsedPrice": 3.40,
       "confidenceScore": 0.92
-    },
-    {
-      "rawText": "CHKN BRST $12.99", 
-      "parsedName": "Chicken Breast",
-      "parsedQuantity": 1,
-      "parsedUnit": "each",
-      "parsedPrice": 12.99,
-      "confidenceScore": 0.78
+    }
   ]
 }
 
 IMPORTANT: Vary confidence scores realistically based on actual text quality and parsing difficulty.`
-              },
-              {
-                "role": "user",
-                "content": [
-                  {
-                    "type": "text",
-                    "text": "Analyze this receipt image carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
-                  },
-                  {
-                    "type": "image_url",
-                    "image_url": {
-                      "url": imageData
-                    }
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Analyze this receipt image carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": imageData
                   }
-                ]
-              }
-            ],
-            "max_completion_tokens": 4000
-          })
-        });
+                }
+              ]
+            }
+          ],
+          "max_tokens": 4000,
+          "temperature": 0.1
+        })
+      });
 
-        // If successful, break
-        if (response.ok) {
-          break;
-        }
+      if (grokResponse.ok) {
+        finalResponse = grokResponse;
+        console.log('✅ Grok succeeded');
+      } else {
+        const grokErrorText = await grokResponse.text();
+        console.error('❌ Grok failed:', grokResponse.status, grokErrorText);
+      }
+    } catch (grokError) {
+      console.error('❌ Grok error:', grokError);
+    }
 
-        // Rate limited - wait and retry
-        if (response.status === 429) {
-          console.log(`🔄 Rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
+    // If Grok failed, try Mistral as backup with retry logic
+    if (!finalResponse || !finalResponse.ok) {
+      console.log('🔄 Grok failed, trying Mistral as backup...');
+      
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries && (!finalResponse || !finalResponse.ok)) {
+        try {
+          const mistralResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${openRouterApiKey}`,
+              "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+              "X-Title": "EasyShiftHQ Receipt Parser (Mistral Backup)",
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              "model": "mistralai/mistral-small-3.2-24b-instruct:free",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": `You are an expert receipt parser for restaurant inventory management. Your job is to carefully analyze this receipt image and extract ALL purchasable items.
+
+CRITICAL INSTRUCTIONS:
+1. Look for the main itemized section of the receipt (not headers, totals, or tax lines)
+2. Extract EVERY line item that represents a product purchase
+3. Include items even if prices seem unusual or formatting is unclear
+4. For each item, identify: product name, quantity, unit of measure, and price
+5. Expand common abbreviations (DNA=Banana, CHKN=Chicken, etc.)
+6. If quantity isn't explicit, assume 1 unit
+7. If unit isn't clear, use "each" as default
+
+CONFIDENCE SCORING (CRITICAL):
+- Assign realistic confidence scores based on text clarity and completeness
+- High confidence (0.85-0.95): Clear, complete text with obvious product name, quantity, and price
+- Medium confidence (0.65-0.84): Readable but some ambiguity in parsing or abbreviations  
+- Low confidence (0.40-0.64): Partially readable, significant guessing required
+- Very low confidence (0.20-0.39): Poor quality text, major uncertainty
+
+LOOK FOR THESE PATTERNS:
+- Product lines with prices (e.g., "BANANAS 5 LB @ 0.68/LB $3.40")
+- Simple format (e.g., "Milk Gallon $4.99")
+- Abbreviated items (e.g., "CHKN BRST $12.99")
+- Weight-based items (e.g., "BEEF 2.34 LB @ $8.99/LB")
+
+IGNORE: Tax lines, subtotals, payment methods, store info, promotions
+
+Return ONLY valid JSON in this exact format:
+{
+  "vendor": "Store Name",
+  "totalAmount": 45.67,
+  "lineItems": [
+    {
+      "rawText": "BANANAS 5 LB @ 0.68/LB $3.40",
+      "parsedName": "Bananas",
+      "parsedQuantity": 5,
+      "parsedUnit": "lb",
+      "parsedPrice": 3.40,
+      "confidenceScore": 0.92
+    }
+  ]
+}
+
+IMPORTANT: Vary confidence scores realistically based on actual text quality and parsing difficulty.`
+                },
+                {
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Analyze this receipt image carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
+                    },
+                    {
+                      "type": "image_url",
+                      "image_url": {
+                        "url": imageData
+                      }
+                    }
+                  ]
+                }
+              ],
+              "max_completion_tokens": 4000
+            })
+          });
+
+          if (mistralResponse.ok) {
+            finalResponse = mistralResponse;
+            console.log('✅ Mistral backup succeeded');
+            break;
+          }
+
+          // Rate limited - wait and retry
+          if (mistralResponse.status === 429) {
+            console.log(`🔄 Mistral rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
+            retryCount++;
+            if (retryCount < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+            }
+          } else {
+            const errorText = await mistralResponse.text();
+            console.error(`❌ Mistral failed (attempt ${retryCount + 1}):`, mistralResponse.status, errorText);
+            break;
+          }
+        } catch (error) {
+          console.error(`❌ Mistral attempt ${retryCount + 1} failed:`, error);
           retryCount++;
           if (retryCount < maxRetries) {
-            // Exponential backoff: wait 2^retryCount seconds
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
           }
-        } else {
-          // Non-retryable error, break
-          break;
         }
-      } catch (error) {
-        console.error(`Attempt ${retryCount + 1} failed:`, error);
-        retryCount++;
-        if (retryCount >= maxRetries) {
-          throw error;
-        }
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
       }
     }
 
-    // If we still don't have a successful response after all retries, try Grok as backup
-    if (!response) {
-      console.log('🔄 Mistral failed after retries, trying Grok as backup...');
-      
-      try {
-        const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${openRouterApiKey}`,
-            "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-            "X-Title": "EasyShiftHQ Receipt Parser (Grok Backup)",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            "model": "x-ai/grok-4-fast:free",
-            "messages": [
-              {
-                "role": "system",
-                "content": `You are an expert receipt parser for restaurant inventory management. Your job is to carefully analyze this receipt image and extract ALL purchasable items.
-
-CRITICAL INSTRUCTIONS:
-1. Look for the main itemized section of the receipt (not headers, totals, or tax lines)
-2. Extract EVERY line item that represents a product purchase
-3. Include items even if prices seem unusual or formatting is unclear
-4. For each item, identify: product name, quantity, unit of measure, and price
-5. Expand common abbreviations (DNA=Banana, CHKN=Chicken, etc.)
-6. If quantity isn't explicit, assume 1 unit
-7. If unit isn't clear, use "each" as default
-
-CONFIDENCE SCORING (CRITICAL):
-- Assign realistic confidence scores based on text clarity and completeness
-- High confidence (0.85-0.95): Clear, complete text with obvious product name, quantity, and price
-- Medium confidence (0.65-0.84): Readable but some ambiguity in parsing or abbreviations  
-- Low confidence (0.40-0.64): Partially readable, significant guessing required
-- Very low confidence (0.20-0.39): Poor quality text, major uncertainty
-
-LOOK FOR THESE PATTERNS:
-- Product lines with prices (e.g., "BANANAS 5 LB @ 0.68/LB $3.40")
-- Simple format (e.g., "Milk Gallon $4.99")
-- Abbreviated items (e.g., "CHKN BRST $12.99")
-- Weight-based items (e.g., "BEEF 2.34 LB @ $8.99/LB")
-
-IGNORE: Tax lines, subtotals, payment methods, store info, promotions
-
-Return ONLY valid JSON in this exact format:
-{
-  "vendor": "Store Name",
-  "totalAmount": 45.67,
-  "lineItems": [
-    {
-      "rawText": "BANANAS 5 LB @ 0.68/LB $3.40",
-      "parsedName": "Bananas",
-      "parsedQuantity": 5,
-      "parsedUnit": "lb",
-      "parsedPrice": 3.40,
-      "confidenceScore": 0.92
-    }
-  ]
-}
-
-IMPORTANT: Vary confidence scores realistically based on actual text quality and parsing difficulty.`
-              },
-              {
-                "role": "user",
-                "content": [
-                  {
-                    "type": "text",
-                    "text": "Analyze this receipt image carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
-                  },
-                  {
-                    "type": "image_url",
-                    "image_url": {
-                      "url": imageData
-                    }
-                  }
-                ]
-              }
-            ],
-            "max_tokens": 4000,
-            "temperature": 0.1
-          })
-        });
-
-        if (grokResponse.ok) {
-          response = grokResponse;
-          console.log('✅ Grok backup succeeded');
-        } else {
-          console.error('❌ Grok backup also failed:', grokResponse.status);
-        }
-      } catch (grokError) {
-        console.error('❌ Grok backup error:', grokError);
-      }
-    }
-
-    // If both Mistral and Grok failed
-    if (!response) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to get response from both Mistral and Grok after retries' }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500 
-        }
-      );
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenRouter API error details:');
-      console.error('Status:', response.status);
-      console.error('Status Text:', response.statusText);
-      console.error('Error Response:', errorText);
-      console.error('Request Headers:', JSON.stringify({
-        "Authorization": "Bearer [REDACTED]",
-        "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-        "X-Title": "EasyShiftHQ Receipt Parser",
-        "Content-Type": "application/json"
-      }));
-      console.error('Model used:', "mistralai/mistral-small-3.1-24b-instruct:free");
+    // If both services failed
+    if (!finalResponse || !finalResponse.ok) {
+      console.error('❌ Both Grok and Mistral failed');
       
       return new Response(
         JSON.stringify({ 
-          error: `OpenRouter API error: ${response.status} - ${response.statusText}`,
-          details: errorText 
+          error: 'Receipt processing temporarily unavailable due to API limits. Please try again in a few minutes.',
+          details: 'Both AI services are currently unavailable'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: response.status 
+          status: 503 
         }
       );
     }
 
-    const data = await response.json();
+    const data = await finalResponse.json();
     
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       console.error('Invalid response structure:', data);
       return new Response(
-        JSON.stringify({ error: 'Invalid response from OpenRouter API' }),
+        JSON.stringify({ error: 'Invalid response from AI service' }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 500 
@@ -311,7 +286,7 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
     }
 
     const content = data.choices[0].message.content;
-    console.log('✅ Mistral parsing completed. Raw response:', content);
+    console.log('✅ AI parsing completed. Raw response:', content);
 
     let parsedData;
     try {
@@ -332,7 +307,6 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
       jsonContent = jsonContent.substring(firstBrace, lastBrace + 1);
       
       // Attempt to fix common JSON issues
-      // Remove trailing commas before closing brackets/braces
       jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
       
       // Try to parse the cleaned JSON
@@ -344,29 +318,8 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
       }
       
     } catch (parseError) {
-      console.error('Failed to parse JSON from Mistral response:', parseError);
+      console.error('Failed to parse JSON from AI response:', parseError);
       console.error('Content that failed to parse:', content.substring(0, 1000) + '...');
-      
-      // Fallback: try to extract partial data if possible
-      try {
-        const partialMatch = content.match(/"vendor":\s*"([^"]*)"[\s\S]*"totalAmount":\s*([0-9.]+)/);
-        if (partialMatch) {
-          console.log('🔄 Attempting partial parsing fallback...');
-          return new Response(
-            JSON.stringify({ 
-              error: 'Partial parsing failed - please try uploading the receipt again',
-              vendor: partialMatch[1],
-              totalAmount: parseFloat(partialMatch[2])
-            }),
-            { 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 422 
-            }
-          );
-        }
-      } catch (fallbackError) {
-        console.error('Fallback parsing also failed:', fallbackError);
-      }
       
       return new Response(
         JSON.stringify({ 
@@ -501,7 +454,7 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
     console.error('Error in process-receipt function:', error);
     return new Response(
       JSON.stringify({ 
-        error: 'Internal server error',
+        error: 'An unexpected error occurred while processing the receipt',
         details: error instanceof Error ? error.message : String(error)
       }),
       { 

@@ -18,6 +18,7 @@ interface Product {
   category?: string;
   current_stock: number;
   uom_purchase: string | null;
+  size_value?: number | null;
   receipt_item_names: string[];
   similarity_score?: number;
   match_type?: string;
@@ -163,6 +164,7 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
           category,
           current_stock,
           uom_purchase,
+          size_value,
           receipt_item_names,
           suppliers (
             id,
@@ -189,6 +191,7 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
           category: item.category,
           current_stock: item.current_stock,
           uom_purchase: item.uom_purchase,
+          size_value: item.size_value,
           receipt_item_names: item.receipt_item_names || [],
           supplier: item.suppliers
         }));
@@ -442,7 +445,12 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
                             </>
                           )}
                           <span>•</span>
-                          <span>{product.current_stock} {product.uom_purchase || 'units'}</span>
+                          <span>
+                            {product.size_value && product.size_value > 0 
+                              ? `${Math.floor(product.current_stock / product.size_value)} ${product.uom_purchase || 'units'}`
+                              : `${product.current_stock} ${product.uom_purchase || 'units'}`
+                            }
+                          </span>
                           {product.similarity_score && (
                             <>
                               <span>•</span>
@@ -496,7 +504,10 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
                 Will update: {selectedProduct.name}
               </div>
               <div className="text-green-600 dark:text-green-400">
-                Current stock: {selectedProduct.current_stock} {selectedProduct.uom_purchase || 'units'}
+                Current stock: {selectedProduct.size_value && selectedProduct.size_value > 0 
+                  ? `${Math.floor(selectedProduct.current_stock / selectedProduct.size_value)} ${selectedProduct.uom_purchase || 'units'}`
+                  : `${selectedProduct.current_stock} ${selectedProduct.uom_purchase || 'units'}`
+                }
               </div>
               {selectedProduct.supplier && (
                 <div className="mt-1">

@@ -455,6 +455,7 @@ export type Database = {
           receipt_item_names: string[] | null
           reorder_point: number | null
           restaurant_id: string
+          search_vector: unknown | null
           searchable_text: string | null
           size_unit: string | null
           size_value: number | null
@@ -486,6 +487,7 @@ export type Database = {
           receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id: string
+          search_vector?: unknown | null
           searchable_text?: string | null
           size_unit?: string | null
           size_value?: number | null
@@ -517,6 +519,7 @@ export type Database = {
           receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id?: string
+          search_vector?: unknown | null
           searchable_text?: string | null
           size_unit?: string | null
           size_value?: number | null
@@ -1812,6 +1815,25 @@ export type Database = {
       dmetaphone_alt: {
         Args: { "": string }
         Returns: string
+      }
+      fulltext_product_search: {
+        Args: {
+          p_limit?: number
+          p_restaurant_id: string
+          p_search_term: string
+        }
+        Returns: {
+          brand: string
+          category: string
+          current_stock: number
+          id: string
+          match_type: string
+          name: string
+          receipt_item_names: string[]
+          similarity_score: number
+          sku: string
+          uom_purchase: string
+        }[]
       }
       get_product_cost_per_recipe_unit: {
         Args: { product_id: string }

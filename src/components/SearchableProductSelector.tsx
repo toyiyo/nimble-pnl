@@ -212,14 +212,43 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
     try {
       let searchResults: Product[] = [];
 
-      // Start with word-based search for immediate results
-      if (allProducts.length > 0) {
-        const wordResults = wordBasedSearch(allProducts, term);
-        searchResults = [...wordResults];
+      // Start with PostgreSQL full-text search for best results
+      try {
+        const { data: ftResults, error: ftError } = await supabase.rpc('fulltext_product_search', {
+          p_restaurant_id: selectedRestaurant.restaurant_id,
+          p_search_term: term,
+          p_limit: 15
+        });
+
+        if (!ftError && ftResults?.length > 0) {
+          const ftMapped = ftResults.map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            sku: item.sku,
+            brand: item.brand,
+            category: item.category,
+            current_stock: item.current_stock,
+            uom_purchase: item.uom_purchase,
+            receipt_item_names: item.receipt_item_names || [],
+            similarity_score: item.similarity_score,
+            match_type: item.match_type
+          }));
+          searchResults = [...ftMapped];
+        }
+      } catch (ftError) {
+        console.log('Full-text search unavailable, using fallback');
       }
 
-      // Enhance with fuzzy search
-      if (allProducts.length > 0) {
+      // Enhance with client-side fuzzy search if needed
+      if (searchResults.length < 10 && allProducts.length > 0) {
+        const clientResults = wordBasedSearch(allProducts, term)
+          .filter(product => !searchResults.some(sr => sr.id === product.id))
+          .slice(0, 10);
+        searchResults = [...searchResults, ...clientResults];
+      }
+
+      // Final fuzzy search enhancement
+      if (searchResults.length < 15 && allProducts.length > 0) {
         const fuse = new Fuse(allProducts, fuseOptions);
         const fuzzyResults = fuse.search(term);
         
@@ -229,51 +258,26 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
             ...result.item,
             similarity_score: 1 - (result.score || 0),
             match_type: 'fuzzy_match'
-          }));
+          }))
+          .slice(0, 5);
 
         searchResults = [...searchResults, ...fuzzyMapped];
       }
 
-      // Try database search as enhancement (not primary)
-      try {
-        const { data: dbResults, error } = await supabase.rpc('advanced_product_search', {
-          p_restaurant_id: selectedRestaurant.restaurant_id,
-          p_search_term: term,
-          p_similarity_threshold: 0.05,
-          p_limit: 10
-        });
-
-        if (!error && dbResults?.length > 0) {
-          const dbMapped = (dbResults || []).map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            sku: item.sku,
-            brand: item.brand,
-            category: item.category,
-            current_stock: item.current_stock,
-            uom_purchase: item.uom_purchase,
-            receipt_item_names: item.receipt_item_names || [],
-            similarity_score: item.combined_score,
-            match_type: item.match_type
-          }));
-
-          // Add database results that aren't already included
-          const additionalDbResults = dbMapped.filter(db => 
-            !searchResults.some(sr => sr.id === db.id)
-          );
-          searchResults = [...searchResults, ...additionalDbResults];
-        }
-      } catch (dbError) {
-        console.log('Database search unavailable, using client search');
-      }
-
       // Sort by similarity score and limit results
       searchResults.sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0));
-      setProducts(searchResults.slice(0, 25)); // Show more results
+      setProducts(searchResults.slice(0, 25));
       
     } catch (error) {
       console.error('Error searching products:', error);
-      setProducts([]);
+      
+      // Fallback to client-side search only
+      if (allProducts.length > 0) {
+        const clientResults = wordBasedSearch(allProducts, term);
+        setProducts(clientResults.slice(0, 15));
+      } else {
+        setProducts([]);
+      }
     } finally {
       setLoading(false);
     }

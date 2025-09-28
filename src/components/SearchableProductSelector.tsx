@@ -47,16 +47,77 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState(searchTerm);
   const [products, setProducts] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showAllProducts, setShowAllProducts] = useState(false);
   const { selectedRestaurant } = useRestaurantContext();
 
-  // Auto-search products when search term changes
+  // Load all products initially and auto-search when search term changes
+  useEffect(() => {
+    if (selectedRestaurant?.restaurant_id) {
+      loadAllProducts();
+    }
+  }, [selectedRestaurant]);
+
   useEffect(() => {
     if (searchTerm && searchTerm.length > 2) {
       setSearchValue(searchTerm);
       searchProducts(searchTerm);
     }
   }, [searchTerm]);
+
+  const loadAllProducts = async () => {
+    if (!selectedRestaurant?.restaurant_id) {
+      setAllProducts([]);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          id,
+          name,
+          sku,
+          current_stock,
+          uom_purchase,
+          receipt_item_names,
+          suppliers (
+            id,
+            name,
+            contact_email,
+            contact_phone,
+            address,
+            website,
+            is_active
+          )
+        `)
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .order('name');
+
+      if (error) {
+        console.error('Error loading products:', error);
+        setAllProducts([]);
+      } else {
+        const mappedProducts = (data || []).map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          sku: item.sku,
+          current_stock: item.current_stock,
+          uom_purchase: item.uom_purchase,
+          receipt_item_names: item.receipt_item_names || [],
+          supplier: item.suppliers
+        }));
+        setAllProducts(mappedProducts);
+      }
+    } catch (error) {
+      console.error('Error loading products:', error);
+      setAllProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const searchProducts = async (term: string) => {
     if (!selectedRestaurant?.restaurant_id || term.length < 2) {
@@ -99,15 +160,25 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
   };
 
   const selectedProduct = useMemo(() => {
-    return products.find(product => product.id === value);
-  }, [products, value]);
+    return products.find(product => product.id === value) || 
+           allProducts.find(product => product.id === value);
+  }, [products, allProducts, value]);
+
+  const displayProducts = useMemo(() => {
+    if (showAllProducts || (!searchValue || searchValue.length < 2)) {
+      return allProducts.slice(0, 50); // Limit to first 50 for performance
+    }
+    return products;
+  }, [showAllProducts, searchValue, allProducts, products]);
 
   const handleSearch = (term: string) => {
     setSearchValue(term);
+    setShowAllProducts(false);
     if (term.length >= 2) {
       searchProducts(term);
     } else {
       setProducts([]);
+      setShowAllProducts(true);
     }
   };
 
@@ -145,20 +216,55 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
         </PopoverTrigger>
         <PopoverContent className="w-full p-0" align="start">
           <Command>
-            <CommandInput
-              placeholder="Type to search products..."
-              value={searchValue}
-              onValueChange={handleSearch}
-            />
+            <div className="flex items-center border-b px-3">
+              <CommandInput
+                placeholder="Type to search products..."
+                value={searchValue}
+                onValueChange={handleSearch}
+                className="flex-1"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowAllProducts(!showAllProducts);
+                  setSearchValue('');
+                  setProducts([]);
+                }}
+                className="ml-2 text-xs"
+              >
+                {showAllProducts ? 'Search' : 'Browse All'}
+              </Button>
+            </div>
             <CommandList>
               <CommandEmpty>
                 {loading ? (
                   <div className="flex items-center justify-center py-4">
                     <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2"></div>
-                    Searching...
+                    {showAllProducts ? 'Loading products...' : 'Searching...'}
+                  </div>
+                ) : showAllProducts ? (
+                  <div className="py-4 text-center">
+                    <div className="text-sm text-muted-foreground mb-2">
+                      No products found in your inventory
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        onValueChange('new_item');
+                        setOpen(false);
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Create New Item
+                    </Button>
                   </div>
                 ) : searchValue.length < 2 ? (
-                  "Type at least 2 characters to search..."
+                  <div className="py-4 text-center text-sm text-muted-foreground">
+                    Type at least 2 characters to search or click "Browse All"
+                  </div>
                 ) : (
                   <div className="py-4 text-center">
                     <div className="text-sm text-muted-foreground mb-2">
@@ -180,7 +286,7 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
                 )}
               </CommandEmpty>
               <CommandGroup>
-                {products.map((product) => (
+                {displayProducts.map((product) => (
                   <CommandItem
                     key={product.id}
                     value={product.id}

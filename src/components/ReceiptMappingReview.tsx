@@ -179,8 +179,9 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 <div>
                   <Label htmlFor={`name-${item.id}`}>Item Name</Label>
                   <Input
+                    key={`name-${item.id}-${item.parsed_name}`}
                     id={`name-${item.id}`}
-                    value={item.parsed_name || ''}
+                    defaultValue={item.parsed_name || ''}
                     onChange={(e) => handleNameChange(item.id, e.target.value)}
                     placeholder="Enter item name"
                   />
@@ -190,9 +191,10 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                   <div>
                     <Label htmlFor={`quantity-${item.id}`}>Quantity</Label>
                     <Input
+                      key={`quantity-${item.id}-${item.parsed_quantity}`}
                       id={`quantity-${item.id}`}
                       type="number"
-                      value={item.parsed_quantity || ''}
+                      defaultValue={item.parsed_quantity || ''}
                       onChange={(e) => handleQuantityChange(item.id, parseFloat(e.target.value) || 0)}
                       placeholder="0"
                     />
@@ -200,8 +202,9 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                   <div>
                     <Label htmlFor={`unit-${item.id}`}>Unit</Label>
                     <Input
+                      key={`unit-${item.id}-${item.parsed_unit}`}
                       id={`unit-${item.id}`}
-                      value={item.parsed_unit || ''}
+                      defaultValue={item.parsed_unit || ''}
                       onChange={(e) => handleUnitChange(item.id, e.target.value)}
                       placeholder="lb, gal, each"
                     />
@@ -211,10 +214,11 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 <div>
                   <Label htmlFor={`price-${item.id}`}>Price</Label>
                   <Input
+                    key={`price-${item.id}-${item.parsed_price}`}
                     id={`price-${item.id}`}
                     type="number"
                     step="0.01"
-                    value={item.parsed_price || ''}
+                    defaultValue={item.parsed_price || ''}
                     onChange={(e) => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
                     placeholder="0.00"
                   />

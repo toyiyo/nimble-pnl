@@ -47,19 +47,23 @@ export function RecipeIngredientItem({
                     <SelectValue placeholder="Select product" />
                   </SelectTrigger>
                 </FormControl>
-                <SelectContent>
-                  {products.map((product) => (
-                    <SelectItem key={product.id} value={product.id}>
-                      <div className="flex flex-col">
-                        <span>{product.name}</span>
-                        {product.cost_per_unit && (
-                          <span className="text-xs text-muted-foreground">
-                            ${product.cost_per_unit.toFixed(2)}/{product.uom_purchase || 'unit'}
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
+                <SelectContent className="bg-background border shadow-md z-50 max-h-[300px] overflow-y-auto">
+                  {products.length === 0 ? (
+                    <div className="p-2 text-sm text-muted-foreground">No products found</div>
+                  ) : (
+                    products.map((product) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        <div className="flex flex-col">
+                          <span>{product.name}</span>
+                          {product.cost_per_unit && (
+                            <span className="text-xs text-muted-foreground">
+                              ${product.cost_per_unit.toFixed(2)}/{product.uom_purchase || 'unit'}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -100,7 +104,7 @@ export function RecipeIngredientItem({
                       <SelectValue placeholder="Unit" />
                     </SelectTrigger>
                   </FormControl>
-                  <SelectContent>
+                  <SelectContent className="bg-background border shadow-md z-50 max-h-[200px] overflow-y-auto">
                     {(() => {
                       if (selectedProduct?.uom_purchase) {
                         // Show smart suggestions first, then all other units

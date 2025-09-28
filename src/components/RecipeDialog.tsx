@@ -367,7 +367,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                               <SelectValue placeholder={posItemsLoading ? "Loading POS items..." : "Select POS item or leave blank"} />
                             </SelectTrigger>
                           </FormControl>
-                          <SelectContent className="max-h-[200px]">
+                          <SelectContent className="bg-background border shadow-md z-50 max-h-[200px] overflow-y-auto">
                             {posItems.map((item) => (
                               <SelectItem key={item.item_name} value={item.item_name}>
                                 <div className="flex flex-col">

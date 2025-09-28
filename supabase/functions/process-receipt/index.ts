@@ -129,7 +129,7 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
             ]
           }
         ],
-        "max_completion_tokens": 2000
+        "max_completion_tokens": 4000
       })
     });
 
@@ -177,19 +177,67 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
 
     let parsedData;
     try {
-      // Clean up the response to extract JSON
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
+      // Clean up the response to extract JSON with better error handling
+      let jsonContent = content.trim();
+      
+      // Remove markdown code blocks if present
+      jsonContent = jsonContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
+      
+      // Extract JSON between first { and last }
+      const firstBrace = jsonContent.indexOf('{');
+      const lastBrace = jsonContent.lastIndexOf('}');
+      
+      if (firstBrace === -1 || lastBrace === -1) {
+        throw new Error('No JSON structure found in response');
       }
-      parsedData = JSON.parse(jsonMatch[0]);
+      
+      jsonContent = jsonContent.substring(firstBrace, lastBrace + 1);
+      
+      // Attempt to fix common JSON issues
+      // Remove trailing commas before closing brackets/braces
+      jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
+      
+      // Try to parse the cleaned JSON
+      parsedData = JSON.parse(jsonContent);
+      
+      // Validate required structure
+      if (!parsedData.lineItems || !Array.isArray(parsedData.lineItems)) {
+        throw new Error('Invalid JSON structure: missing or invalid lineItems array');
+      }
+      
     } catch (parseError) {
       console.error('Failed to parse JSON from Mistral response:', parseError);
+      console.error('Content that failed to parse:', content.substring(0, 1000) + '...');
+      
+      // Fallback: try to extract partial data if possible
+      try {
+        const partialMatch = content.match(/"vendor":\s*"([^"]*)"[\s\S]*"totalAmount":\s*([0-9.]+)/);
+        if (partialMatch) {
+          console.log('🔄 Attempting partial parsing fallback...');
+          return new Response(
+            JSON.stringify({ 
+              error: 'Partial parsing failed - please try uploading the receipt again',
+              vendor: partialMatch[1],
+              totalAmount: parseFloat(partialMatch[2])
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 422 
+            }
+          );
+        }
+      } catch (fallbackError) {
+        console.error('Fallback parsing also failed:', fallbackError);
+      }
+      
       return new Response(
-        JSON.stringify({ error: 'Failed to parse receipt data' }),
+        JSON.stringify({ 
+          error: 'Failed to parse receipt data. The AI response was malformed. Please try again.',
+          details: parseError instanceof Error ? parseError.message : String(parseError)
+        }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500 
+          status: 422 
         }
       );
     }

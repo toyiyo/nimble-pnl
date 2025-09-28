@@ -122,8 +122,13 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
           </div>
           
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Cost per package:</span>
+            <span className="text-muted-foreground">Cost per {purchaseUnit}:</span>
             <span className="font-medium">${costPerUnit.toFixed(2)}</span>
+          </div>
+          
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Total package cost:</span>
+            <span className="font-medium">${(costPerUnit * purchaseQuantity).toFixed(2)}</span>
           </div>
           
           <div className="flex justify-between">
@@ -201,7 +206,9 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
           </div>
           <div className="flex justify-between">
             <span>Inventory Deduction:</span>
-            <span className="font-medium">{purchaseUnitsNeeded.toFixed(3)} {purchaseUnit}</span>
+            <span className="font-medium">
+              {purchaseUnitsNeeded.toFixed(3)} {conversionResult ? conversionResult.inventoryDeductionUnit : purchaseUnit}
+            </span>
           </div>
           <div className="flex justify-between">
             <span>Percentage of Package:</span>

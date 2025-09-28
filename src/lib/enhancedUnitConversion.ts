@@ -183,7 +183,7 @@ export function calculateInventoryImpact(
   purchaseQuantity: number,
   purchaseUnit: string,
   productName: string,
-  costPerPurchaseUnit: number
+  costPerPurchaseUnit: number  // This is cost per single purchase unit (e.g., $5.97/lb)
 ): {
   inventoryDeduction: number;           // How much to deduct from inventory (in purchase units)
   inventoryDeductionUnit: string;       // Unit of the deduction
@@ -192,58 +192,29 @@ export function calculateInventoryImpact(
   conversionDetails: ConversionResult | null;
 } {
   
-  // For your rice example:
-  // recipeQuantity = 1, recipeUnit = 'cup'
-  // purchaseQuantity = 80, purchaseUnit = 'oz'  
-  // productName = 'Mahatma Jasmine Rice'
-  // costPerPurchaseUnit = 5.98
+  // Step 1: Convert recipe quantity to purchase units for direct comparison
+  const recipeConversion = convertUnits(recipeQuantity, recipeUnit, purchaseUnit, productName);
   
-  // Step 1: Convert recipe unit to weight (using product-specific conversion)
-  const recipeToWeight = convertUnits(recipeQuantity, recipeUnit, 'oz', productName);
-  
-  if (!recipeToWeight) {
-    // Fallback to standard conversion if no product-specific conversion
-    const standardConversion = convertUnits(recipeQuantity, recipeUnit, purchaseUnit);
-    if (!standardConversion) {
-      throw new Error(`Cannot convert ${recipeUnit} to ${purchaseUnit}`);
-    }
-    
-    const inventoryDeduction = standardConversion.value;
-    const percentageOfPackage = (inventoryDeduction / purchaseQuantity) * 100;
-    const costImpact = (inventoryDeduction / purchaseQuantity) * costPerPurchaseUnit;
-    
-    return {
-      inventoryDeduction,
-      inventoryDeductionUnit: purchaseUnit,
-      costImpact,
-      percentageOfPackage,
-      conversionDetails: standardConversion
-    };
+  if (!recipeConversion) {
+    throw new Error(`Cannot convert ${recipeUnit} to ${purchaseUnit} for ${productName}`);
   }
   
-  // For rice: 1 cup = 6.3 oz (weight)
-  const recipeWeightInOz = recipeToWeight.value;
+  // Step 2: Calculate inventory deduction (how much of the purchase unit we use)
+  const inventoryDeduction = recipeConversion.value;
   
-  // Step 2: Calculate what fraction of the purchase unit this represents
-  // For rice: 6.3 oz / 80 oz = 0.07875 (7.875% of the bag)
-  const fractionOfPurchase = recipeWeightInOz / purchaseQuantity;
-  const percentageOfPackage = fractionOfPurchase * 100;
+  // Step 3: Calculate percentage of total package used
+  const percentageOfPackage = (inventoryDeduction / purchaseQuantity) * 100;
   
-  // Step 3: Calculate cost impact
-  // For rice: 0.07875 * $5.98 = $0.47
-  const costImpact = fractionOfPurchase * costPerPurchaseUnit;
-  
-  // Step 4: Determine inventory deduction amount
-  // We deduct the equivalent weight in the purchase unit
-  // For rice: deduct 6.3 oz from the 80 oz bag
-  const inventoryDeduction = recipeWeightInOz;
+  // Step 4: Calculate cost impact
+  // costPerPurchaseUnit is per unit (e.g., $5.97/lb), so multiply by actual units used
+  const costImpact = inventoryDeduction * costPerPurchaseUnit;
   
   return {
     inventoryDeduction,
-    inventoryDeductionUnit: 'oz',  // We always deduct in weight units for accuracy
+    inventoryDeductionUnit: purchaseUnit,
     costImpact,
     percentageOfPackage,
-    conversionDetails: recipeToWeight
+    conversionDetails: recipeConversion
   };
 }
 

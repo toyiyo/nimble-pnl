@@ -214,13 +214,18 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
 
       // Start with PostgreSQL full-text search for best results
       try {
+        console.log('Searching with restaurant_id:', selectedRestaurant.restaurant_id, 'term:', term);
+        
         const { data: ftResults, error: ftError } = await supabase.rpc('fulltext_product_search', {
           p_restaurant_id: selectedRestaurant.restaurant_id,
           p_search_term: term,
           p_limit: 15
         });
 
-        if (!ftError && ftResults?.length > 0) {
+        if (ftError) {
+          console.error('Full-text search error:', ftError);
+        } else if (ftResults?.length > 0) {
+          console.log('Full-text search results:', ftResults.length, 'items');
           const ftMapped = ftResults.map((item: any) => ({
             id: item.id,
             name: item.name,
@@ -234,13 +239,16 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
             match_type: item.match_type
           }));
           searchResults = [...ftMapped];
+        } else {
+          console.log('Full-text search returned no results');
         }
       } catch (ftError) {
-        console.log('Full-text search unavailable, using fallback');
+        console.error('Full-text search exception:', ftError);
       }
 
       // Enhance with client-side fuzzy search if needed
       if (searchResults.length < 10 && allProducts.length > 0) {
+        console.log('Adding client-side search results');
         const clientResults = wordBasedSearch(allProducts, term)
           .filter(product => !searchResults.some(sr => sr.id === product.id))
           .slice(0, 10);
@@ -249,6 +257,7 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
 
       // Final fuzzy search enhancement
       if (searchResults.length < 15 && allProducts.length > 0) {
+        console.log('Adding fuzzy search results');
         const fuse = new Fuse(allProducts, fuseOptions);
         const fuzzyResults = fuse.search(term);
         
@@ -266,6 +275,7 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
 
       // Sort by similarity score and limit results
       searchResults.sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0));
+      console.log('Final search results:', searchResults.length, 'items');
       setProducts(searchResults.slice(0, 25));
       
     } catch (error) {
@@ -273,6 +283,7 @@ export const SearchableProductSelector: React.FC<SearchableProductSelectorProps>
       
       // Fallback to client-side search only
       if (allProducts.length > 0) {
+        console.log('Using fallback client-side search');
         const clientResults = wordBasedSearch(allProducts, term);
         setProducts(clientResults.slice(0, 15));
       } else {

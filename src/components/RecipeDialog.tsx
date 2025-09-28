@@ -136,17 +136,31 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
     }
   }, [recipe?.id, isOpen]); // Only depend on recipe.id, not the whole recipe object or fetchRecipeIngredients
 
-  // Calculate estimated cost when ingredients change using proper unit conversions
+  // Calculate estimated cost when ingredients change using enhanced unit conversions
   useEffect(() => {
     const subscription = form.watch((value) => {
       if (value.ingredients) {
         const cost = value.ingredients.reduce((total, ingredient) => {
           if (ingredient?.product_id && ingredient?.quantity) {
             const product = products.find(p => p.id === ingredient.product_id);
-            if (product?.cost_per_unit && product?.conversion_factor) {
-              // Calculate cost per recipe unit = cost per purchase unit / conversion factor
-              const costPerRecipeUnit = product.cost_per_unit / (product.conversion_factor || 1);
-              return total + (ingredient.quantity * costPerRecipeUnit);
+            if (product?.cost_per_unit) {
+              // Use enhanced unit conversion logic to match database calculation
+              let recipeTourchaseConversion;
+              
+              // Handle product-specific conversions (like rice: 1 cup = 6.3 oz)
+              if (product.name?.toLowerCase().includes('rice') && 
+                  ingredient.unit === 'cup' && 
+                  product.uom_purchase?.toLowerCase() === 'oz') {
+                // Rice-specific conversion: 1 cup = 6.3 oz
+                recipeTourchaseConversion = ingredient.quantity * 6.3;
+              } else {
+                // Standard conversion using conversion_factor
+                recipeTourchaseConversion = ingredient.quantity / (product.conversion_factor || 1);
+              }
+              
+              // Calculate cost impact: units_used * cost_per_purchase_unit
+              const costImpact = recipeTourchaseConversion * product.cost_per_unit;
+              return total + costImpact;
             }
           }
           return total;

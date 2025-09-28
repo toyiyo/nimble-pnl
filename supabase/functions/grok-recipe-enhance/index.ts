@@ -173,7 +173,27 @@ Only suggest ingredients that are actually in the available ingredients list. Us
     const content = data.choices[0].message.content;
     
     try {
-      const recipeData = JSON.parse(content);
+      // Clean up the response to extract JSON with better error handling
+      let jsonContent = content.trim();
+      
+      // Remove markdown code blocks if present
+      jsonContent = jsonContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
+      
+      // Extract JSON between first { and last }
+      const firstBrace = jsonContent.indexOf('{');
+      const lastBrace = jsonContent.lastIndexOf('}');
+      
+      if (firstBrace === -1 || lastBrace === -1) {
+        throw new Error('No JSON structure found in response');
+      }
+      
+      jsonContent = jsonContent.substring(firstBrace, lastBrace + 1);
+      
+      // Attempt to fix common JSON issues
+      // Remove trailing commas before closing brackets/braces
+      jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
+      
+      const recipeData = JSON.parse(jsonContent);
       
       // Validate and fix measurement units
       if (recipeData.ingredients && Array.isArray(recipeData.ingredients)) {

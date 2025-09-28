@@ -461,7 +461,9 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   name="cost_per_unit"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Cost per Unit ($)</FormLabel>
+                      <FormLabel>
+                        Cost per {form.watch('uom_purchase') || 'Purchase Unit'} ($)
+                      </FormLabel>
                       <FormControl>
                         <Input
                           {...field}

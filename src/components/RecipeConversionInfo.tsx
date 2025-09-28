@@ -1,8 +1,12 @@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Product } from '@/hooks/useProducts';
-import { Calculator, TrendingUp, Package } from 'lucide-react';
+import { useUnitConversion } from '@/hooks/useUnitConversion';
+import { Calculator, TrendingUp, Edit2 } from 'lucide-react';
+import { useState } from 'react';
 
 interface RecipeConversionInfoProps {
   product: Product;
@@ -11,13 +15,41 @@ interface RecipeConversionInfoProps {
 }
 
 export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: RecipeConversionInfoProps) {
-  if (!product.conversion_factor || !product.cost_per_unit) {
-    return null;
+  const [isEditing, setIsEditing] = useState(false);
+  const [customFactor, setCustomFactor] = useState(product.conversion_factor || 1);
+  const { updateProductConversion, loading } = useUnitConversion(product.restaurant_id);
+  
+  if (!product.cost_per_unit) {
+    return (
+      <Card className="bg-muted/50">
+        <CardContent className="p-4">
+          <div className="text-sm text-muted-foreground">
+            No cost information available for this product.
+          </div>
+        </CardContent>
+      </Card>
+    );
   }
 
-  const costPerRecipeUnit = product.cost_per_unit / product.conversion_factor;
+  // Calculate costs based on conversion factor
+  const actualFactor = isEditing ? customFactor : (product.conversion_factor || 1);
+  const costPerRecipeUnit = product.cost_per_unit / actualFactor;
   const totalRecipeCost = recipeQuantity * costPerRecipeUnit;
-  const purchaseUnitsNeeded = recipeQuantity / product.conversion_factor;
+  const purchaseUnitsNeeded = recipeQuantity / actualFactor;
+  
+  const handleSaveConversion = async () => {
+    try {
+      await updateProductConversion(product.id, customFactor);
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Failed to save conversion:', error);
+    }
+  };
+  
+  const handleCancelEdit = () => {
+    setCustomFactor(product.conversion_factor || 1);
+    setIsEditing(false);
+  };
 
   return (
     <Card className="bg-muted/50">
@@ -45,12 +77,37 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
 
         <Separator />
 
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
+        <div className="space-y-3 text-sm">
+          <div className="flex justify-between items-center">
             <span className="text-muted-foreground">Conversion Factor:</span>
-            <span className="font-medium">
-              1 {product.uom_purchase} = {product.conversion_factor} {product.uom_recipe}
-            </span>
+            {isEditing ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs">1 {product.uom_purchase || 'unit'} =</span>
+                <Input 
+                  type="number"
+                  value={customFactor}
+                  onChange={(e) => setCustomFactor(parseFloat(e.target.value) || 1)}
+                  className="w-20 h-7 text-xs"
+                  step="0.001"
+                />
+                <span className="text-xs">{product.uom_recipe || recipeUnit}</span>
+                <Button size="sm" onClick={handleSaveConversion} disabled={loading} className="h-7 px-2">
+                  Save
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-7 px-2">
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="font-medium">
+                  1 {product.uom_purchase || 'unit'} = {actualFactor} {product.uom_recipe || recipeUnit}
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => setIsEditing(true)} className="h-6 w-6 p-0">
+                  <Edit2 className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
           </div>
           
           <div className="flex justify-between">
@@ -59,7 +116,7 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
           </div>
           
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Cost per {product.uom_recipe || 'recipe unit'}:</span>
+            <span className="text-muted-foreground">Cost per {product.uom_recipe || recipeUnit}:</span>
             <span className="font-medium">${costPerRecipeUnit.toFixed(3)}</span>
           </div>
         </div>
@@ -77,11 +134,11 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
           </div>
           <div className="flex justify-between">
             <span>Purchase Units Needed:</span>
-            <span className="font-medium">{purchaseUnitsNeeded.toFixed(3)} {product.uom_purchase}</span>
+            <span className="font-medium">{purchaseUnitsNeeded.toFixed(3)} {product.uom_purchase || 'unit'}</span>
           </div>
           <div className="flex justify-between">
             <span>Total Cost:</span>
-            <span className="font-medium text-green-600">${totalRecipeCost.toFixed(2)}</span>
+            <span className="font-medium text-primary">${totalRecipeCost.toFixed(2)}</span>
           </div>
         </div>
       </CardContent>

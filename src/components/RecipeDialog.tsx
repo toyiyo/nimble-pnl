@@ -32,7 +32,9 @@ import { Badge } from '@/components/ui/badge';
 import { useRecipes, Recipe, CreateRecipeData } from '@/hooks/useRecipes';
 import { useProducts } from '@/hooks/useProducts';
 import { usePOSItems } from '@/hooks/usePOSItems';
-import { Plus, Trash2, DollarSign } from 'lucide-react';
+import { useUnitConversion } from '@/hooks/useUnitConversion';
+import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
+import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
 import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
 
 const measurementUnits = [
@@ -67,8 +69,11 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
   const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
   const { products } = useProducts(restaurantId);
   const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
+  const { suggestConversionFactor } = useUnitConversion(restaurantId);
+  
   const [loading, setLoading] = useState(false);
   const [estimatedCost, setEstimatedCost] = useState(0);
+  const [expandedIngredients, setExpandedIngredients] = useState<Record<number, boolean>>({});
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -219,7 +224,28 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
     if (fields.length > 1) {
       remove(index);
     }
+    // Also remove from expanded state
+    setExpandedIngredients(prev => {
+      const newState = { ...prev };
+      delete newState[index];
+      // Shift down remaining indices
+      Object.keys(newState).forEach(key => {
+        const keyNum = parseInt(key);
+        if (keyNum > index) {
+          newState[keyNum - 1] = newState[keyNum];
+          delete newState[keyNum];
+        }
+      });
+      return newState;
+    });
   }, [fields.length, remove]);
+  
+  const toggleConversionDetails = (index: number) => {
+    setExpandedIngredients(prev => ({
+      ...prev,
+      [index]: !prev[index]
+    }));
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -390,138 +416,31 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe }: RecipeDi
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {fields.map((field, index) => (
-                  <div key={field.id} className="space-y-4 p-4 border rounded-lg">
-                    <div className="flex items-end gap-4">
-                      <FormField
+                {fields.length === 0 ? (
+                  <Card className="border-dashed">
+                    <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+                      <ChefHat className="h-8 w-8 text-muted-foreground mb-2" />
+                      <p className="text-sm text-muted-foreground mb-4">
+                        No ingredients added yet. Click "Add Ingredient" to start building your recipe.
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
+                    {fields.map((field, index) => (
+                      <RecipeIngredientItem
+                        key={field.id}
+                        index={index}
                         control={form.control}
-                        name={`ingredients.${index}.product_id`}
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <FormLabel>Product</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger id={`product-${index}`}>
-                                  <SelectValue placeholder="Select product" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {products.map((product) => (
-                                  <SelectItem key={product.id} value={product.id}>
-                                    <div className="flex flex-col">
-                                      <span>{product.name}</span>
-                                      {product.cost_per_unit && product.conversion_factor && (
-                                        <span className="text-xs text-muted-foreground">
-                                          ${(product.cost_per_unit / (product.conversion_factor || 1)).toFixed(3)}/{product.uom_recipe || 'unit'}
-                                          {product.uom_purchase && (
-                                            <span className="ml-1">
-                                              (${product.cost_per_unit.toFixed(2)}/{product.uom_purchase})
-                                            </span>
-                                          )}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
+                        products={products}
+                        onRemove={() => removeIngredient(index)}
+                        showConversionDetails={!!expandedIngredients[index]}
+                        toggleConversionDetails={() => toggleConversionDetails(index)}
+                        measurementUnits={measurementUnits}
                       />
-
-                      <FormField
-                        control={form.control}
-                        name={`ingredients.${index}.quantity`}
-                        render={({ field }) => (
-                          <FormItem className="w-24">
-                            <FormLabel>Qty</FormLabel>
-                            <FormControl>
-                              <Input 
-                                type="number" 
-                                step="0.001"
-                                id={`quantity-${index}`}
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name={`ingredients.${index}.unit`}
-                        render={({ field }) => (
-                          <FormItem className="w-24">
-                            <FormLabel>Unit</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger id={`unit-${index}`}>
-                                  <SelectValue placeholder="Select unit" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {measurementUnits.map((unit) => (
-                                  <SelectItem key={unit} value={unit}>
-                                    {unit}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name={`ingredients.${index}.notes`}
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <FormLabel>Notes</FormLabel>
-                            <FormControl>
-                              <Input 
-                                placeholder="Optional notes..." 
-                                id={`notes-${index}`}
-                                {...field} 
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeIngredient(index)}
-                        disabled={fields.length === 1}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    
-                    {/* Show conversion info if product is selected */}
-                    {(() => {
-                      const currentIngredient = form.watch(`ingredients.${index}`);
-                      const selectedProduct = products.find(p => p.id === currentIngredient?.product_id);
-                      
-                      if (selectedProduct && currentIngredient?.quantity && selectedProduct.conversion_factor) {
-                        return (
-                          <RecipeConversionInfo
-                            product={selectedProduct}
-                            recipeQuantity={currentIngredient.quantity}
-                            recipeUnit={currentIngredient.unit}
-                          />
-                        );
-                      }
-                      return null;
-                    })()}
+                    ))}
                   </div>
-                ))}
+                )}
               </CardContent>
             </Card>
 

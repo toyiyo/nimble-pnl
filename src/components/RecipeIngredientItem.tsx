@@ -106,13 +106,22 @@ export function RecipeIngredientItem({
                   <SelectContent>
                     {(() => {
                       if (selectedProduct?.uom_purchase) {
-                        // Show smart suggestions based on product's purchase unit
+                        // Show smart suggestions first, then all other units
                         const suggested = suggestRecipeUnits(selectedProduct.uom_purchase);
-                        return suggested.map((unit, idx) => (
-                          <SelectItem key={unit} value={unit}>
-                            {unit} {idx === 0 ? '(recommended)' : ''}
-                          </SelectItem>
-                        ));
+                        const otherUnits = measurementUnits.filter(unit => !suggested.includes(unit));
+                        
+                        return [
+                          ...suggested.map((unit, idx) => (
+                            <SelectItem key={unit} value={unit}>
+                              {unit} {idx === 0 ? '(recommended)' : ''}
+                            </SelectItem>
+                          )),
+                          ...otherUnits.map((unit) => (
+                            <SelectItem key={unit} value={unit}>
+                              {unit}
+                            </SelectItem>
+                          ))
+                        ];
                       }
                       // Fallback to all measurement units
                       return measurementUnits.map((unit) => (

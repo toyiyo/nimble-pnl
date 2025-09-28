@@ -16,6 +16,7 @@ interface RecipeConversionInfoProps {
 
 export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: RecipeConversionInfoProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [savedFactor, setSavedFactor] = useState(product.conversion_factor || 1);
   const [customFactor, setCustomFactor] = useState(product.conversion_factor || 1);
   const { updateProductConversion, loading } = useUnitConversion(product.restaurant_id);
   
@@ -31,8 +32,9 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
     );
   }
 
-  // Calculate costs based on conversion factor
-  const actualFactor = isEditing ? customFactor : (product.conversion_factor || 1);
+  // Use saved factor if we've updated it, otherwise use product's conversion factor
+  const currentFactor = savedFactor !== (product.conversion_factor || 1) ? savedFactor : (product.conversion_factor || 1);
+  const actualFactor = isEditing ? customFactor : currentFactor;
   const costPerRecipeUnit = product.cost_per_unit / actualFactor;
   const totalRecipeCost = recipeQuantity * costPerRecipeUnit;
   const purchaseUnitsNeeded = recipeQuantity / actualFactor;
@@ -40,6 +42,7 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
   const handleSaveConversion = async () => {
     try {
       await updateProductConversion(product.id, customFactor);
+      setSavedFactor(customFactor); // Update our saved factor state
       setIsEditing(false);
     } catch (error) {
       console.error('Failed to save conversion:', error);
@@ -47,7 +50,7 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
   };
   
   const handleCancelEdit = () => {
-    setCustomFactor(product.conversion_factor || 1);
+    setCustomFactor(currentFactor);
     setIsEditing(false);
   };
 

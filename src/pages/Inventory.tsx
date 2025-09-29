@@ -475,7 +475,7 @@ export const Inventory: React.FC = () => {
     } else {
       // Update existing product with proper audit trail
       const currentStock = selectedProduct.current_stock || 0;
-      const finalStock = updates.current_stock || 0;
+      const finalStock = updates.current_stock ?? currentStock; // Use nullish coalescing to preserve 0 values
       const difference = finalStock - currentStock;
       
       try {

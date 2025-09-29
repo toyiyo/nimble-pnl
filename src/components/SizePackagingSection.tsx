@@ -187,7 +187,7 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
                 <span className="text-base font-medium">Unit</span>
                 <span className="text-xs text-muted-foreground font-normal">📏</span>
               </FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
                   <SelectTrigger className="text-center">
                     <SelectValue placeholder="Select unit" />
@@ -219,7 +219,7 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
                 <span className="text-base font-medium">Package Type</span>
                 <span className="text-xs text-muted-foreground font-normal">📦</span>
               </FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
                   <SelectTrigger className="text-center">
                     <SelectValue placeholder="Select type" />

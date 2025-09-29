@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
+import { EnhancedBarcodeScanner } from '@/components/EnhancedBarcodeScanner';
 import { ImageCapture } from '@/components/ImageCapture';
 import { ProductDialog } from '@/components/ProductDialog';
 import { ProductCard } from '@/components/ProductCard';
@@ -46,7 +47,7 @@ export const Inventory: React.FC = () => {
   const [lookupResult, setLookupResult] = useState<ProductLookupResult | null>(null);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lastScannedGtin, setLastScannedGtin] = useState<string>('');
-  const [currentMode, setCurrentMode] = useState<'barcode' | 'image'>('barcode');
+  const [currentMode, setCurrentMode] = useState<'scanner' | 'image'>('scanner');
   const [capturedImage, setCapturedImage] = useState<{ blob: Blob; url: string } | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
@@ -653,7 +654,7 @@ export const Inventory: React.FC = () => {
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
             <TabsTrigger value="scanner" className="flex-col py-2 px-1">
               <span className="text-xs md:text-sm">Scanner</span>
-              <span className="text-lg">{currentMode === 'barcode' ? '📱' : '📸'}</span>
+              <span className="text-lg">{currentMode === 'scanner' ? '📱' : '📸'}</span>
             </TabsTrigger>
             <TabsTrigger value="products" className="flex-col py-2 px-1">
               <span className="text-xs md:text-sm">Products</span>
@@ -676,15 +677,15 @@ export const Inventory: React.FC = () => {
             <div className="space-y-4 md:space-y-6">
               {/* Mode Toggle */}
               <div className="flex justify-center">
-                <div className="bg-muted p-1 rounded-lg w-full max-w-xs">
+                <div className="bg-muted p-1 rounded-lg w-full max-w-md">
                   <div className="grid grid-cols-2 gap-1">
                     <Button
-                      variant={currentMode === 'barcode' ? 'default' : 'ghost'}
+                      variant={currentMode === 'scanner' ? 'default' : 'ghost'}
                       size="sm"
-                      onClick={() => setCurrentMode('barcode')}
+                      onClick={() => setCurrentMode('scanner')}
                       className="flex-1"
                     >
-                      📱 Barcode
+                      📱 Scanner
                     </Button>
                     <Button
                       variant={currentMode === 'image' ? 'default' : 'ghost'}
@@ -700,8 +701,8 @@ export const Inventory: React.FC = () => {
 
               <div className="space-y-6 lg:grid lg:grid-cols-2 lg:gap-8 lg:space-y-0">
                 <div>
-                  {currentMode === 'barcode' ? (
-                    <BarcodeScanner
+                  {currentMode === 'scanner' ? (
+                    <EnhancedBarcodeScanner
                       onScan={handleBarcodeScanned}
                       onError={(error) => toast({
                         title: "Scanner Error",
@@ -730,8 +731,15 @@ export const Inventory: React.FC = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      {currentMode === 'barcode' ? (
+                      {currentMode === 'scanner' ? (
                         <>
+                          <div className="space-y-2">
+                            <h4 className="font-medium">Scanning Methods:</h4>
+                            <ul className="text-sm text-muted-foreground space-y-1">
+                              <li>• 📷 <strong>Camera:</strong> Traditional barcode scanning</li>
+                              <li>• 📱 <strong>Bluetooth:</strong> Pair with professional scanners</li>
+                            </ul>
+                          </div>
                           <div className="space-y-2">
                             <h4 className="font-medium">Supported Barcodes:</h4>
                             <ul className="text-sm text-muted-foreground space-y-1">
@@ -743,12 +751,21 @@ export const Inventory: React.FC = () => {
                             </ul>
                           </div>
                           <div className="space-y-2">
-                            <h4 className="font-medium">Scanning Tips:</h4>
+                            <h4 className="font-medium">Camera Scanning Tips:</h4>
                             <ul className="text-sm text-muted-foreground space-y-1">
                               <li>• Hold the barcode steady within the frame</li>
                               <li>• Ensure good lighting</li>
                               <li>• Keep the barcode flat and un-wrinkled</li>
                               <li>• Try different distances if scanning fails</li>
+                            </ul>
+                          </div>
+                          <div className="space-y-2">
+                            <h4 className="font-medium">Bluetooth Scanner Setup:</h4>
+                            <ul className="text-sm text-muted-foreground space-y-1">
+                              <li>• Make sure your scanner is in pairing mode</li>
+                              <li>• Use Chrome, Edge, or compatible browser</li>
+                              <li>• Keep scanner close to your device</li>
+                              <li>• Check scanner battery level</li>
                             </ul>
                           </div>
                         </>
@@ -779,7 +796,7 @@ export const Inventory: React.FC = () => {
                 </div>
               </div>
               
-              {(isLookingUp && currentMode === 'barcode') && (
+              {(isLookingUp && currentMode === 'scanner') && (
                 <div className="flex justify-center">
                   <Card className="w-full max-w-md">
                     <CardContent className="py-8 text-center">

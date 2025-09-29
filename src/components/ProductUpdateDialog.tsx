@@ -303,11 +303,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                   <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <span>Update Product: {product.name}</span>
                     <Badge variant="secondary" className="w-fit">
-                      Current Stock: {
-                        product.package_qty && product.package_qty > 1 && product.uom_purchase
-                          ? `${Math.floor(currentStock / product.package_qty)} ${product.uom_purchase} (${currentStock} ${product.size_unit || 'units'} total)`
-                          : `${currentStock} ${product.size_unit || 'units'}`
-                      }
+                      Current Stock: {currentStock} {product.uom_purchase || 'units'}
                     </Badge>
                   </DialogTitle>
                   <DialogDescription className="mt-1">
@@ -452,92 +448,26 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                         control={form.control}
                         name="quantity_to_add"
                         render={({ field }) => {
-                          const packageQty = form.watch('package_qty') || 1;
-                          const sizeValue = form.watch('size_value') || 1;
                           const purchaseUnit = form.watch('uom_purchase') || 'pieces';
-                          
-                          // For simple items (like bottles), just use direct quantity
-                          // Complex packaging only applies when we're dealing with bulk items where purchase unit differs significantly from size unit
-                          const sizeUnit = form.watch('size_unit') || 'pieces';
-                          
-                          // Always treat these as simple units regardless of size_value
-                          const simpleUnits = ['pieces', 'bottle', 'can', 'jar', 'box', 'bag', 'pack', 'each', 'unit'];
-                          const hasComplexPackaging = !simpleUnits.includes(purchaseUnit) && sizeValue > 1 && purchaseUnit !== sizeUnit;
-                          
-                          const handleDirectChange = (value: number) => {
-                            field.onChange(value);
-                          };
                           
                           return (
                             <FormItem>
                               <FormLabel>
-                                {product.id ? 'Quantity to Add' : 'Initial Stock Quantity'}
+                                Quantity to Add (in {purchaseUnit})
                               </FormLabel>
-                              
-                              {hasComplexPackaging ? (
-                                <div className="space-y-3">
-                                  {/* Package input */}
-                                   <div>
-                                     <Label className="text-sm text-muted-foreground mb-1 block">
-                                       Number of {purchaseUnit}s to add
-                                     </Label>
-                                     <FormControl>
-                                       <Input
-                                         type="number"
-                                         min="0"
-                                         step="1"
-                                         placeholder={`Enter number of ${purchaseUnit}s`}
-                                         value={field.value > 0 ? field.value / sizeValue : ''}
-                                         onChange={(e) => {
-                                           const packages = e.target.value === '' ? 0 : Number(e.target.value);
-                                           field.onChange(packages * sizeValue);
-                                         }}
-                                         className="text-lg font-medium"
-                                       />
-                                     </FormControl>
-                                      {field.value > 0 && (
-                                       <p className="text-xs text-muted-foreground mt-1">
-                                         = {field.value.toFixed(2)} {form.watch('size_unit')} total
-                                       </p>
-                                     )}
-                                  </div>
-                                  
-                                  {/* Alternative: direct units input */}
-                                  <div>
-                                    <Label className="text-sm text-muted-foreground mb-1 block">
-                                      Or enter total {form.watch('size_unit')} directly
-                                    </Label>
-                                    <FormControl>
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        step="0.1"
-                                        placeholder={`Enter total ${form.watch('size_unit')}`}
-                                         value={field.value > 0 ? field.value : ''}
-                                         onChange={(e) => {
-                                           const units = e.target.value === '' ? 0 : Number(e.target.value);
-                                           field.onChange(units);
-                                         }}
-                                      />
-                                    </FormControl>
-                                  </div>
-                                </div>
-                              ) : (
-                                <FormControl>
-                                  <Input
-                                    {...field}
-                                    type="number"
-                                    min="0"
-                                    step="0.1"
-                                    placeholder="Enter quantity"
-                                    value={field.value ?? ''}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      field.onChange(value === '' ? undefined : Number(value));
-                                    }}
-                                  />
-                                </FormControl>
-                              )}
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  placeholder="Enter quantity"
+                                  value={field.value ?? ''}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    field.onChange(value === '' ? undefined : Number(value));
+                                  }}
+                                />
+                              </FormControl>
                               <FormMessage />
                             </FormItem>
                           );
@@ -550,92 +480,24 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                         control={form.control}
                         name="exact_count"
                         render={({ field }) => {
-                          const packageQty = form.watch('package_qty') || 1;
-                          const sizeValue = form.watch('size_value') || 1;
-                          const purchaseUnit = form.watch('uom_purchase') || 'units';
-                          const hasPackaging = sizeValue > 1 && purchaseUnit !== 'units';
-                          
-                          // Calculate packages from total units
-                          const totalUnits = field.value || 0;
-                          const packagesFromTotal = hasPackaging ? totalUnits / sizeValue : totalUnits;
-                          
-                          const handlePackageChange = (packages: number) => {
-                            const totalUnits = packages * sizeValue;
-                            field.onChange(totalUnits);
-                          };
-                          
-                          const handleUnitsChange = (units: number) => {
-                            field.onChange(units);
-                          };
+                          const purchaseUnit = form.watch('uom_purchase') || 'pieces';
                           
                           return (
                             <FormItem>
-                              <FormLabel>Exact Stock Count</FormLabel>
-                              
-                              {hasPackaging && sizeValue > 0 ? (
-                                <div className="space-y-3">
-                                  {/* Package input */}
-                                  <div>
-                                    <Label className="text-sm text-muted-foreground mb-1 block">
-                                      Number of {purchaseUnit}s you have
-                                    </Label>
-                                    <FormControl>
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        step="1"
-                                        placeholder={`Enter number of ${purchaseUnit}s`}
-                                        value={packagesFromTotal > 0 ? Math.round(packagesFromTotal * 100) / 100 : ''}
-                                        onChange={(e) => {
-                                          const packages = e.target.value === '' ? 0 : Number(e.target.value);
-                                          handlePackageChange(packages);
-                                        }}
-                                        className="text-lg font-medium"
-                                      />
-                                    </FormControl>
-                                    {packagesFromTotal > 0 && (
-                                      <p className="text-xs text-muted-foreground mt-1">
-                                        = {(packagesFromTotal * sizeValue).toFixed(2)} {form.watch('size_unit')} total
-                                      </p>
-                                    )}
-                                  </div>
-                                  
-                                  {/* Alternative: direct units input */}
-                                  <div>
-                                    <Label className="text-sm text-muted-foreground mb-1 block">
-                                      Or enter total {form.watch('size_unit')} directly
-                                    </Label>
-                                    <FormControl>
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        step="0.1"
-                                        placeholder={`Enter total ${form.watch('size_unit')}`}
-                                        value={totalUnits > 0 ? totalUnits : ''}
-                                        onChange={(e) => {
-                                          const units = e.target.value === '' ? 0 : Number(e.target.value);
-                                          handleUnitsChange(units);
-                                        }}
-                                      />
-                                    </FormControl>
-                                  </div>
-                                </div>
-                              ) : (
-                                <FormControl>
-                                  <Input
-                                    {...field}
-                                    type="number"
-                                    min="0"
-                                    step="0.1"
-                                    placeholder="Enter exact count"
-                                    value={field.value ?? ''}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      field.onChange(value === '' ? undefined : Number(value));
-                                    }}
-                                  />
-                                </FormControl>
-                              )}
+                              <FormLabel>Exact Stock Count (in {purchaseUnit})</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  placeholder="Enter exact count"
+                                  value={field.value ?? ''}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    field.onChange(value === '' ? undefined : Number(value));
+                                  }}
+                                />
+                              </FormControl>
                               <FormMessage />
                               <p className="text-xs text-muted-foreground">
                                 This will trigger an "adjustment" transaction for count reconciliation
@@ -678,37 +540,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                     <p className="text-sm">
                       <strong>Stock Update Preview:</strong><br />
                       {(() => {
-                        const displayUnit = form.getValues('uom_purchase') || form.getValues('size_unit') || 'units';
-                        const sizeValue = form.getValues('size_value') || 1;
-                        const originalUnit = product.size_unit;
-                        const originalSizeValue = product.size_value || 1;
-                        
-                        // Convert current stock to display units
-                        let displayCurrentStock = currentStock;
-                        if (originalUnit && displayUnit !== originalUnit && displayUnit !== 'units') {
-                          // Convert from original units to the new display units
-                          if (displayUnit === 'bottle' && originalUnit === 'ml' && sizeValue > 0) {
-                            displayCurrentStock = currentStock / sizeValue;
-                          } else if (originalUnit === 'bottle' && displayUnit === 'ml' && originalSizeValue > 0) {
-                            displayCurrentStock = currentStock * originalSizeValue;
-                          }
-                          // Add more conversions as needed
-                        }
-                        
-                        // Convert target values to display units  
-                        let displayExactCount = exactCount;
-                        let displayTotalAfterUpdate = totalAfterUpdate;
-                        
-                        if (adjustmentMode === 'set_exact') {
-                          if (displayUnit === 'bottle' && sizeValue > 0) {
-                            displayExactCount = exactCount / sizeValue;
-                            displayTotalAfterUpdate = totalAfterUpdate / sizeValue;
-                          }
-                        } else {
-                          if (displayUnit === 'bottle' && sizeValue > 0) {
-                            displayTotalAfterUpdate = totalAfterUpdate / sizeValue;
-                          }
-                        }
+                        const displayUnit = form.getValues('uom_purchase') || 'units';
                         
                         const formatValue = (value: number) => {
                           return value % 1 === 0 ? value.toString() : value.toFixed(2);
@@ -716,12 +548,13 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                         
                         if (product.id) {
                           if (adjustmentMode === 'set_exact') {
-                            return `Current: ${formatValue(displayCurrentStock)} → Set to: ${formatValue(displayExactCount)} ${displayUnit} (${displayExactCount - displayCurrentStock >= 0 ? '+' : ''}${formatValue(displayExactCount - displayCurrentStock)} adjustment)`;
+                            const adjustment = exactCount - currentStock;
+                            return `Current: ${formatValue(currentStock)} → Set to: ${formatValue(exactCount)} ${displayUnit} (${adjustment >= 0 ? '+' : ''}${formatValue(adjustment)} adjustment)`;
                           } else {
-                            return `Current: ${formatValue(displayCurrentStock)} → New Total: ${formatValue(displayTotalAfterUpdate)} ${displayUnit}`;
+                            return `Current: ${formatValue(currentStock)} → New Total: ${formatValue(totalAfterUpdate)} ${displayUnit}`;
                           }
                         } else {
-                          const initialValue = adjustmentMode === 'set_exact' ? displayExactCount : (newQuantity / (sizeValue || 1));
+                          const initialValue = adjustmentMode === 'set_exact' ? exactCount : newQuantity;
                           return `Initial Stock: ${formatValue(initialValue)} ${displayUnit}`;
                         }
                       })()}

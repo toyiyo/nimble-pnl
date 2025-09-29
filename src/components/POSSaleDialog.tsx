@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -17,9 +17,28 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
+import { usePOSItems } from '@/hooks/usePOSItems';
+import { useRecipes } from '@/hooks/useRecipes';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Check, ChevronsUpDown, CheckCircle2, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import Fuse from 'fuse.js';
 
 const saleSchema = z.object({
   itemName: z.string().min(1, 'Item name is required'),
@@ -43,6 +62,11 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   restaurantId,
 }) => {
   const { createManualSale } = useUnifiedSales(restaurantId);
+  const { posItems, loading: posLoading } = usePOSItems(restaurantId);
+  const { recipes, loading: recipesLoading } = useRecipes(restaurantId);
+  
+  const [comboboxOpen, setComboboxOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const form = useForm<SaleFormValues>({
     resolver: zodResolver(saleSchema),
@@ -55,6 +79,84 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
     },
   });
 
+  // Combine recipes and POS items into searchable list
+  const searchableItems = useMemo(() => {
+    const items: Array<{
+      value: string;
+      label: string;
+      hasRecipe: boolean;
+      recipeId?: string;
+      avgPrice?: number;
+      source: 'recipe' | 'pos_item';
+    }> = [];
+
+    // Add recipes (these have mappings by definition)
+    recipes.forEach(recipe => {
+      if (recipe.pos_item_name) {
+        items.push({
+          value: recipe.pos_item_name,
+          label: recipe.pos_item_name,
+          hasRecipe: true,
+          recipeId: recipe.id,
+          avgPrice: recipe.avg_sale_price,
+          source: 'recipe',
+        });
+      }
+    });
+
+    // Add POS items that don't have recipes
+    posItems.forEach(posItem => {
+      const hasRecipe = recipes.some(r => 
+        r.pos_item_name?.toLowerCase() === posItem.item_name.toLowerCase()
+      );
+      
+      if (!hasRecipe) {
+        items.push({
+          value: posItem.item_name,
+          label: posItem.item_name,
+          hasRecipe: false,
+          source: 'pos_item',
+        });
+      }
+    });
+
+    return items;
+  }, [recipes, posItems]);
+
+  // Fuzzy search implementation
+  const fuse = useMemo(() => {
+    return new Fuse(searchableItems, {
+      keys: ['label'],
+      threshold: 0.3,
+      includeScore: true,
+    });
+  }, [searchableItems]);
+
+  const filteredItems = useMemo(() => {
+    if (!searchQuery) return searchableItems;
+    
+    const results = fuse.search(searchQuery);
+    return results.map(result => result.item);
+  }, [searchQuery, fuse, searchableItems]);
+
+  // Find if selected item has recipe mapping
+  const selectedItemData = useMemo(() => {
+    const itemName = form.watch('itemName');
+    return searchableItems.find(item => item.value === itemName);
+  }, [form.watch('itemName'), searchableItems]);
+
+  // Auto-fill price when item is selected
+  const handleItemSelect = (itemValue: string) => {
+    const item = searchableItems.find(i => i.value === itemValue);
+    form.setValue('itemName', itemValue);
+    
+    if (item?.avgPrice) {
+      form.setValue('totalPrice', item.avgPrice);
+    }
+    
+    setComboboxOpen(false);
+  };
+
   const onSubmit = async (values: SaleFormValues) => {
     const success = await createManualSale({
       itemName: values.itemName,
@@ -66,6 +168,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
 
     if (success) {
       form.reset();
+      setSearchQuery('');
       onOpenChange(false);
     }
   };
@@ -83,11 +186,142 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
               control={form.control}
               name="itemName"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className="flex flex-col">
                   <FormLabel>Item Name *</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder="e.g., Cheeseburger, Coffee" />
-                  </FormControl>
+                  <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={comboboxOpen}
+                          className={cn(
+                            "w-full justify-between font-normal",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          {field.value ? (
+                            <span className="flex items-center gap-2">
+                              {selectedItemData?.hasRecipe ? (
+                                <CheckCircle2 className="h-4 w-4 text-success" />
+                              ) : (
+                                <AlertCircle className="h-4 w-4 text-warning" />
+                              )}
+                              {field.value}
+                            </span>
+                          ) : (
+                            "Select or type an item..."
+                          )}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0" align="start">
+                      <Command shouldFilter={false}>
+                        <CommandInput 
+                          placeholder="Search items..." 
+                          value={searchQuery}
+                          onValueChange={setSearchQuery}
+                        />
+                        <CommandList>
+                          <CommandEmpty>
+                            {posLoading || recipesLoading ? (
+                              "Loading..."
+                            ) : (
+                              <div className="p-2 text-center text-sm">
+                                No items found. Type to create new item: "{searchQuery}"
+                                {searchQuery && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="mt-2 w-full"
+                                    onClick={() => {
+                                      form.setValue('itemName', searchQuery);
+                                      setComboboxOpen(false);
+                                    }}
+                                  >
+                                    Use "{searchQuery}"
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </CommandEmpty>
+                          
+                          {filteredItems.length > 0 && (
+                            <>
+                              <CommandGroup heading="Items with Recipe Mapping">
+                                {filteredItems
+                                  .filter(item => item.hasRecipe)
+                                  .map((item) => (
+                                    <CommandItem
+                                      key={item.value}
+                                      value={item.value}
+                                      onSelect={() => handleItemSelect(item.value)}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          field.value === item.value
+                                            ? "opacity-100"
+                                            : "opacity-0"
+                                        )}
+                                      />
+                                      <CheckCircle2 className="mr-2 h-4 w-4 text-success" />
+                                      <div className="flex flex-col">
+                                        <span>{item.label}</span>
+                                        {item.avgPrice && (
+                                          <span className="text-xs text-muted-foreground">
+                                            Avg: ${item.avgPrice.toFixed(2)}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                              </CommandGroup>
+                              
+                              {filteredItems.some(item => !item.hasRecipe) && (
+                                <CommandGroup heading="Items without Recipe Mapping">
+                                  {filteredItems
+                                    .filter(item => !item.hasRecipe)
+                                    .map((item) => (
+                                      <CommandItem
+                                        key={item.value}
+                                        value={item.value}
+                                        onSelect={() => handleItemSelect(item.value)}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            field.value === item.value
+                                              ? "opacity-100"
+                                              : "opacity-0"
+                                          )}
+                                        />
+                                        <AlertCircle className="mr-2 h-4 w-4 text-warning" />
+                                        <span>{item.label}</span>
+                                      </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                              )}
+                            </>
+                          )}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  {selectedItemData && !selectedItemData.hasRecipe && (
+                    <FormDescription className="flex items-center gap-1 text-warning">
+                      <AlertCircle className="h-3 w-3" />
+                      No recipe mapping - inventory won't be deducted
+                    </FormDescription>
+                  )}
+                  {selectedItemData?.hasRecipe && (
+                    <FormDescription className="flex items-center gap-1 text-success">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Recipe mapped - inventory will be deducted
+                    </FormDescription>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

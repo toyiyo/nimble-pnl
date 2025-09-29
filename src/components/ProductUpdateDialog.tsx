@@ -457,10 +457,12 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                           const purchaseUnit = form.watch('uom_purchase') || 'pieces';
                           
                           // For simple items (like bottles), just use direct quantity
-                          // Only use packaging calculations for complex items where purchase unit differs from size unit
+                          // Complex packaging only applies when we're dealing with bulk items where purchase unit differs significantly from size unit
                           const sizeUnit = form.watch('size_unit') || 'pieces';
-                          const hasComplexPackaging = sizeValue > 1 && purchaseUnit !== sizeUnit && 
-                            !['pieces', 'bottle', 'can', 'jar', 'box', 'bag', 'pack'].includes(purchaseUnit);
+                          
+                          // Always treat these as simple units regardless of size_value
+                          const simpleUnits = ['pieces', 'bottle', 'can', 'jar', 'box', 'bag', 'pack', 'each', 'unit'];
+                          const hasComplexPackaging = !simpleUnits.includes(purchaseUnit) && sizeValue > 1 && purchaseUnit !== sizeUnit;
                           
                           const handleDirectChange = (value: number) => {
                             field.onChange(value);

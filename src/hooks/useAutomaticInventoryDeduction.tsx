@@ -11,9 +11,8 @@ interface BatchSale {
 }
 
 interface DeductionResponse {
-  type: string;
-  item_name: string;
-  deductions: any[];
+  recipe_name: string;
+  ingredients_deducted: any[];
   total_cost: number;
 }
 
@@ -41,7 +40,7 @@ export const useAutomaticInventoryDeduction = () => {
         }
 
         const deductionData = data as unknown as DeductionResponse;
-        if (deductionData && deductionData.deductions && deductionData.deductions.length > 0) {
+        if (deductionData && deductionData.ingredients_deducted && deductionData.ingredients_deducted.length > 0) {
           results.push({
             pos_item_name: sale.pos_item_name,
             result: deductionData

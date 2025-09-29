@@ -176,7 +176,7 @@ export function InventoryDeductionDialog({
                           </TableCell>
                           <TableCell>
                             <div className="text-sm">
-                              {ingredient.quantity_recipe_units} {ingredient.recipe_unit} → {ingredient.quantity_purchase_units.toFixed(3)} {ingredient.purchase_unit}
+                              {ingredient.quantity_recipe_units} {ingredient.recipe_unit} → {(ingredient.quantity_purchase_units || 0).toFixed(3)} {ingredient.purchase_unit}
                             </div>
                           </TableCell>
                           <TableCell>

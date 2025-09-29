@@ -120,9 +120,9 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       brand: product.brand || '',
       category: product.category || '',
       size_value: product.size_value || undefined,
-      size_unit: product.size_unit || 'pieces',
+      size_unit: product.size_unit || product.uom_purchase || 'pieces',
       package_qty: product.package_qty || undefined,
-      uom_purchase: product.uom_purchase || '',
+      uom_purchase: product.uom_purchase || 'pieces',
       uom_recipe: product.uom_recipe || '',
       cost_per_unit: product.cost_per_unit || undefined,
       supplier_name: product.supplier_name || '',
@@ -146,9 +146,9 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       brand: product.brand || '',
       category: product.category || '',
       size_value: product.size_value || undefined,
-      size_unit: product.size_unit || 'pieces',
+      size_unit: product.size_unit || product.uom_purchase || 'pieces',
       package_qty: product.package_qty || undefined,
-      uom_purchase: product.uom_purchase || '',
+      uom_purchase: product.uom_purchase || 'pieces',
       uom_recipe: product.uom_recipe || '',
       cost_per_unit: product.cost_per_unit || undefined,
       supplier_name: product.supplier_name || '',
@@ -454,20 +454,14 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                         render={({ field }) => {
                           const packageQty = form.watch('package_qty') || 1;
                           const sizeValue = form.watch('size_value') || 1;
-                          const purchaseUnit = form.watch('uom_purchase') || 'units';
-                          const hasPackaging = sizeValue > 1 && purchaseUnit !== 'units';
+                          const purchaseUnit = form.watch('uom_purchase') || 'pieces';
                           
-                          // Calculate packages from total units  
-                          const totalUnits = field.value || 0;
-                          const packagesFromTotal = hasPackaging ? totalUnits / sizeValue : totalUnits;
+                          // For simple items (like bottles), just use direct quantity
+                          // Only use packaging calculations for complex items with size_value > 1
+                          const hasComplexPackaging = sizeValue > 1 && purchaseUnit !== 'pieces' && purchaseUnit !== 'bottle' && purchaseUnit !== 'can';
                           
-                          const handlePackageChange = (packages: number) => {
-                            const totalUnits = packages * sizeValue;
-                            field.onChange(totalUnits);
-                          };
-                          
-                          const handleUnitsChange = (units: number) => {
-                            field.onChange(units);
+                          const handleDirectChange = (value: number) => {
+                            field.onChange(value);
                           };
                           
                           return (
@@ -476,32 +470,32 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                                 {product.id ? 'Quantity to Add' : 'Initial Stock Quantity'}
                               </FormLabel>
                               
-                              {hasPackaging && sizeValue > 0 ? (
+                              {hasComplexPackaging ? (
                                 <div className="space-y-3">
                                   {/* Package input */}
-                                  <div>
-                                    <Label className="text-sm text-muted-foreground mb-1 block">
-                                      Number of {purchaseUnit}s to add
-                                    </Label>
-                                    <FormControl>
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        step="1"
-                                        placeholder={`Enter number of ${purchaseUnit}s`}
-                                        value={packagesFromTotal > 0 ? Math.round(packagesFromTotal * 100) / 100 : ''}
-                                        onChange={(e) => {
-                                          const packages = e.target.value === '' ? 0 : Number(e.target.value);
-                                          handlePackageChange(packages);
-                                        }}
-                                        className="text-lg font-medium"
-                                      />
-                                    </FormControl>
-                                    {packagesFromTotal > 0 && (
-                                      <p className="text-xs text-muted-foreground mt-1">
-                                        = {(packagesFromTotal * sizeValue).toFixed(2)} {form.watch('size_unit')} total
-                                      </p>
-                                    )}
+                                   <div>
+                                     <Label className="text-sm text-muted-foreground mb-1 block">
+                                       Number of {purchaseUnit}s to add
+                                     </Label>
+                                     <FormControl>
+                                       <Input
+                                         type="number"
+                                         min="0"
+                                         step="1"
+                                         placeholder={`Enter number of ${purchaseUnit}s`}
+                                         value={field.value > 0 ? field.value / sizeValue : ''}
+                                         onChange={(e) => {
+                                           const packages = e.target.value === '' ? 0 : Number(e.target.value);
+                                           field.onChange(packages * sizeValue);
+                                         }}
+                                         className="text-lg font-medium"
+                                       />
+                                     </FormControl>
+                                      {field.value > 0 && (
+                                       <p className="text-xs text-muted-foreground mt-1">
+                                         = {field.value.toFixed(2)} {form.watch('size_unit')} total
+                                       </p>
+                                     )}
                                   </div>
                                   
                                   {/* Alternative: direct units input */}
@@ -515,11 +509,11 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                                         min="0"
                                         step="0.1"
                                         placeholder={`Enter total ${form.watch('size_unit')}`}
-                                        value={totalUnits > 0 ? totalUnits : ''}
-                                        onChange={(e) => {
-                                          const units = e.target.value === '' ? 0 : Number(e.target.value);
-                                          handleUnitsChange(units);
-                                        }}
+                                         value={field.value > 0 ? field.value : ''}
+                                         onChange={(e) => {
+                                           const units = e.target.value === '' ? 0 : Number(e.target.value);
+                                           field.onChange(units);
+                                         }}
                                       />
                                     </FormControl>
                                   </div>

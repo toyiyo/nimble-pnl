@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { SearchableProductSelector } from '@/components/SearchableProductSelector';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -11,6 +12,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { getUnitOptions } from '@/lib/validUnits';
 
 interface ReceiptMappingReviewProps {
   receiptId: string;
@@ -69,9 +71,11 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
         mapping_status: 'skipped' 
       });
     } else {
+      const matchedProduct = products.find(p => p.id === productId);
       handleItemUpdate(itemId, { 
         matched_product_id: productId, 
-        mapping_status: 'mapped' 
+        mapping_status: 'mapped',
+        parsed_unit: matchedProduct?.uom_purchase || undefined
       });
     }
   };
@@ -297,13 +301,26 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                   </div>
                   <div>
                     <Label htmlFor={`unit-${item.id}`}>Unit</Label>
-                    <Input
-                      key={`unit-${item.id}`}
-                      id={`unit-${item.id}`}
-                      defaultValue={item.parsed_unit || ''}
-                      onChange={(e) => handleUnitChange(item.id, e.target.value)}
-                      placeholder="lb, gal, each"
-                    />
+                    <Select
+                      value={item.parsed_unit || ''}
+                      onValueChange={(value) => handleUnitChange(item.id, value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getUnitOptions().map((group) => (
+                          <SelectGroup key={group.label}>
+                            <SelectLabel>{group.label}</SelectLabel>
+                            {group.options.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 

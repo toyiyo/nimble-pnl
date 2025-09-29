@@ -1792,6 +1792,10 @@ export type Database = {
           uom_purchase: string
         }[]
       }
+      aggregate_inventory_usage_to_daily_food_costs: {
+        Args: { p_date: string; p_restaurant_id: string }
+        Returns: undefined
+      }
       aggregate_unified_sales_to_daily: {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: undefined

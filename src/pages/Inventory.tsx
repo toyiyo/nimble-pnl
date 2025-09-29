@@ -475,7 +475,7 @@ export const Inventory: React.FC = () => {
     } else {
       // Update existing product with proper audit trail
       const currentStock = selectedProduct.current_stock || 0;
-      const finalStock = updates.current_stock || 0;
+      const finalStock = updates.current_stock ?? currentStock; // Use nullish coalescing to preserve 0 values
       const difference = finalStock - currentStock;
       
       try {
@@ -983,27 +983,16 @@ export const Inventory: React.FC = () => {
                            {product.category && (
                              <Badge variant="secondary">{product.category}</Badge>
                            )}
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm">Stock:</span>
-                              <div className={`font-medium text-right ${
-                                (product.current_stock || 0) <= (product.reorder_point || 0) 
-                                  ? 'text-destructive' 
-                                  : 'text-foreground'
-                              }`}>
-                                {product.package_qty && product.package_qty > 1 && product.uom_purchase ? (
-                                  <div className="space-y-0.5">
-                                    <div className="text-sm">
-                                      {Math.floor((product.current_stock || 0) / product.package_qty)} {product.uom_purchase}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                      {product.current_stock || 0} {product.size_unit || 'units'} total
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <span>{product.current_stock || 0} {product.size_unit || 'units'}</span>
-                                )}
-                              </div>
-                            </div>
+                             <div className="flex justify-between items-center">
+                               <span className="text-sm">Stock:</span>
+                               <div className={`font-medium text-right ${
+                                 (product.current_stock || 0) <= (product.reorder_point || 0) 
+                                   ? 'text-destructive' 
+                                   : 'text-foreground'
+                               }`}>
+                                 <span>{product.current_stock || 0} {product.uom_purchase || 'units'}</span>
+                               </div>
+                             </div>
                            {product.cost_per_unit && (
                              <div className="flex justify-between items-center">
                                <span className="text-sm">Unit Cost:</span>
@@ -1084,23 +1073,12 @@ export const Inventory: React.FC = () => {
                        </CardHeader>
                        <CardContent>
                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm">Current Stock:</span>
-                              <div className="font-medium text-destructive text-right">
-                                {product.package_qty && product.package_qty > 1 ? (
-                                  <div className="space-y-0.5">
-                                    <div className="text-sm">
-                                      {Math.floor((product.current_stock || 0) / product.package_qty)} {product.uom_purchase || 'packages'}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                      {product.current_stock || 0} {product.size_unit || 'units'} total
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <span>{product.current_stock || 0} {product.size_unit || 'units'}</span>
-                                )}
-                              </div>
-                            </div>
+                             <div className="flex justify-between items-center">
+                               <span className="text-sm">Current Stock:</span>
+                               <div className="font-medium text-destructive text-right">
+                                 <span>{product.current_stock || 0} {product.uom_purchase || 'units'}</span>
+                               </div>
+                             </div>
                            <div className="flex justify-between items-center">
                              <span className="text-sm">Reorder Point:</span>
                              <span className="font-medium">

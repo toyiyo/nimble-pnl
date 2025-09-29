@@ -111,12 +111,12 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
         const currentStock = product.current_stock || 0;
         const costPerUnit = product.cost_per_unit || 0;
         
-        // Inventory Cost = calculate based on package quantity if available
-        // If we have package info, cost should be per package, not per base unit
+        // Inventory Cost = calculate based on size value if available
+        // If we have size info, cost should be per package, not per base unit
         let inventoryCost = 0;
-        if (product.package_qty && product.package_qty > 1) {
-          // Calculate number of complete packages
-          const packageCount = Math.floor(currentStock / product.package_qty);
+        if (product.size_value && product.size_value > 1 && product.uom_purchase && product.size_unit !== product.uom_purchase) {
+          // Calculate number of complete packages using size_value
+          const packageCount = Math.floor(currentStock / product.size_value);
           inventoryCost = packageCount * costPerUnit;
         } else {
           // No package info or single unit packages
@@ -162,23 +162,27 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
               // Calculate how much of this product is used per recipe serving
               const quantityPerServing = recipeIngredient.quantity || 0;
               
-              // Use enhanced unit conversion instead of conversion_factor
-              // This will require accessing recipe unit information
-              const purchaseUnitsPerServing = quantityPerServing; // Simplified for now - enhanced conversion will be implemented when we have recipe unit data
-              
-              if (purchaseUnitsPerServing > 0) {
-                // Value per purchase unit = recipe price / purchase units used per serving
-                const valuePerPurchaseUnit = recipePrice / purchaseUnitsPerServing;
-                totalPotentialValue += valuePerPurchaseUnit;
+              if (quantityPerServing > 0) {
+                // Value per recipe unit = recipe price / quantity used per serving
+                const valuePerRecipeUnit = recipePrice / quantityPerServing;
+                totalPotentialValue += valuePerRecipeUnit;
                 totalUsageRatio += 1;
               }
             }
           }
 
           if (totalUsageRatio > 0) {
-            // Average value per unit across all recipes that use this product
-            const averageValuePerUnit = totalPotentialValue / totalUsageRatio;
-            inventoryValue = currentStock * averageValuePerUnit;
+            // Average value per recipe unit across all recipes that use this product
+            const averageValuePerRecipeUnit = totalPotentialValue / totalUsageRatio;
+            
+            // Convert current stock to recipe units for valuation
+            let stockInRecipeUnits = currentStock;
+            if (product.size_value && product.size_value > 1 && product.uom_purchase && product.size_unit !== product.uom_purchase) {
+              // Convert from storage units (e.g., ml) to purchase units (e.g., bottles) 
+              stockInRecipeUnits = currentStock / product.size_value;
+            }
+            
+            inventoryValue = stockInRecipeUnits * averageValuePerRecipeUnit;
           }
         }
 
@@ -193,7 +197,7 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
         } else if (hasRecipeData && inventoryValue === 0 && costPerUnit > 0) {
           // Has recipes but no pricing data, use markup as fallback
           const markup = getMarkupForCategory(product.category);
-          inventoryValue = currentStock * costPerUnit * markup;
+          inventoryValue = inventoryCost * markup;
           productMetrics[product.id] = {
             inventoryCost,
             inventoryValue,
@@ -203,7 +207,7 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
         } else if (!hasRecipeData && costPerUnit > 0) {
           // No recipes, pure markup estimation
           const markup = getMarkupForCategory(product.category);
-          inventoryValue = currentStock * costPerUnit * markup;
+          inventoryValue = inventoryCost * markup;
           productMetrics[product.id] = {
             inventoryCost,
             inventoryValue,

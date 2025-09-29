@@ -28,7 +28,7 @@ export const useInventoryDeduction = () => {
   ): Promise<DeductionResult | null> => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc('process_inventory_deduction' as any, {
+      const { data, error } = await supabase.rpc('process_unified_inventory_deduction' as any, {
         p_restaurant_id: restaurantId,
         p_pos_item_name: posItemName,
         p_quantity_sold: quantitySold,

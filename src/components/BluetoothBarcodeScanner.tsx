@@ -187,21 +187,23 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
         debugInfo: `Connected to ${device.name || 'Scanner'}`
       }));
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setState(prev => ({
         ...prev,
         isConnecting: false,
         isConnected: false,
-        debugInfo: `Connection failed: ${error.message}`
+        debugInfo: `Connection failed: ${errorMessage}`
       }));
-      onError?.(error.message);
+      onError?.(errorMessage);
     }
   }, [isBluetoothSupported, onError, handleBluetoothData]);
 
   // Disconnect from scanner
   const disconnectScanner = useCallback(() => {
-    if (state.device.device?.gatt?.connected) {
-      state.device.device.gatt.disconnect();
+    const currentDevice = state.device.device;
+    if (currentDevice?.gatt?.connected) {
+      currentDevice.gatt.disconnect();
     }
     
     if (reconnectTimeoutRef.current) {

@@ -37,11 +37,8 @@ interface OpenFoodFactsResponse {
   };
 }
 
-// Enhanced GTIN normalization
-const toGTIN14 = (barcode: string): string => {
-  const digits = barcode.replace(/\D/g, '');
-  return digits.padStart(14, '0');
-};
+// Import GTIN utilities for proper check digit calculation
+import { normalizeGTIN } from '@/lib/gtinUtils';
 
 // Enhanced fetch with timeout and proper error handling
 const fetchJson = async (url: string, init: RequestInit = {}, timeoutMs = 4000): Promise<any> => {
@@ -75,7 +72,7 @@ class ProductLookupService {
 
   // Enhanced lookup with multiple resolution strategies
   async lookupProduct(gtin: string, catalogLookup?: (gtin14: string) => Promise<any | null>): Promise<ProductLookupResult | null> {
-    const gtin14 = toGTIN14(gtin);
+    const gtin14 = normalizeGTIN(gtin);
     
     // 1. Check local catalog first
     if (catalogLookup) {
@@ -153,7 +150,7 @@ class ProductLookupService {
         
         return {
           gtin,
-          gtin14: toGTIN14(gtin),
+          gtin14: normalizeGTIN(gtin),
           product_name: item.title,
           brand: item.brand,
           package_size: item.size,
@@ -189,7 +186,7 @@ class ProductLookupService {
         
         return {
           gtin,
-          gtin14: toGTIN14(gtin),
+          gtin14: normalizeGTIN(gtin),
           product_name: product.product_name || product.generic_name,
           brand: product.brands?.split(',')[0]?.trim(),
           package_size: product.quantity,

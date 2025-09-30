@@ -111,17 +111,10 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
         const currentStock = product.current_stock || 0;
         const costPerUnit = product.cost_per_unit || 0;
         
-        // Inventory Cost = calculate based on size value if available
-        // If we have size info, cost should be per package, not per base unit
-        let inventoryCost = 0;
-        if (product.size_value && product.size_value > 1 && product.uom_purchase && product.size_unit !== product.uom_purchase) {
-          // Calculate number of complete packages using size_value
-          const packageCount = Math.floor(currentStock / product.size_value);
-          inventoryCost = packageCount * costPerUnit;
-        } else {
-          // No package info or single unit packages
-          inventoryCost = currentStock * costPerUnit;
-        }
+        // Inventory Cost = current_stock is stored in purchase units
+        // cost_per_unit is the cost per purchase unit
+        // So inventory cost is simply: stock * cost
+        const inventoryCost = currentStock * costPerUnit;
 
         // Calculate Inventory Value
         let inventoryValue = 0;
@@ -175,14 +168,8 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
             // Average value per recipe unit across all recipes that use this product
             const averageValuePerRecipeUnit = totalPotentialValue / totalUsageRatio;
             
-            // Convert current stock to recipe units for valuation
-            let stockInRecipeUnits = currentStock;
-            if (product.size_value && product.size_value > 1 && product.uom_purchase && product.size_unit !== product.uom_purchase) {
-              // Convert from storage units (e.g., ml) to purchase units (e.g., bottles) 
-              stockInRecipeUnits = currentStock / product.size_value;
-            }
-            
-            inventoryValue = stockInRecipeUnits * averageValuePerRecipeUnit;
+            // current_stock is already in purchase units, use it directly
+            inventoryValue = currentStock * averageValuePerRecipeUnit;
           }
         }
 

@@ -11,19 +11,20 @@ export interface ConversionResult {
 // Standard unit conversions (weight and volume)
 const STANDARD_CONVERSIONS: { [key: string]: { [key: string]: number } } = {
   // Weight conversions (all to grams)
-  'oz': { 'g': 28.3495, 'lb': 1/16, 'kg': 0.0283495 },
   'lb': { 'g': 453.592, 'oz': 16, 'kg': 0.453592 },
   'kg': { 'g': 1000, 'lb': 2.20462, 'oz': 35.274 },
   'g': { 'kg': 0.001, 'oz': 0.035274, 'lb': 0.00220462 },
   
   // Volume conversions (all to ml)
+  // Note: 'oz' for liquids (fluid ounces) - placed in volume section to prioritize liquid conversions
+  'oz': { 'ml': 29.5735, 'L': 0.0295735, 'cup': 0.125, 'tbsp': 2, 'tsp': 6, 'gal': 1/128, 'qt': 1/32 },
   'cup': { 'ml': 236.588, 'oz': 8, 'tbsp': 16, 'tsp': 48, 'L': 0.236588 },
-  'tbsp': { 'ml': 14.7868, 'oz': 0.5, 'cup': 1/16, 'tsp': 3 },
-  'tsp': { 'ml': 4.92892, 'oz': 1/6, 'tbsp': 1/3, 'cup': 1/48 },
-  'ml': { 'L': 0.001, 'cup': 1/236.588, 'tbsp': 1/14.7868, 'tsp': 1/4.92892 },
-  'L': { 'ml': 1000, 'cup': 1/0.236588, 'gal': 1/3.78541 },
-  'gal': { 'L': 3.78541, 'qt': 4, 'cup': 16 },
-  'qt': { 'gal': 0.25, 'cup': 4, 'L': 0.946353 },
+  'tbsp': { 'ml': 14.7868, 'oz': 0.5, 'cup': 1/16, 'tsp': 3, 'L': 0.0147868 },
+  'tsp': { 'ml': 4.92892, 'oz': 1/6, 'tbsp': 1/3, 'cup': 1/48, 'L': 0.00492892 },
+  'ml': { 'L': 0.001, 'cup': 1/236.588, 'tbsp': 1/14.7868, 'tsp': 1/4.92892, 'oz': 1/29.5735 },
+  'L': { 'ml': 1000, 'cup': 1/0.236588, 'gal': 1/3.78541, 'oz': 33.814, 'tbsp': 67.628, 'tsp': 202.884 },
+  'gal': { 'L': 3.78541, 'qt': 4, 'cup': 16, 'oz': 128 },
+  'qt': { 'gal': 0.25, 'cup': 4, 'L': 0.946353, 'oz': 32 },
 };
 
 // Product-specific conversions (ingredient name -> unit conversions)
@@ -137,8 +138,8 @@ export function convertUnits(
   // For weight: convert through grams
   // For volume: convert through ml
   
-  const weightUnits = ['oz', 'lb', 'kg', 'g'];
-  const volumeUnits = ['cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
+  const weightUnits = ['lb', 'kg', 'g'];
+  const volumeUnits = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
   
   if (weightUnits.includes(fromUnit) && weightUnits.includes(toUnit)) {
     // Convert through grams

@@ -13,7 +13,7 @@ interface BluetoothBarcodeScannerProps {
   autoStart?: boolean;
 }
 
-interface BluetoothDevice {
+interface ScannerDevice {
   device: BluetoothDevice | null;
   characteristic: BluetoothRemoteGATTCharacteristic | null;
 }
@@ -21,7 +21,7 @@ interface BluetoothDevice {
 interface ScannerState {
   isConnecting: boolean;
   isConnected: boolean;
-  device: BluetoothDevice;
+  device: ScannerDevice;
   batteryLevel: number | null;
   scanMode: 'manual' | 'continuous' | 'auto-sensing';
   lastScan: string;
@@ -160,7 +160,7 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
       if (characteristic) {
         await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', (event) => {
-          const target = event.target as BluetoothRemoteGATTCharacteristic;
+          const target = event.target as unknown as BluetoothRemoteGATTCharacteristic;
           const value = target.value;
           if (value) {
             const decoder = new TextDecoder();

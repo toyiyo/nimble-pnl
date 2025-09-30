@@ -137,6 +137,11 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
         console.warn('HID service not available, trying alternative approach');
       }
 
+      // Verify we have a working characteristic
+      if (!characteristic) {
+        throw new Error('Scanner does not support data notifications. Please check scanner mode (HID/SPP/BLE).');
+      }
+
       // Set up battery monitoring if available
       try {
         const batteryService = await server.getPrimaryService(BATTERY_SERVICE_UUID);

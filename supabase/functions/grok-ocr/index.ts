@@ -28,10 +28,10 @@ serve(async (req) => {
       );
     }
 
-    const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
-    if (!openRouterApiKey) {
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!lovableApiKey) {
       return new Response(
-        JSON.stringify({ error: 'OpenRouter API key not configured' }),
+        JSON.stringify({ error: 'Lovable API key not configured' }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 500 
@@ -39,18 +39,16 @@ serve(async (req) => {
       );
     }
 
-    console.log('🔍 Processing image with Grok OCR...');
+    console.log('🔍 Processing image with Gemini Vision...');
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${openRouterApiKey}`,
-        "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-        "X-Title": "EasyShiftHQ Inventory OCR",
+        "Authorization": `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        "model": "x-ai/grok-4-fast:free",
+        "model": "google/gemini-2.5-flash",
         "messages": [
           {
             "role": "user",
@@ -75,9 +73,21 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenRouter API error:', response.status, errorText);
+      console.error('Lovable AI error:', response.status, errorText);
+      
+      // Handle rate limits
+      if (response.status === 429) {
+        return new Response(
+          JSON.stringify({ error: 'Rate limit exceeded. Please try again in a moment.' }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 429 
+          }
+        );
+      }
+      
       return new Response(
-        JSON.stringify({ error: `OpenRouter API error: ${response.status}` }),
+        JSON.stringify({ error: `AI API error: ${response.status}` }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: response.status 
@@ -90,7 +100,7 @@ serve(async (req) => {
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       console.error('Invalid response structure:', data);
       return new Response(
-        JSON.stringify({ error: 'Invalid response from OpenRouter API' }),
+        JSON.stringify({ error: 'Invalid response from AI API' }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 500 
@@ -99,7 +109,7 @@ serve(async (req) => {
     }
 
     const extractedText = data.choices[0].message.content || '';
-    console.log('✅ Grok OCR completed. Extracted text:', extractedText);
+    console.log('✅ Gemini Vision OCR completed. Extracted text:', extractedText);
 
     // Calculate a confidence score based on text length and structure
     let confidence = 0.8; // Default confidence for Grok
@@ -111,7 +121,7 @@ serve(async (req) => {
       JSON.stringify({ 
         text: extractedText,
         confidence: confidence,
-        source: 'grok-4-fast'
+        source: 'gemini-2.5-flash'
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

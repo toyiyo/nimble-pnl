@@ -62,7 +62,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   restaurantId,
 }) => {
   const { createManualSale } = useUnifiedSales(restaurantId);
-  const { posItems, loading: posLoading } = usePOSItems(restaurantId);
+  const { posItems, loading: posLoading, refetch: refetchPOSItems } = usePOSItems(restaurantId);
   const { recipes, loading: recipesLoading } = useRecipes(restaurantId);
   
   const [comboboxOpen, setComboboxOpen] = useState(false);
@@ -87,7 +87,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       hasRecipe: boolean;
       recipeId?: string;
       avgPrice?: number;
-      source: 'recipe' | 'pos_item';
+      source: string;
     }> = [];
 
     // Add recipes (these have mappings by definition)
@@ -99,7 +99,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
           hasRecipe: true,
           recipeId: recipe.id,
           avgPrice: recipe.avg_sale_price,
-          source: 'recipe',
+          source: 'Recipe',
         });
       }
     });
@@ -115,7 +115,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
           value: posItem.item_name,
           label: posItem.item_name,
           hasRecipe: false,
-          source: 'pos_item',
+          source: posItem.source === 'pos_sales' ? 'Manual' : 'POS',
         });
       }
     });
@@ -157,6 +157,27 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
     setComboboxOpen(false);
   };
 
+  // Handle creating new item with duplicate prevention
+  const handleCreateNewItem = (newItemName: string) => {
+    // Check for case-insensitive match
+    const existingItem = searchableItems.find(
+      item => item.value.toLowerCase() === newItemName.toLowerCase()
+    );
+    
+    if (existingItem) {
+      // Use the existing item's proper casing
+      form.setValue('itemName', existingItem.value);
+      if (existingItem.avgPrice) {
+        form.setValue('totalPrice', existingItem.avgPrice);
+      }
+    } else {
+      // Create new item with user's input
+      form.setValue('itemName', newItemName);
+    }
+    
+    setComboboxOpen(false);
+  };
+
   const onSubmit = async (values: SaleFormValues) => {
     const success = await createManualSale({
       itemName: values.itemName,
@@ -167,6 +188,8 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
     });
 
     if (success) {
+      // Refresh POS items list to include the newly created item
+      await refetchPOSItems();
       form.reset();
       setSearchQuery('');
       onOpenChange(false);
@@ -216,34 +239,42 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="w-full p-0" align="start">
+                    <PopoverContent 
+                      className="w-[--radix-popover-trigger-width] p-0" 
+                      align="start"
+                      sideOffset={4}
+                    >
                       <Command shouldFilter={false}>
                         <CommandInput 
                           placeholder="Search items..." 
                           value={searchQuery}
                           onValueChange={setSearchQuery}
                         />
-                        <CommandList>
+                        <CommandList className="max-h-[300px]">
                           <CommandEmpty>
                             {posLoading || recipesLoading ? (
-                              "Loading..."
+                              <div className="p-4 text-center text-sm text-muted-foreground">
+                                Loading items...
+                              </div>
+                            ) : searchQuery ? (
+                              <div className="p-3 space-y-2">
+                                <p className="text-sm text-muted-foreground text-center">
+                                  No existing items match "{searchQuery}"
+                                </p>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full justify-start gap-2"
+                                  onClick={() => handleCreateNewItem(searchQuery)}
+                                >
+                                  <AlertCircle className="h-4 w-4" />
+                                  Create new manual item: <strong>"{searchQuery}"</strong>
+                                </Button>
+                              </div>
                             ) : (
-                              <div className="p-2 text-center text-sm">
-                                No items found. Type to create new item: "{searchQuery}"
-                                {searchQuery && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="mt-2 w-full"
-                                    onClick={() => {
-                                      form.setValue('itemName', searchQuery);
-                                      setComboboxOpen(false);
-                                    }}
-                                  >
-                                    Use "{searchQuery}"
-                                  </Button>
-                                )}
+                              <div className="p-4 text-center text-sm text-muted-foreground">
+                                Start typing to search or create a new item
                               </div>
                             )}
                           </CommandEmpty>
@@ -268,8 +299,13 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                                         )}
                                       />
                                       <CheckCircle2 className="mr-2 h-4 w-4 text-success" />
-                                      <div className="flex flex-col">
-                                        <span>{item.label}</span>
+                                      <div className="flex flex-col flex-1">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span>{item.label}</span>
+                                          <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                            {item.source}
+                                          </span>
+                                        </div>
                                         {item.avgPrice && (
                                           <span className="text-xs text-muted-foreground">
                                             Avg: ${item.avgPrice.toFixed(2)}
@@ -299,7 +335,12 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                                           )}
                                         />
                                         <AlertCircle className="mr-2 h-4 w-4 text-warning" />
-                                        <span>{item.label}</span>
+                                        <div className="flex items-center justify-between gap-2 flex-1">
+                                          <span>{item.label}</span>
+                                          <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                            {item.source}
+                                          </span>
+                                        </div>
                                       </CommandItem>
                                     ))}
                                 </CommandGroup>

@@ -179,9 +179,7 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
         
         // Attempt to reconnect after 3 seconds
         reconnectTimeoutRef.current = setTimeout(() => {
-          if (state.device.device) {
-            connectToScanner();
-          }
+          connectToScanner();
         }, 3000);
       });
 

@@ -30,8 +30,6 @@ interface ScannerState {
 
 const HID_SERVICE_UUID = '00001812-0000-1000-8000-00805f9b34fb'; // Human Interface Device
 const BATTERY_SERVICE_UUID = '0000180f-0000-1000-8000-00805f9b34fb';
-const HID_SERVICE_UUID = '00001812-0000-1000-8000-00805f9b34fb'; // Human Interface Device
-const BATTERY_SERVICE_UUID = '0000180f-0000-1000-8000-00805f9b34fb';
 
 // Normalize GTIN for consistency with camera scanner
 const normalizeGtin = (barcode: string): string => {

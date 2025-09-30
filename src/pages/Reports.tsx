@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { TrendingUp, AlertTriangle, DollarSign, Package } from 'lucide-react';
+import { TrendingUp, AlertTriangle, DollarSign, Package, Download } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRecipeAnalytics } from '@/hooks/useRecipeAnalytics';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
@@ -28,6 +29,38 @@ export default function Reports() {
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
+  };
+
+  const exportAlertsToCSV = () => {
+    const csvData = [];
+    csvData.push(['Product Name', 'Category', 'Current Stock', 'Unit', 'Reorder Point', 'Par Level Min', 'Par Level Max', 'Status', 'Supplier', 'Cost Per Unit']);
+    
+    reorderAlerts.forEach(alert => {
+      const status = alert.current_stock === 0 ? 'Out of Stock' : 'Low Stock';
+      csvData.push([
+        alert.name,
+        alert.category,
+        alert.current_stock,
+        alert.uom_purchase,
+        alert.reorder_point,
+        alert.par_level_min,
+        alert.par_level_max,
+        status,
+        alert.supplier_name || '',
+        alert.cost_per_unit || ''
+      ]);
+    });
+
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `inventory-alerts-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (!selectedRestaurant) {
@@ -164,13 +197,21 @@ export default function Reports() {
         <div className="grid gap-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5" />
-                Reorder Alerts
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  Reorder Alerts
+                  {reorderAlerts.length > 0 && (
+                    <Badge variant="destructive">{reorderAlerts.length}</Badge>
+                  )}
+                </CardTitle>
                 {reorderAlerts.length > 0 && (
-                  <Badge variant="destructive">{reorderAlerts.length}</Badge>
+                  <Button onClick={exportAlertsToCSV} variant="outline" size="sm">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
                 )}
-              </CardTitle>
+              </div>
             </CardHeader>
             <CardContent>
               {alertsLoading ? (

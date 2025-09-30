@@ -1804,6 +1804,10 @@ export type Database = {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: string
       }
+      calculate_gs1_check_digit: {
+        Args: { base13: string }
+        Returns: string
+      }
       calculate_recipe_cost: {
         Args: { recipe_id: string }
         Returns: number
@@ -1853,6 +1857,16 @@ export type Database = {
       dmetaphone_alt: {
         Args: { "": string }
         Returns: string
+      }
+      find_product_by_gtin: {
+        Args: { p_restaurant_id: string; p_scanned_gtin: string }
+        Returns: {
+          cost_per_unit: number
+          current_stock: number
+          gtin: string
+          id: string
+          name: string
+        }[]
       }
       fulltext_product_search: {
         Args: {

@@ -61,6 +61,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <Analytics />
+        <SpeedInsights />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />

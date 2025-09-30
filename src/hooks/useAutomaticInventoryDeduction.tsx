@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -19,10 +19,28 @@ interface DeductionResponse {
 export const useAutomaticInventoryDeduction = () => {
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
+  const [autoDeductionEnabled, setAutoDeductionEnabled] = useState<boolean>(false);
+
+  // Check if auto-deduction is enabled for this restaurant
+  useEffect(() => {
+    const checkSettings = async () => {
+      if (!selectedRestaurant?.restaurant_id) return;
+
+      const { data } = await supabase
+        .from('auto_deduction_settings')
+        .select('enabled')
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .maybeSingle();
+
+      setAutoDeductionEnabled(data?.enabled ?? false);
+    };
+
+    checkSettings();
+  }, [selectedRestaurant?.restaurant_id]);
 
   // Process batch deductions for multiple sales
   const processBatchDeductions = useCallback(async (sales: BatchSale[]) => {
-    if (!selectedRestaurant?.restaurant_id) return;
+    if (!selectedRestaurant?.restaurant_id || !autoDeductionEnabled) return;
 
     try {
       const results = [];
@@ -64,11 +82,11 @@ export const useAutomaticInventoryDeduction = () => {
         variant: "destructive",
       });
     }
-  }, [selectedRestaurant?.restaurant_id, toast]);
+  }, [selectedRestaurant?.restaurant_id, autoDeductionEnabled, toast]);
 
   // Listen for new unified sales and auto-deduct
   const setupAutoDeduction = useCallback(async () => {
-    if (!selectedRestaurant?.restaurant_id) return;
+    if (!selectedRestaurant?.restaurant_id || !autoDeductionEnabled) return;
 
     try {
       // Get sales from today that haven't been processed
@@ -111,11 +129,11 @@ export const useAutomaticInventoryDeduction = () => {
     } catch (error: any) {
       console.error('Auto deduction setup error:', error);
     }
-  }, [selectedRestaurant?.restaurant_id, processBatchDeductions]);
+  }, [selectedRestaurant?.restaurant_id, autoDeductionEnabled, processBatchDeductions]);
 
   // Set up real-time subscription for new sales
   useEffect(() => {
-    if (!selectedRestaurant?.restaurant_id) return;
+    if (!selectedRestaurant?.restaurant_id || !autoDeductionEnabled) return;
 
     const channel = supabase
       .channel('unified_sales_changes')
@@ -146,7 +164,7 @@ export const useAutomaticInventoryDeduction = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedRestaurant?.restaurant_id, processBatchDeductions]);
+  }, [selectedRestaurant?.restaurant_id, autoDeductionEnabled, processBatchDeductions]);
 
   return {
     processBatchDeductions,

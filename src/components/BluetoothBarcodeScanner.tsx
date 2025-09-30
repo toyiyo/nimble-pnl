@@ -28,7 +28,8 @@ interface ScannerState {
   debugInfo: string;
 }
 
-const HID_SERVICE_UUID = '00001812-0000-1000-8000-00805f9b34fb'; // Human Interface Device
+const SPP_SERVICE_UUID = '00001101-0000-1000-8000-00805f9b34fb'; // ✅ Serial Port Profile
+const UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'; // ✅ Nordic UART Service
 const BATTERY_SERVICE_UUID = '0000180f-0000-1000-8000-00805f9b34fb';
 
 // Normalize GTIN for consistency with camera scanner
@@ -99,12 +100,12 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
       // Request device with multiple service filters
       const device = await navigator.bluetooth.requestDevice({
         filters: [
-          { services: [HID_SERVICE_UUID] },
+          { services: [SPP_SERVICE_UUID, UART_SERVICE_UUID] },
           { namePrefix: 'NT-1228' },
           { namePrefix: 'Scanner' },
           { namePrefix: 'Barcode' }
         ],
-        optionalServices: [BATTERY_SERVICE_UUID, HID_SERVICE_UUID]
+        optionalServices: [BATTERY_SERVICE_UUID, SPP_SERVICE_UUID, UART_SERVICE_UUID]
       });
 
       setState(prev => ({ ...prev, debugInfo: 'Connecting to device...' }));
@@ -121,7 +122,7 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
       let characteristic: BluetoothRemoteGATTCharacteristic | null = null;
       
       try {
-        const hidService = await server.getPrimaryService(HID_SERVICE_UUID);
+        const hidService = await server.getPrimaryService(SPP_SERVICE_UUID);
         const characteristics = await hidService.getCharacteristics();
         
         // Find a characteristic that supports notifications

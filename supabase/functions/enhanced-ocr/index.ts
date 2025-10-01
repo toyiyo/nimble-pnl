@@ -44,6 +44,10 @@ function buildOCRRequestBody(
     model: modelId,
     messages: [
       {
+        role: "system",
+        content: systemPrompt
+      },
+      {
         role: "user",
         content: [
           {

@@ -160,7 +160,7 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
                   {
                     "type": "image_url",
                     "image_url": {
-                      "url": imageData
+                      "url": isProcessingPDF ? pdfBase64Data : imageData
                     }
                   }
                 ]

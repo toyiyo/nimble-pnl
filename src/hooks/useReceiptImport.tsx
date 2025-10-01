@@ -133,38 +133,68 @@ export const useReceiptImport = () => {
       if (imageBlob.type === 'application/pdf') {
         console.log('Converting PDF to image...');
         try {
-          const arrayBuffer = await imageBlob.arrayBuffer();
-          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-          const page = await pdf.getPage(1); // Get first page
-          
-          const viewport = page.getViewport({ scale: 2.0 });
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
-          
-          if (!context) {
-            throw new Error('Could not get canvas context');
-          }
-          
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
-          
-          await page.render({
-            canvasContext: context,
-            viewport: viewport,
-            canvas: canvas
-          }).promise;
-          
-          // Convert canvas to blob
-          processBlob = await new Promise<Blob>((resolve) => {
-            canvas.toBlob((blob) => {
-              resolve(blob || imageBlob);
-            }, 'image/jpeg', 0.95);
+          // Add timeout for PDF operations
+          const pdfConversionPromise = (async () => {
+            console.log('Loading PDF document...');
+            const arrayBuffer = await imageBlob.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            console.log('PDF loaded, getting first page...');
+            const page = await pdf.getPage(1);
+            console.log('Page retrieved, setting up canvas...');
+            
+            const viewport = page.getViewport({ scale: 2.0 });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            
+            if (!context) {
+              throw new Error('Could not get canvas context');
+            }
+            
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            
+            console.log('Rendering PDF page to canvas...');
+            await page.render({
+              canvasContext: context,
+              viewport: viewport,
+              canvas: canvas
+            }).promise;
+            console.log('PDF rendered, converting to image...');
+            
+            // Convert canvas to blob with timeout
+            const blob = await new Promise<Blob>((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                reject(new Error('Canvas to blob conversion timed out'));
+              }, 10000);
+              
+              canvas.toBlob((blob) => {
+                clearTimeout(timeout);
+                if (blob) {
+                  resolve(blob);
+                } else {
+                  reject(new Error('Failed to convert canvas to blob'));
+                }
+              }, 'image/jpeg', 0.95);
+            });
+            
+            return blob;
+          })();
+
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('PDF conversion timed out after 30 seconds')), 30000);
           });
-          
-          console.log('PDF converted to image successfully');
+
+          processBlob = await Promise.race([pdfConversionPromise, timeoutPromise]);
+          console.log('PDF converted to image successfully, size:', processBlob.size);
         } catch (pdfError) {
           console.error('Error converting PDF:', pdfError);
-          throw new Error('Failed to convert PDF to image. Please try uploading a JPG or PNG image instead.');
+          const errorMessage = pdfError instanceof Error ? pdfError.message : 'Unknown error';
+          toast({
+            title: "PDF Conversion Failed",
+            description: `${errorMessage}. Please try uploading a JPG or PNG image instead.`,
+            variant: "destructive",
+          });
+          throw pdfError;
         }
       }
 

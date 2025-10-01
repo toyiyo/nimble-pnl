@@ -91,3 +91,15 @@ verify_jwt = true
 
 [functions.update-enterprise-settings]
 verify_jwt = true
+
+[functions.proxy-receipt-file]
+verify_jwt = true
+
+[functions.process-receipt]
+verify_jwt = true
+
+[functions.grok-recipe-enhance]
+verify_jwt = true
+
+[functions.signup-with-invitation]
+verify_jwt = false

@@ -217,37 +217,16 @@ export const useReceiptImport = () => {
 
       if (error) throw error;
 
-      // Generate signed URLs for all images
-      const receiptsWithSignedUrls = await Promise.all(
-        (data || []).map(async (receipt) => {
-          if (receipt.raw_file_url) {
-            try {
-              let filePath = receipt.raw_file_url;
-              
-              // If it's a full URL, extract just the path part
-              if (filePath.startsWith('http')) {
-                const urlParts = filePath.split('/storage/v1/object/public/receipt-images/');
-                if (urlParts.length > 1) {
-                  filePath = urlParts[1];
-                }
-              }
-              
-              const { data: signedUrlData } = await supabase.storage
-                .from('receipt-images')
-                .createSignedUrl(filePath, 3600); // 1 hour expiry
-              
-              if (signedUrlData?.signedUrl) {
-                receipt.raw_file_url = signedUrlData.signedUrl;
-              }
-            } catch (signedUrlError) {
-              console.error('Failed to generate signed URL for receipt:', receipt.id, signedUrlError);
-            }
-          }
-          return receipt;
-        })
-      );
+      // Use proxy endpoint for all receipts to avoid Chrome blocking direct Supabase storage URLs
+      const receiptsWithProxyUrls = (data || []).map((receipt) => {
+        const proxyUrl = `https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/proxy-receipt-file?receipt_id=${receipt.id}`;
+        return {
+          ...receipt,
+          raw_file_url: proxyUrl,
+        };
+      });
 
-      return receiptsWithSignedUrls as ReceiptImport[];
+      return receiptsWithProxyUrls as ReceiptImport[];
     } catch (error) {
       console.error('Error fetching receipt imports:', error);
       return [];
@@ -264,31 +243,10 @@ export const useReceiptImport = () => {
 
       if (error) throw error;
 
-      // Generate signed URL for displaying the image from private bucket
-      if (data?.raw_file_url) {
-        try {
-          let filePath = data.raw_file_url;
-          
-          // If it's a full URL, extract just the path part
-          if (filePath.startsWith('http')) {
-            const urlParts = filePath.split('/storage/v1/object/public/receipt-images/');
-            if (urlParts.length > 1) {
-              filePath = urlParts[1];
-            }
-          }
-          
-          const { data: signedUrlData, error: signError } = await supabase.storage
-            .from('receipt-images')
-            .createSignedUrl(filePath, 3600); // 1 hour expiry
-          
-          if (signError) {
-            console.error('Error creating signed URL for display:', signError, 'Path:', filePath);
-          } else if (signedUrlData?.signedUrl) {
-            data.raw_file_url = signedUrlData.signedUrl;
-          }
-        } catch (signedUrlError) {
-          console.error('Failed to generate signed URL:', signedUrlError);
-        }
+      // Use proxy endpoint instead of direct signed URLs to avoid Chrome blocking
+      if (data) {
+        const proxyUrl = `https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/proxy-receipt-file?receipt_id=${receiptId}`;
+        data.raw_file_url = proxyUrl;
       }
 
       return data as ReceiptImport;

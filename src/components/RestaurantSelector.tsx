@@ -7,13 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UserRestaurant } from '@/hooks/useRestaurants';
+import { TimezoneSelector } from '@/components/TimezoneSelector';
 
 interface RestaurantSelectorProps {
   selectedRestaurant: UserRestaurant | null;
   onSelectRestaurant: (restaurant: UserRestaurant) => void;
   restaurants: UserRestaurant[];
   loading: boolean;
-  createRestaurant: (data: { name: string; address?: string; phone?: string; cuisine_type?: string }) => Promise<any>;
+  createRestaurant: (data: { name: string; address?: string; phone?: string; cuisine_type?: string; timezone?: string }) => Promise<any>;
 }
 
 export function RestaurantSelector({ 
@@ -29,6 +30,7 @@ export function RestaurantSelector({
     address: '',
     phone: '',
     cuisine_type: '',
+    timezone: 'America/Chicago',
   });
   const [creating, setCreating] = useState(false);
 
@@ -39,7 +41,7 @@ export function RestaurantSelector({
     const result = await createRestaurant(formData);
     if (result) {
       setShowAddDialog(false);
-      setFormData({ name: '', address: '', phone: '', cuisine_type: '' });
+      setFormData({ name: '', address: '', phone: '', cuisine_type: '', timezone: 'America/Chicago' });
     }
 
     setCreating(false);
@@ -128,6 +130,14 @@ export function RestaurantSelector({
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="timezone">Timezone *</Label>
+                <TimezoneSelector
+                  value={formData.timezone}
+                  onValueChange={(value) => setFormData({ ...formData, timezone: value })}
+                />
+              </div>
               
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
@@ -214,6 +224,14 @@ export function RestaurantSelector({
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="timezone">Timezone *</Label>
+                <TimezoneSelector
+                  value={formData.timezone}
+                  onValueChange={(value) => setFormData({ ...formData, timezone: value })}
+                />
               </div>
               
               <div className="flex justify-end gap-2">

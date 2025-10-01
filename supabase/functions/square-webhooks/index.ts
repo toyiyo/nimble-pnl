@@ -152,7 +152,7 @@ async function handleOrderUpdated(data: any, restaurantId: string, accessToken: 
   const orderData = await response.json();
   const order = orderData.order;
 
-  // Fetch restaurant timezone from square_locations
+  // Fetch timezone from square_locations, fall back to restaurant timezone
   const { data: location } = await supabase
     .from('square_locations')
     .select('timezone')
@@ -160,7 +160,18 @@ async function handleOrderUpdated(data: any, restaurantId: string, accessToken: 
     .eq('location_id', order.location_id)
     .single();
 
-  const timezone = location?.timezone || 'UTC';
+  let timezone = location?.timezone;
+
+  // If no Square location timezone, fall back to restaurant timezone
+  if (!timezone) {
+    const { data: restaurant } = await supabase
+      .from('restaurants')
+      .select('timezone')
+      .eq('id', restaurantId)
+      .single();
+    
+    timezone = restaurant?.timezone || 'UTC';
+  }
   
   // Convert closedAt to restaurant's local timezone for service_date
   const closedAt = order.closed_at ? new Date(order.closed_at) : null;

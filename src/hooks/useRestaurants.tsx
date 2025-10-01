@@ -9,6 +9,7 @@ export interface Restaurant {
   address?: string;
   phone?: string;
   cuisine_type?: string;
+  timezone?: string;
   created_at: string;
   updated_at: string;
 }
@@ -58,6 +59,7 @@ export function useRestaurants() {
     address?: string;
     phone?: string;
     cuisine_type?: string;
+    timezone?: string;
   }) => {
     if (!user) return null;
 
@@ -67,6 +69,7 @@ export function useRestaurants() {
         restaurant_address: restaurantData.address,
         restaurant_phone: restaurantData.phone,
         restaurant_cuisine_type: restaurantData.cuisine_type,
+        restaurant_timezone: restaurantData.timezone || 'America/Chicago',
       });
 
       if (error) throw error;

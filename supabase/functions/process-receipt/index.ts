@@ -89,139 +89,11 @@ serve(async (req) => {
 
     let finalResponse: Response | undefined;
     
-    // Try DeepSeek first (free model)
-    console.log('🚀 Trying DeepSeek V3.1 (free)...');
-    let retryCount = 0;
-    const maxRetries = 3;
+    // Skip DeepSeek for images/PDFs as it doesn't support vision - go straight to Grok
+    console.log('📸 Image/PDF detected - using Grok vision model...');
     
-    while (retryCount < maxRetries && (!finalResponse || !finalResponse.ok)) {
-      try {
-        console.log(`🔄 DeepSeek attempt ${retryCount + 1}/${maxRetries}...`);
-        
-        const requestBody: any = {
-          "model": "deepseek/deepseek-chat-v3.1:free",
-          "messages": [
-              {
-                "role": "system",
-                "content": `You are DeepSeek V3.1 (free), a large language model from deepseek.
-
-Formatting Rules:
-- Use Markdown **only when semantically appropriate**. Examples: \`inline code\`, \`\`\`code fences\`\`\`, tables, and lists.
-- In assistant responses, format file names, directory paths, function names, and class names with backticks (\`).
-- For math: use \\( and \\) for inline expressions, and \\[ and \\] for display (block) math.`
-              },
-              {
-                "role": "user",
-                "content": [
-                  {
-                    "type": "text",
-                    "text": `ANALYSIS TARGET: This receipt image contains itemized purchases for restaurant inventory.
-
-EXTRACTION METHODOLOGY:
-1. **Locate the itemized section** - Focus on the main purchase list (ignore headers, tax, totals, payment info)
-2. **Extract ALL line items** - Every product purchase, even if formatting is unclear
-3. **Identify key components**: Product name, quantity, unit of measure, price per item or total
-4. **Expand abbreviations**: Common food service abbreviations (CHKN=Chicken, DNA=Banana, BROC=Broccoli, etc.)
-5. **Standardize units**: Convert to standard restaurant units (lb, oz, case, each, gal, etc.)
-
-CONFIDENCE SCORING MATRIX:
-- **0.90-0.95**: Crystal clear text, complete information, standard formatting
-- **0.80-0.89**: Readable with minor ambiguity in abbreviations or formatting  
-- **0.65-0.79**: Partially clear, some guessing required for quantities or names
-- **0.40-0.64**: Poor quality text, significant interpretation needed
-- **0.20-0.39**: Very unclear, major uncertainty in parsing
-
-PATTERN RECOGNITION:
-- Weight-based: "BEEF CHUCK 2.34 LB @ $8.99/LB = $20.96"
-- Case quantities: "TOMATOES 6/10# CASE $24.50"
-- Simple format: "MILK 1 GAL $4.99"
-- Abbreviated: "CHKN BRST BNLS 5LB $32.45"
-
-SUPPLIER DETECTION:
-Look for distributor indicators:
-- Company stamps (Sysco, US Foods, Performance Food Group)
-- "Distributed by" or "Packed for" text
-- Supplier codes or route numbers
-
-RESPONSE FORMAT (JSON ONLY):
-{
-  "vendor": "Exact vendor/supplier name from receipt",
-  "totalAmount": numeric_total,
-  "supplierInfo": {
-    "name": "distributor name if detected",
-    "code": "supplier code if visible",
-    "confidence": 0.0-1.0
-  },
-  "lineItems": [
-    {
-      "rawText": "exact text from receipt",
-      "parsedName": "standardized product name",
-      "parsedQuantity": numeric_quantity,
-      "parsedUnit": "standard_unit",
-      "parsedPrice": numeric_price,
-      "confidenceScore": realistic_score_0_to_1,
-      "category": "estimated category (Produce, Meat, Dairy, etc.)"
-    }
-  ]
-}
-
-CRITICAL: Assign confidence scores based on actual text clarity, not wishful thinking.`
-                  },
-                  {
-                    "type": "image_url",
-                    "image_url": {
-                      "url": isProcessingPDF ? pdfBase64Data : imageData
-                    }
-                  }
-                ]
-              }
-            ]
-        };
-
-        const deepseekResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${openRouterApiKey}`,
-            "HTTP-Referer": "https://app.easyshifthq.com",
-            "X-Title": "EasyShiftHQ Receipt Parser",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(requestBody)
-        });
-
-        if (deepseekResponse.ok) {
-          finalResponse = deepseekResponse;
-          console.log('✅ DeepSeek succeeded');
-          break;
-        }
-
-        // Rate limited - wait and retry
-        if (deepseekResponse.status === 429) {
-          console.log(`🔄 DeepSeek rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
-          retryCount++;
-          if (retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
-          }
-        } else {
-          const errorText = await deepseekResponse.text();
-          console.error(`❌ DeepSeek failed (attempt ${retryCount + 1}):`, deepseekResponse.status, errorText);
-          break;
-        }
-      } catch (error) {
-        console.error(`❌ DeepSeek attempt ${retryCount + 1} failed:`, error);
-        retryCount++;
-        if (retryCount < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
-        }
-      }
-    }
-
-    // If DeepSeek failed after retries, try Grok as backup
-    if (!finalResponse || !finalResponse.ok) {
-      console.log('🔄 DeepSeek failed after retries, trying Grok as backup...');
-      
-      try {
-        const grokRequestBody: any = {
+    try {
+      const grokRequestBody: any = {
           "model": "x-ai/grok-4-fast:free",
           "messages": [
               {
@@ -290,37 +162,36 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
           "max_tokens": 4000
         };
 
-        const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${openRouterApiKey}`,
-            "HTTP-Referer": "https://app.easyshifthq.com",
-            "X-Title": "EasyShiftHQ Receipt Parser (Grok Backup)",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(grokRequestBody)
-        });
+      const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterApiKey}`,
+          "HTTP-Referer": "https://app.easyshifthq.com",
+          "X-Title": "EasyShiftHQ Receipt Parser",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(grokRequestBody)
+      });
 
-        if (grokResponse.ok) {
-          finalResponse = grokResponse;
-          console.log('✅ Grok backup succeeded');
-        } else {
-          const grokErrorText = await grokResponse.text();
-          console.error('❌ Grok backup failed:', grokResponse.status, grokErrorText);
-        }
-      } catch (grokError) {
-        console.error('❌ Grok backup error:', grokError);
+      if (grokResponse.ok) {
+        finalResponse = grokResponse;
+        console.log('✅ Grok vision processing succeeded');
+      } else {
+        const grokErrorText = await grokResponse.text();
+        console.error('❌ Grok failed:', grokResponse.status, grokErrorText);
       }
+    } catch (grokError) {
+      console.error('❌ Grok error:', grokError);
     }
 
-    // If both services failed
+    // If Grok failed
     if (!finalResponse || !finalResponse.ok) {
-      console.error('❌ Both DeepSeek and Grok failed');
+      console.error('❌ Grok vision processing failed');
       
       return new Response(
         JSON.stringify({ 
-          error: 'Receipt processing temporarily unavailable due to API limits. Please try again in a few minutes.',
-          details: 'Both AI services are currently unavailable'
+          error: 'Receipt processing failed. Please try again.',
+          details: 'AI vision service unavailable'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

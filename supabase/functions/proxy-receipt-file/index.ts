@@ -61,11 +61,30 @@ serve(async (req) => {
 
     console.log('Fetching file from storage:', receipt.raw_file_url);
 
+    // Extract just the path if raw_file_url is a full URL
+    let filePath = receipt.raw_file_url;
+    
+    // If it's a full URL, extract just the path part after the bucket name
+    if (filePath.includes('http')) {
+      // Match pattern: .../receipt-images/{path}
+      const match = filePath.match(/\/receipt-images\/(.+)$/);
+      if (match) {
+        filePath = match[1];
+        console.log('Extracted path from URL:', filePath);
+      } else {
+        console.error('Could not extract path from URL:', filePath);
+        return new Response(
+          JSON.stringify({ error: 'Invalid file URL format' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // Download file from storage using service role
     const supabaseService = createClient(supabaseUrl, supabaseServiceKey);
     const { data: fileData, error: downloadError } = await supabaseService.storage
       .from('receipt-images')
-      .download(receipt.raw_file_url);
+      .download(filePath);
 
     if (downloadError || !fileData) {
       console.error('Error downloading file:', downloadError);

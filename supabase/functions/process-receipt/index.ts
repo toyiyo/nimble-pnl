@@ -49,47 +49,10 @@ serve(async (req) => {
     console.log('🧾 Processing receipt with Mistral AI (preferred for OCR)...');
     console.log('📸 Image data size:', imageData.length, 'characters');
 
-    // Check if the data is a PDF and convert it to an image
-    let processedImageData = imageData;
-    if (imageData.startsWith('data:application/pdf')) {
-      console.log('📄 PDF detected, converting to image...');
-      try {
-        // Extract base64 data from data URL
-        const base64Data = imageData.split(',')[1];
-        const pdfBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-        
-        // Use pdf-lib to load and render the PDF
-        const pdfDoc = await import('https://cdn.skypack.dev/pdf-lib@1.17.1').then(m => m.PDFDocument.load(pdfBytes));
-        const pages = pdfDoc.getPages();
-        const firstPage = pages[0];
-        const { width, height } = firstPage.getSize();
-        
-        // For now, return an error since we need a proper PDF-to-image conversion
-        // This requires canvas rendering which isn't available in Deno edge runtime
-        console.error('❌ PDF conversion not yet supported in edge function');
-        return new Response(
-          JSON.stringify({ 
-            error: 'PDF files are not yet supported. Please convert your PDF to an image (JPG or PNG) and try again.',
-            details: 'PDF-to-image conversion requires client-side processing'
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400 
-          }
-        );
-      } catch (pdfError) {
-        console.error('❌ PDF processing error:', pdfError);
-        return new Response(
-          JSON.stringify({ 
-            error: 'Failed to process PDF file. Please upload a JPG or PNG image instead.',
-            details: pdfError instanceof Error ? pdfError.message : 'Unknown error'
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400 
-          }
-        );
-      }
+    // Check if the data is a PDF
+    const isPDF = imageData.startsWith('data:application/pdf');
+    if (isPDF) {
+      console.log('📄 PDF detected, will use OpenRouter PDF processing engine');
     }
 
     let finalResponse: Response | undefined;
@@ -102,17 +65,11 @@ serve(async (req) => {
     while (retryCount < maxRetries && (!finalResponse || !finalResponse.ok)) {
       try {
         console.log(`🔄 Mistral attempt ${retryCount + 1}/${maxRetries}...`);
-        const mistralResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${openRouterApiKey}`,
-            "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-            "X-Title": "EasyShiftHQ Receipt Parser",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            "model": "mistralai/mistral-small-3.2-24b-instruct:free",
-            "messages": [
+        
+        // Build request body with PDF plugin if needed
+        const requestBody: any = {
+          "model": "mistralai/mistral-small-3.2-24b-instruct:free",
+          "messages": [
               {
                 "role": "system",
                 "content": `You are an expert receipt parser for restaurant inventory management specializing in food service receipts.
@@ -185,8 +142,30 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
                 ]
               }
             ],
-            "max_completion_tokens": 4000
-          })
+          "max_completion_tokens": 4000
+        };
+
+        // Add PDF processing plugin if file is a PDF
+        if (isPDF) {
+          requestBody.plugins = [
+            {
+              "id": "file-parser",
+              "pdf": {
+                "engine": "pdf-text"
+              }
+            }
+          ];
+        }
+
+        const mistralResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${openRouterApiKey}`,
+            "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+            "X-Title": "EasyShiftHQ Receipt Parser",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(requestBody)
         });
 
         if (mistralResponse.ok) {
@@ -221,17 +200,10 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
       console.log('🔄 Mistral failed after retries, trying Grok as backup...');
       
       try {
-        const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${openRouterApiKey}`,
-            "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-            "X-Title": "EasyShiftHQ Receipt Parser (Grok Backup)",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            "model": "x-ai/grok-4-fast:free",
-            "messages": [
+        // Build request body with PDF plugin if needed
+        const grokRequestBody: any = {
+          "model": "x-ai/grok-4-fast:free",
+          "messages": [
               {
                 "role": "system",
                 "content": `You are an expert receipt parser for restaurant inventory management. Your job is to carefully analyze this receipt image and extract ALL purchasable items.
@@ -294,9 +266,31 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
                 ]
               }
             ],
-            "max_tokens": 4000,
-            "temperature": 0.1
-          })
+          "max_tokens": 4000,
+          "temperature": 0.1
+        };
+
+        // Add PDF processing plugin if file is a PDF
+        if (isPDF) {
+          grokRequestBody.plugins = [
+            {
+              "id": "file-parser",
+              "pdf": {
+                "engine": "pdf-text"
+              }
+            }
+          ];
+        }
+
+        const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${openRouterApiKey}`,
+            "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+            "X-Title": "EasyShiftHQ Receipt Parser (Grok Backup)",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(grokRequestBody)
         });
 
         if (grokResponse.ok) {

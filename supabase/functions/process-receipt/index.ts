@@ -56,8 +56,17 @@ serve(async (req) => {
     
     if (isProcessingPDF && !imageData.startsWith('data:application/pdf;base64,')) {
       console.log('📄 PDF URL detected, converting to base64...');
+      
+      // Create abort controller for fetch timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 20000); // 20 second timeout
+      
       try {
-        const pdfResponse = await fetch(imageData);
+        const pdfResponse = await fetch(imageData, { signal: controller.signal });
+        clearTimeout(timeoutId); // Clear timeout on successful fetch
+        
         if (!pdfResponse.ok) {
           throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
         }
@@ -76,11 +85,25 @@ serve(async (req) => {
         pdfBase64Data = `data:application/pdf;base64,${base64}`;
         console.log('✅ PDF converted to base64, size:', base64.length);
       } catch (fetchError) {
+        clearTimeout(timeoutId); // Ensure timeout is cleared on error
+        
+        // Check if error is due to abort/timeout
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          console.error('📄 PDF fetch timeout after 20 seconds');
+          return new Response(
+            JSON.stringify({ 
+              error: 'PDF fetch timeout',
+              details: 'The PDF file took too long to download. Please try again or use a smaller file.'
+            }),
+            { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
         console.error('📄 Failed to fetch and convert PDF:', fetchError);
         return new Response(
           JSON.stringify({ 
             error: 'Failed to fetch PDF for processing',
-            details: fetchError.message
+            details: fetchError instanceof Error ? fetchError.message : String(fetchError)
           }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

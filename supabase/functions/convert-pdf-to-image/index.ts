@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import * as pdfjsLib from 'npm:pdfjs-dist@4.0.379';
+import { Canvas } from 'https://deno.land/x/canvas@v1.4.1/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,53 +52,33 @@ serve(async (req) => {
 
     console.log('PDF downloaded, size:', fileData.size);
 
-    // Convert PDF to image using CloudConvert API (or similar service)
-    // For now, we'll use a simpler approach: convert first page to image using ImageMagick via API
+    // Convert Blob to ArrayBuffer
+    const arrayBuffer = await fileData.arrayBuffer();
     
-    // Alternative: Use pdf2pic or similar service
-    // For demonstration, we'll use a FormData approach with a conversion service
+    // Load the PDF document
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    const pdfDoc = await loadingTask.promise;
     
-    const formData = new FormData();
-    formData.append('file', fileData, 'receipt.pdf');
-    
-    // Use a free PDF to image API service (like api2pdf, cloudmersive, etc.)
-    // For this example, we'll use a direct approach with Deno's built-in capabilities
-    
-    // Since we can't easily convert PDF in Deno without external services,
-    // let's use the ConvertAPI service (you'll need to add the API key)
-    const convertApiKey = Deno.env.get('CONVERTAPI_SECRET');
-    
-    if (!convertApiKey) {
-      throw new Error('CONVERTAPI_SECRET not configured. Please add it in Edge Function Secrets.');
-    }
+    console.log('PDF loaded, pages:', pdfDoc.numPages);
 
-    // Convert PDF to JPG using ConvertAPI
-    const convertFormData = new FormData();
-    convertFormData.append('File', fileData, 'receipt.pdf');
-    convertFormData.append('ScaleImage', 'true');
-    convertFormData.append('ImageResolution', '200');
+    // Get the first page
+    const page = await pdfDoc.getPage(1);
+    const viewport = page.getViewport({ scale: 2.0 });
 
-    const convertResponse = await fetch(
-      `https://v2.convertapi.com/convert/pdf/to/jpg?Secret=${convertApiKey}`,
-      {
-        method: 'POST',
-        body: convertFormData,
-      }
-    );
+    // Create canvas
+    const canvas = new Canvas(viewport.width, viewport.height);
+    const context = canvas.getContext('2d');
 
-    if (!convertResponse.ok) {
-      const errorText = await convertResponse.text();
-      console.error('ConvertAPI error:', errorText);
-      throw new Error('Failed to convert PDF to image');
-    }
+    // Render PDF page to canvas
+    await page.render({
+      canvasContext: context,
+      viewport: viewport,
+    }).promise;
 
-    const convertResult = await convertResponse.json();
-    console.log('Conversion successful');
+    console.log('Page rendered to canvas');
 
-    // Download the converted image
-    const imageUrl = convertResult.Files[0].Url;
-    const imageResponse = await fetch(imageUrl);
-    const imageBlob = await imageResponse.blob();
+    // Convert canvas to JPEG
+    const imageBlob = await canvas.toBlob('image/jpeg', 0.95);
 
     console.log('Image downloaded, size:', imageBlob.size);
 

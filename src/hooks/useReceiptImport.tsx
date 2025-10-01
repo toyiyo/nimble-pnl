@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import * as pdfjsLib from 'pdfjs-dist';
 
 export interface ReceiptImport {
   id: string;
@@ -122,87 +121,13 @@ export const useReceiptImport = () => {
   const processReceipt = async (receiptId: string, imageBlob: Blob) => {
     setIsProcessing(true);
     try {
-      // Configure PDF.js worker with absolute URL
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-
-      let processBlob = imageBlob;
-      
       console.log('Processing receipt, file type:', imageBlob.type, 'size:', imageBlob.size);
 
-      // Check if it's a PDF and convert to image
-      if (imageBlob.type === 'application/pdf') {
-        console.log('Converting PDF to image...');
-        try {
-          // Add timeout for PDF operations
-          const pdfConversionPromise = (async () => {
-            console.log('Loading PDF document...');
-            const arrayBuffer = await imageBlob.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            console.log('PDF loaded, getting first page...');
-            const page = await pdf.getPage(1);
-            console.log('Page retrieved, setting up canvas...');
-            
-            const viewport = page.getViewport({ scale: 2.0 });
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            
-            if (!context) {
-              throw new Error('Could not get canvas context');
-            }
-            
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            
-            console.log('Rendering PDF page to canvas...');
-            await page.render({
-              canvasContext: context,
-              viewport: viewport,
-              canvas: canvas
-            }).promise;
-            console.log('PDF rendered, converting to image...');
-            
-            // Convert canvas to blob with timeout
-            const blob = await new Promise<Blob>((resolve, reject) => {
-              const timeout = setTimeout(() => {
-                reject(new Error('Canvas to blob conversion timed out'));
-              }, 10000);
-              
-              canvas.toBlob((blob) => {
-                clearTimeout(timeout);
-                if (blob) {
-                  resolve(blob);
-                } else {
-                  reject(new Error('Failed to convert canvas to blob'));
-                }
-              }, 'image/jpeg', 0.95);
-            });
-            
-            return blob;
-          })();
-
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('PDF conversion timed out after 30 seconds')), 30000);
-          });
-
-          processBlob = await Promise.race([pdfConversionPromise, timeoutPromise]);
-          console.log('PDF converted to image successfully, size:', processBlob.size);
-        } catch (pdfError) {
-          console.error('Error converting PDF:', pdfError);
-          const errorMessage = pdfError instanceof Error ? pdfError.message : 'Unknown error';
-          toast({
-            title: "PDF Conversion Failed",
-            description: `${errorMessage}. Please try uploading a JPG or PNG image instead.`,
-            variant: "destructive",
-          });
-          throw pdfError;
-        }
-      }
-
-      // Convert blob to base64
+      // Convert blob to base64 (AI models support both images and PDFs)
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(processBlob);
+        reader.readAsDataURL(imageBlob);
       });
 
       // Call the edge function to process the receipt with timeout

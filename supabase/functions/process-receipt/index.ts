@@ -89,65 +89,140 @@ serve(async (req) => {
 
     let finalResponse: Response | undefined;
     
-    // Skip DeepSeek for images/PDFs as it doesn't support vision - go straight to Grok
-    console.log('📸 Image/PDF detected - using Grok vision model...');
+    // Try DeepSeek first (free model) with proper branching for PDF vs Image
+    console.log('🚀 Trying DeepSeek V3.1 (free)...');
+    let retryCount = 0;
+    const maxRetries = 3;
     
-    try {
-      const grokRequestBody: any = {
-          "model": "x-ai/grok-4-fast:free",
-          "messages": [
-              {
-                "role": "system",
-                "content": `You are an expert receipt parser for restaurant inventory management. Your job is to carefully analyze this receipt image and extract ALL purchasable items.
+    while (retryCount < maxRetries && (!finalResponse || !finalResponse.ok)) {
+      try {
+        console.log(`🔄 DeepSeek attempt ${retryCount + 1}/${maxRetries}...`);
+        
+        const systemPrompt = `You are DeepSeek V3.1 (free), a large language model from deepseek.
 
-CRITICAL INSTRUCTIONS:
-1. Look for the main itemized section of the receipt (not headers, totals, or tax lines)
-2. Extract EVERY line item that represents a product purchase
-3. Include items even if prices seem unusual or formatting is unclear
-4. For each item, identify: product name, quantity, unit of measure, and price
-5. Expand common abbreviations (DNA=Banana, CHKN=Chicken, etc.)
-6. If quantity isn't explicit, assume 1 unit
-7. If unit isn't clear, use "each" as default
+Formatting Rules:
+- Use Markdown **only when semantically appropriate**. Examples: \`inline code\`, \`\`\`code fences\`\`\`, tables, and lists.
+- In assistant responses, format file names, directory paths, function names, and class names with backticks (\`).
+- For math: use \\( and \\) for inline expressions, and \\[ and \\] for display (block) math.`;
 
-CONFIDENCE SCORING (CRITICAL):
-- Assign realistic confidence scores based on text clarity and completeness
-- High confidence (0.85-0.95): Clear, complete text with obvious product name, quantity, and price
-- Medium confidence (0.65-0.84): Readable but some ambiguity in parsing or abbreviations  
-- Low confidence (0.40-0.64): Partially readable, significant guessing required
-- Very low confidence (0.20-0.39): Poor quality text, major uncertainty
+        const userPrompt = `ANALYSIS TARGET: This receipt contains itemized purchases for restaurant inventory.
 
-LOOK FOR THESE PATTERNS:
-- Product lines with prices (e.g., "BANANAS 5 LB @ 0.68/LB $3.40")
-- Simple format (e.g., "Milk Gallon $4.99")
-- Abbreviated items (e.g., "CHKN BRST $12.99")
-- Weight-based items (e.g., "BEEF 2.34 LB @ $8.99/LB")
+EXTRACTION METHODOLOGY:
+1. **Locate the itemized section** - Focus on the main purchase list (ignore headers, tax, totals, payment info)
+2. **Extract ALL line items** - Every product purchase, even if formatting is unclear
+3. **Identify key components**: Product name, quantity, unit of measure, price per item or total
+4. **Expand abbreviations**: Common food service abbreviations (CHKN=Chicken, DNA=Banana, BROC=Broccoli, etc.)
+5. **Standardize units**: Convert to standard restaurant units (lb, oz, case, each, gal, etc.)
 
-IGNORE: Tax lines, subtotals, payment methods, store info, promotions
+CONFIDENCE SCORING MATRIX:
+- **0.90-0.95**: Crystal clear text, complete information, standard formatting
+- **0.80-0.89**: Readable with minor ambiguity in abbreviations or formatting  
+- **0.65-0.79**: Partially clear, some guessing required for quantities or names
+- **0.40-0.64**: Poor quality text, significant interpretation needed
+- **0.20-0.39**: Very unclear, major uncertainty in parsing
 
-Return ONLY valid JSON in this exact format:
+PATTERN RECOGNITION:
+- Weight-based: "BEEF CHUCK 2.34 LB @ $8.99/LB = $20.96"
+- Case quantities: "TOMATOES 6/10# CASE $24.50"
+- Simple format: "MILK 1 GAL $4.99"
+- Abbreviated: "CHKN BRST BNLS 5LB $32.45"
+
+SUPPLIER DETECTION:
+Look for distributor indicators:
+- Company stamps (Sysco, US Foods, Performance Food Group)
+- "Distributed by" or "Packed for" text
+- Supplier codes or route numbers
+
+RESPONSE FORMAT (JSON ONLY):
 {
-  "vendor": "Store Name",
-  "totalAmount": 45.67,
+  "vendor": "Exact vendor/supplier name from receipt",
+  "totalAmount": numeric_total,
+  "supplierInfo": {
+    "name": "distributor name if detected",
+    "code": "supplier code if visible",
+    "confidence": 0.0-1.0
+  },
   "lineItems": [
     {
-      "rawText": "BANANAS 5 LB @ 0.68/LB $3.40",
-      "parsedName": "Bananas",
-      "parsedQuantity": 5,
-      "parsedUnit": "lb",
-      "parsedPrice": 3.40,
-      "confidenceScore": 0.92
+      "rawText": "exact text from receipt",
+      "parsedName": "standardized product name",
+      "parsedQuantity": numeric_quantity,
+      "parsedUnit": "standard_unit",
+      "parsedPrice": numeric_price,
+      "confidenceScore": realistic_score_0_to_1,
+      "category": "estimated category (Produce, Meat, Dairy, etc.)"
     }
   ]
 }
 
-IMPORTANT: Vary confidence scores realistically based on actual text quality and parsing difficulty.`
+CRITICAL: Assign confidence scores based on actual text clarity, not wishful thinking.`;
+
+        let requestBody: any;
+        
+        // Branch: PDF vs Image
+        if (isProcessingPDF) {
+          // PDF Path: Use file type with plugins
+          console.log('📄 Using PDF file parser...');
+          
+          // Extract filename if present in data URL
+          let filename = 'receipt.pdf';
+          const filenameMatch = imageData.match(/filename[=:]([^;,]+)/i);
+          if (filenameMatch) {
+            filename = filenameMatch[1].trim();
+          }
+          
+          requestBody = {
+            "model": "deepseek/deepseek-chat-v3.1:free",
+            "messages": [
+              {
+                "role": "system",
+                "content": systemPrompt
               },
               {
                 "role": "user",
                 "content": [
                   {
                     "type": "text",
-                    "text": "Analyze this receipt carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
+                    "text": userPrompt
+                  },
+                  {
+                    "type": "file",
+                    "file": {
+                      "file_data": pdfBase64Data,
+                      "filename": filename
+                    }
+                  }
+                ]
+              }
+            ],
+            "plugins": [
+              {
+                "id": "file-parser",
+                "pdf": {
+                  "engine": "pdf-text"
+                }
+              }
+            ],
+            "stream": false,
+            "max_tokens": 4000
+          };
+        } else {
+          // Image Path: Use image_url type
+          console.log('📸 Using image vision...');
+          
+          requestBody = {
+            "model": "deepseek/deepseek-chat-v3.1:free",
+            "messages": [
+              {
+                "role": "system",
+                "content": systemPrompt
+              },
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": userPrompt
                   },
                   {
                     "type": "image_url",
@@ -157,41 +232,131 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
                   }
                 ]
               }
-            ],
+            ]
+          };
+        }
+
+        const deepseekResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${openRouterApiKey}`,
+            "HTTP-Referer": "https://app.easyshifthq.com",
+            "X-Title": "EasyShiftHQ Receipt Parser",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (deepseekResponse.ok) {
+          finalResponse = deepseekResponse;
+          console.log('✅ DeepSeek succeeded');
+          break;
+        }
+
+        // Rate limited - wait and retry
+        if (deepseekResponse.status === 429) {
+          console.log(`🔄 DeepSeek rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
+          retryCount++;
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+          }
+        } else {
+          const errorText = await deepseekResponse.text();
+          console.error(`❌ DeepSeek failed (attempt ${retryCount + 1}):`, deepseekResponse.status, errorText);
+          break;
+        }
+      } catch (error) {
+        console.error(`❌ DeepSeek attempt ${retryCount + 1} failed:`, error);
+        retryCount++;
+        if (retryCount < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+        }
+      }
+    }
+
+    // If DeepSeek failed, try Grok as backup (images only - Grok doesn't support PDFs)
+    if ((!finalResponse || !finalResponse.ok) && !isProcessingPDF) {
+      console.log('🔄 DeepSeek failed, trying Grok as backup for image...');
+      
+      try {
+        const grokRequestBody: any = {
+          "model": "x-ai/grok-4-fast:free",
+          "messages": [
+            {
+              "role": "system",
+              "content": `You are an expert receipt parser for restaurant inventory management. Analyze this receipt image and extract ALL purchasable items.
+
+Return ONLY valid JSON in this exact format:
+{
+  "vendor": "Store Name",
+  "totalAmount": 45.67,
+  "lineItems": [
+    {
+      "rawText": "exact text from receipt",
+      "parsedName": "standardized product name",
+      "parsedQuantity": numeric_quantity,
+      "parsedUnit": "standard_unit",
+      "parsedPrice": numeric_price,
+      "confidenceScore": realistic_score_0_to_1
+    }
+  ]
+}`
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Analyze this receipt carefully. Extract ALL products with their quantities and prices. Focus on the itemized section."
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": imageData
+                  }
+                }
+              ]
+            }
+          ],
           "temperature": 0.1,
           "max_tokens": 4000
         };
 
-      const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${openRouterApiKey}`,
-          "HTTP-Referer": "https://app.easyshifthq.com",
-          "X-Title": "EasyShiftHQ Receipt Parser",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(grokRequestBody)
-      });
+        const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${openRouterApiKey}`,
+            "HTTP-Referer": "https://app.easyshifthq.com",
+            "X-Title": "EasyShiftHQ Receipt Parser (Grok Backup)",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(grokRequestBody)
+        });
 
-      if (grokResponse.ok) {
-        finalResponse = grokResponse;
-        console.log('✅ Grok vision processing succeeded');
-      } else {
-        const grokErrorText = await grokResponse.text();
-        console.error('❌ Grok failed:', grokResponse.status, grokErrorText);
+        if (grokResponse.ok) {
+          finalResponse = grokResponse;
+          console.log('✅ Grok backup succeeded');
+        } else {
+          const grokErrorText = await grokResponse.text();
+          console.error('❌ Grok backup failed:', grokResponse.status, grokErrorText);
+        }
+      } catch (grokError) {
+        console.error('❌ Grok backup error:', grokError);
       }
-    } catch (grokError) {
-      console.error('❌ Grok error:', grokError);
     }
 
-    // If Grok failed
+    // If both services failed
     if (!finalResponse || !finalResponse.ok) {
-      console.error('❌ Grok vision processing failed');
+      console.error('❌ Receipt processing failed');
+      
+      const errorMessage = isProcessingPDF 
+        ? 'PDF processing temporarily unavailable. Please try again in a few minutes.'
+        : 'Receipt processing temporarily unavailable. Please try again in a few minutes.';
       
       return new Response(
         JSON.stringify({ 
-          error: 'Receipt processing failed. Please try again.',
-          details: 'AI vision service unavailable'
+          error: errorMessage,
+          details: 'AI services are currently unavailable'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

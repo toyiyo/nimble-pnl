@@ -21,6 +21,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Plus, Building2 } from 'lucide-react';
+import { TimezoneSelector } from '@/components/TimezoneSelector';
 
 export const AppHeader = () => {
   const { user, signOut } = useAuth();
@@ -32,6 +33,7 @@ export const AppHeader = () => {
     address: '',
     phone: '',
     cuisine_type: '',
+    timezone: 'America/Chicago',
   });
 
   const handleCreateRestaurant = async (e: React.FormEvent) => {
@@ -43,10 +45,11 @@ export const AppHeader = () => {
       address: formData.address || undefined,
       phone: formData.phone || undefined,
       cuisine_type: formData.cuisine_type || undefined,
+      timezone: formData.timezone || 'America/Chicago',
     });
 
     if (newRestaurant) {
-      setFormData({ name: '', address: '', phone: '', cuisine_type: '' });
+      setFormData({ name: '', address: '', phone: '', cuisine_type: '', timezone: 'America/Chicago' });
       setShowCreateDialog(false);
     }
   };
@@ -224,6 +227,17 @@ export const AppHeader = () => {
                   value={formData.cuisine_type}
                   onChange={(e) => setFormData({ ...formData, cuisine_type: e.target.value })}
                 />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="timezone" className="text-right">
+                  Timezone *
+                </Label>
+                <div className="col-span-3">
+                  <TimezoneSelector
+                    value={formData.timezone}
+                    onValueChange={(value) => setFormData({ ...formData, timezone: value })}
+                  />
+                </div>
               </div>
             </div>
             <DialogFooter>

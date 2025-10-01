@@ -1841,12 +1841,20 @@ export type Database = {
         Returns: undefined
       }
       create_restaurant_with_owner: {
-        Args: {
-          restaurant_address?: string
-          restaurant_cuisine_type?: string
-          restaurant_name: string
-          restaurant_phone?: string
-        }
+        Args:
+          | {
+              restaurant_address?: string
+              restaurant_cuisine_type?: string
+              restaurant_name: string
+              restaurant_phone?: string
+            }
+          | {
+              restaurant_address?: string
+              restaurant_cuisine_type?: string
+              restaurant_name: string
+              restaurant_phone?: string
+              restaurant_timezone?: string
+            }
         Returns: string
       }
       daitch_mokotoff: {

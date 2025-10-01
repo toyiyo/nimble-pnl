@@ -12,6 +12,7 @@ interface RestaurantContextType {
     address?: string;
     phone?: string;
     cuisine_type?: string;
+    timezone?: string;
   }) => Promise<any>;
 }
 

@@ -164,34 +164,55 @@ export const useReceiptImport = () => {
         });
       }
 
-      // Call the edge function to process the receipt with timeout
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Receipt processing timed out after 60 seconds')), 60000);
-      });
+      // Create AbortController to properly cancel the request on timeout
+      const controller = new AbortController();
+      let timeoutId: number | undefined;
 
-      const invokePromise = supabase.functions.invoke('process-receipt', {
-        body: {
-          receiptId,
-          imageData: dataToSend,
-          isPDF
+      try {
+        // Set up timeout that aborts the request
+        timeoutId = setTimeout(() => {
+          controller.abort();
+        }, 60000) as unknown as number;
+
+        // Call the edge function with abort signal
+        const { data, error } = await supabase.functions.invoke('process-receipt', {
+          body: {
+            receiptId,
+            imageData: dataToSend,
+            isPDF
+          },
+          // @ts-ignore - signal option is supported but not in types yet
+          signal: controller.signal
+        });
+
+        // Clear timeout on successful completion
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
         }
-      });
 
-      const { data, error } = await Promise.race([
-        invokePromise,
-        timeoutPromise
-      ]) as any;
+        if (error) {
+          throw error;
+        }
 
-      if (error) {
+        toast({
+          title: "Success",
+          description: `Receipt processed! Found ${data.lineItemsCount} items from ${data.vendor}`,
+        });
+
+        return data;
+      } catch (error: any) {
+        // Clear timeout in case of error
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+
+        // Handle abort specifically
+        if (error.name === 'AbortError' || controller.signal.aborted) {
+          throw new Error('Receipt processing timed out after 60 seconds');
+        }
+
         throw error;
       }
-
-      toast({
-        title: "Success",
-        description: `Receipt processed! Found ${data.lineItemsCount} items from ${data.vendor}`,
-      });
-
-      return data;
     } catch (error) {
       console.error('Error processing receipt:', error);
       toast({

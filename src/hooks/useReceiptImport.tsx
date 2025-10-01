@@ -175,13 +175,22 @@ export const useReceiptImport = () => {
         reader.readAsDataURL(processBlob);
       });
 
-      // Call the edge function to process the receipt
-      const { data, error } = await supabase.functions.invoke('process-receipt', {
+      // Call the edge function to process the receipt with timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Receipt processing timed out after 60 seconds')), 60000);
+      });
+
+      const invokePromise = supabase.functions.invoke('process-receipt', {
         body: {
           receiptId,
           imageData: base64
         }
       });
+
+      const { data, error } = await Promise.race([
+        invokePromise,
+        timeoutPromise
+      ]) as any;
 
       if (error) {
         throw error;

@@ -47,6 +47,7 @@ serve(async (req) => {
     }
 
     console.log('🧾 Processing receipt with Mistral AI (preferred for OCR)...');
+    console.log('📸 Image data size:', imageData.length, 'characters');
 
     let finalResponse: Response | undefined;
     
@@ -57,6 +58,7 @@ serve(async (req) => {
     
     while (retryCount < maxRetries && (!finalResponse || !finalResponse.ok)) {
       try {
+        console.log(`🔄 Mistral attempt ${retryCount + 1}/${maxRetries}...`);
         const mistralResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {

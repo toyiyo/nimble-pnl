@@ -62,7 +62,17 @@ serve(async (req) => {
           throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
         }
         const pdfBlob = await pdfResponse.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(pdfBlob)));
+        
+        // Convert to base64 in chunks to avoid call stack issues with large PDFs
+        const uint8Array = new Uint8Array(pdfBlob);
+        let binaryString = '';
+        const chunkSize = 8192; // Process in 8KB chunks
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+          const chunk = uint8Array.subarray(i, i + chunkSize);
+          binaryString += String.fromCharCode(...chunk);
+        }
+        const base64 = btoa(binaryString);
+        
         pdfBase64Data = `data:application/pdf;base64,${base64}`;
         console.log('✅ PDF converted to base64, size:', base64.length);
       } catch (fetchError) {

@@ -248,18 +248,34 @@ export function useDailyPnL(restaurantId: string | null) {
     if (restaurantId) {
       const fetchTimezone = async () => {
         try {
-          const { data, error } = await supabase
+          // First try to get timezone from Square locations
+          const { data: locationData, error: locationError } = await supabase
             .from('square_locations')
             .select('timezone')
             .eq('restaurant_id', restaurantId)
             .limit(1)
+            .maybeSingle();
+          
+          if (locationData?.timezone && !locationError) {
+            setRestaurantTimezone(locationData.timezone);
+            return;
+          }
+
+          // Fall back to restaurant timezone
+          const { data: restaurantData, error: restaurantError } = await supabase
+            .from('restaurants')
+            .select('timezone')
+            .eq('id', restaurantId)
             .single();
           
-          if (data?.timezone && !error) {
-            setRestaurantTimezone(data.timezone);
+          if (restaurantData?.timezone && !restaurantError) {
+            setRestaurantTimezone(restaurantData.timezone);
+          } else {
+            setRestaurantTimezone('UTC');
           }
         } catch (error) {
-          console.log('No timezone found for restaurant, using UTC');
+          console.log('Error fetching timezone, using UTC:', error);
+          setRestaurantTimezone('UTC');
         }
       };
       

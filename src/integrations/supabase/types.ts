@@ -899,6 +899,7 @@ export type Database = {
           id: string
           name: string
           phone: string | null
+          timezone: string | null
           updated_at: string
         }
         Insert: {
@@ -908,6 +909,7 @@ export type Database = {
           id?: string
           name: string
           phone?: string | null
+          timezone?: string | null
           updated_at?: string
         }
         Update: {
@@ -917,6 +919,7 @@ export type Database = {
           id?: string
           name?: string
           phone?: string | null
+          timezone?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1838,12 +1841,20 @@ export type Database = {
         Returns: undefined
       }
       create_restaurant_with_owner: {
-        Args: {
-          restaurant_address?: string
-          restaurant_cuisine_type?: string
-          restaurant_name: string
-          restaurant_phone?: string
-        }
+        Args:
+          | {
+              restaurant_address?: string
+              restaurant_cuisine_type?: string
+              restaurant_name: string
+              restaurant_phone?: string
+            }
+          | {
+              restaurant_address?: string
+              restaurant_cuisine_type?: string
+              restaurant_name: string
+              restaurant_phone?: string
+              restaurant_timezone?: string
+            }
         Returns: string
       }
       daitch_mokotoff: {

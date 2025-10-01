@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { useReceiptImport, ReceiptLineItem, ReceiptImport } from '@/hooks/useReceiptImport';
 import { useProducts } from '@/hooks/useProducts';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image } from 'lucide-react';
+import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { getUnitOptions } from '@/lib/validUnits';
 
@@ -30,10 +30,15 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [imageError, setImageError] = useState(false);
+  const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
   const { selectedRestaurant } = useRestaurantContext();
   const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
   const { products } = useProducts(selectedRestaurant?.id || null);
   const { toast } = useToast();
+
+  // Detect file type based on extension
+  const isPDF = receiptDetails?.file_name?.toLowerCase().endsWith('.pdf') || false;
 
   useEffect(() => {
     loadData();
@@ -41,14 +46,55 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   const loadData = async () => {
     setLoading(true);
+    
+    // Clean up previous blob URL if exists
+    if (fileBlobUrl) {
+      URL.revokeObjectURL(fileBlobUrl);
+      setFileBlobUrl(null);
+    }
+    
     const [details, items] = await Promise.all([
       getReceiptDetails(receiptId),
       getReceiptLineItems(receiptId)
     ]);
     setReceiptDetails(details);
     setLineItems(items);
+    
+    // Fetch the receipt file with auth headers and create a blob URL
+    if (details?.raw_file_url) {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.access_token) {
+          const response = await fetch(details.raw_file_url, {
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          });
+          
+          if (response.ok) {
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            setFileBlobUrl(blobUrl);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching receipt file:', error);
+      }
+    }
+    
     setLoading(false);
   };
+
+  // Clean up blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (fileBlobUrl) {
+        URL.revokeObjectURL(fileBlobUrl);
+      }
+    };
+  }, [fileBlobUrl]);
 
   const handleItemUpdate = async (itemId: string, updates: any) => {
     const success = await updateLineItemMapping(itemId, updates);
@@ -154,30 +200,111 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   return (
     <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Receipt Image */}
+      {/* Receipt Image/PDF */}
       {receiptDetails?.raw_file_url && (
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Image className="h-4 w-4" />
+              {isPDF ? <FileText className="h-4 w-4" /> : <Image className="h-4 w-4" />}
               Original Receipt
             </CardTitle>
+            {receiptDetails.file_name && (
+              <CardDescription className="text-xs">{receiptDetails.file_name}</CardDescription>
+            )}
           </CardHeader>
           <CardContent>
-            <img 
-              src={receiptDetails.raw_file_url} 
-              alt="Receipt" 
-              className="w-full h-auto rounded-lg border shadow-sm"
-            />
-            {receiptDetails.vendor_name && (
-              <p className="text-sm text-muted-foreground mt-2">
-                Vendor: {receiptDetails.vendor_name}
-              </p>
+            {imageError ? (
+              <div className="border rounded-lg p-8 text-center space-y-4">
+                <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground" />
+                <div>
+                  <p className="font-medium">Unable to display receipt</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    The receipt file could not be loaded.
+                  </p>
+                </div>
+                {fileBlobUrl ? (
+                  <a
+                    href={fileBlobUrl}
+                    download={receiptDetails.file_name || 'receipt'}
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md text-sm font-medium"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Receipt
+                  </a>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled
+                    className="flex items-center gap-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Receipt
+                  </Button>
+                )}
+              </div>
+            ) : isPDF ? (
+              <div className="space-y-2">
+                <object
+                  data={fileBlobUrl || undefined}
+                  type="application/pdf"
+                  className="w-full h-[600px] rounded-lg border shadow-sm"
+                  onError={() => setImageError(true)}
+                >
+                  <div className="border rounded-lg p-8 text-center space-y-4">
+                    <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">PDF Preview Not Available</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Your browser doesn't support PDF preview.
+                      </p>
+                    </div>
+                    {fileBlobUrl && (
+                      <a
+                        href={fileBlobUrl}
+                        download={receiptDetails.file_name || 'receipt.pdf'}
+                        className="inline-flex items-center gap-2 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md text-sm font-medium"
+                      >
+                        <Download className="h-4 w-4" />
+                        Download PDF
+                      </a>
+                    )}
+                  </div>
+                </object>
+                {fileBlobUrl && (
+                  <div className="flex justify-center">
+                    <a
+                      href={fileBlobUrl}
+                      download={receiptDetails.file_name || 'receipt.pdf'}
+                      className="inline-flex items-center gap-2 px-4 py-2 hover:bg-accent hover:text-accent-foreground rounded-md text-sm"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download PDF
+                    </a>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <img 
+                src={fileBlobUrl || undefined} 
+                alt="Receipt" 
+                className="w-full h-auto rounded-lg border shadow-sm"
+                onError={() => setImageError(true)}
+              />
             )}
-            {receiptDetails.total_amount && (
-              <p className="text-sm text-muted-foreground">
-                Total: ${receiptDetails.total_amount.toFixed(2)}
-              </p>
+            {!imageError && (
+              <div className="mt-4 space-y-1">
+                {receiptDetails.vendor_name && (
+                  <p className="text-sm text-muted-foreground">
+                    Vendor: {receiptDetails.vendor_name}
+                  </p>
+                )}
+                {receiptDetails.total_amount && (
+                  <p className="text-sm text-muted-foreground">
+                    Total: ${receiptDetails.total_amount.toFixed(2)}
+                  </p>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>

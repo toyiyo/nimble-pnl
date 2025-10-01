@@ -1,5 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { createHmac } from "node:crypto";
+import { format } from 'https://esm.sh/date-fns@3.6.0';
+import { formatInTimeZone } from 'https://esm.sh/date-fns-tz@3.2.0';
 import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
 
 const corsHeaders = {
@@ -150,8 +152,32 @@ async function handleOrderUpdated(data: any, restaurantId: string, accessToken: 
   const orderData = await response.json();
   const order = orderData.order;
 
+  // Fetch timezone from square_locations, fall back to restaurant timezone
+  const { data: location } = await supabase
+    .from('square_locations')
+    .select('timezone')
+    .eq('restaurant_id', restaurantId)
+    .eq('location_id', order.location_id)
+    .single();
+
+  let timezone = location?.timezone;
+
+  // If no Square location timezone, fall back to restaurant timezone
+  if (!timezone) {
+    const { data: restaurant } = await supabase
+      .from('restaurants')
+      .select('timezone')
+      .eq('id', restaurantId)
+      .single();
+    
+    timezone = restaurant?.timezone || 'UTC';
+  }
+  
+  // Convert closedAt to restaurant's local timezone for service_date
   const closedAt = order.closed_at ? new Date(order.closed_at) : null;
-  const serviceDate = closedAt ? closedAt.toISOString().split('T')[0] : null;
+  const serviceDate = closedAt 
+    ? formatInTimeZone(closedAt, timezone, 'yyyy-MM-dd')
+    : null;
 
   // Update order in database
   await supabase

@@ -127,13 +127,13 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
             <Input
               id="receipt-file"
               type="file"
-              accept="image/*,.pdf"
+              accept="image/jpeg,image/png,image/webp,image/jpg,application/pdf"
               onChange={handleFileUpload}
               disabled={isProcessingActive}
               className="cursor-pointer"
             />
             <p className="text-sm text-muted-foreground">
-              Supports JPG, PNG, and PDF files up to 10MB
+              Supports JPG, PNG, WEBP images, and PDF files up to 10MB
             </p>
           </div>
         )}

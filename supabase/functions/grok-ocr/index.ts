@@ -45,7 +45,7 @@ serve(async (req) => {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${openRouterApiKey}`,
-        "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+        "HTTP-Referer": "https://app.easyshifthq.com",
         "X-Title": "EasyShiftHQ Inventory OCR",
         "Content-Type": "application/json"
       },

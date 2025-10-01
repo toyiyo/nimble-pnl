@@ -3,6 +3,26 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 
+// Get Supabase base URL from the client configuration for environment portability
+const getSupabaseUrl = (): string => {
+  // Access the base URL from the Supabase client's internal configuration
+  // @ts-ignore - accessing internal property for URL
+  const url = supabase?.supabaseUrl;
+  
+  if (!url) {
+    console.error('Supabase URL not found in client configuration');
+    throw new Error('Supabase configuration error: missing base URL');
+  }
+  
+  return url;
+};
+
+// Helper to build proxy endpoint URL
+const buildProxyUrl = (receiptId: string): string => {
+  const baseUrl = getSupabaseUrl();
+  return `${baseUrl}/functions/v1/proxy-receipt-file?receipt_id=${receiptId}`;
+};
+
 export interface ReceiptImport {
   id: string;
   restaurant_id: string;
@@ -67,9 +87,13 @@ export const useReceiptImport = () => {
 
     setIsUploading(true);
     try {
-      // Upload file to storage
-      const fileName = `${Date.now()}-${file.name}`;
-      const filePath = `${selectedRestaurant.restaurant_id}/${fileName}`;
+      // Sanitize filename to remove special characters
+      const fileExt = file.name.split('.').pop();
+      const sanitizedBaseName = file.name
+        .replace(`.${fileExt}`, '')
+        .replace(/[^a-zA-Z0-9_-]/g, '_'); // Replace special chars with underscore
+      const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
+      const filePath = `${selectedRestaurant.restaurant_id}/${finalFileName}`;
       
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('receipt-images')
@@ -96,6 +120,7 @@ export const useReceiptImport = () => {
         throw receiptError;
       }
 
+      // PDFs will be converted client-side when processing
       toast({
         title: "Success",
         description: "Receipt uploaded successfully",
@@ -118,31 +143,96 @@ export const useReceiptImport = () => {
   const processReceipt = async (receiptId: string, imageBlob: Blob) => {
     setIsProcessing(true);
     try {
-      // Convert blob to base64
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(imageBlob);
-      });
+      console.log('Processing receipt, file type:', imageBlob.type, 'size:', imageBlob.size);
 
-      // Call the edge function to process the receipt
-      const { data, error } = await supabase.functions.invoke('process-receipt', {
-        body: {
-          receiptId,
-          imageData: base64
+      // For PDFs, we'll send the storage URL instead of base64
+      // For images, we'll continue using base64
+      let dataToSend: string;
+      const isPDF = imageBlob.type === 'application/pdf';
+
+      if (isPDF) {
+        // Get the receipt import record to fetch the storage URL
+        const { data: receiptData, error: receiptError } = await supabase
+          .from('receipt_imports')
+          .select('raw_file_url')
+          .eq('id', receiptId)
+          .single();
+
+        if (receiptError || !receiptData?.raw_file_url) {
+          throw new Error('Failed to get PDF storage URL');
         }
-      });
 
-      if (error) {
-        throw error;
+        // Generate a signed URL for the PDF (path is already properly formatted)
+        const { data: signedUrlData, error: signedUrlError } = await supabase
+          .storage
+          .from('receipt-images')
+          .createSignedUrl(receiptData.raw_file_url, 3600);
+
+        if (signedUrlError || !signedUrlData?.signedUrl) {
+          console.error('Failed to create signed URL:', signedUrlError);
+          throw new Error('Failed to generate signed URL for PDF');
+        }
+
+        dataToSend = signedUrlData.signedUrl;
+        console.log('Generated PDF signed URL for processing:', dataToSend.substring(0, 100) + '...');
+      } else {
+        // Convert image blob to base64
+        dataToSend = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(imageBlob);
+        });
       }
 
-      toast({
-        title: "Success",
-        description: `Receipt processed! Found ${data.lineItemsCount} items from ${data.vendor}`,
-      });
+      // Create AbortController to properly cancel the request on timeout
+      const controller = new AbortController();
+      let timeoutId: number | undefined;
 
-      return data;
+      try {
+        // Set up timeout that aborts the request
+        timeoutId = setTimeout(() => {
+          controller.abort();
+        }, 60000) as unknown as number;
+
+        // Call the edge function with abort signal
+        const { data, error } = await supabase.functions.invoke('process-receipt', {
+          body: {
+            receiptId,
+            imageData: dataToSend,
+            isPDF
+          },
+          // @ts-ignore - signal option is supported but not in types yet
+          signal: controller.signal
+        });
+
+        // Clear timeout on successful completion
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+
+        if (error) {
+          throw error;
+        }
+
+        toast({
+          title: "Success",
+          description: `Receipt processed! Found ${data.lineItemsCount} items from ${data.vendor}`,
+        });
+
+        return data;
+      } catch (error: any) {
+        // Clear timeout in case of error
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+
+        // Handle abort specifically
+        if (error.name === 'AbortError' || controller.signal.aborted) {
+          throw new Error('Receipt processing timed out after 60 seconds');
+        }
+
+        throw error;
+      }
     } catch (error) {
       console.error('Error processing receipt:', error);
       toast({
@@ -168,37 +258,15 @@ export const useReceiptImport = () => {
 
       if (error) throw error;
 
-      // Generate signed URLs for all images
-      const receiptsWithSignedUrls = await Promise.all(
-        (data || []).map(async (receipt) => {
-          if (receipt.raw_file_url) {
-            try {
-              let filePath = receipt.raw_file_url;
-              
-              // If it's a full URL, extract just the path part
-              if (filePath.startsWith('http')) {
-                const urlParts = filePath.split('/storage/v1/object/public/receipt-images/');
-                if (urlParts.length > 1) {
-                  filePath = urlParts[1];
-                }
-              }
-              
-              const { data: signedUrlData } = await supabase.storage
-                .from('receipt-images')
-                .createSignedUrl(filePath, 3600); // 1 hour expiry
-              
-              if (signedUrlData?.signedUrl) {
-                receipt.raw_file_url = signedUrlData.signedUrl;
-              }
-            } catch (signedUrlError) {
-              console.error('Failed to generate signed URL for receipt:', receipt.id, signedUrlError);
-            }
-          }
-          return receipt;
-        })
-      );
+      // Use proxy endpoint for all receipts to avoid Chrome blocking direct Supabase storage URLs
+      const receiptsWithProxyUrls = (data || []).map((receipt) => {
+        return {
+          ...receipt,
+          raw_file_url: buildProxyUrl(receipt.id),
+        };
+      });
 
-      return receiptsWithSignedUrls as ReceiptImport[];
+      return receiptsWithProxyUrls as ReceiptImport[];
     } catch (error) {
       console.error('Error fetching receipt imports:', error);
       return [];
@@ -215,29 +283,9 @@ export const useReceiptImport = () => {
 
       if (error) throw error;
 
-      // Generate signed URL for displaying the image from private bucket
-      if (data?.raw_file_url) {
-        try {
-          let filePath = data.raw_file_url;
-          
-          // If it's a full URL, extract just the path part
-          if (filePath.startsWith('http')) {
-            const urlParts = filePath.split('/storage/v1/object/public/receipt-images/');
-            if (urlParts.length > 1) {
-              filePath = urlParts[1];
-            }
-          }
-          
-          const { data: signedUrlData } = await supabase.storage
-            .from('receipt-images')
-            .createSignedUrl(filePath, 3600); // 1 hour expiry
-          
-          if (signedUrlData?.signedUrl) {
-            data.raw_file_url = signedUrlData.signedUrl;
-          }
-        } catch (signedUrlError) {
-          console.error('Failed to generate signed URL:', signedUrlError);
-        }
+      // Use proxy endpoint instead of direct signed URLs to avoid Chrome blocking
+      if (data) {
+        data.raw_file_url = buildProxyUrl(receiptId);
       }
 
       return data as ReceiptImport;

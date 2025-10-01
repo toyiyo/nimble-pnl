@@ -128,7 +128,7 @@ serve(async (req) => {
         ...corsHeaders,
         'Content-Type': contentType,
         'Content-Disposition': `inline; filename="${fileName}"`,
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'private, max-age=3600', // Private cache only - no intermediate caching of sensitive receipts
       },
     });
   } catch (error) {

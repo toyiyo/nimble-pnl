@@ -56,16 +56,49 @@ serve(async (req) => {
     
     if (isProcessingPDF && !imageData.startsWith('data:application/pdf;base64,')) {
       console.log('📄 PDF URL detected, converting to base64...');
+      
+      // Set up abort controller with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+      
       try {
-        const pdfResponse = await fetch(imageData);
+        const pdfResponse = await fetch(imageData, { signal: controller.signal });
+        clearTimeout(timeoutId); // Clear timeout on successful fetch
+        
         if (!pdfResponse.ok) {
           throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
         }
+        
         const pdfBlob = await pdfResponse.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(pdfBlob)));
+        
+        // Safe chunked base64 conversion for large PDFs
+        const uint8Array = new Uint8Array(pdfBlob);
+        const chunkSize = 32768; // 32KB chunks
+        let base64 = '';
+        
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+          const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+          const chunkString = String.fromCharCode(...chunk);
+          base64 += btoa(chunkString);
+        }
+        
         pdfBase64Data = `data:application/pdf;base64,${base64}`;
         console.log('✅ PDF converted to base64, size:', base64.length);
       } catch (fetchError) {
+        clearTimeout(timeoutId); // Ensure timeout is cleared
+        
+        // Check if error was due to abort/timeout
+        if (fetchError.name === 'AbortError') {
+          console.error('📄 PDF fetch timeout');
+          return new Response(
+            JSON.stringify({ 
+              error: 'PDF download timeout',
+              details: 'The PDF took too long to download (>20s)'
+            }),
+            { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
         console.error('📄 Failed to fetch and convert PDF:', fetchError);
         return new Response(
           JSON.stringify({ 

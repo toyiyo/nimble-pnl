@@ -222,15 +222,26 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                     The receipt file could not be loaded.
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileBlobUrl && window.open(fileBlobUrl, '_blank')}
-                  className="flex items-center gap-2"
-                >
-                  <Download className="h-4 w-4" />
-                  Download Receipt
-                </Button>
+                {fileBlobUrl ? (
+                  <a
+                    href={fileBlobUrl}
+                    download={receiptDetails.file_name || 'receipt'}
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md text-sm font-medium"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Receipt
+                  </a>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled
+                    className="flex items-center gap-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Receipt
+                  </Button>
+                )}
               </div>
             ) : isPDF ? (
               <div className="space-y-2">
@@ -249,29 +260,27 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                       </p>
                     </div>
                     {fileBlobUrl && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.open(fileBlobUrl, '_blank')}
-                        className="flex items-center gap-2"
+                      <a
+                        href={fileBlobUrl}
+                        download={receiptDetails.file_name || 'receipt.pdf'}
+                        className="inline-flex items-center gap-2 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md text-sm font-medium"
                       >
                         <Download className="h-4 w-4" />
-                        Open PDF in New Tab
-                      </Button>
+                        Download PDF
+                      </a>
                     )}
                   </div>
                 </object>
                 {fileBlobUrl && (
                   <div className="flex justify-center">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => window.open(fileBlobUrl, '_blank')}
-                      className="flex items-center gap-2"
+                    <a
+                      href={fileBlobUrl}
+                      download={receiptDetails.file_name || 'receipt.pdf'}
+                      className="inline-flex items-center gap-2 px-4 py-2 hover:bg-accent hover:text-accent-foreground rounded-md text-sm"
                     >
                       <Download className="h-4 w-4" />
-                      Open in New Tab
-                    </Button>
+                      Download PDF
+                    </a>
                   </div>
                 )}
               </div>

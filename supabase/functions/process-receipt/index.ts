@@ -123,7 +123,16 @@ serve(async (req) => {
         
         const requestBody: any = {
           "model": "deepseek/deepseek-chat-v3.1:free",
-          ...(isProcessingPDF && { "plugins": ["file-parser"] }),
+          ...(isProcessingPDF && { 
+            "plugins": [
+              {
+                "id": "file-parser",
+                "pdf": {
+                  "engine": "pdf-text"
+                }
+              }
+            ] 
+          }),
           "messages": [
               {
                 "role": "system",
@@ -194,7 +203,7 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
                   isProcessingPDF ? {
                     "type": "file",
                     "file": {
-                      "file_data": pdfBase64Data.split(',')[1], // Remove data:application/pdf;base64, prefix
+                      "file_data": pdfBase64Data, // Keep full data URI with prefix
                       "filename": "receipt.pdf"
                     }
                   } : {
@@ -253,7 +262,16 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
       try {
         const grokRequestBody: any = {
           "model": "mistralai/mistral-small-3.2-24b-instruct:free",
-          ...(isProcessingPDF && { "plugins": ["file-parser"] }),
+          ...(isProcessingPDF && { 
+            "plugins": [
+              {
+                "id": "file-parser",
+                "pdf": {
+                  "engine": "pdf-text"
+                }
+              }
+            ] 
+          }),
           "messages": [
               {
                 "role": "system",
@@ -311,7 +329,7 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
                   isProcessingPDF ? {
                     "type": "file",
                     "file": {
-                      "file_data": pdfBase64Data.split(',')[1], // Remove data:application/pdf;base64, prefix
+                      "file_data": pdfBase64Data, // Keep full data URI with prefix
                       "filename": "receipt.pdf"
                     }
                   } : {

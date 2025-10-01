@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { useReceiptImport, ReceiptLineItem, ReceiptImport } from '@/hooks/useReceiptImport';
 import { useProducts } from '@/hooks/useProducts';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image } from 'lucide-react';
+import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { getUnitOptions } from '@/lib/validUnits';
 
@@ -30,10 +30,14 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [imageError, setImageError] = useState(false);
   const { selectedRestaurant } = useRestaurantContext();
   const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
   const { products } = useProducts(selectedRestaurant?.id || null);
   const { toast } = useToast();
+
+  // Detect file type based on extension
+  const isPDF = receiptDetails?.file_name?.toLowerCase().endsWith('.pdf') || false;
 
   useEffect(() => {
     loadData();
@@ -154,30 +158,66 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   return (
     <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Receipt Image */}
+      {/* Receipt Image/PDF */}
       {receiptDetails?.raw_file_url && (
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Image className="h-4 w-4" />
+              {isPDF ? <FileText className="h-4 w-4" /> : <Image className="h-4 w-4" />}
               Original Receipt
             </CardTitle>
+            {receiptDetails.file_name && (
+              <CardDescription className="text-xs">{receiptDetails.file_name}</CardDescription>
+            )}
           </CardHeader>
           <CardContent>
-            <img 
-              src={receiptDetails.raw_file_url} 
-              alt="Receipt" 
-              className="w-full h-auto rounded-lg border shadow-sm"
-            />
-            {receiptDetails.vendor_name && (
-              <p className="text-sm text-muted-foreground mt-2">
-                Vendor: {receiptDetails.vendor_name}
-              </p>
+            {imageError ? (
+              <div className="border rounded-lg p-8 text-center space-y-4">
+                <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground" />
+                <div>
+                  <p className="font-medium">Unable to display receipt</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    The receipt file could not be loaded.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(receiptDetails.raw_file_url, '_blank')}
+                  className="flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Download Receipt
+                </Button>
+              </div>
+            ) : isPDF ? (
+              <iframe
+                src={receiptDetails.raw_file_url}
+                className="w-full h-[600px] rounded-lg border shadow-sm"
+                title="Receipt PDF"
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <img 
+                src={receiptDetails.raw_file_url} 
+                alt="Receipt" 
+                className="w-full h-auto rounded-lg border shadow-sm"
+                onError={() => setImageError(true)}
+              />
             )}
-            {receiptDetails.total_amount && (
-              <p className="text-sm text-muted-foreground">
-                Total: ${receiptDetails.total_amount.toFixed(2)}
-              </p>
+            {!imageError && (
+              <div className="mt-4 space-y-1">
+                {receiptDetails.vendor_name && (
+                  <p className="text-sm text-muted-foreground">
+                    Vendor: {receiptDetails.vendor_name}
+                  </p>
+                )}
+                {receiptDetails.total_amount && (
+                  <p className="text-sm text-muted-foreground">
+                    Total: ${receiptDetails.total_amount.toFixed(2)}
+                  </p>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>

@@ -5,7 +5,8 @@ import { corsHeaders } from "../_shared/cors.ts";
 
 interface ReceiptProcessRequest {
   receiptId: string;
-  imageData: string; // base64 encoded image
+  imageData: string; // base64 encoded image OR URL for PDF
+  isPDF?: boolean; // Flag to indicate if it's a PDF
 }
 
 interface ParsedLineItem {
@@ -23,7 +24,7 @@ serve(async (req) => {
   }
 
   try {
-    const { receiptId, imageData }: ReceiptProcessRequest = await req.json();
+    const { receiptId, imageData, isPDF }: ReceiptProcessRequest = await req.json();
     
     if (!receiptId || !imageData) {
       return new Response(
@@ -47,11 +48,11 @@ serve(async (req) => {
     }
 
     console.log('🧾 Processing receipt with Mistral AI (preferred for OCR)...');
-    console.log('📸 Image data size:', imageData.length, 'characters');
+    console.log('📸 Image data type:', isPDF ? 'PDF URL' : 'Base64 image', 'size:', imageData.length, 'characters');
 
-    // Check if the data is a PDF
-    const isPDF = imageData.startsWith('data:application/pdf');
-    if (isPDF) {
+    // Check if the data is a PDF (passed via flag now)
+    const isProcessingPDF = isPDF || false;
+    if (isProcessingPDF) {
       console.log('📄 PDF detected, will use OpenRouter PDF processing engine');
     }
 
@@ -131,13 +132,14 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
                 "content": [
                   {
                     "type": "text",
-                    "text": "Analyze this receipt image carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
+                    "text": "Analyze this receipt carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
                   },
                   {
-                    "type": "image_url",
-                    "image_url": {
-                      "url": imageData
-                    }
+                    "type": isProcessingPDF ? "file" : "image_url",
+                    ...(isProcessingPDF 
+                      ? { "file": { "url": imageData } }
+                      : { "image_url": { "url": imageData } }
+                    )
                   }
                 ]
               }
@@ -146,7 +148,7 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
         };
 
         // Add PDF processing plugin if file is a PDF
-        if (isPDF) {
+        if (isProcessingPDF) {
           requestBody.plugins = [
             {
               "id": "file-parser",
@@ -255,13 +257,14 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
                 "content": [
                   {
                     "type": "text",
-                    "text": "Analyze this receipt image carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
+                    "text": "Analyze this receipt carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
                   },
                   {
-                    "type": "image_url",
-                    "image_url": {
-                      "url": imageData
-                    }
+                    "type": isProcessingPDF ? "file" : "image_url",
+                    ...(isProcessingPDF 
+                      ? { "file": { "url": imageData } }
+                      : { "image_url": { "url": imageData } }
+                    )
                   }
                 ]
               }
@@ -271,7 +274,7 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
         };
 
         // Add PDF processing plugin if file is a PDF
-        if (isPDF) {
+        if (isProcessingPDF) {
           grokRequestBody.plugins = [
             {
               "id": "file-parser",

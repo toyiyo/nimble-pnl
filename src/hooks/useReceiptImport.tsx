@@ -123,12 +123,45 @@ export const useReceiptImport = () => {
     try {
       console.log('Processing receipt, file type:', imageBlob.type, 'size:', imageBlob.size);
 
-      // Convert blob to base64 (supports images and PDFs)
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(imageBlob);
-      });
+      // For PDFs, we'll send the storage URL instead of base64
+      // For images, we'll continue using base64
+      let dataToSend: string;
+      const isPDF = imageBlob.type === 'application/pdf';
+
+      if (isPDF) {
+        // Get the receipt import record to fetch the storage URL
+        const { data: receiptData, error: receiptError } = await supabase
+          .from('receipt_imports')
+          .select('raw_file_url')
+          .eq('id', receiptId)
+          .single();
+
+        if (receiptError || !receiptData?.raw_file_url) {
+          throw new Error('Failed to get PDF storage URL');
+        }
+
+        // Generate a signed URL for the PDF
+        const { data: signedUrlData, error: signedUrlError } = await supabase
+          .storage
+          .from('receipt-images')
+          .createSignedUrl(receiptData.raw_file_url, 3600);
+
+        if (signedUrlError || !signedUrlData?.signedUrl) {
+          throw new Error('Failed to generate signed URL for PDF');
+        }
+
+        // Build the full storage URL
+        const supabaseUrl = 'https://ncdujvdgqtaunuyigflp.supabase.co';
+        dataToSend = `${supabaseUrl}/storage/v1${signedUrlData.signedUrl}`;
+        console.log('PDF URL:', dataToSend);
+      } else {
+        // Convert image blob to base64
+        dataToSend = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(imageBlob);
+        });
+      }
 
       // Call the edge function to process the receipt with timeout
       const timeoutPromise = new Promise((_, reject) => {
@@ -138,7 +171,8 @@ export const useReceiptImport = () => {
       const invokePromise = supabase.functions.invoke('process-receipt', {
         body: {
           receiptId,
-          imageData: base64
+          imageData: dataToSend,
+          isPDF
         }
       });
 

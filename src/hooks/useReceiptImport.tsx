@@ -68,103 +68,15 @@ export const useReceiptImport = () => {
 
     setIsUploading(true);
     try {
-      // Configure PDF.js worker
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      const finalFileName = file.name;
 
-      let fileToUpload: File | Blob = file;
-      let finalFileName = file.name;
-
-      // Convert PDF to image before uploading
-      if (file.type === 'application/pdf') {
-        console.log('Converting PDF to image before upload...', { size: file.size, name: file.name });
-        
-        // Check file size first (limit to 10MB for PDF conversion)
-        if (file.size > 10 * 1024 * 1024) {
-          throw new Error('PDF file is too large. Please use a PDF under 10MB or convert to JPG/PNG first.');
-        }
-        
-        try {
-          // Read file with timeout
-          const arrayBuffer = await Promise.race([
-            file.arrayBuffer(),
-            new Promise<ArrayBuffer>((_, reject) =>
-              setTimeout(() => reject(new Error('File reading timeout - file may be too large or corrupted')), 15000)
-            )
-          ]);
-          console.log('PDF loaded as array buffer');
-          
-          // Load PDF with timeout
-          const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-          console.log('Loading PDF document...');
-          
-          const pdf = await Promise.race([
-            loadingTask.promise,
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('PDF loading timeout after 30 seconds')), 30000)
-            )
-          ]) as any;
-          
-          console.log('PDF loaded, getting first page...');
-          const page = await pdf.getPage(1);
-          console.log('Got first page, setting up canvas...');
-          
-          const viewport = page.getViewport({ scale: 2.0 });
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
-          
-          if (!context) {
-            throw new Error('Could not get canvas context');
-          }
-          
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
-          console.log('Canvas setup complete, rendering PDF to canvas...');
-          
-          // Render with timeout
-          await Promise.race([
-            page.render({
-              canvasContext: context,
-              viewport: viewport
-            }).promise,
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('PDF rendering timeout after 30 seconds')), 30000)
-            )
-          ]);
-          
-          console.log('PDF rendered to canvas, converting to JPEG...');
-          
-          // Convert canvas to blob with timeout
-          fileToUpload = await Promise.race([
-            new Promise<Blob>((resolve, reject) => {
-              canvas.toBlob((blob) => {
-                if (blob) {
-                  resolve(blob);
-                } else {
-                  reject(new Error('Failed to convert canvas to blob'));
-                }
-              }, 'image/jpeg', 0.95);
-            }),
-            new Promise<Blob>((_, reject) =>
-              setTimeout(() => reject(new Error('Canvas conversion timeout after 10 seconds')), 10000)
-            )
-          ]);
-          
-          // Change filename extension to .jpg
-          finalFileName = file.name.replace(/\.pdf$/i, '.jpg');
-          console.log('PDF converted successfully to image', { newSize: fileToUpload.size });
-        } catch (pdfError) {
-          console.error('Error converting PDF:', pdfError);
-          throw new Error('Failed to convert PDF to image. Please try uploading a JPG or PNG image instead.');
-        }
-      }
-
-      // Upload file to storage
+      // Upload file to storage (PDFs will be converted server-side)
       const fileName = `${Date.now()}-${finalFileName}`;
       const filePath = `${selectedRestaurant.restaurant_id}/${fileName}`;
       
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('receipt-images')
-        .upload(filePath, fileToUpload);
+        .upload(filePath, file);
 
       if (uploadError) {
         throw uploadError;
@@ -185,6 +97,32 @@ export const useReceiptImport = () => {
 
       if (receiptError) {
         throw receiptError;
+      }
+
+      // If it's a PDF, trigger server-side conversion
+      if (file.type === 'application/pdf') {
+        console.log('Triggering server-side PDF conversion...');
+        try {
+          const { error: conversionError } = await supabase.functions.invoke('convert-pdf-to-image', {
+            body: {
+              filePath,
+              receiptId: receiptData.id,
+            }
+          });
+
+          if (conversionError) {
+            console.error('PDF conversion error:', conversionError);
+            toast({
+              title: "Warning",
+              description: "Receipt uploaded but PDF conversion failed. You may need to re-upload as JPG/PNG.",
+              variant: "destructive",
+            });
+          } else {
+            console.log('PDF conversion successful');
+          }
+        } catch (conversionError) {
+          console.error('Error calling conversion function:', conversionError);
+        }
       }
 
       toast({

@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { createHmac } from "node:crypto";
 import { format } from 'https://esm.sh/date-fns@3.6.0';
-import { toZonedTime } from 'https://esm.sh/date-fns-tz@3.2.0';
+import { formatInTimeZone } from 'https://esm.sh/date-fns-tz@3.2.0';
 import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
 
 const corsHeaders = {
@@ -176,7 +176,7 @@ async function handleOrderUpdated(data: any, restaurantId: string, accessToken: 
   // Convert closedAt to restaurant's local timezone for service_date
   const closedAt = order.closed_at ? new Date(order.closed_at) : null;
   const serviceDate = closedAt 
-    ? format(toZonedTime(closedAt, timezone), 'yyyy-MM-dd')
+    ? formatInTimeZone(closedAt, timezone, 'yyyy-MM-dd')
     : null;
 
   // Update order in database

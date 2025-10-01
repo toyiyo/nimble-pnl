@@ -3,6 +3,26 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 
+// Get Supabase base URL from the client configuration for environment portability
+const getSupabaseUrl = (): string => {
+  // Access the base URL from the Supabase client's internal configuration
+  // @ts-ignore - accessing internal property for URL
+  const url = supabase?.supabaseUrl;
+  
+  if (!url) {
+    console.error('Supabase URL not found in client configuration');
+    throw new Error('Supabase configuration error: missing base URL');
+  }
+  
+  return url;
+};
+
+// Helper to build proxy endpoint URL
+const buildProxyUrl = (receiptId: string): string => {
+  const baseUrl = getSupabaseUrl();
+  return `${baseUrl}/functions/v1/proxy-receipt-file?receipt_id=${receiptId}`;
+};
+
 export interface ReceiptImport {
   id: string;
   restaurant_id: string;
@@ -240,10 +260,9 @@ export const useReceiptImport = () => {
 
       // Use proxy endpoint for all receipts to avoid Chrome blocking direct Supabase storage URLs
       const receiptsWithProxyUrls = (data || []).map((receipt) => {
-        const proxyUrl = `https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/proxy-receipt-file?receipt_id=${receipt.id}`;
         return {
           ...receipt,
-          raw_file_url: proxyUrl,
+          raw_file_url: buildProxyUrl(receipt.id),
         };
       });
 
@@ -266,8 +285,7 @@ export const useReceiptImport = () => {
 
       // Use proxy endpoint instead of direct signed URLs to avoid Chrome blocking
       if (data) {
-        const proxyUrl = `https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/proxy-receipt-file?receipt_id=${receiptId}`;
-        data.raw_file_url = proxyUrl;
+        data.raw_file_url = buildProxyUrl(receiptId);
       }
 
       return data as ReceiptImport;

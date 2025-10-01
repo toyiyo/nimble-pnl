@@ -98,8 +98,28 @@ serve(async (req) => {
 
     // Determine content type based on file extension
     const fileName = receipt.file_name || receipt.raw_file_url;
-    const isPDF = fileName.toLowerCase().endsWith('.pdf');
-    const contentType = isPDF ? 'application/pdf' : 'image/jpeg';
+    const fileNameLower = fileName.toLowerCase();
+    
+    // Map file extensions to MIME types
+    let contentType = 'application/octet-stream'; // Default fallback
+    
+    if (fileNameLower.endsWith('.pdf')) {
+      contentType = 'application/pdf';
+    } else if (fileNameLower.endsWith('.png')) {
+      contentType = 'image/png';
+    } else if (fileNameLower.endsWith('.webp')) {
+      contentType = 'image/webp';
+    } else if (fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg')) {
+      contentType = 'image/jpeg';
+    } else if (fileNameLower.endsWith('.gif')) {
+      contentType = 'image/gif';
+    } else if (fileNameLower.endsWith('.svg')) {
+      contentType = 'image/svg+xml';
+    } else if (fileNameLower.endsWith('.bmp')) {
+      contentType = 'image/bmp';
+    } else if (fileNameLower.endsWith('.tiff') || fileNameLower.endsWith('.tif')) {
+      contentType = 'image/tiff';
+    }
 
     // Return the file with proper headers
     return new Response(fileData, {

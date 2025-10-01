@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import * as pdfjsLib from 'pdfjs-dist';
 
 export interface ReceiptImport {
   id: string;
@@ -118,11 +119,55 @@ export const useReceiptImport = () => {
   const processReceipt = async (receiptId: string, imageBlob: Blob) => {
     setIsProcessing(true);
     try {
+      // Configure PDF.js worker
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+      let processBlob = imageBlob;
+
+      // Check if it's a PDF and convert to image
+      if (imageBlob.type === 'application/pdf') {
+        console.log('Converting PDF to image...');
+        try {
+          const arrayBuffer = await imageBlob.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          const page = await pdf.getPage(1); // Get first page
+          
+          const viewport = page.getViewport({ scale: 2.0 });
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          
+          if (!context) {
+            throw new Error('Could not get canvas context');
+          }
+          
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+          
+          await page.render({
+            canvasContext: context,
+            viewport: viewport,
+            canvas: canvas
+          }).promise;
+          
+          // Convert canvas to blob
+          processBlob = await new Promise<Blob>((resolve) => {
+            canvas.toBlob((blob) => {
+              resolve(blob || imageBlob);
+            }, 'image/jpeg', 0.95);
+          });
+          
+          console.log('PDF converted to image successfully');
+        } catch (pdfError) {
+          console.error('Error converting PDF:', pdfError);
+          throw new Error('Failed to convert PDF to image. Please try uploading a JPG or PNG image instead.');
+        }
+      }
+
       // Convert blob to base64
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(imageBlob);
+        reader.readAsDataURL(processBlob);
       });
 
       // Call the edge function to process the receipt

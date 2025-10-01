@@ -77,8 +77,20 @@ export const useReceiptImport = () => {
       // Convert PDF to image before uploading
       if (file.type === 'application/pdf') {
         console.log('Converting PDF to image before upload...', { size: file.size, name: file.name });
+        
+        // Check file size first (limit to 10MB for PDF conversion)
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error('PDF file is too large. Please use a PDF under 10MB or convert to JPG/PNG first.');
+        }
+        
         try {
-          const arrayBuffer = await file.arrayBuffer();
+          // Read file with timeout
+          const arrayBuffer = await Promise.race([
+            file.arrayBuffer(),
+            new Promise<ArrayBuffer>((_, reject) =>
+              setTimeout(() => reject(new Error('File reading timeout - file may be too large or corrupted')), 15000)
+            )
+          ]);
           console.log('PDF loaded as array buffer');
           
           // Load PDF with timeout

@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Bluetooth, BluetoothConnected, BluetoothSearching, Battery, Loader2, AlertCircle, Settings, Zap, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { normalizeGTIN, validateGTIN } from '@/lib/gtinUtils';
 
 interface BluetoothBarcodeScannerProps {
   onScan: (result: string, format: string) => void;
@@ -12,7 +13,7 @@ interface BluetoothBarcodeScannerProps {
   autoStart?: boolean;
 }
 
-interface BluetoothDevice {
+interface ScannerDevice {
   device: BluetoothDevice | null;
   characteristic: BluetoothRemoteGATTCharacteristic | null;
 }
@@ -20,7 +21,7 @@ interface BluetoothDevice {
 interface ScannerState {
   isConnecting: boolean;
   isConnected: boolean;
-  device: BluetoothDevice;
+  device: ScannerDevice;
   batteryLevel: number | null;
   scanMode: 'manual' | 'continuous' | 'auto-sensing';
   lastScan: string;
@@ -31,12 +32,6 @@ interface ScannerState {
 const SPP_SERVICE_UUID = '00001101-0000-1000-8000-00805f9b34fb'; // ✅ Serial Port Profile
 const UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'; // ✅ Nordic UART Service
 const BATTERY_SERVICE_UUID = '0000180f-0000-1000-8000-00805f9b34fb';
-
-// Normalize GTIN for consistency with camera scanner
-const normalizeGtin = (barcode: string): string => {
-  const digits = barcode.replace(/\D/g, '');
-  return digits.padStart(14, '0');
-};
 
 export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = ({
   onScan,
@@ -69,7 +64,15 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
     // Basic validation for barcode format
     if (cleanedData.length >= 8 && /^\d+$/.test(cleanedData)) {
       if (cleanedData !== state.lastScan && !state.scanCooldown) {
-        const normalizedGtin = normalizeGtin(cleanedData);
+        // Normalize GTIN with proper check digit calculation
+        const normalizedGtin = normalizeGTIN(cleanedData);
+        
+        // Log validation result for debugging
+        const isValid = validateGTIN(normalizedGtin);
+        if (!isValid) {
+          console.warn(`⚠️ Generated GTIN may have invalid check digit: ${normalizedGtin}`);
+        }
+        
         onScan(normalizedGtin, 'Bluetooth');
         
         setState(prev => ({
@@ -157,7 +160,7 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
       if (characteristic) {
         await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', (event) => {
-          const target = event.target as BluetoothRemoteGATTCharacteristic;
+          const target = event.target as unknown as BluetoothRemoteGATTCharacteristic;
           const value = target.value;
           if (value) {
             const decoder = new TextDecoder();

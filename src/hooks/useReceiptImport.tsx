@@ -99,32 +99,7 @@ export const useReceiptImport = () => {
         throw receiptError;
       }
 
-      // If it's a PDF, trigger server-side conversion
-      if (file.type === 'application/pdf') {
-        console.log('Triggering server-side PDF conversion...');
-        try {
-          const { error: conversionError } = await supabase.functions.invoke('convert-pdf-to-image', {
-            body: {
-              filePath,
-              receiptId: receiptData.id,
-            }
-          });
-
-          if (conversionError) {
-            console.error('PDF conversion error:', conversionError);
-            toast({
-              title: "Warning",
-              description: "Receipt uploaded but PDF conversion failed. You may need to re-upload as JPG/PNG.",
-              variant: "destructive",
-            });
-          } else {
-            console.log('PDF conversion successful');
-          }
-        } catch (conversionError) {
-          console.error('Error calling conversion function:', conversionError);
-        }
-      }
-
+      // PDFs will be converted client-side when processing
       toast({
         title: "Success",
         description: "Receipt uploaded successfully",

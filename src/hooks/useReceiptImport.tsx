@@ -123,7 +123,17 @@ export const useReceiptImport = () => {
     try {
       console.log('Processing receipt, file type:', imageBlob.type, 'size:', imageBlob.size);
 
-      // Convert blob to base64 (AI models support both images and PDFs)
+      // Check if file is a PDF - not supported for now
+      if (imageBlob.type === 'application/pdf') {
+        toast({
+          title: "PDF Not Supported",
+          description: "PDFs are not currently supported. Please convert your PDF to a JPG or PNG image and try again.",
+          variant: "destructive",
+        });
+        return null;
+      }
+
+      // Convert blob to base64 (images only)
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);

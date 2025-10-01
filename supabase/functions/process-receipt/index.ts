@@ -49,6 +49,49 @@ serve(async (req) => {
     console.log('🧾 Processing receipt with Mistral AI (preferred for OCR)...');
     console.log('📸 Image data size:', imageData.length, 'characters');
 
+    // Check if the data is a PDF and convert it to an image
+    let processedImageData = imageData;
+    if (imageData.startsWith('data:application/pdf')) {
+      console.log('📄 PDF detected, converting to image...');
+      try {
+        // Extract base64 data from data URL
+        const base64Data = imageData.split(',')[1];
+        const pdfBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+        
+        // Use pdf-lib to load and render the PDF
+        const pdfDoc = await import('https://cdn.skypack.dev/pdf-lib@1.17.1').then(m => m.PDFDocument.load(pdfBytes));
+        const pages = pdfDoc.getPages();
+        const firstPage = pages[0];
+        const { width, height } = firstPage.getSize();
+        
+        // For now, return an error since we need a proper PDF-to-image conversion
+        // This requires canvas rendering which isn't available in Deno edge runtime
+        console.error('❌ PDF conversion not yet supported in edge function');
+        return new Response(
+          JSON.stringify({ 
+            error: 'PDF files are not yet supported. Please convert your PDF to an image (JPG or PNG) and try again.',
+            details: 'PDF-to-image conversion requires client-side processing'
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400 
+          }
+        );
+      } catch (pdfError) {
+        console.error('❌ PDF processing error:', pdfError);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Failed to process PDF file. Please upload a JPG or PNG image instead.',
+            details: pdfError instanceof Error ? pdfError.message : 'Unknown error'
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400 
+          }
+        );
+      }
+    }
+
     let finalResponse: Response | undefined;
     
     // Try Mistral first with retry logic (better for OCR)

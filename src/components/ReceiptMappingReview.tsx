@@ -31,6 +31,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const [importing, setImporting] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [imageError, setImageError] = useState(false);
+  const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
   const { selectedRestaurant } = useRestaurantContext();
   const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
   const { products } = useProducts(selectedRestaurant?.id || null);
@@ -45,14 +46,55 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   const loadData = async () => {
     setLoading(true);
+    
+    // Clean up previous blob URL if exists
+    if (fileBlobUrl) {
+      URL.revokeObjectURL(fileBlobUrl);
+      setFileBlobUrl(null);
+    }
+    
     const [details, items] = await Promise.all([
       getReceiptDetails(receiptId),
       getReceiptLineItems(receiptId)
     ]);
     setReceiptDetails(details);
     setLineItems(items);
+    
+    // Fetch the receipt file with auth headers and create a blob URL
+    if (details?.raw_file_url) {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.access_token) {
+          const response = await fetch(details.raw_file_url, {
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          });
+          
+          if (response.ok) {
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            setFileBlobUrl(blobUrl);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching receipt file:', error);
+      }
+    }
+    
     setLoading(false);
   };
+
+  // Clean up blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (fileBlobUrl) {
+        URL.revokeObjectURL(fileBlobUrl);
+      }
+    };
+  }, [fileBlobUrl]);
 
   const handleItemUpdate = async (itemId: string, updates: any) => {
     const success = await updateLineItemMapping(itemId, updates);
@@ -183,7 +225,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => window.open(receiptDetails.raw_file_url, '_blank')}
+                  onClick={() => fileBlobUrl && window.open(fileBlobUrl, '_blank')}
                   className="flex items-center gap-2"
                 >
                   <Download className="h-4 w-4" />
@@ -193,7 +235,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
             ) : isPDF ? (
               <div className="space-y-2">
                 <object
-                  data={receiptDetails.raw_file_url}
+                  data={fileBlobUrl || undefined}
                   type="application/pdf"
                   className="w-full h-[600px] rounded-lg border shadow-sm"
                   onError={() => setImageError(true)}
@@ -206,32 +248,36 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                         Your browser doesn't support PDF preview.
                       </p>
                     </div>
+                    {fileBlobUrl && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(fileBlobUrl, '_blank')}
+                        className="flex items-center gap-2"
+                      >
+                        <Download className="h-4 w-4" />
+                        Open PDF in New Tab
+                      </Button>
+                    )}
+                  </div>
+                </object>
+                {fileBlobUrl && (
+                  <div className="flex justify-center">
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      onClick={() => window.open(receiptDetails.raw_file_url, '_blank')}
+                      onClick={() => window.open(fileBlobUrl, '_blank')}
                       className="flex items-center gap-2"
                     >
                       <Download className="h-4 w-4" />
-                      Open PDF in New Tab
+                      Open in New Tab
                     </Button>
                   </div>
-                </object>
-                <div className="flex justify-center">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => window.open(receiptDetails.raw_file_url, '_blank')}
-                    className="flex items-center gap-2"
-                  >
-                    <Download className="h-4 w-4" />
-                    Open in New Tab
-                  </Button>
-                </div>
+                )}
               </div>
             ) : (
               <img 
-                src={receiptDetails.raw_file_url} 
+                src={fileBlobUrl || undefined} 
                 alt="Receipt" 
                 className="w-full h-auto rounded-lg border shadow-sm"
                 onError={() => setImageError(true)}

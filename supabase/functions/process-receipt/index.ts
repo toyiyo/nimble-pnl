@@ -123,6 +123,7 @@ serve(async (req) => {
         
         const requestBody: any = {
           "model": "deepseek/deepseek-chat-v3.1:free",
+          ...(isProcessingPDF && { "plugins": ["file-parser"] }),
           "messages": [
               {
                 "role": "system",
@@ -190,10 +191,16 @@ RESPONSE FORMAT (JSON ONLY):
 
 CRITICAL: Assign confidence scores based on actual text clarity, not wishful thinking.`
                   },
-                  {
+                  isProcessingPDF ? {
+                    "type": "file",
+                    "file": {
+                      "file_data": pdfBase64Data.split(',')[1], // Remove data:application/pdf;base64, prefix
+                      "filename": "receipt.pdf"
+                    }
+                  } : {
                     "type": "image_url",
                     "image_url": {
-                      "url": isProcessingPDF ? pdfBase64Data : imageData
+                      "url": imageData
                     }
                   }
                 ]

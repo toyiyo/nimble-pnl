@@ -68,13 +68,60 @@ export const useReceiptImport = () => {
 
     setIsUploading(true);
     try {
+      // Configure PDF.js worker
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+      let fileToUpload: File | Blob = file;
+      let finalFileName = file.name;
+
+      // Convert PDF to image before uploading
+      if (file.type === 'application/pdf') {
+        console.log('Converting PDF to image before upload...');
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          const page = await pdf.getPage(1);
+          
+          const viewport = page.getViewport({ scale: 2.0 });
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          
+          if (!context) {
+            throw new Error('Could not get canvas context');
+          }
+          
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+          
+          await page.render({
+            canvasContext: context,
+            viewport: viewport,
+            canvas: canvas
+          }).promise;
+          
+          // Convert canvas to blob
+          fileToUpload = await new Promise<Blob>((resolve) => {
+            canvas.toBlob((blob) => {
+              resolve(blob || file);
+            }, 'image/jpeg', 0.95);
+          });
+          
+          // Change filename extension to .jpg
+          finalFileName = file.name.replace(/\.pdf$/i, '.jpg');
+          console.log('PDF converted successfully to image');
+        } catch (pdfError) {
+          console.error('Error converting PDF:', pdfError);
+          throw new Error('Failed to convert PDF to image. Please try uploading a JPG or PNG image instead.');
+        }
+      }
+
       // Upload file to storage
-      const fileName = `${Date.now()}-${file.name}`;
+      const fileName = `${Date.now()}-${finalFileName}`;
       const filePath = `${selectedRestaurant.restaurant_id}/${fileName}`;
       
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('receipt-images')
-        .upload(filePath, file);
+        .upload(filePath, fileToUpload);
 
       if (uploadError) {
         throw uploadError;

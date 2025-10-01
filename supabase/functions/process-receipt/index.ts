@@ -54,6 +54,33 @@ serve(async (req) => {
     const isProcessingPDF = isPDF || false;
     if (isProcessingPDF) {
       console.log('📄 PDF detected, will use OpenRouter PDF processing engine');
+      console.log('📄 PDF URL being sent to OpenRouter:', imageData.substring(0, 200) + '...');
+      
+      // Test if the URL is accessible
+      try {
+        const testResponse = await fetch(imageData, { method: 'HEAD' });
+        console.log('📄 PDF URL accessibility test:', testResponse.ok ? 'ACCESSIBLE ✅' : 'FAILED ❌', 'Status:', testResponse.status);
+        if (!testResponse.ok) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'PDF URL is not accessible',
+              details: `Status: ${testResponse.status}`,
+              url: imageData.substring(0, 100) + '...'
+            }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } catch (testError) {
+        console.error('📄 Failed to test PDF URL accessibility:', testError);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Failed to verify PDF URL accessibility',
+            details: testError.message,
+            url: imageData.substring(0, 100) + '...'
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     let finalResponse: Response | undefined;
@@ -186,6 +213,14 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
         } else {
           const errorText = await mistralResponse.text();
           console.error(`❌ Mistral failed (attempt ${retryCount + 1}):`, mistralResponse.status, errorText);
+          console.error('❌ Full Mistral error response:', errorText);
+          console.error('❌ Failed Mistral request config:', {
+            url: 'https://openrouter.ai/api/v1/chat/completions',
+            model: 'mistralai/mistral-small-3.2-24b-instruct:free',
+            isPDF: isProcessingPDF,
+            imageDataType: isProcessingPDF ? 'file URL' : 'image_url',
+            imageDataLength: imageData.length
+          });
           break;
         }
       } catch (error) {

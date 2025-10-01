@@ -67,11 +67,13 @@ export const useReceiptImport = () => {
 
     setIsUploading(true);
     try {
-      const finalFileName = file.name;
-
-      // Upload file to storage (PDFs will be converted server-side)
-      const fileName = `${Date.now()}-${finalFileName}`;
-      const filePath = `${selectedRestaurant.restaurant_id}/${fileName}`;
+      // Sanitize filename to remove special characters
+      const fileExt = file.name.split('.').pop();
+      const sanitizedBaseName = file.name
+        .replace(`.${fileExt}`, '')
+        .replace(/[^a-zA-Z0-9_-]/g, '_'); // Replace special chars with underscore
+      const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
+      const filePath = `${selectedRestaurant.restaurant_id}/${finalFileName}`;
       
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('receipt-images')
@@ -140,20 +142,19 @@ export const useReceiptImport = () => {
           throw new Error('Failed to get PDF storage URL');
         }
 
-        // Generate a signed URL for the PDF
+        // Generate a signed URL for the PDF (path is already properly formatted)
         const { data: signedUrlData, error: signedUrlError } = await supabase
           .storage
           .from('receipt-images')
           .createSignedUrl(receiptData.raw_file_url, 3600);
 
         if (signedUrlError || !signedUrlData?.signedUrl) {
+          console.error('Failed to create signed URL:', signedUrlError);
           throw new Error('Failed to generate signed URL for PDF');
         }
 
-        // Build the full storage URL
-        const supabaseUrl = 'https://ncdujvdgqtaunuyigflp.supabase.co';
-        dataToSend = `${supabaseUrl}/storage/v1${signedUrlData.signedUrl}`;
-        console.log('PDF URL:', dataToSend);
+        dataToSend = signedUrlData.signedUrl;
+        console.log('Generated PDF signed URL for processing:', dataToSend.substring(0, 100) + '...');
       } else {
         // Convert image blob to base64
         dataToSend = await new Promise<string>((resolve) => {
@@ -276,11 +277,13 @@ export const useReceiptImport = () => {
             }
           }
           
-          const { data: signedUrlData } = await supabase.storage
+          const { data: signedUrlData, error: signError } = await supabase.storage
             .from('receipt-images')
             .createSignedUrl(filePath, 3600); // 1 hour expiry
           
-          if (signedUrlData?.signedUrl) {
+          if (signError) {
+            console.error('Error creating signed URL for display:', signError, 'Path:', filePath);
+          } else if (signedUrlData?.signedUrl) {
             data.raw_file_url = signedUrlData.signedUrl;
           }
         } catch (signedUrlError) {

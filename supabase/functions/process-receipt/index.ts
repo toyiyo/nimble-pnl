@@ -172,7 +172,7 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
           method: "POST",
           headers: {
             "Authorization": `Bearer ${openRouterApiKey}`,
-            "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+            "HTTP-Referer": "https://app.easyshifthq.com",
             "X-Title": "EasyShiftHQ Receipt Parser",
             "Content-Type": "application/json"
           },
@@ -284,7 +284,7 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
           method: "POST",
           headers: {
             "Authorization": `Bearer ${openRouterApiKey}`,
-            "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+            "HTTP-Referer": "https://app.easyshifthq.com",
             "X-Title": "EasyShiftHQ Receipt Parser (Grok Backup)",
             "Content-Type": "application/json"
           },

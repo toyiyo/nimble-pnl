@@ -75,7 +75,7 @@ Only suggest ingredients that are actually in the available ingredients list. Us
           headers: {
             'Authorization': `Bearer ${openRouterApiKey}`,
             'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://ncdujvdgqtaunuyigflp.supabase.co',
+            'HTTP-Referer': 'https://app.easyshifthq.com',
             'X-Title': 'EasyShiftHQ Recipe Enhancement'
           },
           body: JSON.stringify({
@@ -129,7 +129,7 @@ Only suggest ingredients that are actually in the available ingredients list. Us
           headers: {
             'Authorization': `Bearer ${openRouterApiKey}`,
             'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://ncdujvdgqtaunuyigflp.supabase.co',
+            'HTTP-Referer': 'https://app.easyshifthq.com',
             'X-Title': 'EasyShiftHQ Recipe Enhancement (Grok Backup)'
           },
           body: JSON.stringify({

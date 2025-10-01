@@ -60,7 +60,7 @@ Only include fields where you have confident information from the search results
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${openRouterApiKey}`,
-            'HTTP-Referer': 'https://ncdujvdgqtaunuyigflp.supabase.co',
+            'HTTP-Referer': 'https://app.easyshifthq.com',
             'X-Title': 'EasyShiftHQ Product Enhancement',
             'Content-Type': 'application/json',
           },
@@ -108,7 +108,7 @@ Only include fields where you have confident information from the search results
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${openRouterApiKey}`,
-            'HTTP-Referer': 'https://ncdujvdgqtaunuyigflp.supabase.co',
+            'HTTP-Referer': 'https://app.easyshifthq.com',
             'X-Title': 'EasyShiftHQ Product Enhancement (Grok Backup)',
             'Content-Type': 'application/json',
           },

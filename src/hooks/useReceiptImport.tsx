@@ -76,11 +76,25 @@ export const useReceiptImport = () => {
 
       // Convert PDF to image before uploading
       if (file.type === 'application/pdf') {
-        console.log('Converting PDF to image before upload...');
+        console.log('Converting PDF to image before upload...', { size: file.size, name: file.name });
         try {
           const arrayBuffer = await file.arrayBuffer();
-          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          console.log('PDF loaded as array buffer');
+          
+          // Load PDF with timeout
+          const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+          console.log('Loading PDF document...');
+          
+          const pdf = await Promise.race([
+            loadingTask.promise,
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('PDF loading timeout after 30 seconds')), 30000)
+            )
+          ]) as any;
+          
+          console.log('PDF loaded, getting first page...');
           const page = await pdf.getPage(1);
+          console.log('Got first page, setting up canvas...');
           
           const viewport = page.getViewport({ scale: 2.0 });
           const canvas = document.createElement('canvas');
@@ -92,23 +106,40 @@ export const useReceiptImport = () => {
           
           canvas.height = viewport.height;
           canvas.width = viewport.width;
+          console.log('Canvas setup complete, rendering PDF to canvas...');
           
-          await page.render({
-            canvasContext: context,
-            viewport: viewport,
-            canvas: canvas
-          }).promise;
+          // Render with timeout
+          await Promise.race([
+            page.render({
+              canvasContext: context,
+              viewport: viewport
+            }).promise,
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('PDF rendering timeout after 30 seconds')), 30000)
+            )
+          ]);
           
-          // Convert canvas to blob
-          fileToUpload = await new Promise<Blob>((resolve) => {
-            canvas.toBlob((blob) => {
-              resolve(blob || file);
-            }, 'image/jpeg', 0.95);
-          });
+          console.log('PDF rendered to canvas, converting to JPEG...');
+          
+          // Convert canvas to blob with timeout
+          fileToUpload = await Promise.race([
+            new Promise<Blob>((resolve, reject) => {
+              canvas.toBlob((blob) => {
+                if (blob) {
+                  resolve(blob);
+                } else {
+                  reject(new Error('Failed to convert canvas to blob'));
+                }
+              }, 'image/jpeg', 0.95);
+            }),
+            new Promise<Blob>((_, reject) =>
+              setTimeout(() => reject(new Error('Canvas conversion timeout after 10 seconds')), 10000)
+            )
+          ]);
           
           // Change filename extension to .jpg
           finalFileName = file.name.replace(/\.pdf$/i, '.jpg');
-          console.log('PDF converted successfully to image');
+          console.log('PDF converted successfully to image', { newSize: fileToUpload.size });
         } catch (pdfError) {
           console.error('Error converting PDF:', pdfError);
           throw new Error('Failed to convert PDF to image. Please try uploading a JPG or PNG image instead.');

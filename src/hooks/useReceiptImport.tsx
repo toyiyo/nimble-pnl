@@ -119,10 +119,12 @@ export const useReceiptImport = () => {
   const processReceipt = async (receiptId: string, imageBlob: Blob) => {
     setIsProcessing(true);
     try {
-      // Configure PDF.js worker
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      // Configure PDF.js worker with absolute URL
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
       let processBlob = imageBlob;
+      
+      console.log('Processing receipt, file type:', imageBlob.type, 'size:', imageBlob.size);
 
       // Check if it's a PDF and convert to image
       if (imageBlob.type === 'application/pdf') {

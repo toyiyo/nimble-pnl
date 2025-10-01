@@ -158,9 +158,9 @@ RESPONSE FORMAT (JSON ONLY):
 CRITICAL: Assign confidence scores based on actual text clarity, not wishful thinking.`
                   },
                   {
-                    "type": "file",
-                    "file": {
-                      "file_data": isProcessingPDF ? pdfBase64Data : imageData
+                    "type": "image_url",
+                    "image_url": {
+                      "url": imageData
                     }
                   }
                 ]

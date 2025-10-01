@@ -253,6 +253,7 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
       try {
         const grokRequestBody: any = {
           "model": "mistralai/mistral-small-3.2-24b-instruct:free",
+          ...(isProcessingPDF && { "plugins": ["file-parser"] }),
           "messages": [
               {
                 "role": "system",
@@ -307,7 +308,13 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
                     "type": "text",
                     "text": "Analyze this receipt carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
                   },
-                  {
+                  isProcessingPDF ? {
+                    "type": "file",
+                    "file": {
+                      "file_data": pdfBase64Data.split(',')[1], // Remove data:application/pdf;base64, prefix
+                      "filename": "receipt.pdf"
+                    }
+                  } : {
                     "type": "image_url",
                     "image_url": {
                       "url": imageData

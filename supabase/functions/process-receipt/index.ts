@@ -47,36 +47,30 @@ serve(async (req) => {
       );
     }
 
-    console.log('🧾 Processing receipt with Mistral AI (preferred for OCR)...');
-    console.log('📸 Image data type:', isPDF ? 'PDF URL' : 'Base64 image', 'size:', imageData.length, 'characters');
+    console.log('🧾 Processing receipt with DeepSeek AI (free model)...');
+    console.log('📸 Image data type:', isPDF ? 'PDF' : 'Base64 image', 'size:', imageData.length, 'characters');
 
-    // Check if the data is a PDF (passed via flag now)
+    // Check if the data is a PDF
     const isProcessingPDF = isPDF || false;
-    if (isProcessingPDF) {
-      console.log('📄 PDF detected, will use OpenRouter PDF processing engine');
-      console.log('📄 PDF URL being sent to OpenRouter:', imageData.substring(0, 200) + '...');
-      
-      // Test if the URL is accessible
+    let pdfBase64Data = imageData;
+    
+    if (isProcessingPDF && !imageData.startsWith('data:application/pdf;base64,')) {
+      console.log('📄 PDF URL detected, converting to base64...');
       try {
-        const testResponse = await fetch(imageData, { method: 'HEAD' });
-        console.log('📄 PDF URL accessibility test:', testResponse.ok ? 'ACCESSIBLE ✅' : 'FAILED ❌', 'Status:', testResponse.status);
-        if (!testResponse.ok) {
-          return new Response(
-            JSON.stringify({ 
-              error: 'PDF URL is not accessible',
-              details: `Status: ${testResponse.status}`,
-              url: imageData.substring(0, 100) + '...'
-            }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+        const pdfResponse = await fetch(imageData);
+        if (!pdfResponse.ok) {
+          throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
         }
-      } catch (testError) {
-        console.error('📄 Failed to test PDF URL accessibility:', testError);
+        const pdfBlob = await pdfResponse.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(pdfBlob)));
+        pdfBase64Data = `data:application/pdf;base64,${base64}`;
+        console.log('✅ PDF converted to base64, size:', base64.length);
+      } catch (fetchError) {
+        console.error('📄 Failed to fetch and convert PDF:', fetchError);
         return new Response(
           JSON.stringify({ 
-            error: 'Failed to verify PDF URL accessibility',
-            details: testError.message,
-            url: imageData.substring(0, 100) + '...'
+            error: 'Failed to fetch PDF for processing',
+            details: fetchError.message
           }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -85,24 +79,33 @@ serve(async (req) => {
 
     let finalResponse: Response | undefined;
     
-    // Try Mistral first with retry logic (better for OCR)
-    console.log('🚀 Trying Mistral first...');
+    // Try DeepSeek first (free model)
+    console.log('🚀 Trying DeepSeek V3.1 (free)...');
     let retryCount = 0;
     const maxRetries = 3;
     
     while (retryCount < maxRetries && (!finalResponse || !finalResponse.ok)) {
       try {
-        console.log(`🔄 Mistral attempt ${retryCount + 1}/${maxRetries}...`);
+        console.log(`🔄 DeepSeek attempt ${retryCount + 1}/${maxRetries}...`);
         
-        // Build request body with PDF plugin if needed
         const requestBody: any = {
-          "model": "mistralai/mistral-small-3.2-24b-instruct:free",
+          "model": "deepseek/deepseek-chat-v3.1:free",
           "messages": [
               {
                 "role": "system",
-                "content": `You are an expert receipt parser for restaurant inventory management specializing in food service receipts.
+                "content": `You are DeepSeek V3.1 (free), a large language model from deepseek.
 
-ANALYSIS TARGET: This receipt image contains itemized purchases for restaurant inventory.
+Formatting Rules:
+- Use Markdown **only when semantically appropriate**. Examples: \`inline code\`, \`\`\`code fences\`\`\`, tables, and lists.
+- In assistant responses, format file names, directory paths, function names, and class names with backticks (\`).
+- For math: use \\( and \\) for inline expressions, and \\[ and \\] for display (block) math.`
+              },
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": `ANALYSIS TARGET: This receipt image contains itemized purchases for restaurant inventory.
 
 EXTRACTION METHODOLOGY:
 1. **Locate the itemized section** - Focus on the main purchase list (ignore headers, tax, totals, payment info)
@@ -153,40 +156,19 @@ RESPONSE FORMAT (JSON ONLY):
 }
 
 CRITICAL: Assign confidence scores based on actual text clarity, not wishful thinking.`
-              },
-              {
-                "role": "user",
-                "content": [
-                  {
-                    "type": "text",
-                    "text": "Analyze this receipt carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
                   },
                   {
-                    "type": isProcessingPDF ? "file" : "image_url",
-                    ...(isProcessingPDF 
-                      ? { "file": { "url": imageData } }
-                      : { "image_url": { "url": imageData } }
-                    )
+                    "type": "file",
+                    "file": {
+                      "file_data": isProcessingPDF ? pdfBase64Data : imageData
+                    }
                   }
                 ]
               }
-            ],
-          "max_completion_tokens": 4000
+            ]
         };
 
-        // Add PDF processing plugin if file is a PDF
-        if (isProcessingPDF) {
-          requestBody.plugins = [
-            {
-              "id": "file-parser",
-              "pdf": {
-                "engine": "pdf-text"
-              }
-            }
-          ];
-        }
-
-        const mistralResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const deepseekResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${openRouterApiKey}`,
@@ -197,34 +179,26 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
           body: JSON.stringify(requestBody)
         });
 
-        if (mistralResponse.ok) {
-          finalResponse = mistralResponse;
-          console.log('✅ Mistral succeeded');
+        if (deepseekResponse.ok) {
+          finalResponse = deepseekResponse;
+          console.log('✅ DeepSeek succeeded');
           break;
         }
 
         // Rate limited - wait and retry
-        if (mistralResponse.status === 429) {
-          console.log(`🔄 Mistral rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
+        if (deepseekResponse.status === 429) {
+          console.log(`🔄 DeepSeek rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
           retryCount++;
           if (retryCount < maxRetries) {
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
           }
         } else {
-          const errorText = await mistralResponse.text();
-          console.error(`❌ Mistral failed (attempt ${retryCount + 1}):`, mistralResponse.status, errorText);
-          console.error('❌ Full Mistral error response:', errorText);
-          console.error('❌ Failed Mistral request config:', {
-            url: 'https://openrouter.ai/api/v1/chat/completions',
-            model: 'mistralai/mistral-small-3.2-24b-instruct:free',
-            isPDF: isProcessingPDF,
-            imageDataType: isProcessingPDF ? 'file URL' : 'image_url',
-            imageDataLength: imageData.length
-          });
+          const errorText = await deepseekResponse.text();
+          console.error(`❌ DeepSeek failed (attempt ${retryCount + 1}):`, deepseekResponse.status, errorText);
           break;
         }
       } catch (error) {
-        console.error(`❌ Mistral attempt ${retryCount + 1} failed:`, error);
+        console.error(`❌ DeepSeek attempt ${retryCount + 1} failed:`, error);
         retryCount++;
         if (retryCount < maxRetries) {
           await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
@@ -232,14 +206,13 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
       }
     }
 
-    // If Mistral failed after retries, try Grok as backup
+    // If DeepSeek failed after retries, try Mistral as backup
     if (!finalResponse || !finalResponse.ok) {
-      console.log('🔄 Mistral failed after retries, trying Grok as backup...');
+      console.log('🔄 DeepSeek failed after retries, trying Mistral as backup...');
       
       try {
-        // Build request body with PDF plugin if needed
-        const grokRequestBody: any = {
-          "model": "x-ai/grok-4-fast:free",
+        const mistralRequestBody: any = {
+          "model": "mistralai/mistral-small-3.2-24b-instruct:free",
           "messages": [
               {
                 "role": "system",
@@ -295,57 +268,43 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
                     "text": "Analyze this receipt carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
                   },
                   {
-                    "type": isProcessingPDF ? "file" : "image_url",
-                    ...(isProcessingPDF 
-                      ? { "file": { "url": imageData } }
-                      : { "image_url": { "url": imageData } }
-                    )
+                    "type": "file",
+                    "file": {
+                      "file_data": isProcessingPDF ? pdfBase64Data : imageData
+                    }
                   }
                 ]
               }
             ],
-          "max_tokens": 4000,
-          "temperature": 0.1
+          "max_completion_tokens": 4000
         };
 
-        // Add PDF processing plugin if file is a PDF
-        if (isProcessingPDF) {
-          grokRequestBody.plugins = [
-            {
-              "id": "file-parser",
-              "pdf": {
-                "engine": "pdf-text"
-              }
-            }
-          ];
-        }
-
-        const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const mistralResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${openRouterApiKey}`,
             "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-            "X-Title": "EasyShiftHQ Receipt Parser (Grok Backup)",
+            "X-Title": "EasyShiftHQ Receipt Parser (Mistral Backup)",
             "Content-Type": "application/json"
           },
-          body: JSON.stringify(grokRequestBody)
+          body: JSON.stringify(mistralRequestBody)
         });
 
-        if (grokResponse.ok) {
-          finalResponse = grokResponse;
-          console.log('✅ Grok backup succeeded');
+        if (mistralResponse.ok) {
+          finalResponse = mistralResponse;
+          console.log('✅ Mistral backup succeeded');
         } else {
-          const grokErrorText = await grokResponse.text();
-          console.error('❌ Grok backup failed:', grokResponse.status, grokErrorText);
+          const mistralErrorText = await mistralResponse.text();
+          console.error('❌ Mistral backup failed:', mistralResponse.status, mistralErrorText);
         }
-      } catch (grokError) {
-        console.error('❌ Grok backup error:', grokError);
+      } catch (mistralError) {
+        console.error('❌ Mistral backup error:', mistralError);
       }
     }
 
     // If both services failed
     if (!finalResponse || !finalResponse.ok) {
-      console.error('❌ Both Grok and Mistral failed');
+      console.error('❌ Both DeepSeek and Mistral failed');
       
       return new Response(
         JSON.stringify({ 

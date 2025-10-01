@@ -79,11 +79,11 @@ Only suggest ingredients that are actually in the available ingredients list. Us
             'X-Title': 'EasyShiftHQ Recipe Enhancement'
           },
           body: JSON.stringify({
-            model: 'mistralai/mistral-small-3.2-24b-instruct:free',
+            model: 'deepseek/deepseek-chat-v3.1:free',
             messages: [
               {
                 role: 'system',
-                content: 'You are a professional chef and recipe consultant. Always respond with valid JSON only.'
+                content: 'You are a professional chef and recipe consultant using DeepSeek V3.1. Always respond with valid JSON only.'
               },
               {
                 role: 'user',
@@ -91,11 +91,12 @@ Only suggest ingredients that are actually in the available ingredients list. Us
               }
             ],
             temperature: 0.3,
-            max_completion_tokens: 1000
+            max_tokens: 1000
           }),
         });
 
         if (response.ok) {
+          console.log('✅ DeepSeek V3.1 succeeded');
           break;
         }
 
@@ -109,7 +110,7 @@ Only suggest ingredients that are actually in the available ingredients list. Us
           break;
         }
       } catch (error) {
-        console.error(`Attempt ${retryCount + 1} failed:`, error);
+        console.error(`DeepSeek attempt ${retryCount + 1} failed:`, error);
         retryCount++;
         if (retryCount >= maxRetries) {
           throw error;
@@ -118,9 +119,9 @@ Only suggest ingredients that are actually in the available ingredients list. Us
       }
     }
 
-    // Try Grok as backup if Mistral failed
+    // Try Grok as backup if DeepSeek failed
     if (!response || !response.ok) {
-      console.log('🔄 Mistral failed, trying Grok as backup...');
+      console.log('🔄 DeepSeek failed, trying Grok as backup...');
       
       try {
         response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -156,9 +157,9 @@ Only suggest ingredients that are actually in the available ingredients list. Us
       }
     }
 
-    // If both Mistral and Grok failed
+    // If both DeepSeek and Grok failed
     if (!response || !response.ok) {
-      const errorMessage = response ? `API error: ${response.status} ${response.statusText}` : 'Failed to get response from both Mistral and Grok';
+      const errorMessage = response ? `API error: ${response.status} ${response.statusText}` : 'Failed to get response from both DeepSeek and Grok';
       const errorText = response ? await response.text() : '';
       console.error('OpenRouter API error:', errorMessage, errorText);
       throw new Error(errorMessage);

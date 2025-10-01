@@ -47,9 +47,9 @@ Please extract and return ONLY a JSON object with the following structure (no ad
 
 Only include fields where you have confident information from the search results. Return empty object {} if no reliable information can be extracted.`;
 
-    console.log('🤖 Enhancing product with AI...');
+    console.log('🤖 Enhancing product with DeepSeek V3.1...');
 
-    // Use Mistral first with retry logic, then Grok as backup
+    // Use DeepSeek V3.1 first with retry logic, then Grok as backup
     let response: Response | undefined;
     let retryCount = 0;
     const maxRetries = 3;
@@ -65,17 +65,18 @@ Only include fields where you have confident information from the search results
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'mistralai/mistral-small-3.2-24b-instruct:free',
+            model: 'deepseek/deepseek-chat-v3.1:free',
             messages: [
-              { role: 'system', content: 'You are a product data enhancement expert. Extract and enhance product information from search results. Always respond with valid JSON only.' },
+              { role: 'system', content: 'You are a product data enhancement expert using DeepSeek V3.1. Extract and enhance product information from search results. Always respond with valid JSON only.' },
               { role: 'user', content: prompt }
             ],
             temperature: 0.3,
-            max_completion_tokens: 500
+            max_tokens: 500
           }),
         });
 
         if (response.ok) {
+          console.log('✅ DeepSeek V3.1 succeeded');
           break;
         }
 
@@ -89,7 +90,7 @@ Only include fields where you have confident information from the search results
           break;
         }
       } catch (error) {
-        console.error(`Attempt ${retryCount + 1} failed:`, error);
+        console.error(`DeepSeek attempt ${retryCount + 1} failed:`, error);
         retryCount++;
         if (retryCount >= maxRetries) {
           throw error;
@@ -98,9 +99,9 @@ Only include fields where you have confident information from the search results
       }
     }
 
-    // Try Grok as backup if Mistral failed
+    // Try Grok as backup if DeepSeek failed
     if (!response || !response.ok) {
-      console.log('🔄 Mistral failed, trying Grok as backup...');
+      console.log('🔄 DeepSeek failed, trying Grok as backup...');
       
       try {
         response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -130,9 +131,9 @@ Only include fields where you have confident information from the search results
       }
     }
 
-    // If both Mistral and Grok failed
+    // If both DeepSeek and Grok failed
     if (!response || !response.ok) {
-      const errorMessage = response ? `API error: ${response.status} ${response.statusText}` : 'Failed to get response from both Mistral and Grok';
+      const errorMessage = response ? `API error: ${response.status} ${response.statusText}` : 'Failed to get response from both DeepSeek and Grok';
       throw new Error(errorMessage);
     }
 

@@ -206,13 +206,13 @@ CRITICAL: Assign confidence scores based on actual text clarity, not wishful thi
       }
     }
 
-    // If DeepSeek failed after retries, try Mistral as backup
+    // If DeepSeek failed after retries, try Grok as backup
     if (!finalResponse || !finalResponse.ok) {
-      console.log('🔄 DeepSeek failed after retries, trying Mistral as backup...');
+      console.log('🔄 DeepSeek failed after retries, trying Grok as backup...');
       
       try {
-        const mistralRequestBody: any = {
-          "model": "mistralai/mistral-small-3.2-24b-instruct:free",
+        const grokRequestBody: any = {
+          "model": "x-ai/grok-4-fast:free",
           "messages": [
               {
                 "role": "system",
@@ -268,43 +268,44 @@ IMPORTANT: Vary confidence scores realistically based on actual text quality and
                     "text": "Analyze this receipt carefully. Look for the itemized purchase section and extract ALL products with their quantities and prices. Focus on the main body of the receipt where individual items are listed, not the header or footer sections."
                   },
                   {
-                    "type": "file",
-                    "file": {
-                      "file_data": isProcessingPDF ? pdfBase64Data : imageData
+                    "type": "image_url",
+                    "image_url": {
+                      "url": imageData
                     }
                   }
                 ]
               }
             ],
-          "max_completion_tokens": 4000
+          "temperature": 0.1,
+          "max_tokens": 4000
         };
 
-        const mistralResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${openRouterApiKey}`,
             "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-            "X-Title": "EasyShiftHQ Receipt Parser (Mistral Backup)",
+            "X-Title": "EasyShiftHQ Receipt Parser (Grok Backup)",
             "Content-Type": "application/json"
           },
-          body: JSON.stringify(mistralRequestBody)
+          body: JSON.stringify(grokRequestBody)
         });
 
-        if (mistralResponse.ok) {
-          finalResponse = mistralResponse;
-          console.log('✅ Mistral backup succeeded');
+        if (grokResponse.ok) {
+          finalResponse = grokResponse;
+          console.log('✅ Grok backup succeeded');
         } else {
-          const mistralErrorText = await mistralResponse.text();
-          console.error('❌ Mistral backup failed:', mistralResponse.status, mistralErrorText);
+          const grokErrorText = await grokResponse.text();
+          console.error('❌ Grok backup failed:', grokResponse.status, grokErrorText);
         }
-      } catch (mistralError) {
-        console.error('❌ Mistral backup error:', mistralError);
+      } catch (grokError) {
+        console.error('❌ Grok backup error:', grokError);
       }
     }
 
     // If both services failed
     if (!finalResponse || !finalResponse.ok) {
-      console.error('❌ Both DeepSeek and Mistral failed');
+      console.error('❌ Both DeepSeek and Grok failed');
       
       return new Response(
         JSON.stringify({ 

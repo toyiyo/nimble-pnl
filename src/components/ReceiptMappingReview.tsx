@@ -191,12 +191,44 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 </Button>
               </div>
             ) : isPDF ? (
-              <iframe
-                src={receiptDetails.raw_file_url}
-                className="w-full h-[600px] rounded-lg border shadow-sm"
-                title="Receipt PDF"
-                onError={() => setImageError(true)}
-              />
+              <div className="space-y-2">
+                <object
+                  data={receiptDetails.raw_file_url}
+                  type="application/pdf"
+                  className="w-full h-[600px] rounded-lg border shadow-sm"
+                  onError={() => setImageError(true)}
+                >
+                  <div className="border rounded-lg p-8 text-center space-y-4">
+                    <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">PDF Preview Not Available</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Your browser doesn't support PDF preview.
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(receiptDetails.raw_file_url, '_blank')}
+                      className="flex items-center gap-2"
+                    >
+                      <Download className="h-4 w-4" />
+                      Open PDF in New Tab
+                    </Button>
+                  </div>
+                </object>
+                <div className="flex justify-center">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => window.open(receiptDetails.raw_file_url, '_blank')}
+                    className="flex items-center gap-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    Open in New Tab
+                  </Button>
+                </div>
+              </div>
             ) : (
               <img 
                 src={receiptDetails.raw_file_url} 

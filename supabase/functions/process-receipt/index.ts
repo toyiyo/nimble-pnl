@@ -74,13 +74,16 @@ serve(async (req) => {
         // Safe chunked base64 conversion for large PDFs
         const uint8Array = new Uint8Array(pdfBlob);
         const chunkSize = 32768; // 32KB chunks
-        let base64 = '';
         
+        // Step 1: Convert all bytes to binary string (chunked to avoid stack overflow)
+        let binaryString = '';
         for (let i = 0; i < uint8Array.length; i += chunkSize) {
           const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
-          const chunkString = String.fromCharCode(...chunk);
-          base64 += btoa(chunkString);
+          binaryString += String.fromCharCode(...chunk);
         }
+        
+        // Step 2: Encode the COMPLETE binary string to base64 (only once!)
+        const base64 = btoa(binaryString);
         
         pdfBase64Data = `data:application/pdf;base64,${base64}`;
         console.log('✅ PDF converted to base64, size:', base64.length);

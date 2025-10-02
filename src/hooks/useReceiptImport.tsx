@@ -486,11 +486,16 @@ export const useReceiptImport = () => {
             ? currentMappings 
             : [...currentMappings, receiptItemName];
 
+          // Calculate unit price
+          const unitPrice = (item.parsed_quantity && item.parsed_quantity > 0) 
+            ? (item.parsed_price || 0) / item.parsed_quantity 
+            : (item.parsed_price || 0);
+
           const { error: stockError } = await supabase
             .from('products')
             .update({
               current_stock: newStock,
-              cost_per_unit: item.parsed_price || 0,
+              cost_per_unit: unitPrice,
               receipt_item_names: updatedMappings,
               updated_at: new Date().toISOString()
             })
@@ -506,8 +511,8 @@ export const useReceiptImport = () => {
             restaurant_id: selectedRestaurant.restaurant_id,
             product_id: item.matched_product_id,
             quantity: item.parsed_quantity || 0,
-            unit_cost: item.parsed_price || 0,
-            total_cost: (item.parsed_quantity || 0) * (item.parsed_price || 0),
+            unit_cost: unitPrice,
+            total_cost: item.parsed_price || 0,
             transaction_type: 'purchase',
             reason: `Receipt import from ${receiptId}`,
             reference_id: `receipt_${receiptId}_${item.id}`
@@ -517,6 +522,12 @@ export const useReceiptImport = () => {
         } else if (item.mapping_status === 'new_item') {
           // Create new product with receipt item mapping
           const receiptItemName = item.parsed_name || item.raw_text;
+          
+          // Calculate unit price
+          const unitPrice = (item.parsed_quantity && item.parsed_quantity > 0) 
+            ? (item.parsed_price || 0) / item.parsed_quantity 
+            : (item.parsed_price || 0);
+
           const { data: newProduct, error: productError } = await supabase
             .from('products')
             .insert({
@@ -524,7 +535,7 @@ export const useReceiptImport = () => {
               name: item.parsed_name || item.raw_text,
               sku: `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               current_stock: item.parsed_quantity || 0,
-              cost_per_unit: item.parsed_price || 0,
+              cost_per_unit: unitPrice,
               uom_purchase: item.parsed_unit || 'unit',
               receipt_item_names: [receiptItemName]
             })
@@ -541,8 +552,8 @@ export const useReceiptImport = () => {
             restaurant_id: selectedRestaurant.restaurant_id,
             product_id: newProduct.id,
             quantity: item.parsed_quantity || 0,
-            unit_cost: item.parsed_price || 0,
-            total_cost: (item.parsed_quantity || 0) * (item.parsed_price || 0),
+            unit_cost: unitPrice,
+            total_cost: item.parsed_price || 0,
             transaction_type: 'purchase',
             reason: `Receipt import (new item) from ${receiptId}`,
             reference_id: `receipt_${receiptId}_${item.id}`

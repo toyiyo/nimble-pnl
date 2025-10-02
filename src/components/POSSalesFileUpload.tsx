@@ -137,15 +137,30 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   row['Order Time'] ||
                   '';
 
-                // Find order ID
-                const orderId = 
-                  row['Order ID'] ||
-                  row['order_id'] ||
-                  row['Check #'] ||
-                  row['Check Number'] ||
-                  row['Transaction ID'] ||
-                  row['itemGuid'] || // In Toast, itemGuid can serve as a unique identifier
-                  '';
+                // Get additional Toast-specific IDs
+                const masterId = row['masterId'] || '';
+                const parentId = row['parentId'] || '';
+                const itemGuid = row['itemGuid'] || '';
+
+                // Create a more reliable unique ID for Toast POS data
+                // This combines multiple identifiers to ensure uniqueness
+                let orderId = '';
+                
+                // If we have Toast-specific IDs, use them for a unique compound identifier
+                if (itemGuid || masterId || parentId) {
+                  // For Toast data, create a compound ID from all available IDs
+                  // This helps prevent duplicate imports
+                  orderId = `toast_${itemGuid || 'none'}_${masterId || 'none'}_${parentId || 'none'}_${itemName.replace(/\s+/g, '_').toLowerCase()}`;
+                } else {
+                  // For other POS systems, use whatever ID we can find
+                  orderId = 
+                    row['Order ID'] ||
+                    row['order_id'] ||
+                    row['Check #'] ||
+                    row['Check Number'] ||
+                    row['Transaction ID'] ||
+                    '';
+                }
                   
                 // Get item category - useful for categorizing sales
                 const itemCategory = 
@@ -162,10 +177,6 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   row['Tags'] ||
                   row['tags'] ||
                   '';
-                  
-                // Get additional Toast-specific IDs
-                const masterId = row['masterId'] || '';
-                const parentId = row['parentId'] || '';
 
                 // If no item name, track this row as skipped but don't throw an error
                 if (!itemName) {
@@ -204,14 +215,15 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                       posSystem: 'Toast',
                       masterId,
                       parentId,
-                      itemGuid: orderId,
+                      itemGuid,
+                      compoundOrderId: orderId, // Store the compound ID we created
                       importedAt: new Date().toISOString(),
                     }
                   },
                 };
               })
               // Filter out null entries (skipped rows)
-              .filter((sale): sale is ParsedSale => sale !== null);
+              .filter((sale) => sale !== null) as ParsedSale[];
 
             // If we skipped any rows, log them and include in the toast message
             if (skippedRows.length > 0) {
@@ -272,7 +284,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         toast({
           title: "File processed with warnings",
           description: `Successfully parsed ${parsedSales.length} sales records. Skipped ${skippedRowsList}.`,
-          variant: "warning",
+          variant: "destructive",
         });
       } else {
         toast({

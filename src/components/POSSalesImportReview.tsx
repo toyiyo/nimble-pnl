@@ -1,6 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button } f          // Add metadata - using a simpler structure for better JSON compatibility
+          raw_data: {
+            source: 'file_import',
+            imported_at: new Date().toISOString(),
+            // Only include essential fields from raw data
+            item_data: {
+              name: sale.itemName,
+              category: sale.category || null,
+              tags: sale.tags || null,
+            },
+            // Store identifiers
+            identifiers: {
+              order_id: sale.orderId || null,
+              master_id: sale.rawData.masterId || null,
+              parent_id: sale.rawData.parentId || null,
+              item_guid: sale.rawData.itemGuid || null,
+            }
+          },nts/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -143,31 +160,98 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
 
     try {
       // Prepare data for bulk insert
-      const salesToInsert = editableSales.map(sale => ({
-        restaurant_id: selectedRestaurant.restaurant_id,
-        pos_system: sale.rawData._parsedMeta?.posSystem?.toLowerCase() || 'manual', // Use detected POS system or fallback to manual
-        external_order_id: sale.orderId || `file_import_${Date.now()}_${sale.id}`,
-        item_name: sale.itemName,
-        quantity: sale.quantity,
-        unit_price: sale.unitPrice,
-        total_price: sale.totalPrice || (sale.unitPrice ? sale.unitPrice * sale.quantity : undefined),
-        sale_date: sale.saleDate,
-        sale_time: sale.saleTime,
-        // Remove the category field from direct insert since it doesn't exist in the DB schema
-        // Instead, store it only in the raw_data JSON field
-        raw_data: {
-          source: 'file_import',
-          imported_at: new Date().toISOString(),
-          original_data: sale.rawData,
-          category: sale.category,
-          tags: sale.tags,
-        },
-      }));
+      const salesToInsert = editableSales.map(sale => {
+        // Get the best possible unique ID
+        const externalOrderId = 
+          // Try to use the compound ID first (for Toast POS data)
+          sale.rawData._parsedMeta?.compoundOrderId || 
+          // Then try the original order ID
+          sale.orderId || 
+          // For masterId/itemGuid combination from Toast
+          (sale.rawData.masterId && sale.rawData.itemGuid ? 
+            `toast_${sale.rawData.itemGuid}_${sale.rawData.masterId}` : 
+            // Finally, generate a fallback ID
+            `file_import_${Date.now()}_${sale.id}`);
+            
+        return {
+          restaurant_id: selectedRestaurant.restaurant_id,
+          pos_system: sale.rawData._parsedMeta?.posSystem?.toLowerCase() || 'manual',
+          external_order_id: externalOrderId,
+          item_name: sale.itemName,
+          quantity: sale.quantity,
+          unit_price: sale.unitPrice,
+          total_price: sale.totalPrice || (sale.unitPrice ? sale.unitPrice * sale.quantity : undefined),
+          sale_date: sale.saleDate,
+          sale_time: sale.saleTime,
+          // Remove the category field from direct insert since it doesn't exist in the DB schema
+          // Instead, store it only in the raw_data JSON field
+          raw_data: {
+            source: 'file_import',
+            imported_at: new Date().toISOString(),
+            category: sale.category || null,
+            tags: sale.tags || null,
+            identifiers: {
+              order_id: sale.orderId || null,
+              master_id: sale.rawData.masterId || null,
+              parent_id: sale.rawData.parentId || null,
+              item_guid: sale.rawData.itemGuid || null
+            }
+          },
+        };
+      });
 
-      // Bulk insert into unified_sales
+      // Check for potential duplicate external_order_ids first
+      let recordsToInsert = [...salesToInsert]; // Create a mutable copy
+      
+      try {
+        // Extract just the external_order_ids for checking
+        const orderIds = recordsToInsert.map(sale => sale.external_order_id);
+        
+        // Check if any of these IDs already exist in the database
+        const { data: existingRecords, error: checkError } = await supabase
+          .from('unified_sales')
+          .select('external_order_id')
+          .in('external_order_id', orderIds)
+          .eq('restaurant_id', selectedRestaurant.restaurant_id);
+          
+        if (checkError) {
+          console.error('Error checking for duplicates:', checkError);
+        } else if (existingRecords && existingRecords.length > 0) {
+          // We found potential duplicates
+          const existingIds = existingRecords.map(record => record.external_order_id);
+          console.warn('Found potential duplicate records:', existingIds);
+          
+          // Filter out sales that would be duplicates
+          const filteredSales = recordsToInsert.filter(sale => 
+            !existingIds.includes(sale.external_order_id)
+          );
+          
+          // If all are duplicates, throw an error
+          if (filteredSales.length === 0) {
+            throw new Error(`All ${recordsToInsert.length} records appear to be duplicates of existing sales data.`);
+          }
+          
+          // Otherwise warn and continue with non-duplicates
+          toast({
+            title: "Duplicate records detected",
+            description: `Found ${existingIds.length} duplicate records that will be skipped.`,
+            variant: "destructive",
+          });
+          
+          // Update our array with the filtered one
+          recordsToInsert = filteredSales;
+        }
+      } catch (dupCheckError) {
+        if (dupCheckError instanceof Error) {
+          throw dupCheckError; // Re-throw if it's our specific error
+        }
+        console.error('Error in duplicate checking process:', dupCheckError);
+      }
+
+      // Now proceed with bulk insert for non-duplicate records
       const { error, data } = await supabase
         .from('unified_sales')
-        .insert(salesToInsert)
+        .insert(recordsToInsert as any)
         .select();
 
       if (error) {
@@ -180,8 +264,9 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
           // Schema-related errors
           errorMessage = `Database schema error: ${error.message}`;
         } else if (error.code === '23505') {
-          // Unique constraint violation
-          errorMessage = "Duplicate entries detected. Some of these sales might already exist in the system.";
+          // Unique constraint violation - this should be caught by our pre-check,
+          // but handle it gracefully just in case
+          errorMessage = "Duplicate entries detected. These sales might already exist in the system.";
         } else if (error.code) {
           // Any other specific error with a code
           errorMessage = `Database error (${error.code}): ${error.message}`;

@@ -38,9 +38,10 @@ export const BulkInventoryDeductionDialog = () => {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="gap-2">
+        <Button variant="outline" className="gap-2 w-full sm:w-auto">
           <RefreshCw className="h-4 w-4" />
-          Bulk Process Sales
+          <span className="hidden sm:inline">Bulk Process Sales</span>
+          <span className="sm:hidden">Bulk Process</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">

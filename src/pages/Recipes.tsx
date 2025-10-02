@@ -94,12 +94,13 @@ export default function Recipes() {
             Create and manage recipes for {selectedRestaurant.restaurant?.name}
           </p>
         </div>
-        <div className="flex justify-center lg:justify-start gap-2">
+        <div className="flex flex-col sm:flex-row justify-center lg:justify-start gap-2 w-full sm:w-auto">
           <BulkInventoryDeductionDialog />
           <Button 
             variant="outline" 
             onClick={() => setShowAutoSettings(!showAutoSettings)}
             size="sm"
+            className="w-full sm:w-auto"
           >
             <Settings className="w-4 h-4 mr-2" />
             <span className="hidden sm:inline">Auto Deduction</span>

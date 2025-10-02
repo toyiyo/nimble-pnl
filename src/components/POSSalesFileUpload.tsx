@@ -251,7 +251,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   rawData: {
                     ...row,
                     _parsedMeta: {
-                      posSystem: 'Toast',
+                      posSystem: 'manual_upload',
                       masterId,
                       parentId,
                       itemGuid,

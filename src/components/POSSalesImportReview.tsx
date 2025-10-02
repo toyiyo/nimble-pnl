@@ -167,7 +167,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
             
         return {
           restaurant_id: selectedRestaurant.restaurant_id,
-          pos_system: sale.rawData._parsedMeta?.posSystem?.toLowerCase() || 'manual',
+          pos_system: 'manual_upload',
           external_order_id: externalOrderId,
           item_name: sale.itemName,
           quantity: sale.quantity,

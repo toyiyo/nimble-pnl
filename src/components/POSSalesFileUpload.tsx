@@ -61,8 +61,35 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   row['name'] ||
                   '';
 
+                // Helper function to normalize numeric strings before parsing
+                const normalizeNumericString = (value: string | undefined): string => {
+                  if (!value) return '';
+                  
+                  // Remove currency symbols, thousands separators, and trim
+                  let normalized = value.trim()
+                    .replace(/[$£€¥]/, '')  // Remove currency symbols
+                    .replace(/,/g, '');     // Remove thousands separators
+                  
+                  // Handle parentheses for negative values: (123.45) -> -123.45
+                  if (normalized.startsWith('(') && normalized.endsWith(')')) {
+                    normalized = '-' + normalized.substring(1, normalized.length - 1);
+                  }
+                  
+                  return normalized;
+                };
+                
+                // Helper function to safely parse a numeric value with proper fallback
+                const safeParseFloat = (value: string | undefined, fallback: number | undefined): number | undefined => {
+                  if (!value) return fallback;
+                  const normalized = normalizeNumericString(value);
+                  if (normalized === '') return fallback;
+                  
+                  const parsed = parseFloat(normalized);
+                  return isNaN(parsed) ? fallback : parsed;
+                };
+
                 // Find quantity column - Toast POS uses "Qty sold"
-                const quantity = parseFloat(
+                const quantityStr = 
                   row['Qty sold'] || 
                   row['qty sold'] ||
                   row['Quantity'] || 
@@ -70,41 +97,53 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   row['Qty'] || 
                   row['qty'] || 
                   row['Count'] ||
-                  '1'
-                ) || 1;
+                  '';
+                
+                // For quantity, we want to preserve 0 but fallback to 1 for missing/invalid values
+                const quantity = safeParseFloat(quantityStr, 1);
 
                 // Find price columns
                 // Toast POS has several price fields - try to use the most appropriate one
-                const grossSales = parseFloat(row['Gross sales'] || row['gross sales'] || '') || undefined;
-                const netSales = parseFloat(row['Net sales'] || row['net sales'] || '') || undefined;
-                const avgPrice = parseFloat(row['Avg. price'] || row['avg. price'] || row['avg price'] || '') || undefined;
-                const avgItemPrice = parseFloat(row['Avg. item price (not incl. mods)'] || '') || undefined;
+                const grossSales = safeParseFloat(row['Gross sales'] || row['gross sales'] || '', undefined);
+                const netSales = safeParseFloat(row['Net sales'] || row['net sales'] || '', undefined);
+                const avgPrice = safeParseFloat(row['Avg. price'] || row['avg. price'] || row['avg price'] || '', undefined);
+                const avgItemPrice = safeParseFloat(row['Avg. item price (not incl. mods)'] || '', undefined);
                 
                 // For total price, prioritize net or gross sales over other fields as they represent actual revenue
-                const totalPrice = 
-                  netSales || 
-                  grossSales || 
-                  parseFloat(
-                    row['Total'] || 
-                    row['total'] || 
-                    row['Amount'] || 
-                    row['amount'] ||
-                    row['Total Amount'] ||
-                    row['Price'] ||
-                    ''
-                  ) || undefined;
+                const totalPriceStr = 
+                  // Try to find the best available price column
+                  // Only look up raw strings if the parsed values weren't found
+                  (netSales !== undefined) ? String(netSales) :
+                  (grossSales !== undefined) ? String(grossSales) :
+                  row['Total'] || 
+                  row['total'] || 
+                  row['Amount'] || 
+                  row['amount'] ||
+                  row['Total Amount'] ||
+                  row['Price'] ||
+                  '';
+                
+                // Only parse if we need to (i.e., we got a string, not a pre-parsed value)
+                const totalPrice = (netSales !== undefined) ? netSales :
+                                  (grossSales !== undefined) ? grossSales :
+                                  safeParseFloat(totalPriceStr, undefined);
 
                 // For unit price, try to use avg price fields first
-                const unitPrice = 
-                  avgPrice || 
-                  avgItemPrice ||
-                  parseFloat(
-                    row['Unit Price'] ||
-                    row['unit_price'] ||
-                    row['Price'] ||
-                    row['price'] ||
-                    ''
-                  ) || undefined;
+                const unitPriceStr =
+                  // Try to find the best available unit price column
+                  // Only look up raw strings if the parsed values weren't found
+                  (avgPrice !== undefined) ? String(avgPrice) :
+                  (avgItemPrice !== undefined) ? String(avgItemPrice) :
+                  row['Unit Price'] ||
+                  row['unit_price'] ||
+                  row['Price'] ||
+                  row['price'] ||
+                  '';
+                
+                // Only parse if we need to (i.e., we got a string, not a pre-parsed value)
+                const unitPrice = (avgPrice !== undefined) ? avgPrice :
+                                 (avgItemPrice !== undefined) ? avgItemPrice :
+                                 safeParseFloat(unitPriceStr, undefined);
 
                 // Find date column
                 let saleDate = 

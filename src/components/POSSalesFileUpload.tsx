@@ -189,7 +189,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                 if (itemGuid || masterId || parentId) {
                   // For Toast data, create a compound ID from all available IDs
                   // This helps prevent duplicate imports
-                  orderId = `toast_${itemGuid || 'none'}_${masterId || 'none'}_${parentId || 'none'}_${itemName.replace(/\s+/g, '_').toLowerCase()}`;
+                  orderId = `manual_upload_${itemGuid || 'none'}_${masterId || 'none'}_${parentId || 'none'}_${itemName.replace(/\s+/g, '_').toLowerCase()}`;
                 } else {
                   // For other POS systems, use whatever ID we can find
                   orderId = 

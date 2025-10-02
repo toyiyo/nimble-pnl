@@ -43,9 +43,16 @@ export default function POSSales() {
     rawData: Record<string, unknown>;
   }
 
-  const handleRestaurantSelect = (restaurant: any) => {
+  const handleRestaurantSelect = (restaurant: UserRestaurant | null) => {
     setSelectedRestaurant(restaurant);
   };
+
+  interface UserRestaurant {
+    restaurant_id: string;
+    restaurant: {
+      name: string;
+    };
+  }
 
   // Auto-sync when restaurant is selected
   useEffect(() => {
@@ -343,7 +350,7 @@ export default function POSSales() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {groupedSales.map((item: any) => (
+                    {groupedSales.map((item: { item_name: string; total_quantity: number; sale_count: number; total_revenue: number }) => (
                       <div
                         key={item.item_name}
                         className="flex items-center justify-between p-4 border rounded-lg"

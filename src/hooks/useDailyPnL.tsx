@@ -243,6 +243,101 @@ export function useDailyPnL(restaurantId: string | null) {
     };
   };
 
+  // Get week number and year for a date
+  const getWeekKey = (dateStr: string) => {
+    const date = new Date(dateStr + 'T12:00:00Z');
+    const startOfYear = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const dayOfYear = Math.floor((date.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
+    const weekNumber = Math.ceil((dayOfYear + 1) / 7);
+    return `${date.getUTCFullYear()}-W${weekNumber.toString().padStart(2, '0')}`;
+  };
+
+  // Get month key for a date
+  const getMonthKey = (dateStr: string) => {
+    const date = new Date(dateStr + 'T12:00:00Z');
+    return `${date.getUTCFullYear()}-${(date.getUTCMonth() + 1).toString().padStart(2, '0')}`;
+  };
+
+  // Group P&L data by week
+  const getWeeklyData = () => {
+    if (!pnlData || pnlData.length === 0) return [];
+
+    const weeklyGroups: { [key: string]: DailyPnL[] } = {};
+    
+    pnlData.forEach(day => {
+      const weekKey = getWeekKey(day.date);
+      if (!weeklyGroups[weekKey]) {
+        weeklyGroups[weekKey] = [];
+      }
+      weeklyGroups[weekKey].push(day);
+    });
+
+    return Object.entries(weeklyGroups)
+      .map(([weekKey, days]) => {
+        const totalRevenue = days.reduce((sum, day) => sum + day.net_revenue, 0);
+        const totalFoodCost = days.reduce((sum, day) => sum + day.food_cost, 0);
+        const totalLaborCost = days.reduce((sum, day) => sum + day.labor_cost, 0);
+        const totalPrimeCost = totalFoodCost + totalLaborCost;
+        const totalGrossProfit = totalRevenue - totalPrimeCost;
+
+        return {
+          period: weekKey,
+          net_revenue: totalRevenue,
+          food_cost: totalFoodCost,
+          labor_cost: totalLaborCost,
+          prime_cost: totalPrimeCost,
+          gross_profit: totalGrossProfit,
+          food_cost_percentage: totalRevenue > 0 ? (totalFoodCost / totalRevenue) * 100 : 0,
+          labor_cost_percentage: totalRevenue > 0 ? (totalLaborCost / totalRevenue) * 100 : 0,
+          prime_cost_percentage: totalRevenue > 0 ? (totalPrimeCost / totalRevenue) * 100 : 0,
+          days_count: days.length,
+          start_date: days[days.length - 1].date,
+          end_date: days[0].date,
+        };
+      })
+      .sort((a, b) => b.period.localeCompare(a.period));
+  };
+
+  // Group P&L data by month
+  const getMonthlyData = () => {
+    if (!pnlData || pnlData.length === 0) return [];
+
+    const monthlyGroups: { [key: string]: DailyPnL[] } = {};
+    
+    pnlData.forEach(day => {
+      const monthKey = getMonthKey(day.date);
+      if (!monthlyGroups[monthKey]) {
+        monthlyGroups[monthKey] = [];
+      }
+      monthlyGroups[monthKey].push(day);
+    });
+
+    return Object.entries(monthlyGroups)
+      .map(([monthKey, days]) => {
+        const totalRevenue = days.reduce((sum, day) => sum + day.net_revenue, 0);
+        const totalFoodCost = days.reduce((sum, day) => sum + day.food_cost, 0);
+        const totalLaborCost = days.reduce((sum, day) => sum + day.labor_cost, 0);
+        const totalPrimeCost = totalFoodCost + totalLaborCost;
+        const totalGrossProfit = totalRevenue - totalPrimeCost;
+
+        return {
+          period: monthKey,
+          net_revenue: totalRevenue,
+          food_cost: totalFoodCost,
+          labor_cost: totalLaborCost,
+          prime_cost: totalPrimeCost,
+          gross_profit: totalGrossProfit,
+          food_cost_percentage: totalRevenue > 0 ? (totalFoodCost / totalRevenue) * 100 : 0,
+          labor_cost_percentage: totalRevenue > 0 ? (totalLaborCost / totalRevenue) * 100 : 0,
+          prime_cost_percentage: totalRevenue > 0 ? (totalPrimeCost / totalRevenue) * 100 : 0,
+          days_count: days.length,
+          start_date: days[days.length - 1].date,
+          end_date: days[0].date,
+        };
+      })
+      .sort((a, b) => b.period.localeCompare(a.period));
+  };
+
   // Fetch restaurant timezone when restaurantId changes
   useEffect(() => {
     if (restaurantId) {
@@ -299,5 +394,7 @@ export function useDailyPnL(restaurantId: string | null) {
     getTodaysData,
     getAverages,
     getGroupedPnLData,
+    getWeeklyData,
+    getMonthlyData,
   };
 }

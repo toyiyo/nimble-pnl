@@ -7,13 +7,17 @@ import { Button } from '@/components/ui/button';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRecipeAnalytics } from '@/hooks/useRecipeAnalytics';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
+import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeProfitabilityChart } from '@/components/RecipeProfitabilityChart';
 import { ConsumptionTrendsChart } from '@/components/ConsumptionTrendsChart';
 import { VarianceAnalysis } from '@/components/VarianceAnalysis';
+import { PnLTrendChart } from '@/components/PnLTrendChart';
+import { CostBreakdownChart } from '@/components/CostBreakdownChart';
 
 export default function Reports() {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
+  const [pnlTimeFrame, setPnlTimeFrame] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   
   const { 
     profitabilityData, 
@@ -26,6 +30,33 @@ export default function Reports() {
     reorderAlerts, 
     loading: alertsLoading 
   } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
+
+  const {
+    loading: pnlLoading,
+    getGroupedPnLData,
+    getWeeklyData,
+    getMonthlyData,
+  } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
+
+  const dailyData = getGroupedPnLData();
+  const weeklyData = getWeeklyData();
+  const monthlyData = getMonthlyData();
+
+  const getPnLDataForTimeFrame = () => {
+    if (pnlTimeFrame === 'weekly') return weeklyData;
+    if (pnlTimeFrame === 'monthly') return monthlyData;
+    return dailyData;
+  };
+
+  const getCostBreakdownForTimeFrame = () => {
+    const data = getPnLDataForTimeFrame().slice(0, pnlTimeFrame === 'daily' ? 7 : pnlTimeFrame === 'weekly' ? 4 : 3);
+    if (data.length === 0) return { foodCost: 0, laborCost: 0 };
+    
+    const totalFoodCost = data.reduce((sum, item) => sum + item.food_cost, 0);
+    const totalLaborCost = data.reduce((sum, item) => sum + item.labor_cost, 0);
+    
+    return { foodCost: totalFoodCost, laborCost: totalLaborCost };
+  };
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -84,16 +115,73 @@ export default function Reports() {
   }
 
   return (
-    <Tabs defaultValue="profitability" className="space-y-4 md:space-y-6">
-      <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto md:h-10">
+    <Tabs defaultValue="pnl" className="space-y-4 md:space-y-6">
+      <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto md:h-10">
+        <TabsTrigger value="pnl" className="text-xs md:text-sm">P&L Trends</TabsTrigger>
         <TabsTrigger value="profitability" className="text-xs md:text-sm">
-          <span className="hidden sm:inline">Recipe Analysis</span>
+          <span className="hidden sm:inline">Recipes</span>
           <span className="sm:hidden">Recipes</span>
         </TabsTrigger>
         <TabsTrigger value="consumption" className="text-xs md:text-sm">Trends</TabsTrigger>
         <TabsTrigger value="alerts" className="text-xs md:text-sm">Alerts</TabsTrigger>
         <TabsTrigger value="variance" className="text-xs md:text-sm">Variance</TabsTrigger>
       </TabsList>
+
+      <TabsContent value="pnl" className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              P&L Performance Over Time
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {pnlLoading ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">Loading P&L data...</p>
+              </div>
+            ) : (
+              <Tabs value={pnlTimeFrame} onValueChange={(value) => setPnlTimeFrame(value as 'daily' | 'weekly' | 'monthly')}>
+                <TabsList className="grid w-full grid-cols-3 mb-4">
+                  <TabsTrigger value="daily">Daily View</TabsTrigger>
+                  <TabsTrigger value="weekly">Weekly View</TabsTrigger>
+                  <TabsTrigger value="monthly">Monthly View</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="daily" className="space-y-6">
+                  <PnLTrendChart data={dailyData.slice(0, 30)} timeFrame="daily" />
+                </TabsContent>
+
+                <TabsContent value="weekly" className="space-y-6">
+                  <PnLTrendChart data={weeklyData.slice(0, 12)} timeFrame="weekly" />
+                </TabsContent>
+
+                <TabsContent value="monthly" className="space-y-6">
+                  <PnLTrendChart data={monthlyData.slice(0, 12)} timeFrame="monthly" />
+                </TabsContent>
+              </Tabs>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Cost Breakdown Analysis</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {pnlLoading ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">Loading cost data...</p>
+              </div>
+            ) : (
+              <CostBreakdownChart 
+                foodCost={getCostBreakdownForTimeFrame().foodCost} 
+                laborCost={getCostBreakdownForTimeFrame().laborCost} 
+              />
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
 
       <TabsContent value="profitability" className="space-y-6">
         <div className="grid gap-6">

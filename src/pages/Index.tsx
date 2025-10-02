@@ -1,17 +1,22 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DataInputDialog } from '@/components/DataInputDialog';
+import { PnLTrendChart } from '@/components/PnLTrendChart';
+import { CostBreakdownChart } from '@/components/CostBreakdownChart';
 
 const Index = () => {
   const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
-  const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, fetchPnLData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
+  const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, getWeeklyData, getMonthlyData, fetchPnLData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
+  const [timeFrame, setTimeFrame] = useState<'daily' | 'weekly' | 'monthly'>('daily');
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -19,6 +24,30 @@ const Index = () => {
 
   const todaysData = getTodaysData();
   const averages = getAverages(7); // 7-day averages
+  const weeklyData = getWeeklyData();
+  const monthlyData = getMonthlyData();
+
+  // Get data based on selected time frame
+  const getTimeFrameData = () => {
+    if (timeFrame === 'weekly') return weeklyData;
+    if (timeFrame === 'monthly') return monthlyData;
+    return getGroupedPnLData();
+  };
+
+  const timeFrameData = getTimeFrameData();
+
+  // Calculate totals for cost breakdown based on time frame
+  const getCostBreakdownData = () => {
+    const data = timeFrameData.slice(0, timeFrame === 'daily' ? 7 : timeFrame === 'weekly' ? 4 : 3);
+    if (data.length === 0) return { foodCost: 0, laborCost: 0 };
+    
+    const totalFoodCost = data.reduce((sum, item) => sum + item.food_cost, 0);
+    const totalLaborCost = data.reduce((sum, item) => sum + item.labor_cost, 0);
+    
+    return { foodCost: totalFoodCost, laborCost: totalLaborCost };
+  };
+
+  const costBreakdown = getCostBreakdownData();
 
   return (
     <>
@@ -144,6 +173,94 @@ const Index = () => {
                   )}
                 </div>
               </div>
+
+              {/* Time-based Analytics Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Performance Analytics</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Tabs value={timeFrame} onValueChange={(value) => setTimeFrame(value as 'daily' | 'weekly' | 'monthly')}>
+                    <TabsList className="grid w-full grid-cols-3 mb-4">
+                      <TabsTrigger value="daily">Daily</TabsTrigger>
+                      <TabsTrigger value="weekly">Weekly</TabsTrigger>
+                      <TabsTrigger value="monthly">Monthly</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="daily" className="space-y-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-lg">P&L Trends (Last 30 Days)</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <PnLTrendChart data={getGroupedPnLData().slice(0, 30)} timeFrame="daily" />
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-lg">Cost Breakdown (Last 7 Days)</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <CostBreakdownChart 
+                              foodCost={costBreakdown.foodCost} 
+                              laborCost={costBreakdown.laborCost} 
+                            />
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="weekly" className="space-y-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-lg">Weekly P&L Trends</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <PnLTrendChart data={weeklyData.slice(0, 12)} timeFrame="weekly" />
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-lg">Weekly Cost Breakdown (Last 4 Weeks)</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <CostBreakdownChart 
+                              foodCost={costBreakdown.foodCost} 
+                              laborCost={costBreakdown.laborCost} 
+                            />
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="monthly" className="space-y-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-lg">Monthly P&L Trends</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <PnLTrendChart data={monthlyData.slice(0, 12)} timeFrame="monthly" />
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-lg">Monthly Cost Breakdown (Last 3 Months)</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <CostBreakdownChart 
+                              foodCost={costBreakdown.foodCost} 
+                              laborCost={costBreakdown.laborCost} 
+                            />
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
             </>
           )}
         </div>

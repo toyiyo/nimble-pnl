@@ -25,7 +25,7 @@ interface ParsedSale {
   saleDate: string;
   saleTime?: string;
   orderId?: string;
-  rawData: any;
+  rawData: Record<string, unknown>;
 }
 
 interface EditableSale extends ParsedSale {
@@ -96,7 +96,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     );
   };
 
-  const handleFieldChange = (id: string, field: keyof ParsedSale, value: any) => {
+  const handleFieldChange = (id: string, field: keyof ParsedSale, value: string | number | undefined) => {
     setEditableSales(prev =>
       prev.map(sale =>
         sale.id === id ? { ...sale, [field]: value } : sale
@@ -171,11 +171,12 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
       });
 
       onImportComplete();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error importing sales:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to import sales data";
       toast({
         title: "Import failed",
-        description: error.message || "Failed to import sales data",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

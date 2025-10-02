@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/use-toast';
 import Papa from 'papaparse';
 
 interface POSSalesFileUploadProps {
-  onFileProcessed: (data: any[]) => void;
+  onFileProcessed: (data: ParsedSale[]) => void;
 }
 
 interface ParsedSale {
@@ -19,7 +19,7 @@ interface ParsedSale {
   saleDate: string;
   saleTime?: string;
   orderId?: string;
-  rawData: any;
+  rawData: Record<string, unknown>;
 }
 
 export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFileProcessed }) => {
@@ -33,7 +33,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         skipEmptyLines: true,
         complete: (results) => {
           try {
-            const parsedSales = results.data.map((row: any, index: number) => {
+            const parsedSales = results.data.map((row: Record<string, string>, index: number) => {
               // Flexible column mapping - try to detect common column names
               // TOAST POS typically uses: Item, Quantity, Amount, Date, Time
               
@@ -183,11 +183,12 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
       });
 
       onFileProcessed(parsedSales);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error processing file:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to parse CSV file";
       toast({
         title: "Error processing file",
-        description: error.message || "Failed to parse CSV file",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

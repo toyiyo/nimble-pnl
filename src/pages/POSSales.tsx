@@ -29,8 +29,19 @@ export default function POSSales() {
   const [selectedView, setSelectedView] = useState<'sales' | 'grouped'>('sales');
   const [deductionDialogOpen, setDeductionDialogOpen] = useState(false);
   const [selectedItemForDeduction, setSelectedItemForDeduction] = useState<{name: string; quantity: number} | null>(null);
-  const [importedSalesData, setImportedSalesData] = useState<any[] | null>(null);
+  const [importedSalesData, setImportedSalesData] = useState<ParsedSale[] | null>(null);
   const [activeTab, setActiveTab] = useState<'manual' | 'import'>('manual');
+
+  interface ParsedSale {
+    itemName: string;
+    quantity: number;
+    totalPrice?: number;
+    unitPrice?: number;
+    saleDate: string;
+    saleTime?: string;
+    orderId?: string;
+    rawData: Record<string, unknown>;
+  }
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -66,7 +77,7 @@ export default function POSSales() {
     setDeductionDialogOpen(true);
   };
 
-  const handleFileProcessed = (data: any[]) => {
+  const handleFileProcessed = (data: ParsedSale[]) => {
     setImportedSalesData(data);
   };
 

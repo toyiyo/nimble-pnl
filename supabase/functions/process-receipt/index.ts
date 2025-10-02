@@ -18,117 +18,8 @@ interface ParsedLineItem {
   confidenceScore: number;
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    const { receiptId, imageData, isPDF }: ReceiptProcessRequest = await req.json();
-    
-    if (!receiptId || !imageData) {
-      return new Response(
-        JSON.stringify({ error: 'Receipt ID and image data are required' }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
-        }
-      );
-    }
-
-    const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
-    if (!openRouterApiKey) {
-      return new Response(
-        JSON.stringify({ error: 'OpenRouter API key not configured' }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500 
-        }
-      );
-    }
-
-    console.log('🧾 Processing receipt with DeepSeek AI (free model)...');
-    console.log('📸 Image data type:', isPDF ? 'PDF' : 'Base64 image', 'size:', imageData.length, 'characters');
-
-    // Check if the data is a PDF
-    const isProcessingPDF = isPDF || false;
-    let pdfBase64Data = imageData;
-    
-    if (isProcessingPDF && !imageData.startsWith('data:application/pdf;base64,')) {
-      console.log('📄 PDF URL detected, converting to base64...');
-      
-      // Create abort controller for fetch timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-      }, 20000); // 20 second timeout
-      
-      try {
-        const pdfResponse = await fetch(imageData, { signal: controller.signal });
-        clearTimeout(timeoutId); // Clear timeout on successful fetch
-        
-        if (!pdfResponse.ok) {
-          throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
-        }
-        const pdfBlob = await pdfResponse.arrayBuffer();
-        
-        // Convert to base64 in chunks to avoid call stack issues with large PDFs
-        const uint8Array = new Uint8Array(pdfBlob);
-        let binaryString = '';
-        const chunkSize = 8192; // Process in 8KB chunks
-        for (let i = 0; i < uint8Array.length; i += chunkSize) {
-          const chunk = uint8Array.subarray(i, i + chunkSize);
-          binaryString += String.fromCharCode(...chunk);
-        }
-        const base64 = btoa(binaryString);
-        
-        pdfBase64Data = `data:application/pdf;base64,${base64}`;
-        console.log('✅ PDF converted to base64, size:', base64.length);
-      } catch (fetchError) {
-        clearTimeout(timeoutId); // Ensure timeout is cleared on error
-        
-        // Check if error is due to abort/timeout
-        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-          console.error('📄 PDF fetch timeout after 20 seconds');
-          return new Response(
-            JSON.stringify({ 
-              error: 'PDF fetch timeout',
-              details: 'The PDF file took too long to download. Please try again or use a smaller file.'
-            }),
-            { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        
-        console.error('📄 Failed to fetch and convert PDF:', fetchError);
-        return new Response(
-          JSON.stringify({ 
-            error: 'Failed to fetch PDF for processing',
-            details: fetchError instanceof Error ? fetchError.message : String(fetchError)
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
-    let finalResponse: Response | undefined;
-    
-    // Try DeepSeek first (free model) with proper branching for PDF vs Image
-    console.log('🚀 Trying DeepSeek V3.1 (free)...');
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    while (retryCount < maxRetries && (!finalResponse || !finalResponse.ok)) {
-      try {
-        console.log(`🔄 DeepSeek attempt ${retryCount + 1}/${maxRetries}...`);
-        
-        const systemPrompt = `You are DeepSeek V3.1 (free), a large language model from deepseek.
-
-Formatting Rules:
-- Use Markdown **only when semantically appropriate**. Examples: \`inline code\`, \`\`\`code fences\`\`\`, tables, and lists.
-- In assistant responses, format file names, directory paths, function names, and class names with backticks (\`).
-- For math: use \\( and \\) for inline expressions, and \\[ and \\] for display (block) math.`;
-
-        const userPrompt = `ANALYSIS TARGET: This receipt contains itemized purchases for restaurant inventory.
+// Shared analysis prompt for all models
+const RECEIPT_ANALYSIS_PROMPT = `ANALYSIS TARGET: This receipt image contains itemized purchases for restaurant inventory.
 
 EXTRACTION METHODOLOGY:
 1. **Locate the itemized section** - Focus on the main purchase list (ignore headers, tax, totals, payment info)
@@ -180,206 +71,263 @@ RESPONSE FORMAT (JSON ONLY):
 
 CRITICAL: Assign confidence scores based on actual text clarity, not wishful thinking.`;
 
-        let requestBody: any;
-        
-        // Branch: PDF vs Image
-        if (isProcessingPDF) {
-          // PDF Path: Use file type with plugins
-          console.log('📄 Using PDF file parser...');
-          
-          // Extract filename if present in data URL
-          let filename = 'receipt.pdf';
-          const filenameMatch = imageData.match(/filename[=:]([^;,]+)/i);
-          if (filenameMatch) {
-            filename = filenameMatch[1].trim();
-          }
-          
-          requestBody = {
-            "model": "deepseek/deepseek-chat-v3.1:free",
-            "messages": [
-              {
-                "role": "system",
-                "content": systemPrompt
-              },
-              {
-                "role": "user",
-                "content": [
-                  {
-                    "type": "text",
-                    "text": userPrompt
-                  },
-                  {
-                    "type": "file",
-                    "file": {
-                      "file_data": pdfBase64Data,
-                      "filename": filename
-                    }
-                  }
-                ]
-              }
-            ],
-            "plugins": [
-              {
-                "id": "file-parser",
-                "pdf": {
-                  "engine": "pdf-text"
-                }
-              }
-            ],
-            "stream": false,
-            "max_tokens": 4000
-          };
-        } else {
-          // Image Path: Use image_url type
-          console.log('📸 Using image vision...');
-          
-          requestBody = {
-            "model": "deepseek/deepseek-chat-v3.1:free",
-            "messages": [
-              {
-                "role": "system",
-                "content": systemPrompt
-              },
-              {
-                "role": "user",
-                "content": [
-                  {
-                    "type": "text",
-                    "text": userPrompt
-                  },
-                  {
-                    "type": "image_url",
-                    "image_url": {
-                      "url": imageData
-                    }
-                  }
-                ]
-              }
-            ]
-          };
-        }
+// Model configurations in order of preference
+const MODELS = [
+  {
+    name: "DeepSeek V3.1",
+    id: "deepseek/deepseek-chat-v3.1:free",
+    systemPrompt: "You are DeepSeek V3.1 (free), a large language model from deepseek.\n\nFormatting Rules:\n- Use Markdown **only when semantically appropriate**. Examples: `inline code`, ```code fences```, tables, and lists.\n- In assistant responses, format file names, directory paths, function names, and class names with backticks (`).\n- For math: use \\( and \\) for inline expressions, and \\[ and \\] for display (block) math.",
+    maxRetries: 3
+  },
+  {
+    name: "Mistral Small",
+    id: "mistralai/mistral-small-3.2-24b-instruct:free",
+    systemPrompt: "You are an expert receipt parser for restaurant inventory management.",
+    maxRetries: 1
+  },
+  {
+    name: "Grok 4 Fast",
+    id: "x-ai/grok-4-fast:free",
+    systemPrompt: "You are Grok, an AI assistant specializing in receipt analysis and data extraction.",
+    maxRetries: 1
+  }
+];
 
-        const deepseekResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${openRouterApiKey}`,
-            "HTTP-Referer": "https://app.easyshifthq.com",
-            "X-Title": "EasyShiftHQ Receipt Parser",
-            "Content-Type": "application/json"
+// Helper function to build consistent request bodies
+function buildRequestBody(
+  modelId: string,
+  systemPrompt: string,
+  isPDF: boolean,
+  mediaData: string
+): any {
+  const requestBody: any = {
+    model: modelId,
+    messages: [
+      {
+        role: "system",
+        content: systemPrompt
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: RECEIPT_ANALYSIS_PROMPT
           },
-          body: JSON.stringify(requestBody)
-        });
-
-        if (deepseekResponse.ok) {
-          finalResponse = deepseekResponse;
-          console.log('✅ DeepSeek succeeded');
-          break;
-        }
-
-        // Rate limited - wait and retry
-        if (deepseekResponse.status === 429) {
-          console.log(`🔄 DeepSeek rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
-          retryCount++;
-          if (retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+          isPDF ? {
+            type: "file",
+            file: {
+              file_data: mediaData,
+              filename: "receipt.pdf"
+            }
+          } : {
+            type: "image_url",
+            image_url: {
+              url: mediaData
+            }
           }
-        } else {
-          const errorText = await deepseekResponse.text();
-          console.error(`❌ DeepSeek failed (attempt ${retryCount + 1}):`, deepseekResponse.status, errorText);
-          break;
-        }
-      } catch (error) {
-        console.error(`❌ DeepSeek attempt ${retryCount + 1} failed:`, error);
-        retryCount++;
-        if (retryCount < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+        ]
+      }
+    ]
+  };
+
+  // Add PDF parsing plugin if processing PDF
+  if (isPDF) {
+    requestBody.plugins = [
+      {
+        id: "file-parser",
+        pdf: {
+          engine: "pdf-text"
         }
       }
+    ];
+  }
+
+  return requestBody;
+}
+
+// Generic function to call a model with retries
+async function callModel(
+  modelConfig: typeof MODELS[0],
+  isPDF: boolean,
+  mediaData: string,
+  openRouterApiKey: string
+): Promise<Response | null> {
+  let retryCount = 0;
+  
+  while (retryCount < modelConfig.maxRetries) {
+    try {
+      console.log(`🔄 ${modelConfig.name} attempt ${retryCount + 1}/${modelConfig.maxRetries}...`);
+      
+      const requestBody = buildRequestBody(
+        modelConfig.id,
+        modelConfig.systemPrompt,
+        isPDF,
+        mediaData
+      );
+
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterApiKey}`,
+          "HTTP-Referer": "https://app.easyshifthq.com",
+          "X-Title": "EasyShiftHQ Receipt Parser",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (response.ok) {
+        console.log(`✅ ${modelConfig.name} succeeded`);
+        return response;
+      }
+
+      // Handle rate limiting with exponential backoff
+      if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
+        console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
+        retryCount++;
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
+        break;
+      }
+    } catch (error) {
+      console.error(`❌ ${modelConfig.name} error:`, error);
+      retryCount++;
+      if (retryCount < modelConfig.maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+      }
+    }
+  }
+  
+  return null;
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { receiptId, imageData, isPDF }: ReceiptProcessRequest = await req.json();
+    
+    if (!receiptId || !imageData) {
+      return new Response(
+        JSON.stringify({ error: 'Receipt ID and image data are required' }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400 
+        }
+      );
     }
 
-    // If DeepSeek failed, try Grok as backup (images only - Grok doesn't support PDFs)
-    if ((!finalResponse || !finalResponse.ok) && !isProcessingPDF) {
-      console.log('🔄 DeepSeek failed, trying Grok as backup for image...');
+    const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
+    if (!openRouterApiKey) {
+      return new Response(
+        JSON.stringify({ error: 'OpenRouter API key not configured' }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500 
+        }
+      );
+    }
+
+    console.log('🧾 Processing receipt with multi-model fallback (DeepSeek -> Mistral -> Grok)...');
+    console.log('📸 Image data type:', isPDF ? 'PDF' : 'Base64 image', 'size:', imageData.length, 'characters');
+
+    // Check if the data is a PDF
+    const isProcessingPDF = isPDF || false;
+    let pdfBase64Data = imageData;
+    
+    if (isProcessingPDF && !imageData.startsWith('data:application/pdf;base64,')) {
+      console.log('📄 PDF URL detected, converting to base64...');
+      
+      // Set up abort controller with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
       
       try {
-        const grokRequestBody: any = {
-          "model": "x-ai/grok-4-fast:free",
-          "messages": [
-            {
-              "role": "system",
-              "content": `You are an expert receipt parser for restaurant inventory management. Analyze this receipt image and extract ALL purchasable items.
-
-Return ONLY valid JSON in this exact format:
-{
-  "vendor": "Store Name",
-  "totalAmount": 45.67,
-  "lineItems": [
-    {
-      "rawText": "exact text from receipt",
-      "parsedName": "standardized product name",
-      "parsedQuantity": numeric_quantity,
-      "parsedUnit": "standard_unit",
-      "parsedPrice": numeric_price,
-      "confidenceScore": realistic_score_0_to_1
-    }
-  ]
-}`
-            },
-            {
-              "role": "user",
-              "content": [
-                {
-                  "type": "text",
-                  "text": "Analyze this receipt carefully. Extract ALL products with their quantities and prices. Focus on the itemized section."
-                },
-                {
-                  "type": "image_url",
-                  "image_url": {
-                    "url": imageData
-                  }
-                }
-              ]
-            }
-          ],
-          "temperature": 0.1,
-          "max_tokens": 4000
-        };
-
-        const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${openRouterApiKey}`,
-            "HTTP-Referer": "https://app.easyshifthq.com",
-            "X-Title": "EasyShiftHQ Receipt Parser (Grok Backup)",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(grokRequestBody)
-        });
-
-        if (grokResponse.ok) {
-          finalResponse = grokResponse;
-          console.log('✅ Grok backup succeeded');
-        } else {
-          const grokErrorText = await grokResponse.text();
-          console.error('❌ Grok backup failed:', grokResponse.status, grokErrorText);
+        const pdfResponse = await fetch(imageData, { signal: controller.signal });
+        clearTimeout(timeoutId); // Clear timeout on successful fetch
+        
+        if (!pdfResponse.ok) {
+          throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
         }
-      } catch (grokError) {
-        console.error('❌ Grok backup error:', grokError);
+        
+        const pdfBlob = await pdfResponse.arrayBuffer();
+        
+        // Safe chunked base64 conversion for large PDFs
+        const uint8Array = new Uint8Array(pdfBlob);
+        const chunkSize = 32768; // 32KB chunks
+        
+        // Step 1: Convert all bytes to binary string (chunked to avoid stack overflow)
+        let binaryString = '';
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+          const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+          binaryString += String.fromCharCode(...chunk);
+        }
+        
+        // Step 2: Encode the COMPLETE binary string to base64 (only once!)
+        const base64 = btoa(binaryString);
+        
+        pdfBase64Data = `data:application/pdf;base64,${base64}`;
+        console.log('✅ PDF converted to base64, size:', base64.length);
+      } catch (fetchError) {
+        clearTimeout(timeoutId); // Ensure timeout is cleared
+        
+        // Check if error was due to abort/timeout
+        if (fetchError.name === 'AbortError') {
+          console.error('📄 PDF fetch timeout');
+          return new Response(
+            JSON.stringify({ 
+              error: 'PDF download timeout',
+              details: 'The PDF took too long to download (>20s)'
+            }),
+            { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        console.error('📄 Failed to fetch and convert PDF:', fetchError);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Failed to fetch PDF for processing',
+            details: fetchError.message
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
     }
 
-    // If both services failed
-    if (!finalResponse || !finalResponse.ok) {
-      console.error('❌ Receipt processing failed');
+    let finalResponse: Response | undefined;
+
+    // Try models in order: DeepSeek -> Mistral -> Grok
+    for (const modelConfig of MODELS) {
+      console.log(`🚀 Trying ${modelConfig.name}...`);
       
-      const errorMessage = isProcessingPDF 
-        ? 'PDF processing temporarily unavailable. Please try again in a few minutes.'
-        : 'Receipt processing temporarily unavailable. Please try again in a few minutes.';
+      const response = await callModel(
+        modelConfig,
+        isProcessingPDF,
+        pdfBase64Data,
+        openRouterApiKey
+      );
+      
+      if (response) {
+        finalResponse = response;
+        break;
+      }
+      
+      console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
+    }
+
+    // If all models failed
+    if (!finalResponse || !finalResponse.ok) {
+      console.error('❌ All models (DeepSeek, Mistral, Grok) failed');
       
       return new Response(
         JSON.stringify({ 
-          error: errorMessage,
-          details: 'AI services are currently unavailable'
+          error: 'Receipt processing temporarily unavailable. All AI models failed.',
+          details: 'DeepSeek, Mistral, and Grok are currently unavailable'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

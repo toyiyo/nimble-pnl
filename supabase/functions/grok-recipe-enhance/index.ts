@@ -16,30 +16,11 @@ interface RecipeEnhanceRequest {
   }>;
 }
 
-serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
-    if (!openRouterApiKey) {
-      throw new Error('OpenRouter API key not configured');
-    }
-
-    const { itemName, itemDescription, availableIngredients }: RecipeEnhanceRequest = await req.json();
-
-    const ingredientsList = availableIngredients.map(ing => 
-      `- ${ing.name} (measured in ${ing.uom_recipe})`
-    ).join('\n');
-
-    const validUnits = ['oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 'bottle', 'can', 'bag', 'box', 'piece', 'serving'];
-    
-    const prompt = `You are a professional chef and recipe expert. Based on the menu item "${itemName}"${itemDescription ? ` with description: "${itemDescription}"` : ''}, create a realistic recipe using only ingredients from the available inventory list below.
+// Shared analysis prompt for all models
+const RECIPE_ANALYSIS_PROMPT = (itemName: string, itemDescription: string, availableIngredients: string, validUnits: string[]) => `You are a professional chef and recipe expert. Based on the menu item "${itemName}"${itemDescription ? ` with description: "${itemDescription}"` : ''}, create a realistic recipe using only ingredients from the available inventory list below.
 
 Available Ingredients:
-${ingredientsList}
+${availableIngredients}
 
 IMPORTANT: For the "unit" field, you must use one of these valid measurement units only: ${validUnits.join(', ')}.
 Choose the most appropriate unit for each ingredient based on typical recipe measurements.
@@ -61,111 +42,164 @@ Please respond with a JSON object containing:
 
 Only suggest ingredients that are actually in the available ingredients list. Use realistic quantities and appropriate measurement units for cooking. If you cannot create a reasonable recipe with the available ingredients, set confidence to 0 and explain why in the reasoning.`;
 
-    console.log('🧑‍🍳 Enhancing recipe with AI...');
+// Model configurations
+const MODELS = [
+  {
+    name: "DeepSeek V3.1",
+    id: "deepseek/deepseek-chat-v3.1:free",
+    systemPrompt: "You are a professional chef and recipe consultant using DeepSeek V3.1. Always respond with valid JSON only.",
+    maxRetries: 3
+  },
+  {
+    name: "Mistral Small",
+    id: "mistralai/mistral-small-3.2-24b-instruct:free",
+    systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
+    maxRetries: 1
+  },
+  {
+    name: "Grok 4 Fast",
+    id: "x-ai/grok-4-fast:free",
+    systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
+    maxRetries: 1
+  }
+];
 
-    // Use Mistral first with retry logic, then Grok as backup
-    let response: Response | undefined;
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    while (retryCount < maxRetries) {
-      try {
-        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openRouterApiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://app.easyshifthq.com',
-            'X-Title': 'EasyShiftHQ Recipe Enhancement'
-          },
-          body: JSON.stringify({
-            model: 'deepseek/deepseek-chat-v3.1:free',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a professional chef and recipe consultant using DeepSeek V3.1. Always respond with valid JSON only.'
-              },
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-            temperature: 0.3,
-            max_tokens: 1000
-          }),
-        });
+// Helper function to build consistent request bodies
+function buildRecipeRequestBody(
+  modelId: string,
+  systemPrompt: string,
+  prompt: string
+): any {
+  return {
+    model: modelId,
+    messages: [
+      {
+        role: "system",
+        content: systemPrompt
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ]
+  };
+}
 
-        if (response.ok) {
-          console.log('✅ DeepSeek V3.1 succeeded');
-          break;
-        }
+// Generic function to call a model with retries
+async function callModel(
+  modelConfig: typeof MODELS[0],
+  prompt: string,
+  openRouterApiKey: string
+): Promise<Response | null> {
+  let retryCount = 0;
+  
+  while (retryCount < modelConfig.maxRetries) {
+    try {
+      console.log(`🔄 ${modelConfig.name} attempt ${retryCount + 1}/${modelConfig.maxRetries}...`);
+      
+      const requestBody = buildRecipeRequestBody(
+        modelConfig.id,
+        modelConfig.systemPrompt,
+        prompt
+      );
 
-        if (response.status === 429) {
-          console.log(`🔄 Rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
-          retryCount++;
-          if (retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
-          }
-        } else {
-          break;
-        }
-      } catch (error) {
-        console.error(`DeepSeek attempt ${retryCount + 1} failed:`, error);
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterApiKey}`,
+          "HTTP-Referer": "https://app.easyshifthq.com",
+          "X-Title": "EasyShiftHQ Recipe Enhancement",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (response.ok) {
+        console.log(`✅ ${modelConfig.name} succeeded`);
+        return response;
+      }
+
+      if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
+        console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
         retryCount++;
-        if (retryCount >= maxRetries) {
-          throw error;
-        }
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
+        break;
+      }
+    } catch (error) {
+      console.error(`❌ ${modelConfig.name} error:`, error);
+      retryCount++;
+      if (retryCount < modelConfig.maxRetries) {
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
       }
     }
+  }
+  
+  return null;
+}
 
-    // Try Grok as backup if DeepSeek failed
-    if (!response || !response.ok) {
-      console.log('🔄 DeepSeek failed, trying Grok as backup...');
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { itemName, itemDescription, availableIngredients }: RecipeEnhanceRequest = await req.json();
+
+    const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
+    if (!openRouterApiKey) {
+      throw new Error('OPENROUTER_API_KEY is not configured');
+    }
+
+    const ingredientsList = availableIngredients.map(ing => 
+      `- ${ing.name} (measured in ${ing.uom_recipe})`
+    ).join('\n');
+
+    const validUnits = ['oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 'bottle', 'can', 'bag', 'box', 'piece', 'serving'];
+    
+    const prompt = RECIPE_ANALYSIS_PROMPT(itemName, itemDescription || '', ingredientsList, validUnits);
+
+    console.log('🚀 Starting recipe enhancement with 3-model fallback...');
+
+    let finalResponse: Response | undefined;
+
+    // Try models in order: DeepSeek -> Mistral -> Grok
+    for (const modelConfig of MODELS) {
+      console.log(`🚀 Trying ${modelConfig.name}...`);
       
-      try {
-        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openRouterApiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://app.easyshifthq.com',
-            'X-Title': 'EasyShiftHQ Recipe Enhancement (Grok Backup)'
-          },
-          body: JSON.stringify({
-            model: 'x-ai/grok-4-fast:free',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a professional chef and recipe consultant. Always respond with valid JSON only.'
-              },
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-            temperature: 0.3,
-            max_tokens: 1000
-          }),
-        });
-
-        if (response.ok) {
-          console.log('✅ Grok backup succeeded');
-        }
-      } catch (grokError) {
-        console.error('❌ Grok backup error:', grokError);
+      const response = await callModel(
+        modelConfig,
+        prompt,
+        openRouterApiKey
+      );
+      
+      if (response) {
+        finalResponse = response;
+        break;
       }
+      
+      console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
     }
 
-    // If both DeepSeek and Grok failed
-    if (!response || !response.ok) {
-      const errorMessage = response ? `API error: ${response.status} ${response.statusText}` : 'Failed to get response from both DeepSeek and Grok';
-      const errorText = response ? await response.text() : '';
-      console.error('OpenRouter API error:', errorMessage, errorText);
-      throw new Error(errorMessage);
+    // If all models failed
+    if (!finalResponse || !finalResponse.ok) {
+      console.error('❌ All models (DeepSeek, Mistral, Grok) failed');
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'Recipe enhancement temporarily unavailable. All AI models failed.',
+          details: 'DeepSeek, Mistral, and Grok are currently unavailable'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 503 
+        }
+      );
     }
 
-    const data = await response.json();
+    const data = await finalResponse.json();
     
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       throw new Error('Invalid response from OpenRouter API');

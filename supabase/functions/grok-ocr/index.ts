@@ -9,6 +9,152 @@ interface OCRRequest {
   imageData: string; // base64 encoded image
 }
 
+// Shared OCR analysis prompt for all models
+const OCR_ANALYSIS_PROMPT = `You are an expert OCR system specialized in food packaging and product labels for restaurant inventory management.
+
+Analyze this image and extract ALL visible text with special attention to:
+
+**CRITICAL INFORMATION:**
+1. Product name and brand (usually largest text)
+2. Package sizes: weights (oz, lb, g, kg), volumes (ml, L, fl oz), counts (ct, pack)
+3. Supplier/distributor codes or names (often in small print)
+4. Batch numbers, lot codes, expiration dates
+5. Nutritional information numbers
+6. Ingredient lists
+7. Barcode/UPC codes if visible
+
+**EXTRACTION RULES:**
+- Preserve exact spelling and capitalization
+- Include ALL numbers with their units
+- Note text hierarchy (large → small)
+- Extract any supplier stamps or distributor marks
+- Look for 'Distributed by' or 'Packed for' text
+- Include route numbers or warehouse codes
+
+**SUPPLIER DETECTION:**
+Look specifically for:
+- Company logos/names (Sysco, US Foods, Performance Food Group, etc.)
+- Distributor stamps or codes
+- Supplier SKU numbers
+- Route delivery information
+
+**FORMAT:** Return structured text maintaining visual layout:
+BRAND: [brand name]
+PRODUCT: [product name]
+SIZE: [size with units]
+SUPPLIER: [if visible]
+DISTRIBUTOR: [if visible]
+BATCH/LOT: [if visible]
+UPC/BARCODE: [if visible]
+OTHER: [remaining text]
+
+Be thorough - small text often contains critical supplier and batch information for inventory management.`;
+
+// Model configurations (vision-capable models only)
+const MODELS = [
+  {
+    name: "Mistral Small",
+    id: "mistralai/mistral-small-3.2-24b-instruct:free",
+    systemPrompt: "You are an expert OCR system for food packaging and inventory labels.",
+    maxRetries: 2
+  },
+  {
+    name: "Grok 4 Fast",
+    id: "x-ai/grok-4-fast:free",
+    systemPrompt: "You are an expert OCR system for food packaging and inventory labels.",
+    maxRetries: 1
+  }
+];
+
+// Helper function to build consistent request bodies
+function buildOCRRequestBody(
+  modelId: string,
+  systemPrompt: string,
+  imageData: string
+): any {
+  return {
+    model: modelId,
+    messages: [
+      {
+        role: "system",
+        content: systemPrompt
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: OCR_ANALYSIS_PROMPT
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: imageData
+            }
+          }
+        ]
+      }
+    ],
+    max_tokens: 500,
+    temperature: 0.1
+  };
+}
+
+// Generic function to call a model with retries
+async function callModel(
+  modelConfig: typeof MODELS[0],
+  imageData: string,
+  openRouterApiKey: string
+): Promise<Response | null> {
+  let retryCount = 0;
+  
+  while (retryCount < modelConfig.maxRetries) {
+    try {
+      console.log(`🔄 ${modelConfig.name} attempt ${retryCount + 1}/${modelConfig.maxRetries}...`);
+      
+      const requestBody = buildOCRRequestBody(
+        modelConfig.id,
+        modelConfig.systemPrompt,
+        imageData
+      );
+
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterApiKey}`,
+          "HTTP-Referer": "https://app.easyshifthq.com",
+          "X-Title": "EasyShiftHQ Inventory OCR",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (response.ok) {
+        console.log(`✅ ${modelConfig.name} succeeded`);
+        return response;
+      }
+
+      if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
+        console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
+        retryCount++;
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
+        break;
+      }
+    } catch (error) {
+      console.error(`❌ ${modelConfig.name} error:`, error);
+      retryCount++;
+      if (retryCount < modelConfig.maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+      }
+    }
+  }
+  
+  return null;
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -39,53 +185,45 @@ serve(async (req) => {
       );
     }
 
-    console.log('🔍 Processing image with Grok OCR...');
+    console.log('🔍 Starting OCR with 2-model fallback...');
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${openRouterApiKey}`,
-        "HTTP-Referer": "https://app.easyshifthq.com",
-        "X-Title": "EasyShiftHQ Inventory OCR",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        "model": "x-ai/grok-4-fast:free",
-        "messages": [
-          {
-            "role": "user",
-            "content": [
-              {
-                "type": "text",
-                "text": "You are an expert OCR system specialized in food packaging and product labels for restaurant inventory management.\n\nAnalyze this image and extract ALL visible text with special attention to:\n\n**CRITICAL INFORMATION:**\n1. Product name and brand (usually largest text)\n2. Package sizes: weights (oz, lb, g, kg), volumes (ml, L, fl oz), counts (ct, pack)\n3. Supplier/distributor codes or names (often in small print)\n4. Batch numbers, lot codes, expiration dates\n5. Nutritional information numbers\n6. Ingredient lists\n7. Barcode/UPC codes if visible\n\n**EXTRACTION RULES:**\n- Preserve exact spelling and capitalization\n- Include ALL numbers with their units\n- Note text hierarchy (large → small)\n- Extract any supplier stamps or distributor marks\n- Look for 'Distributed by' or 'Packed for' text\n- Include route numbers or warehouse codes\n\n**SUPPLIER DETECTION:**\nLook specifically for:\n- Company logos/names (Sysco, US Foods, Performance Food Group, etc.)\n- Distributor stamps or codes\n- Supplier SKU numbers\n- Route delivery information\n\n**FORMAT:** Return structured text maintaining visual layout:\nBRAND: [brand name]\nPRODUCT: [product name]\nSIZE: [size with units]\nSUPPLIER: [if visible]\nDISTRIBUTOR: [if visible]\nBATCH/LOT: [if visible]\nUPC/BARCODE: [if visible]\nOTHER: [remaining text]\n\nBe thorough - small text often contains critical supplier and batch information for inventory management."
-              },
-              {
-                "type": "image_url",
-                "image_url": {
-                  "url": imageData
-                }
-              }
-            ]
-          }
-        ],
-        "max_tokens": 500,
-        "temperature": 0.1
-      })
-    });
+    let finalResponse: Response | undefined;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenRouter API error:', response.status, errorText);
+    // Try models in order: Mistral -> Grok
+    for (const modelConfig of MODELS) {
+      console.log(`🚀 Trying ${modelConfig.name}...`);
+      
+      const response = await callModel(
+        modelConfig,
+        imageData,
+        openRouterApiKey
+      );
+      
+      if (response) {
+        finalResponse = response;
+        break;
+      }
+      
+      console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
+    }
+
+    // If all models failed
+    if (!finalResponse || !finalResponse.ok) {
+      console.error('❌ All models (Mistral, Grok) failed');
+      
       return new Response(
-        JSON.stringify({ error: `OpenRouter API error: ${response.status}` }),
+        JSON.stringify({ 
+          error: 'OCR temporarily unavailable. All AI models failed.',
+          details: 'Mistral and Grok are currently unavailable'
+        }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: response.status 
+          status: 503 
         }
       );
     }
 
-    const data = await response.json();
+    const data = await finalResponse.json();
     
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       console.error('Invalid response structure:', data);

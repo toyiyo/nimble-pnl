@@ -8,6 +8,131 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Shared analysis prompt for all models
+const PRODUCT_ENHANCEMENT_PROMPT = (searchText: string, productName: string, brand: string, category: string, currentDescription: string) => `
+Analyze this product information and extract structured data:
+
+Search Results: ${searchText}
+Product Name: ${productName}
+Brand: ${brand}
+Category: ${category}
+Current Description: ${currentDescription}
+
+Return ONLY valid JSON (no markdown, no explanations):
+{
+  "description": "concise 2-3 sentence description",
+  "nutritionalInfo": "key nutritional facts if food product, otherwise null",
+  "ingredients": "ingredient list if food product, otherwise null",
+  "allergens": ["array", "of", "common", "allergens"] or null,
+  "shelfLife": "typical shelf life if applicable, otherwise null",
+  "storageInstructions": "storage requirements if applicable, otherwise null"
+}
+
+CRITICAL RULES:
+- Keep descriptions professional and concise
+- Only include nutritional/ingredient info for food products
+- Return null for non-applicable fields
+- Use proper JSON formatting
+`;
+
+// Model configurations
+const MODELS = [
+  {
+    name: "DeepSeek V3.1",
+    id: "deepseek/deepseek-chat-v3.1:free",
+    systemPrompt: "You are an expert product data analyst. Return only valid JSON.",
+    maxRetries: 3
+  },
+  {
+    name: "Mistral Small",
+    id: "mistralai/mistral-small-3.2-24b-instruct:free",
+    systemPrompt: "You are an expert product data analyst. Return only valid JSON.",
+    maxRetries: 1
+  },
+  {
+    name: "Grok 4 Fast",
+    id: "x-ai/grok-4-fast:free",
+    systemPrompt: "You are an expert product data analyst. Return only valid JSON.",
+    maxRetries: 1
+  }
+];
+
+// Helper function to build consistent request bodies
+function buildProductRequestBody(
+  modelId: string,
+  systemPrompt: string,
+  prompt: string
+): any {
+  return {
+    model: modelId,
+    messages: [
+      {
+        role: "system",
+        content: systemPrompt
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ]
+  };
+}
+
+// Generic function to call a model with retries
+async function callModel(
+  modelConfig: typeof MODELS[0],
+  prompt: string,
+  openRouterApiKey: string
+): Promise<Response | null> {
+  let retryCount = 0;
+  
+  while (retryCount < modelConfig.maxRetries) {
+    try {
+      console.log(`🔄 ${modelConfig.name} attempt ${retryCount + 1}/${modelConfig.maxRetries}...`);
+      
+      const requestBody = buildProductRequestBody(
+        modelConfig.id,
+        modelConfig.systemPrompt,
+        prompt
+      );
+
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterApiKey}`,
+          "HTTP-Referer": "https://app.easyshifthq.com",
+          "X-Title": "EasyShiftHQ Product Enhancement",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (response.ok) {
+        console.log(`✅ ${modelConfig.name} succeeded`);
+        return response;
+      }
+
+      if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
+        console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
+        retryCount++;
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
+        break;
+      }
+    } catch (error) {
+      console.error(`❌ ${modelConfig.name} error:`, error);
+      retryCount++;
+      if (retryCount < modelConfig.maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+      }
+    }
+  }
+  
+  return null;
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -25,119 +150,47 @@ serve(async (req) => {
       );
     }
 
-    const prompt = `Based on the following search results about a product, extract and enhance the product information:
+    const prompt = PRODUCT_ENHANCEMENT_PROMPT(searchText, productName, brand || 'Unknown', category || 'Unknown', currentDescription || 'None');
 
-Product Name: ${productName}
-Brand: ${brand || 'Unknown'}
-Category: ${category || 'Unknown'}
-Current Description: ${currentDescription || 'None'}
+    console.log('🚀 Starting product enhancement with 3-model fallback...');
 
-Search Results Text: ${searchText}
+    let finalResponse: Response | undefined;
 
-Please extract and return ONLY a JSON object with the following structure (no additional text):
-{
-  "description": "Enhanced product description (2-3 sentences, informative and professional)",
-  "brand": "Confirmed brand name if found",
-  "category": "Refined category classification",
-  "nutritionalInfo": "Brief nutritional summary if applicable",
-  "ingredients": ["ingredient1", "ingredient2"] (if food product),
-  "packageSize": "Package size information if found",
-  "manufacturer": "Manufacturer name if different from brand"
-}
-
-Only include fields where you have confident information from the search results. Return empty object {} if no reliable information can be extracted.`;
-
-    console.log('🤖 Enhancing product with DeepSeek V3.1...');
-
-    // Use DeepSeek V3.1 first with retry logic, then Grok as backup
-    let response: Response | undefined;
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    while (retryCount < maxRetries) {
-      try {
-        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openRouterApiKey}`,
-            'HTTP-Referer': 'https://app.easyshifthq.com',
-            'X-Title': 'EasyShiftHQ Product Enhancement',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'deepseek/deepseek-chat-v3.1:free',
-            messages: [
-              { role: 'system', content: 'You are a product data enhancement expert using DeepSeek V3.1. Extract and enhance product information from search results. Always respond with valid JSON only.' },
-              { role: 'user', content: prompt }
-            ],
-            temperature: 0.3,
-            max_tokens: 500
-          }),
-        });
-
-        if (response.ok) {
-          console.log('✅ DeepSeek V3.1 succeeded');
-          break;
-        }
-
-        if (response.status === 429) {
-          console.log(`🔄 Rate limited (attempt ${retryCount + 1}/${maxRetries}), waiting before retry...`);
-          retryCount++;
-          if (retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
-          }
-        } else {
-          break;
-        }
-      } catch (error) {
-        console.error(`DeepSeek attempt ${retryCount + 1} failed:`, error);
-        retryCount++;
-        if (retryCount >= maxRetries) {
-          throw error;
-        }
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
-      }
-    }
-
-    // Try Grok as backup if DeepSeek failed
-    if (!response || !response.ok) {
-      console.log('🔄 DeepSeek failed, trying Grok as backup...');
+    // Try models in order: DeepSeek -> Mistral -> Grok
+    for (const modelConfig of MODELS) {
+      console.log(`🚀 Trying ${modelConfig.name}...`);
       
-      try {
-        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openRouterApiKey}`,
-            'HTTP-Referer': 'https://app.easyshifthq.com',
-            'X-Title': 'EasyShiftHQ Product Enhancement (Grok Backup)',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'x-ai/grok-4-fast:free',
-            messages: [
-              { role: 'system', content: 'You are a product data enhancement expert. Extract and enhance product information from search results. Always respond with valid JSON only.' },
-              { role: 'user', content: prompt }
-            ],
-            temperature: 0.3,
-            max_tokens: 500
-          }),
-        });
-
-        if (response.ok) {
-          console.log('✅ Grok backup succeeded');
-        }
-      } catch (grokError) {
-        console.error('❌ Grok backup error:', grokError);
+      const response = await callModel(
+        modelConfig,
+        prompt,
+        openRouterApiKey
+      );
+      
+      if (response) {
+        finalResponse = response;
+        break;
       }
+      
+      console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
     }
 
-    // If both DeepSeek and Grok failed
-    if (!response || !response.ok) {
-      const errorMessage = response ? `API error: ${response.status} ${response.statusText}` : 'Failed to get response from both DeepSeek and Grok';
-      throw new Error(errorMessage);
+    // If all models failed
+    if (!finalResponse || !finalResponse.ok) {
+      console.error('❌ All models (DeepSeek, Mistral, Grok) failed');
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'Product enhancement temporarily unavailable. All AI models failed.',
+          details: 'DeepSeek, Mistral, and Grok are currently unavailable'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 503 
+        }
+      );
     }
 
-    const data = await response.json();
+    const data = await finalResponse.json();
     const enhancedText = data.choices[0].message.content;
 
     try {

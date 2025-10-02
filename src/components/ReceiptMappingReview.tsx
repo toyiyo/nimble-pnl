@@ -452,7 +452,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 </div>
 
                 <div>
-                  <Label htmlFor={`price-${item.id}`}>Price</Label>
+                  <Label htmlFor={`price-${item.id}`}>Total Price</Label>
                   <Input
                     key={`price-${item.id}`}
                     id={`price-${item.id}`}
@@ -462,6 +462,12 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                     onChange={(e) => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
                     placeholder="0.00"
                   />
+                  {item.parsed_quantity && item.parsed_quantity > 0 && item.parsed_price && (
+                    <Badge variant="secondary" className="mt-2">
+                      Price per {item.parsed_unit || 'unit'}: $
+                      {(item.parsed_price / item.parsed_quantity).toFixed(2)}
+                    </Badge>
+                  )}
                 </div>
               </div>
 

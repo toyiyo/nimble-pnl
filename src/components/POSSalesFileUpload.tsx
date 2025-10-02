@@ -155,17 +155,30 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   row['Transaction Date'] ||
                   '';
 
+                let hasDateWarning = false;
+
                 // Try to parse and format date
                 if (saleDate) {
                   const dateObj = new Date(saleDate);
                   if (!isNaN(dateObj.getTime())) {
                     saleDate = dateObj.toISOString().split('T')[0];
                   } else {
-                    // Default to today if date parsing fails
-                    saleDate = new Date().toISOString().split('T')[0];
+                    // Mark as having a date warning - DO NOT default to today
+                    hasDateWarning = true;
+                    skippedRows.push({ 
+                      rowNumber: index + 1, 
+                      reason: 'Invalid date format - could not parse date' 
+                    });
+                    return null;
                   }
                 } else {
-                  saleDate = new Date().toISOString().split('T')[0];
+                  // Mark as having a date warning - DO NOT default to today
+                  hasDateWarning = true;
+                  skippedRows.push({ 
+                    rowNumber: index + 1, 
+                    reason: 'Missing date - date column is required' 
+                  });
+                  return null;
                 }
 
                 // Find time column
@@ -192,13 +205,23 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   orderId = `manual_upload_${itemGuid || 'none'}_${masterId || 'none'}_${parentId || 'none'}_${itemName.replace(/\s+/g, '_').toLowerCase()}`;
                 } else {
                   // For other POS systems, use whatever ID we can find
-                  orderId = 
+                  const externalOrderId = 
                     row['Order ID'] ||
                     row['order_id'] ||
                     row['Check #'] ||
                     row['Check Number'] ||
                     row['Transaction ID'] ||
                     '';
+                  
+                  if (externalOrderId) {
+                    orderId = externalOrderId;
+                  } else {
+                    // Create a deterministic ID based on the data content
+                    // This ensures the same data always generates the same ID
+                    // Format: manual_upload_<item>_<quantity>_<date>_<price>
+                    const priceForId = totalPrice || unitPrice || 0;
+                    orderId = `manual_upload_${itemName.replace(/\s+/g, '_').toLowerCase()}_${quantity}_${saleDate}_${priceForId.toFixed(2)}`;
+                  }
                 }
                   
                 // Get item category - useful for categorizing sales
@@ -257,6 +280,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                       itemGuid,
                       compoundOrderId: orderId, // Store the compound ID we created
                       importedAt: new Date().toISOString(),
+                      hasDateWarning, // Flag if date had issues
                     }
                   },
                 };
@@ -391,12 +415,13 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         <div className="bg-muted p-4 rounded-lg space-y-2">
           <h4 className="text-sm font-semibold">Expected CSV Format:</h4>
           <ul className="text-sm text-muted-foreground space-y-1">
-            <li>• Required: Item name or product name column</li>
-            <li>• Optional: Quantity, Price/Amount, Date, Time, Order ID</li>
+            <li>• Required: Item name and Date columns</li>
+            <li>• Optional: Quantity, Price/Amount, Time, Order ID</li>
             <li>• Column names are case-insensitive and flexible</li>
-            <li>• Dates will be parsed automatically or default to today</li>
+            <li>• Rows with missing or invalid dates will be skipped</li>
             <li>• Toast POS exports are fully supported (items & modifiers)</li>
             <li>• Summary rows without item names will be skipped</li>
+            <li>• Duplicate transactions are automatically detected and prevented</li>
           </ul>
         </div>
       </CardContent>

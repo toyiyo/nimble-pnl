@@ -1,23 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } f          // Add metadata - using a simpler structure for better JSON compatibility
-          raw_data: {
-            source: 'file_import',
-            imported_at: new Date().toISOString(),
-            // Only include essential fields from raw data
-            item_data: {
-              name: sale.itemName,
-              category: sale.category || null,
-              tags: sale.tags || null,
-            },
-            // Store identifiers
-            identifiers: {
-              order_id: sale.orderId || null,
-              master_id: sale.rawData.masterId || null,
-              parent_id: sale.rawData.parentId || null,
-              item_guid: sale.rawData.itemGuid || null,
-            }
-          },nts/ui/button';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -44,7 +27,16 @@ interface ParsedSale {
   orderId?: string;
   category?: string;  // Added for Toast's "Sales Category"
   tags?: string;      // Added for Toast's "Item tags"
-  rawData: Record<string, unknown>;
+  rawData: {
+    _parsedMeta?: {
+      compoundOrderId?: string;
+      posSystem?: string;
+    };
+    masterId?: string;
+    parentId?: string;
+    itemGuid?: string;
+    [key: string]: unknown;
+  };
 }
 
 interface EditableSale extends ParsedSale {
@@ -188,13 +180,18 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
           raw_data: {
             source: 'file_import',
             imported_at: new Date().toISOString(),
-            category: sale.category || null,
-            tags: sale.tags || null,
+            // Only include essential fields from raw data
+            item_data: {
+              name: sale.itemName,
+              category: sale.category || null,
+              tags: sale.tags || null,
+            },
+            // Store identifiers
             identifiers: {
               order_id: sale.orderId || null,
               master_id: sale.rawData.masterId || null,
               parent_id: sale.rawData.parentId || null,
-              item_guid: sale.rawData.itemGuid || null
+              item_guid: sale.rawData.itemGuid || null,
             }
           },
         };

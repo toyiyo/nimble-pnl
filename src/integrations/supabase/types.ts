@@ -1954,20 +1954,13 @@ export type Database = {
         Returns: Json
       }
       process_unified_inventory_deduction: {
-        Args:
-          | {
-              p_external_order_id?: string
-              p_pos_item_name: string
-              p_quantity_sold: number
-              p_restaurant_id: string
-              p_sale_date: string
-            }
-          | {
-              p_pos_item_name: string
-              p_quantity_sold: number
-              p_restaurant_id: string
-              p_sale_date: string
-            }
+        Args: {
+          p_external_order_id?: string
+          p_pos_item_name: string
+          p_quantity_sold: number
+          p_restaurant_id: string
+          p_sale_date: string
+        }
         Returns: Json
       }
       search_products_by_name: {

@@ -153,8 +153,8 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
         total_price: sale.totalPrice || (sale.unitPrice ? sale.unitPrice * sale.quantity : undefined),
         sale_date: sale.saleDate,
         sale_time: sale.saleTime,
-        category: sale.category,
-        // Add metadata
+        // Remove the category field from direct insert since it doesn't exist in the DB schema
+        // Instead, store it only in the raw_data JSON field
         raw_data: {
           source: 'file_import',
           imported_at: new Date().toISOString(),
@@ -165,11 +165,30 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
       }));
 
       // Bulk insert into unified_sales
-      const { error } = await supabase
+      const { error, data } = await supabase
         .from('unified_sales')
-        .insert(salesToInsert);
+        .insert(salesToInsert)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database error during import:', error);
+        
+        // Format a user-friendly error message
+        let errorMessage = "Failed to import sales data";
+        
+        if (error.code === 'PGRST204') {
+          // Schema-related errors
+          errorMessage = `Database schema error: ${error.message}`;
+        } else if (error.code === '23505') {
+          // Unique constraint violation
+          errorMessage = "Duplicate entries detected. Some of these sales might already exist in the system.";
+        } else if (error.code) {
+          // Any other specific error with a code
+          errorMessage = `Database error (${error.code}): ${error.message}`;
+        }
+        
+        throw new Error(errorMessage);
+      }
 
       toast({
         title: "Import successful",

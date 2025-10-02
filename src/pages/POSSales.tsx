@@ -43,16 +43,9 @@ export default function POSSales() {
     rawData: Record<string, unknown>;
   }
 
-  const handleRestaurantSelect = (restaurant: UserRestaurant | null) => {
+  const handleRestaurantSelect = (restaurant: typeof selectedRestaurant) => {
     setSelectedRestaurant(restaurant);
   };
-
-  interface UserRestaurant {
-    restaurant_id: string;
-    restaurant: {
-      name: string;
-    };
-  }
 
   // Auto-sync when restaurant is selected
   useEffect(() => {

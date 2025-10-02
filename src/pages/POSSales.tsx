@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Download, Search, Calendar, RefreshCw } from 'lucide-react';
+import { Plus, Download, Search, Calendar, RefreshCw, Upload as UploadIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { usePOSIntegrations } from '@/hooks/usePOSIntegrations';
 import { useInventoryDeduction } from '@/hooks/useInventoryDeduction';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { POSSaleDialog } from '@/components/POSSaleDialog';
+import { POSSalesFileUpload } from '@/components/POSSalesFileUpload';
+import { POSSalesImportReview } from '@/components/POSSalesImportReview';
 import { format } from 'date-fns';
 import { InventoryDeductionDialog } from '@/components/InventoryDeductionDialog';
 
@@ -26,6 +29,8 @@ export default function POSSales() {
   const [selectedView, setSelectedView] = useState<'sales' | 'grouped'>('sales');
   const [deductionDialogOpen, setDeductionDialogOpen] = useState(false);
   const [selectedItemForDeduction, setSelectedItemForDeduction] = useState<{name: string; quantity: number} | null>(null);
+  const [importedSalesData, setImportedSalesData] = useState<any[] | null>(null);
+  const [activeTab, setActiveTab] = useState<'manual' | 'import'>('manual');
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -59,6 +64,23 @@ export default function POSSales() {
     
     setSelectedItemForDeduction({ name: itemName, quantity });
     setDeductionDialogOpen(true);
+  };
+
+  const handleFileProcessed = (data: any[]) => {
+    setImportedSalesData(data);
+  };
+
+  const handleImportComplete = () => {
+    setImportedSalesData(null);
+    setActiveTab('manual');
+    // Refresh sales data to show newly imported sales
+    if (selectedRestaurant?.restaurant_id) {
+      syncAllSystems();
+    }
+  };
+
+  const handleCancelImport = () => {
+    setImportedSalesData(null);
   };
 
   if (!selectedRestaurant) {
@@ -104,12 +126,24 @@ export default function POSSales() {
         <div className="flex flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
-            onClick={() => setShowSaleDialog(true)}
+            onClick={() => {
+              setActiveTab('manual');
+              setShowSaleDialog(true);
+            }}
             className="flex items-center gap-2 w-full sm:w-auto"
           >
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">Record Manual Sale</span>
             <span className="sm:hidden">Manual Sale</span>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setActiveTab('import')}
+            className="flex items-center gap-2 w-full sm:w-auto"
+          >
+            <UploadIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">Upload File</span>
+            <span className="sm:hidden">Upload</span>
           </Button>
           {hasAnyConnectedSystem() && (
             <Button
@@ -135,189 +169,210 @@ export default function POSSales() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base md:text-lg">Filters & Search</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="w-full">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by item name..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 text-sm"
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="pl-10 text-sm"
-                  placeholder="Start date"
-                />
-              </div>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="pl-10 text-sm"
-                  placeholder="End date"
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <Button
-                variant={selectedView === 'sales' ? 'default' : 'outline'}
-                onClick={() => setSelectedView('sales')}
-                size="sm"
-                className="w-full"
-              >
-                <span className="hidden sm:inline">Individual Sales</span>
-                <span className="sm:hidden">Sales</span>
-              </Button>
-              <Button
-                variant={selectedView === 'grouped' ? 'default' : 'outline'}
-                onClick={() => setSelectedView('grouped')}
-                size="sm"
-                className="w-full"
-              >
-                <span className="hidden sm:inline">Grouped by Item</span>
-                <span className="sm:hidden">Grouped</span>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'manual' | 'import')} className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="manual">View Sales</TabsTrigger>
+          <TabsTrigger value="import">Import from File</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="manual" className="space-y-6">
+          <div className="grid gap-4 md:gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base md:text-lg">Filters & Search</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="w-full">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by item name..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 text-sm"
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="pl-10 text-sm"
+                      placeholder="Start date"
+                    />
+                  </div>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="pl-10 text-sm"
+                      placeholder="End date"
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Button
+                    variant={selectedView === 'sales' ? 'default' : 'outline'}
+                    onClick={() => setSelectedView('sales')}
+                    size="sm"
+                    className="w-full"
+                  >
+                    <span className="hidden sm:inline">Individual Sales</span>
+                    <span className="sm:hidden">Sales</span>
+                  </Button>
+                  <Button
+                    variant={selectedView === 'grouped' ? 'default' : 'outline'}
+                    onClick={() => setSelectedView('grouped')}
+                    size="sm"
+                    className="w-full"
+                  >
+                    <span className="hidden sm:inline">Grouped by Item</span>
+                    <span className="sm:hidden">Grouped</span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-      {loading ? (
-        <Card>
-          <CardContent className="py-8">
-            <div className="text-center text-muted-foreground">
-              Loading sales data...
-            </div>
-          </CardContent>
-        </Card>
-      ) : selectedView === 'sales' ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Sales Transactions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {!hasAnyConnectedSystem() ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p className="mb-2">No POS systems connected.</p>
-                <p>Connect to Square or record manual sales to get started.</p>
-              </div>
-            ) : dateFilteredSales.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No sales found for the selected date range.
-              </div>
-            ) : (
-              <div className="space-y-3 md:space-y-4">
-                {dateFilteredSales.map((sale) => (
-                  <div
-                    key={sale.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between p-3 md:p-4 border rounded-lg hover:bg-muted/50 gap-3 sm:gap-2"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1 md:gap-2 mb-2">
-                        <h3 className="font-medium text-sm md:text-base truncate">{sale.itemName}</h3>
-                        <Badge variant="secondary" className="text-xs">
-                          Qty: {sale.quantity}
-                        </Badge>
-                        {sale.totalPrice && (
-                          <Badge variant="outline" className="text-xs">
-                            ${sale.totalPrice.toFixed(2)}
-                          </Badge>
-                        )}
-                        <Badge variant="outline" className="text-xs">
-                          {sale.posSystem}
-                        </Badge>
-                        {unmappedItems.includes(sale.itemName) && (
-                          <Badge variant="destructive" className="text-xs">
-                            No Recipe
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="text-xs md:text-sm text-muted-foreground">
-                        {format(new Date(sale.saleDate), 'MMM d, yyyy')}
-                        {sale.saleTime && ` at ${sale.saleTime}`}
-                        {sale.externalOrderId && (
-                          <>
-                            <br className="sm:hidden" />
-                            <span className="hidden sm:inline"> • </span>
-                            Order: {sale.externalOrderId}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleSimulateDeduction(sale.itemName, sale.quantity)}
-                        className="w-full sm:w-auto text-xs"
+          {loading ? (
+            <Card>
+              <CardContent className="py-8">
+                <div className="text-center text-muted-foreground">
+                  Loading sales data...
+                </div>
+              </CardContent>
+            </Card>
+          ) : selectedView === 'sales' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Sales Transactions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!hasAnyConnectedSystem() ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <p className="mb-2">No POS systems connected.</p>
+                    <p>Connect to Square or record manual sales to get started.</p>
+                  </div>
+                ) : dateFilteredSales.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No sales found for the selected date range.
+                  </div>
+                ) : (
+                  <div className="space-y-3 md:space-y-4">
+                    {dateFilteredSales.map((sale) => (
+                      <div
+                        key={sale.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between p-3 md:p-4 border rounded-lg hover:bg-muted/50 gap-3 sm:gap-2"
                       >
-                        <span className="hidden sm:inline">Simulate Impact</span>
-                        <span className="sm:hidden">Impact</span>
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Sales Summary by Item</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {groupedSales.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No sales data available.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {groupedSales.map((item: any) => (
-                  <div
-                    key={item.item_name}
-                    className="flex items-center justify-between p-4 border rounded-lg"
-                  >
-                    <div className="flex-1">
-                      <h3 className="font-medium">{item.item_name}</h3>
-                      <div className="flex gap-4 text-sm text-muted-foreground mt-1">
-                        <span>Total Quantity: {item.total_quantity}</span>
-                        <span>Sales Count: {item.sale_count}</span>
-                        <span>Total Revenue: ${item.total_revenue.toFixed(2)}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-1 md:gap-2 mb-2">
+                            <h3 className="font-medium text-sm md:text-base truncate">{sale.itemName}</h3>
+                            <Badge variant="secondary" className="text-xs">
+                              Qty: {sale.quantity}
+                            </Badge>
+                            {sale.totalPrice && (
+                              <Badge variant="outline" className="text-xs">
+                                ${sale.totalPrice.toFixed(2)}
+                              </Badge>
+                            )}
+                            <Badge variant="outline" className="text-xs">
+                              {sale.posSystem}
+                            </Badge>
+                            {unmappedItems.includes(sale.itemName) && (
+                              <Badge variant="destructive" className="text-xs">
+                                No Recipe
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-xs md:text-sm text-muted-foreground">
+                            {format(new Date(sale.saleDate), 'MMM d, yyyy')}
+                            {sale.saleTime && ` at ${sale.saleTime}`}
+                            {sale.externalOrderId && (
+                              <>
+                                <br className="sm:hidden" />
+                                <span className="hidden sm:inline"> • </span>
+                                Order: {sale.externalOrderId}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSimulateDeduction(sale.itemName, sale.quantity)}
+                            className="w-full sm:w-auto text-xs"
+                          >
+                            <span className="hidden sm:inline">Simulate Impact</span>
+                            <span className="sm:hidden">Impact</span>
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleSimulateDeduction(item.item_name, 1)}
-                    >
-                      Check Recipe Impact
-                    </Button>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Sales Summary by Item</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {groupedSales.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No sales data available.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {groupedSales.map((item: any) => (
+                      <div
+                        key={item.item_name}
+                        className="flex items-center justify-between p-4 border rounded-lg"
+                      >
+                        <div className="flex-1">
+                          <h3 className="font-medium">{item.item_name}</h3>
+                          <div className="flex gap-4 text-sm text-muted-foreground mt-1">
+                            <span>Total Quantity: {item.total_quantity}</span>
+                            <span>Sales Count: {item.sale_count}</span>
+                            <span>Total Revenue: ${item.total_revenue.toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSimulateDeduction(item.item_name, 1)}
+                        >
+                          Check Recipe Impact
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+        
+        <TabsContent value="import" className="space-y-6">
+          {importedSalesData ? (
+            <POSSalesImportReview
+              salesData={importedSalesData}
+              onImportComplete={handleImportComplete}
+              onCancel={handleCancelImport}
+            />
+          ) : (
+            <POSSalesFileUpload onFileProcessed={handleFileProcessed} />
+          )}
+        </TabsContent>
+      </Tabs>
 
       <POSSaleDialog
         open={showSaleDialog}

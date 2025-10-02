@@ -20,6 +20,7 @@ import { RecipeDialog } from '@/components/RecipeDialog';
 import { DeleteRecipeDialog } from '@/components/DeleteRecipeDialog';
 import { RecipeSuggestions } from '@/components/RecipeSuggestions';
 import { AutoDeductionSettings } from '@/components/AutoDeductionSettings';
+import { BulkInventoryDeductionDialog } from '@/components/BulkInventoryDeductionDialog';
 import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDeduction';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings } from 'lucide-react';
@@ -94,6 +95,7 @@ export default function Recipes() {
           </p>
         </div>
         <div className="flex justify-center lg:justify-start gap-2">
+          <BulkInventoryDeductionDialog />
           <Button 
             variant="outline" 
             onClick={() => setShowAutoSettings(!showAutoSettings)}

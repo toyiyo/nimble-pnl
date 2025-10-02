@@ -1803,6 +1803,14 @@ export type Database = {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: undefined
       }
+      bulk_process_historical_sales: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: Json
+      }
       calculate_daily_pnl: {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: string
@@ -1821,6 +1829,7 @@ export type Database = {
       }
       check_sale_already_processed: {
         Args: {
+          p_external_order_id?: string
           p_pos_item_name: string
           p_quantity_sold: number
           p_restaurant_id: string
@@ -1945,12 +1954,20 @@ export type Database = {
         Returns: Json
       }
       process_unified_inventory_deduction: {
-        Args: {
-          p_pos_item_name: string
-          p_quantity_sold: number
-          p_restaurant_id: string
-          p_sale_date: string
-        }
+        Args:
+          | {
+              p_external_order_id?: string
+              p_pos_item_name: string
+              p_quantity_sold: number
+              p_restaurant_id: string
+              p_sale_date: string
+            }
+          | {
+              p_pos_item_name: string
+              p_quantity_sold: number
+              p_restaurant_id: string
+              p_sale_date: string
+            }
         Returns: Json
       }
       search_products_by_name: {

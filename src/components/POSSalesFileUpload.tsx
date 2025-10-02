@@ -289,7 +289,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
     if (!file) return;
 
     // Validate file type
-    if (!file.name.endsWith('.csv')) {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
       toast({
         title: "Invalid file type",
         description: "Please upload a CSV file",

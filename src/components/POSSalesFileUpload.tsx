@@ -19,6 +19,8 @@ interface ParsedSale {
   saleDate: string;
   saleTime?: string;
   orderId?: string;
+  category?: string;  // Added for Toast's "Sales Category"
+  tags?: string;      // Added for Toast's "Item tags"
   rawData: Record<string, unknown>;
 }
 
@@ -43,9 +45,13 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                 // TOAST POS typically uses: Item, Quantity, Amount, Date, Time
                 
                 // Find item name column (case insensitive)
+                // For Toast POS: check for both "Item" and "Modifier" since modifiers have their name in the "Modifier" column
                 const itemName = 
                   row['Item'] || 
-                  row['item'] || 
+                  row['item'] ||
+                  row['Modifier'] ||
+                  row['modifier'] ||
+                  row['Size modifier'] || // Handle additional fields from Toast
                   row['Item Name'] || 
                   row['item_name'] ||
                   row['Product'] ||
@@ -55,8 +61,10 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   row['name'] ||
                   '';
 
-                // Find quantity column
+                // Find quantity column - Toast POS uses "Qty sold"
                 const quantity = parseFloat(
+                  row['Qty sold'] || 
+                  row['qty sold'] ||
                   row['Quantity'] || 
                   row['quantity'] || 
                   row['Qty'] || 
@@ -66,25 +74,37 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                 ) || 1;
 
                 // Find price columns
-                const totalPrice = parseFloat(
-                  row['Total'] || 
-                  row['total'] || 
-                  row['Amount'] || 
-                  row['amount'] ||
-                  row['Total Amount'] ||
-                  row['Net Sales'] ||
-                  row['net_sales'] ||
-                  row['Price'] ||
-                  ''
-                ) || undefined;
+                // Toast POS has several price fields - try to use the most appropriate one
+                const grossSales = parseFloat(row['Gross sales'] || row['gross sales'] || '') || undefined;
+                const netSales = parseFloat(row['Net sales'] || row['net sales'] || '') || undefined;
+                const avgPrice = parseFloat(row['Avg. price'] || row['avg. price'] || row['avg price'] || '') || undefined;
+                const avgItemPrice = parseFloat(row['Avg. item price (not incl. mods)'] || '') || undefined;
+                
+                // For total price, prioritize net or gross sales over other fields as they represent actual revenue
+                const totalPrice = 
+                  netSales || 
+                  grossSales || 
+                  parseFloat(
+                    row['Total'] || 
+                    row['total'] || 
+                    row['Amount'] || 
+                    row['amount'] ||
+                    row['Total Amount'] ||
+                    row['Price'] ||
+                    ''
+                  ) || undefined;
 
-                const unitPrice = parseFloat(
-                  row['Unit Price'] ||
-                  row['unit_price'] ||
-                  row['Price'] ||
-                  row['price'] ||
-                  ''
-                ) || undefined;
+                // For unit price, try to use avg price fields first
+                const unitPrice = 
+                  avgPrice || 
+                  avgItemPrice ||
+                  parseFloat(
+                    row['Unit Price'] ||
+                    row['unit_price'] ||
+                    row['Price'] ||
+                    row['price'] ||
+                    ''
+                  ) || undefined;
 
                 // Find date column
                 let saleDate = 
@@ -124,13 +144,44 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   row['Check #'] ||
                   row['Check Number'] ||
                   row['Transaction ID'] ||
+                  row['itemGuid'] || // In Toast, itemGuid can serve as a unique identifier
                   '';
+                  
+                // Get item category - useful for categorizing sales
+                const itemCategory = 
+                  row['Sales Category'] || 
+                  row['sales category'] ||
+                  row['Category'] ||
+                  row['category'] ||
+                  '';
+                  
+                // Get item tags - useful for filtering
+                const itemTags = 
+                  row['Item tags'] || 
+                  row['item tags'] ||
+                  row['Tags'] ||
+                  row['tags'] ||
+                  '';
+                  
+                // Get additional Toast-specific IDs
+                const masterId = row['masterId'] || '';
+                const parentId = row['parentId'] || '';
 
                 // If no item name, track this row as skipped but don't throw an error
                 if (!itemName) {
                   skippedRows.push({ 
                     rowNumber: index + 1, 
                     reason: 'Missing item name' 
+                  });
+                  return null;
+                }
+                
+                // Also skip rows where both quantity and price are 0 or undefined
+                // (unless explicitly instructed to include these)
+                if (quantity === 0 && !totalPrice) {
+                  skippedRows.push({ 
+                    rowNumber: index + 1, 
+                    reason: 'Zero quantity and no price' 
                   });
                   return null;
                 }
@@ -143,7 +194,20 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   saleDate,
                   saleTime: saleTime || undefined,
                   orderId: orderId || undefined,
-                  rawData: row,
+                  // Add additional fields to the main object
+                  category: itemCategory || undefined,
+                  tags: itemTags || undefined,
+                  // Store enhanced metadata in rawData
+                  rawData: {
+                    ...row,
+                    _parsedMeta: {
+                      posSystem: 'Toast',
+                      masterId,
+                      parentId,
+                      itemGuid: orderId,
+                      importedAt: new Date().toISOString(),
+                    }
+                  },
                 };
               })
               // Filter out null entries (skipped rows)
@@ -280,6 +344,8 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
             <li>• Optional: Quantity, Price/Amount, Date, Time, Order ID</li>
             <li>• Column names are case-insensitive and flexible</li>
             <li>• Dates will be parsed automatically or default to today</li>
+            <li>• Toast POS exports are fully supported (items & modifiers)</li>
+            <li>• Summary rows without item names will be skipped</li>
           </ul>
         </div>
       </CardContent>

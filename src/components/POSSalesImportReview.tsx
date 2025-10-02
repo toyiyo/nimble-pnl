@@ -25,6 +25,8 @@ interface ParsedSale {
   saleDate: string;
   saleTime?: string;
   orderId?: string;
+  category?: string;  // Added for Toast's "Sales Category"
+  tags?: string;      // Added for Toast's "Item tags"
   rawData: Record<string, unknown>;
 }
 
@@ -143,7 +145,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
       // Prepare data for bulk insert
       const salesToInsert = editableSales.map(sale => ({
         restaurant_id: selectedRestaurant.restaurant_id,
-        pos_system: 'manual', // Mark as manual/file import
+        pos_system: sale.rawData._parsedMeta?.posSystem?.toLowerCase() || 'manual', // Use detected POS system or fallback to manual
         external_order_id: sale.orderId || `file_import_${Date.now()}_${sale.id}`,
         item_name: sale.itemName,
         quantity: sale.quantity,
@@ -151,10 +153,14 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
         total_price: sale.totalPrice || (sale.unitPrice ? sale.unitPrice * sale.quantity : undefined),
         sale_date: sale.saleDate,
         sale_time: sale.saleTime,
+        category: sale.category,
+        // Add metadata
         raw_data: {
           source: 'file_import',
           imported_at: new Date().toISOString(),
           original_data: sale.rawData,
+          category: sale.category,
+          tags: sale.tags,
         },
       }));
 
@@ -218,6 +224,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
               <TableHeader>
                 <TableRow>
                   <TableHead>Item Name</TableHead>
+                  <TableHead>Category</TableHead>
                   <TableHead>Quantity</TableHead>
                   <TableHead>Unit Price</TableHead>
                   <TableHead>Total</TableHead>
@@ -248,7 +255,20 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                           <div className="flex items-center gap-2">
                             {sale.hasError && <AlertCircle className="w-4 h-4 text-destructive" />}
                             <span className={sale.hasError ? 'text-destructive' : ''}>{sale.itemName || '(empty)'}</span>
+                            {sale.tags && <span className="text-xs px-1 bg-muted rounded">{sale.tags}</span>}
                           </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {sale.isEditing ? (
+                          <Input
+                            value={sale.category || ''}
+                            onChange={(e) => handleFieldChange(sale.id, 'category', e.target.value || undefined)}
+                            placeholder="Category"
+                            className="w-full"
+                          />
+                        ) : (
+                          <span className="text-sm">{sale.category || '-'}</span>
                         )}
                       </TableCell>
                       <TableCell>

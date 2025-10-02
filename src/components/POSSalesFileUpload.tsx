@@ -33,109 +33,129 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         skipEmptyLines: true,
         complete: (results) => {
           try {
-            const parsedSales = results.data.map((row: Record<string, string>, index: number) => {
-              // Flexible column mapping - try to detect common column names
-              // TOAST POS typically uses: Item, Quantity, Amount, Date, Time
-              
-              // Find item name column (case insensitive)
-              const itemName = 
-                row['Item'] || 
-                row['item'] || 
-                row['Item Name'] || 
-                row['item_name'] ||
-                row['Product'] ||
-                row['product'] ||
-                row['Menu Item'] ||
-                row['Name'] ||
-                row['name'] ||
-                '';
+            // Keep track of skipped rows for reporting
+            const skippedRows: { rowNumber: number; reason: string }[] = [];
+            
+            // Process rows, filtering out invalid ones
+            const parsedSales = results.data
+              .map((row: Record<string, string>, index: number) => {
+                // Flexible column mapping - try to detect common column names
+                // TOAST POS typically uses: Item, Quantity, Amount, Date, Time
+                
+                // Find item name column (case insensitive)
+                const itemName = 
+                  row['Item'] || 
+                  row['item'] || 
+                  row['Item Name'] || 
+                  row['item_name'] ||
+                  row['Product'] ||
+                  row['product'] ||
+                  row['Menu Item'] ||
+                  row['Name'] ||
+                  row['name'] ||
+                  '';
 
-              // Find quantity column
-              const quantity = parseFloat(
-                row['Quantity'] || 
-                row['quantity'] || 
-                row['Qty'] || 
-                row['qty'] || 
-                row['Count'] ||
-                '1'
-              ) || 1;
+                // Find quantity column
+                const quantity = parseFloat(
+                  row['Quantity'] || 
+                  row['quantity'] || 
+                  row['Qty'] || 
+                  row['qty'] || 
+                  row['Count'] ||
+                  '1'
+                ) || 1;
 
-              // Find price columns
-              const totalPrice = parseFloat(
-                row['Total'] || 
-                row['total'] || 
-                row['Amount'] || 
-                row['amount'] ||
-                row['Total Amount'] ||
-                row['Net Sales'] ||
-                row['net_sales'] ||
-                row['Price'] ||
-                ''
-              ) || undefined;
+                // Find price columns
+                const totalPrice = parseFloat(
+                  row['Total'] || 
+                  row['total'] || 
+                  row['Amount'] || 
+                  row['amount'] ||
+                  row['Total Amount'] ||
+                  row['Net Sales'] ||
+                  row['net_sales'] ||
+                  row['Price'] ||
+                  ''
+                ) || undefined;
 
-              const unitPrice = parseFloat(
-                row['Unit Price'] ||
-                row['unit_price'] ||
-                row['Price'] ||
-                row['price'] ||
-                ''
-              ) || undefined;
+                const unitPrice = parseFloat(
+                  row['Unit Price'] ||
+                  row['unit_price'] ||
+                  row['Price'] ||
+                  row['price'] ||
+                  ''
+                ) || undefined;
 
-              // Find date column
-              let saleDate = 
-                row['Date'] || 
-                row['date'] || 
-                row['Sale Date'] ||
-                row['sale_date'] ||
-                row['Order Date'] ||
-                row['Transaction Date'] ||
-                '';
+                // Find date column
+                let saleDate = 
+                  row['Date'] || 
+                  row['date'] || 
+                  row['Sale Date'] ||
+                  row['sale_date'] ||
+                  row['Order Date'] ||
+                  row['Transaction Date'] ||
+                  '';
 
-              // Try to parse and format date
-              if (saleDate) {
-                const dateObj = new Date(saleDate);
-                if (!isNaN(dateObj.getTime())) {
-                  saleDate = dateObj.toISOString().split('T')[0];
+                // Try to parse and format date
+                if (saleDate) {
+                  const dateObj = new Date(saleDate);
+                  if (!isNaN(dateObj.getTime())) {
+                    saleDate = dateObj.toISOString().split('T')[0];
+                  } else {
+                    // Default to today if date parsing fails
+                    saleDate = new Date().toISOString().split('T')[0];
+                  }
                 } else {
-                  // Default to today if date parsing fails
                   saleDate = new Date().toISOString().split('T')[0];
                 }
-              } else {
-                saleDate = new Date().toISOString().split('T')[0];
-              }
 
-              // Find time column
-              const saleTime = 
-                row['Time'] || 
-                row['time'] || 
-                row['Sale Time'] ||
-                row['Order Time'] ||
-                '';
+                // Find time column
+                const saleTime = 
+                  row['Time'] || 
+                  row['time'] || 
+                  row['Sale Time'] ||
+                  row['Order Time'] ||
+                  '';
 
-              // Find order ID
-              const orderId = 
-                row['Order ID'] ||
-                row['order_id'] ||
-                row['Check #'] ||
-                row['Check Number'] ||
-                row['Transaction ID'] ||
-                '';
+                // Find order ID
+                const orderId = 
+                  row['Order ID'] ||
+                  row['order_id'] ||
+                  row['Check #'] ||
+                  row['Check Number'] ||
+                  row['Transaction ID'] ||
+                  '';
 
-              if (!itemName) {
-                throw new Error(`Row ${index + 1}: Missing item name`);
-              }
+                // If no item name, track this row as skipped but don't throw an error
+                if (!itemName) {
+                  skippedRows.push({ 
+                    rowNumber: index + 1, 
+                    reason: 'Missing item name' 
+                  });
+                  return null;
+                }
 
-              return {
-                itemName: itemName.trim(),
-                quantity,
-                totalPrice,
-                unitPrice,
-                saleDate,
-                saleTime: saleTime || undefined,
-                orderId: orderId || undefined,
-                rawData: row,
-              };
-            });
+                return {
+                  itemName: itemName.trim(),
+                  quantity,
+                  totalPrice,
+                  unitPrice,
+                  saleDate,
+                  saleTime: saleTime || undefined,
+                  orderId: orderId || undefined,
+                  rawData: row,
+                };
+              })
+              // Filter out null entries (skipped rows)
+              .filter((sale): sale is ParsedSale => sale !== null);
+
+            // If we skipped any rows, log them and include in the toast message
+            if (skippedRows.length > 0) {
+              console.warn('Skipped rows during CSV import:', skippedRows);
+              
+              // We'll attach the skipped rows info to the parsed sales to display in the toast
+              (parsedSales as any).skippedRows = skippedRows;
+            }
 
             resolve(parsedSales);
           } catch (error) {
@@ -177,11 +197,28 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         return;
       }
 
-      toast({
-        title: "File processed",
-        description: `Successfully parsed ${parsedSales.length} sales records`,
-      });
+      // Check if we have skipped rows
+      const skippedRows = (parsedSales as any).skippedRows;
+      if (skippedRows && skippedRows.length > 0) {
+        // For better UX, show details about skipped rows
+        const skippedRowsList = skippedRows.length <= 3
+          ? skippedRows.map((r: any) => `Row ${r.rowNumber}: ${r.reason}`).join(', ')
+          : `${skippedRows.length} rows (including row ${skippedRows[0].rowNumber}) due to missing data`;
+          
+        toast({
+          title: "File processed with warnings",
+          description: `Successfully parsed ${parsedSales.length} sales records. Skipped ${skippedRowsList}.`,
+          variant: "warning",
+        });
+      } else {
+        toast({
+          title: "File processed",
+          description: `Successfully parsed ${parsedSales.length} sales records`,
+        });
+      }
 
+      // Clean up the skipped rows property before passing to the parent
+      delete (parsedSales as any).skippedRows;
       onFileProcessed(parsedSales);
     } catch (error) {
       console.error('Error processing file:', error);

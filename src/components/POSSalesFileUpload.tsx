@@ -49,11 +49,8 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
               'Transaction Date' in firstRow
             );
             
-            // If no date column exists, reject with a specific error
-            if (!hasDateColumn) {
-              reject(new Error('NO_DATE_COLUMN: This CSV file does not contain a date column. Please use a transaction-level export that includes dates, or contact support for help importing summary reports.'));
-              return;
-            }
+            // Track if we need to prompt for a date
+            const needsDateInput = !hasDateColumn;
             
             // Process rows, filtering out invalid ones
             const parsedSales = results.data
@@ -174,28 +171,34 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
 
                 let hasDateWarning = false;
 
-                // Try to parse and format date
-                if (saleDate) {
-                  const dateObj = new Date(saleDate);
-                  if (!isNaN(dateObj.getTime())) {
-                    saleDate = dateObj.toISOString().split('T')[0];
+                // Only validate date if the CSV has a date column
+                if (!needsDateInput) {
+                  // Try to parse and format date
+                  if (saleDate) {
+                    const dateObj = new Date(saleDate);
+                    if (!isNaN(dateObj.getTime())) {
+                      saleDate = dateObj.toISOString().split('T')[0];
+                    } else {
+                      // Mark as having a date warning - DO NOT default to today
+                      hasDateWarning = true;
+                      skippedRows.push({ 
+                        rowNumber: index + 1, 
+                        reason: 'Invalid date format - could not parse date' 
+                      });
+                      return null;
+                    }
                   } else {
                     // Mark as having a date warning - DO NOT default to today
                     hasDateWarning = true;
                     skippedRows.push({ 
                       rowNumber: index + 1, 
-                      reason: 'Invalid date format - could not parse date' 
+                      reason: 'Missing date - date column is required' 
                     });
                     return null;
                   }
                 } else {
-                  // Mark as having a date warning - DO NOT default to today
-                  hasDateWarning = true;
-                  skippedRows.push({ 
-                    rowNumber: index + 1, 
-                    reason: 'Missing date - date column is required' 
-                  });
-                  return null;
+                  // No date column in CSV - will be prompted for date in UI
+                  saleDate = ''; // Empty string indicates date needed
                 }
 
                 // Find time column
@@ -316,6 +319,11 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
               (parsedSales as any).skippedRows = skippedRows;
             }
 
+            // Attach metadata about whether we need date input
+            if (needsDateInput) {
+              (parsedSales as any).needsDateInput = true;
+            }
+
             resolve(parsedSales);
           } catch (error) {
             reject(error);
@@ -356,6 +364,9 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         return;
       }
 
+      // Check if we need date input from user
+      const needsDateInput = (parsedSales as any).needsDateInput;
+      
       // Check if we have skipped rows
       const skippedRows = (parsedSales as any).skippedRows;
       if (skippedRows && skippedRows.length > 0) {
@@ -369,6 +380,11 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
           description: `Successfully parsed ${parsedSales.length} sales records. Skipped ${skippedRowsList}.`,
           variant: "destructive",
         });
+      } else if (needsDateInput) {
+        toast({
+          title: "Date required",
+          description: `Parsed ${parsedSales.length} items. Please enter a sale date to continue.`,
+        });
       } else {
         toast({
           title: "File processed",
@@ -378,26 +394,16 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
 
       // Clean up the skipped rows property before passing to the parent
       delete (parsedSales as any).skippedRows;
+      // Keep needsDateInput flag for parent component
       onFileProcessed(parsedSales);
     } catch (error) {
       console.error('Error processing file:', error);
-      
-      // Handle specific error types
-      if (error instanceof Error && error.message.startsWith('NO_DATE_COLUMN:')) {
-        const message = error.message.replace('NO_DATE_COLUMN: ', '');
-        toast({
-          title: "Missing Date Column",
-          description: message,
-          variant: "destructive",
-        });
-      } else {
-        const errorMessage = error instanceof Error ? error.message : "Failed to parse CSV file";
-        toast({
-          title: "Error processing file",
-          description: errorMessage,
-          variant: "destructive",
-        });
-      }
+      const errorMessage = error instanceof Error ? error.message : "Failed to parse CSV file";
+      toast({
+        title: "Error processing file",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setIsProcessing(false);
       // Reset file input
@@ -446,10 +452,10 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         <div className="bg-muted p-4 rounded-lg space-y-2">
           <h4 className="text-sm font-semibold">Expected CSV Format:</h4>
           <ul className="text-sm text-muted-foreground space-y-1">
-            <li>• Required: Item name and Date columns</li>
-            <li>• Optional: Quantity, Price/Amount, Time, Order ID</li>
+            <li>• Required: Item name column</li>
+            <li>• Recommended: Date, Quantity, Price/Amount, Time, Order ID</li>
+            <li>• Files without dates will prompt you to enter a date during review</li>
             <li>• Column names are case-insensitive and flexible</li>
-            <li>• Rows with missing or invalid dates will be skipped</li>
             <li>• Toast POS exports are fully supported (items & modifiers)</li>
             <li>• Summary rows without item names will be skipped</li>
             <li>• Duplicate transactions are automatically detected and prevented</li>

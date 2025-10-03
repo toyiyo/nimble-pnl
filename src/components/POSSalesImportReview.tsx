@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Table,
   TableBody,
@@ -14,8 +15,11 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckCircle, AlertCircle, Edit2, Save, X, Upload } from 'lucide-react';
+import { CheckCircle, AlertCircle, Edit2, Save, X, Upload, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 
 interface ParsedSale {
   itemName: string;
@@ -59,17 +63,23 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
 }) => {
   const [editableSales, setEditableSales] = useState<EditableSale[]>([]);
   const [isImporting, setIsImporting] = useState(false);
+  const [needsDateInput, setNeedsDateInput] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
 
   useEffect(() => {
+    // Check if we need date input from the metadata
+    const needsDate = (salesData as any).needsDateInput === true;
+    setNeedsDateInput(needsDate);
+    
     // Convert parsed sales to editable format
     const editable = salesData.map((sale, index) => ({
       ...sale,
       id: `temp-${index}`,
       isEditing: false,
-      hasError: !sale.itemName,
-      errorMessage: !sale.itemName ? 'Item name is required' : undefined,
+      hasError: !sale.itemName || (needsDate && !sale.saleDate),
+      errorMessage: !sale.itemName ? 'Item name is required' : (needsDate && !sale.saleDate ? 'Date is required' : undefined),
     }));
     setEditableSales(editable);
   }, [salesData]);
@@ -119,11 +129,43 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     setEditableSales(prev => prev.filter(sale => sale.id !== id));
   };
 
+  const handleApplyDate = (date: Date | undefined) => {
+    if (!date) return;
+    
+    setSelectedDate(date);
+    const dateString = format(date, 'yyyy-MM-dd');
+    
+    // Apply the date to all sales
+    setEditableSales(prev =>
+      prev.map(sale => ({
+        ...sale,
+        saleDate: dateString,
+        hasError: !sale.itemName, // Update error state
+        errorMessage: !sale.itemName ? 'Item name is required' : undefined,
+      }))
+    );
+    
+    toast({
+      title: "Date applied",
+      description: `Applied ${format(date, 'MMM d, yyyy')} to all ${editableSales.length} sales records`,
+    });
+  };
+
   const handleImport = async () => {
     if (!selectedRestaurant?.restaurant_id) {
       toast({
         title: "Error",
         description: "Please select a restaurant first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if we need a date but haven't selected one yet
+    if (needsDateInput && !selectedDate) {
+      toast({
+        title: "Date required",
+        description: "Please select a sale date before importing",
         variant: "destructive",
       });
       return;
@@ -320,6 +362,39 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
           </div>
         </CardHeader>
         <CardContent>
+          {needsDateInput && (
+            <Alert className="mb-4">
+              <Calendar className="h-4 w-4" />
+              <AlertDescription>
+                <div className="flex items-center gap-4 mt-2">
+                  <span className="text-sm font-medium">This file doesn't contain date information. Please select the sale date:</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-[240px] justify-start text-left font-normal",
+                          !selectedDate && "text-muted-foreground"
+                        )}
+                      >
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={handleApplyDate}
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="rounded-md border">
             <Table>
               <TableHeader>

@@ -38,6 +38,23 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
             // Keep track of skipped rows for reporting
             const skippedRows: { rowNumber: number; reason: string }[] = [];
             
+            // Check if the CSV has a date column at all
+            const firstRow = results.data[0] as Record<string, string>;
+            const hasDateColumn = firstRow && (
+              'Date' in firstRow || 
+              'date' in firstRow || 
+              'Sale Date' in firstRow ||
+              'sale_date' in firstRow ||
+              'Order Date' in firstRow ||
+              'Transaction Date' in firstRow
+            );
+            
+            // If no date column exists, reject with a specific error
+            if (!hasDateColumn) {
+              reject(new Error('NO_DATE_COLUMN: This CSV file does not contain a date column. Please use a transaction-level export that includes dates, or contact support for help importing summary reports.'));
+              return;
+            }
+            
             // Process rows, filtering out invalid ones
             const parsedSales = results.data
               .map((row: Record<string, string>, index: number) => {
@@ -364,12 +381,23 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
       onFileProcessed(parsedSales);
     } catch (error) {
       console.error('Error processing file:', error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to parse CSV file";
-      toast({
-        title: "Error processing file",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      
+      // Handle specific error types
+      if (error instanceof Error && error.message.startsWith('NO_DATE_COLUMN:')) {
+        const message = error.message.replace('NO_DATE_COLUMN: ', '');
+        toast({
+          title: "Missing Date Column",
+          description: message,
+          variant: "destructive",
+        });
+      } else {
+        const errorMessage = error instanceof Error ? error.message : "Failed to parse CSV file";
+        toast({
+          title: "Error processing file",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsProcessing(false);
       // Reset file input

@@ -33,7 +33,7 @@ export const AppHeader = () => {
     address: '',
     phone: '',
     cuisine_type: '',
-    timezone: 'America/Chicago',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
 
   const handleCreateRestaurant = async (e: React.FormEvent) => {
@@ -45,11 +45,17 @@ export const AppHeader = () => {
       address: formData.address || undefined,
       phone: formData.phone || undefined,
       cuisine_type: formData.cuisine_type || undefined,
-      timezone: formData.timezone || 'America/Chicago',
+      timezone: formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
 
     if (newRestaurant) {
-      setFormData({ name: '', address: '', phone: '', cuisine_type: '', timezone: 'America/Chicago' });
+      setFormData({ 
+        name: '', 
+        address: '', 
+        phone: '', 
+        cuisine_type: '', 
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone 
+      });
       setShowCreateDialog(false);
     }
   };
@@ -130,6 +136,9 @@ export const AppHeader = () => {
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => navigate('/team')} className="text-xs whitespace-nowrap">
                   Team
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => navigate('/settings')} className="text-xs whitespace-nowrap">
+                  Settings
                 </Button>
                 <Button variant="outline" size="sm" onClick={signOut} className="text-xs whitespace-nowrap">
                   Sign Out

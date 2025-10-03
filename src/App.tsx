@@ -15,6 +15,7 @@ import Integrations from "./pages/Integrations";
 import Recipes from "./pages/Recipes";
 import POSSales from "./pages/POSSales";
 import Reports from "./pages/Reports";
+import RestaurantSettings from "./pages/RestaurantSettings";
 import SquareCallback from "./pages/SquareCallback";
 import { AcceptInvitation } from "./pages/AcceptInvitation";
 import { Inventory } from "./pages/Inventory";
@@ -66,6 +67,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/settings" element={<ProtectedRoute><RestaurantSettings /></ProtectedRoute>} />
             <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
             <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
             <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />

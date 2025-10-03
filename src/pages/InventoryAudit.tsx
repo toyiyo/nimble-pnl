@@ -225,7 +225,7 @@ export default function InventoryAudit() {
                           <div className="font-medium">
                             {formatDateInTimezone(
                               transaction.created_at,
-                              selectedRestaurant.restaurant.timezone || 'America/Chicago',
+                              selectedRestaurant.restaurant.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
                               'MMM dd, yyyy HH:mm'
                             )}
                           </div>

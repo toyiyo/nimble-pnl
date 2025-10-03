@@ -270,6 +270,139 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
           )}
         />
       </div>
+
+      {/* Bulk Package Breakdown Section */}
+      <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-lg space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center flex-shrink-0">
+            <Package className="h-4 w-4 text-white" />
+          </div>
+          <div className="flex-1">
+            <h5 className="font-semibold text-amber-900 mb-1">
+              📦 Bulk Package Breakdown (Optional)
+            </h5>
+            <p className="text-sm text-amber-800 mb-3">
+              Use this when you buy in bulk (e.g., a box of 6 bags) but sell/use individual units.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="bulk_purchase_unit"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm">Bulk Unit (what you buy)</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value || ''}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="e.g., box, case, pallet" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="box">box</SelectItem>
+                    <SelectItem value="case">case</SelectItem>
+                    <SelectItem value="pallet">pallet</SelectItem>
+                    <SelectItem value="crate">crate</SelectItem>
+                    <SelectItem value="carton">carton</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">The container you purchase</p>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="items_per_package"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm">Items Per Package</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="e.g., 6"
+                    onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                  />
+                </FormControl>
+                <p className="text-xs text-muted-foreground">How many individual units in one bulk package</p>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="individual_unit"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm">Individual Unit (what you sell/use)</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value || ''}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="e.g., bag, bottle, can" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="bag">bag</SelectItem>
+                    <SelectItem value="bottle">bottle</SelectItem>
+                    <SelectItem value="can">can</SelectItem>
+                    <SelectItem value="jar">jar</SelectItem>
+                    <SelectItem value="piece">piece</SelectItem>
+                    <SelectItem value="unit">unit</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">The unit you track in recipes/POS</p>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="individual_unit_size"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm">Size per Individual Unit (optional)</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 2.5"
+                    onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                  />
+                </FormControl>
+                <p className="text-xs text-muted-foreground">Weight/volume of each individual unit</p>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {/* Example when filled */}
+        {form.watch('bulk_purchase_unit') && form.watch('items_per_package') && form.watch('individual_unit') && (
+          <div className="p-3 bg-amber-100 border border-amber-400 rounded">
+            <p className="text-sm text-amber-900">
+              <strong>📦 Breakdown:</strong> 1 {form.watch('bulk_purchase_unit')} contains{' '}
+              <strong>{form.watch('items_per_package')}</strong> {form.watch('individual_unit')}
+              {form.watch('items_per_package') > 1 ? 's' : ''}
+              {form.watch('individual_unit_size') && (
+                <span> (each {form.watch('individual_unit')} = {form.watch('individual_unit_size')} {sizeUnit})</span>
+              )}
+            </p>
+            <p className="text-xs text-amber-700 mt-2">
+              💡 Your inventory will be tracked in <strong>{form.watch('individual_unit')}s</strong>,
+              and recipes will deduct <strong>{form.watch('individual_unit')}s</strong> automatically.
+            </p>
+          </div>
+        )}
+      </div>
       
       {/* Live example */}
       {sizeValue && sizeUnit && purchaseUnit && (

@@ -60,6 +60,12 @@ const productSchema = z.object({
   reorder_point: z.number().min(0).optional(),
   pos_item_name: z.string().optional(),
   image_url: z.string().optional(),
+  
+  // Bulk-to-individual breakdown fields
+  bulk_purchase_unit: z.string().optional(),
+  items_per_package: z.number().int().positive().optional(),
+  individual_unit: z.string().optional(),
+  individual_unit_size: z.number().positive().optional(),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -138,6 +144,12 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       reorder_point: editProduct.reorder_point || 0,
       pos_item_name: editProduct.pos_item_name || '',
       image_url: editProduct.image_url || '',
+      
+      // Bulk breakdown fields (backward compatible)
+      bulk_purchase_unit: editProduct.bulk_purchase_unit || '',
+      items_per_package: editProduct.items_per_package || undefined,
+      individual_unit: editProduct.individual_unit || '',
+      individual_unit_size: editProduct.individual_unit_size || undefined,
     } : {
       sku: initialData?.sku || '',
       name: initialData?.name || '',
@@ -149,6 +161,12 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       reorder_point: 0,
       pos_item_name: '',
       image_url: '',
+      
+      // Bulk breakdown defaults
+      bulk_purchase_unit: '',
+      items_per_package: undefined,
+      individual_unit: '',
+      individual_unit_size: undefined,
     },
   });
 
@@ -230,6 +248,11 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       reorder_point: data.reorder_point,
       pos_item_name: data.pos_item_name,
       image_url: imageUrl || data.image_url,
+      // Bulk breakdown fields (backward compatible)
+      bulk_purchase_unit: data.bulk_purchase_unit,
+      items_per_package: data.items_per_package,
+      individual_unit: data.individual_unit,
+      individual_unit_size: data.individual_unit_size,
     };
 
     await onSubmit(productData);

@@ -28,6 +28,11 @@ export interface Product {
   pos_item_name?: string | null;
   image_url?: string | null;
   barcode_data?: any | null;
+  // Bulk-to-individual breakdown fields
+  bulk_purchase_unit?: string | null;
+  items_per_package?: number | null;
+  individual_unit?: string | null;
+  individual_unit_size?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -55,6 +60,11 @@ export interface CreateProductData {
   pos_item_name?: string | null;
   image_url?: string | null;
   barcode_data?: any | null;
+  // Bulk-to-individual breakdown fields
+  bulk_purchase_unit?: string | null;
+  items_per_package?: number | null;
+  individual_unit?: string | null;
+  individual_unit_size?: number | null;
 }
 
 export const useProducts = (restaurantId: string | null) => {

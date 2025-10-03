@@ -470,7 +470,6 @@ export type Database = {
         Row: {
           barcode_data: Json | null
           brand: string | null
-          bulk_purchase_unit: string | null
           category: string | null
           conversion_factor: number | null
           cost_per_unit: number | null
@@ -480,9 +479,6 @@ export type Database = {
           gtin: string | null
           id: string
           image_url: string | null
-          individual_unit: string | null
-          individual_unit_size: number | null
-          items_per_package: number | null
           name: string
           package_qty: number | null
           par_level_max: number | null
@@ -506,7 +502,6 @@ export type Database = {
         Insert: {
           barcode_data?: Json | null
           brand?: string | null
-          bulk_purchase_unit?: string | null
           category?: string | null
           conversion_factor?: number | null
           cost_per_unit?: number | null
@@ -516,9 +511,6 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
-          individual_unit?: string | null
-          individual_unit_size?: number | null
-          items_per_package?: number | null
           name: string
           package_qty?: number | null
           par_level_max?: number | null
@@ -542,7 +534,6 @@ export type Database = {
         Update: {
           barcode_data?: Json | null
           brand?: string | null
-          bulk_purchase_unit?: string | null
           category?: string | null
           conversion_factor?: number | null
           cost_per_unit?: number | null
@@ -552,9 +543,6 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
-          individual_unit?: string | null
-          individual_unit_size?: number | null
-          items_per_package?: number | null
           name?: string
           package_qty?: number | null
           par_level_max?: number | null

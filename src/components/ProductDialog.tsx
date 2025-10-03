@@ -60,12 +60,6 @@ const productSchema = z.object({
   reorder_point: z.number().min(0).optional(),
   pos_item_name: z.string().optional(),
   image_url: z.string().optional(),
-  
-  // Bulk-to-individual breakdown fields
-  bulk_purchase_unit: z.string().optional(),
-  items_per_package: z.number().int().positive().optional(),
-  individual_unit: z.string().optional(),
-  individual_unit_size: z.number().positive().optional(),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -135,10 +129,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       uom_purchase: editProduct.uom_purchase || '',
       uom_recipe: editProduct.uom_recipe || '',
       
-      // Show bulk cost in UI if bulk packaging is used
-      cost_per_unit: (editProduct.bulk_purchase_unit && editProduct.items_per_package && editProduct.items_per_package > 1 && editProduct.cost_per_unit)
-        ? editProduct.cost_per_unit * editProduct.items_per_package  // Convert back to bulk cost for display
-        : editProduct.cost_per_unit || undefined,
+      cost_per_unit: editProduct.cost_per_unit || undefined,
       supplier_name: editProduct.supplier_name || '',
       supplier_sku: editProduct.supplier_sku || '',
       par_level_min: editProduct.par_level_min || 0,
@@ -147,12 +138,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       reorder_point: editProduct.reorder_point || 0,
       pos_item_name: editProduct.pos_item_name || '',
       image_url: editProduct.image_url || '',
-      
-      // Bulk breakdown fields (backward compatible)
-      bulk_purchase_unit: editProduct.bulk_purchase_unit || '',
-      items_per_package: editProduct.items_per_package || undefined,
-      individual_unit: editProduct.individual_unit || '',
-      individual_unit_size: editProduct.individual_unit_size || undefined,
     } : {
       sku: initialData?.sku || '',
       name: initialData?.name || '',
@@ -164,12 +149,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       reorder_point: 0,
       pos_item_name: '',
       image_url: '',
-      
-      // Bulk breakdown defaults
-      bulk_purchase_unit: '',
-      items_per_package: undefined,
-      individual_unit: '',
-      individual_unit_size: undefined,
     },
   });
 
@@ -229,15 +208,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   };
 
   const handleSubmit = async (data: ProductFormData) => {
-    let finalCostPerUnit = data.cost_per_unit;
-    
-    // Calculate cost per individual unit if bulk packaging is used
-    if (data.bulk_purchase_unit && data.items_per_package && data.items_per_package > 1 && data.cost_per_unit) {
-      // User entered cost for bulk package (e.g., $2.98 per box)
-      // Convert to cost per individual unit (e.g., $2.98 / 6 bags = $0.4967 per bag)
-      finalCostPerUnit = data.cost_per_unit / data.items_per_package;
-    }
-    
     const productData: CreateProductData = {
       restaurant_id: restaurantId,
       gtin: initialData?.gtin,
@@ -251,7 +221,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       package_qty: data.package_qty,
       uom_purchase: data.uom_purchase,
       uom_recipe: data.uom_recipe,
-      cost_per_unit: finalCostPerUnit,  // Store the per-individual-unit cost
+      cost_per_unit: data.cost_per_unit,
       supplier_name: data.supplier_name,
       supplier_sku: data.supplier_sku,
       par_level_min: data.par_level_min,
@@ -260,11 +230,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       reorder_point: data.reorder_point,
       pos_item_name: data.pos_item_name,
       image_url: imageUrl || data.image_url,
-      // Bulk breakdown fields (backward compatible)
-      bulk_purchase_unit: data.bulk_purchase_unit,
-      items_per_package: data.items_per_package,
-      individual_unit: data.individual_unit,
-      individual_unit_size: data.individual_unit_size,
     };
 
     await onSubmit(productData);
@@ -497,9 +462,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        {form.watch('bulk_purchase_unit') && form.watch('items_per_package') && form.watch('items_per_package') > 1
-                          ? `Cost per ${form.watch('bulk_purchase_unit')} (bulk package) ($)`
-                          : `Cost per ${form.watch('uom_purchase') || 'Purchase Unit'} ($)`}
+                        Cost per {form.watch('uom_purchase') || 'Purchase Unit'} ($)
                       </FormLabel>
                       <FormControl>
                         <Input
@@ -510,11 +473,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                           onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
                         />
                       </FormControl>
-                      {form.watch('bulk_purchase_unit') && form.watch('items_per_package') && form.watch('items_per_package') > 1 && field.value && (
-                        <p className="text-xs text-green-700 bg-green-50 p-2 rounded border border-green-200 mt-1">
-                          <strong>Cost per {form.watch('individual_unit') || 'unit'}:</strong> ${(field.value / (form.watch('items_per_package') || 1)).toFixed(4)}
-                        </p>
-                      )}
                       <FormMessage />
                     </FormItem>
                   )}

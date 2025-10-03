@@ -413,14 +413,34 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
             </div>
             <Label className="text-base font-semibold text-green-800">Your Package Definition:</Label>
           </div>
-          <div className="text-lg font-medium text-green-800 mb-2">
-            <span className="bg-green-200 px-2 py-1 rounded">{packageQty}</span> {purchaseUnit}{packageQty !== 1 ? 's' : ''}, 
-            each containing <span className="bg-green-200 px-2 py-1 rounded">{sizeValue} {sizeUnit}</span>
-          </div>
-          <div className="text-sm text-green-700 bg-green-100 p-2 rounded">
-            <strong>Total you're buying:</strong> {(sizeValue * packageQty).toLocaleString()} {sizeUnit} 
-            ({packageQty} × {sizeValue} {sizeUnit})
-          </div>
+          
+          {/* Show bulk breakdown if specified */}
+          {form.watch('bulk_purchase_unit') && form.watch('items_per_package') && form.watch('individual_unit') ? (
+            <>
+              <div className="text-lg font-medium text-green-800 mb-2">
+                <span className="bg-green-200 px-2 py-1 rounded">{packageQty}</span> {form.watch('bulk_purchase_unit')}{packageQty !== 1 ? 's' : ''}, 
+                each containing <span className="bg-green-200 px-2 py-1 rounded">{form.watch('items_per_package')}</span> {form.watch('individual_unit')}s
+                {sizeValue && ` (${sizeValue} ${sizeUnit} per ${form.watch('individual_unit')})`}
+              </div>
+              <div className="text-sm text-green-700 bg-green-100 p-2 rounded">
+                <strong>Total individual units:</strong> {(form.watch('items_per_package') * packageQty).toLocaleString()} {form.watch('individual_unit')}s
+                <br />
+                <strong>Total weight/volume:</strong> {(sizeValue * form.watch('items_per_package') * packageQty).toLocaleString()} {sizeUnit}
+              </div>
+            </>
+          ) : (
+            /* Show simple packaging if no bulk breakdown */
+            <>
+              <div className="text-lg font-medium text-green-800 mb-2">
+                <span className="bg-green-200 px-2 py-1 rounded">{packageQty}</span> {purchaseUnit}{packageQty !== 1 ? 's' : ''}, 
+                each containing <span className="bg-green-200 px-2 py-1 rounded">{sizeValue} {sizeUnit}</span>
+              </div>
+              <div className="text-sm text-green-700 bg-green-100 p-2 rounded">
+                <strong>Total you're buying:</strong> {(sizeValue * packageQty).toLocaleString()} {sizeUnit} 
+                ({packageQty} × {sizeValue} {sizeUnit})
+              </div>
+            </>
+          )}
         </div>
       )}
 

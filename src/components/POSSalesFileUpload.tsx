@@ -194,17 +194,17 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                 const parentId = row['parentId'] || '';
                 const itemGuid = row['itemGuid'] || '';
 
-                // Create a more reliable unique ID for Toast POS data
-                // This combines multiple identifiers to ensure uniqueness
+                // Create a more reliable unique ID for POS data
+                // Priority: Use real POS identifiers when available, then create unique fallback
                 let orderId = '';
                 
                 // If we have Toast-specific IDs, use them for a unique compound identifier
                 if (itemGuid || masterId || parentId) {
                   // For Toast data, create a compound ID from all available IDs
-                  // This helps prevent duplicate imports
+                  // This is unique per transaction in Toast POS
                   orderId = `manual_upload_${itemGuid || 'none'}_${masterId || 'none'}_${parentId || 'none'}_${itemName.replace(/\s+/g, '_').toLowerCase()}`;
                 } else {
-                  // For other POS systems, use whatever ID we can find
+                  // For other POS systems, try to find a transaction ID
                   const externalOrderId = 
                     row['Order ID'] ||
                     row['order_id'] ||
@@ -214,13 +214,16 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                     '';
                   
                   if (externalOrderId) {
+                    // Use the POS system's transaction ID - this is unique per transaction
                     orderId = externalOrderId;
                   } else {
-                    // Create a deterministic ID based on the data content
-                    // This ensures the same data always generates the same ID
-                    // Format: manual_upload_<item>_<quantity>_<date>_<price>
+                    // FALLBACK: No POS identifiers available
+                    // Include time AND row index to ensure uniqueness for multiple sales of same item
+                    // This allows multiple transactions of the same item on the same day
                     const priceForId = totalPrice || unitPrice || 0;
-                    orderId = `manual_upload_${itemName.replace(/\s+/g, '_').toLowerCase()}_${quantity}_${saleDate}_${priceForId.toFixed(2)}`;
+                    const timeComponent = saleTime ? `_${saleTime.replace(/:/g, '')}` : '';
+                    // Include row index to ensure each row gets a unique ID
+                    orderId = `manual_upload_${itemName.replace(/\s+/g, '_').toLowerCase()}_${quantity}_${saleDate}${timeComponent}_${priceForId.toFixed(2)}_row${index}`;
                   }
                 }
                   

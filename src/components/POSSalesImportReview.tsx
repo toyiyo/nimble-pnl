@@ -495,8 +495,10 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                             onChange={(e) => handleFieldChange(sale.id, 'saleDate', e.target.value)}
                             className="w-36"
                           />
-                        ) : (
+                        ) : sale.saleDate ? (
                           format(new Date(sale.saleDate), 'MMM d, yyyy')
+                        ) : (
+                          <span className="text-muted-foreground italic">No date</span>
                         )}
                       </TableCell>
                       <TableCell>

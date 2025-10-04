@@ -13,7 +13,7 @@ interface CostBreakdownChartProps {
 export function CostBreakdownChart({ data, title = "Cost Breakdown" }: CostBreakdownChartProps) {
   const totalCosts = data.food_cost + data.labor_cost;
   
-  if (totalCosts === 0) {
+  if (totalCosts === 0 || data.net_revenue === 0) {
     return (
       <Card>
         <CardHeader>
@@ -32,12 +32,12 @@ export function CostBreakdownChart({ data, title = "Cost Breakdown" }: CostBreak
     { 
       name: 'Food Cost', 
       value: data.food_cost,
-      percentage: (data.food_cost / totalCosts) * 100
+      percentage: (data.food_cost / data.net_revenue) * 100
     },
     { 
       name: 'Labor Cost', 
       value: data.labor_cost,
-      percentage: (data.labor_cost / totalCosts) * 100
+      percentage: (data.labor_cost / data.net_revenue) * 100
     },
   ];
 

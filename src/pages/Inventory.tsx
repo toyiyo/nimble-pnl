@@ -139,8 +139,11 @@ export const Inventory: React.FC = () => {
       return;
     }
     
-    // Check if product already exists in inventory (using normalized GTIN)
-    const existingProduct = await findProductByGtin(normalizedGtin);
+    // Check if product already exists in inventory (try both original and normalized)
+    let existingProduct = await findProductByGtin(normalizedGtin);
+    if (!existingProduct && originalGtin !== normalizedGtin) {
+      existingProduct = await findProductByGtin(originalGtin);
+    }
     
     if (existingProduct) {
       // Use quick inventory dialog for scanning existing products

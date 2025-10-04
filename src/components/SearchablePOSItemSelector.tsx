@@ -8,6 +8,7 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
+  CommandList,
 } from '@/components/ui/command';
 import {
   Popover,
@@ -78,50 +79,52 @@ export function SearchablePOSItemSelector({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0 bg-background border shadow-md z-50" align="start">
-        <Command shouldFilter={false} className="max-h-[400px]">
+      <PopoverContent className="w-full sm:w-[400px] p-0 bg-background border shadow-md z-50" align="start">
+        <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search POS items..."
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <CommandEmpty>
-            <div className="py-6 text-center text-sm">
-              <p className="text-muted-foreground">No POS items found</p>
-            </div>
-          </CommandEmpty>
-          <CommandGroup className="overflow-y-auto max-h-[300px]">
-            {value && (
-              <CommandItem
-                onSelect={handleClear}
-                className="text-muted-foreground cursor-pointer"
-              >
-                Clear selection
-              </CommandItem>
-            )}
-            {filteredItems.map((item) => (
-              <CommandItem
-                key={item.item_name}
-                value={item.item_name}
-                onSelect={() => handleSelect(item.item_name)}
-                className="cursor-pointer"
-              >
-                <Check
-                  className={cn(
-                    "mr-2 h-4 w-4",
-                    value === item.item_name ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                <div className="flex flex-col flex-1 min-w-0">
-                  <span className="font-medium truncate">{item.item_name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {item.sales_count} sales • {item.source === 'pos_sales' ? 'POS' : 'Unified'}
-                    {item.last_sold && ` • Last: ${item.last_sold}`}
-                  </span>
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
+          <CommandList>
+            <CommandEmpty>
+              <div className="py-6 text-center text-sm">
+                <p className="text-muted-foreground">No POS items found</p>
+              </div>
+            </CommandEmpty>
+            <CommandGroup>
+              {value && (
+                <CommandItem
+                  onSelect={handleClear}
+                  className="text-muted-foreground cursor-pointer"
+                >
+                  Clear selection
+                </CommandItem>
+              )}
+              {filteredItems.map((item) => (
+                <CommandItem
+                  key={item.item_name}
+                  value={item.item_name}
+                  onSelect={() => handleSelect(item.item_name)}
+                  className="cursor-pointer"
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4 flex-shrink-0",
+                      value === item.item_name ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <span className="font-medium truncate">{item.item_name}</span>
+                    <span className="text-xs text-muted-foreground truncate">
+                      {item.sales_count} sales • {item.source === 'pos_sales' ? 'POS' : 'Unified'}
+                      {item.last_sold && ` • Last: ${item.last_sold}`}
+                    </span>
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
         </Command>
       </PopoverContent>
     </Popover>

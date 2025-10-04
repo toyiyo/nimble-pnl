@@ -8,6 +8,7 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
+  CommandList,
 } from '@/components/ui/command';
 import {
   Popover,
@@ -69,43 +70,45 @@ export function SearchableProductSelector({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0 bg-background border shadow-md z-50" align="start">
-        <Command shouldFilter={false} className="max-h-[400px]">
+      <PopoverContent className="w-full sm:w-[400px] p-0 bg-background border shadow-md z-50" align="start">
+        <Command shouldFilter={false}>
           <CommandInput
             placeholder={placeholder}
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <CommandEmpty>
-            <div className="py-6 text-center text-sm">
-              <p className="text-muted-foreground">No products found</p>
-            </div>
-          </CommandEmpty>
-          <CommandGroup className="overflow-y-auto max-h-[300px]">
-            {filteredProducts.map((product) => (
-              <CommandItem
-                key={product.id}
-                value={product.id}
-                onSelect={() => handleSelect(product.id)}
-                className="cursor-pointer"
-              >
-                <Check
-                  className={cn(
-                    "mr-2 h-4 w-4",
-                    value === product.id ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                <div className="flex flex-col flex-1 min-w-0">
-                  <span className="font-medium truncate">{product.name}</span>
-                  {product.cost_per_unit && (
-                    <span className="text-xs text-muted-foreground">
-                      ${product.cost_per_unit.toFixed(2)}/{product.uom_purchase || 'unit'}
-                    </span>
-                  )}
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
+          <CommandList>
+            <CommandEmpty>
+              <div className="py-6 text-center text-sm">
+                <p className="text-muted-foreground">No products found</p>
+              </div>
+            </CommandEmpty>
+            <CommandGroup>
+              {filteredProducts.map((product) => (
+                <CommandItem
+                  key={product.id}
+                  value={product.id}
+                  onSelect={() => handleSelect(product.id)}
+                  className="cursor-pointer"
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4 flex-shrink-0",
+                      value === product.id ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <span className="font-medium truncate">{product.name}</span>
+                    {product.cost_per_unit && (
+                      <span className="text-xs text-muted-foreground truncate">
+                        ${product.cost_per_unit.toFixed(2)}/{product.uom_purchase || 'unit'}
+                      </span>
+                    )}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
         </Command>
       </PopoverContent>
     </Popover>

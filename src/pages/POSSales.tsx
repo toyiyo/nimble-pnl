@@ -16,6 +16,7 @@ import { POSSalesFileUpload } from '@/components/POSSalesFileUpload';
 import { POSSalesImportReview } from '@/components/POSSalesImportReview';
 import { format } from 'date-fns';
 import { InventoryDeductionDialog } from '@/components/InventoryDeductionDialog';
+import { MapPOSItemDialog } from '@/components/MapPOSItemDialog';
 
 export default function POSSales() {
   const navigate = useNavigate();
@@ -41,9 +42,19 @@ export default function POSSales() {
   const [selectedItemForDeduction, setSelectedItemForDeduction] = useState<{name: string; quantity: number} | null>(null);
   const [importedSalesData, setImportedSalesData] = useState<ParsedSale[] | null>(null);
   const [activeTab, setActiveTab] = useState<'manual' | 'import'>('manual');
+  const [mapPOSItemDialogOpen, setMapPOSItemDialogOpen] = useState(false);
+  const [selectedPOSItemForMapping, setSelectedPOSItemForMapping] = useState<string | null>(null);
 
-  const handleCreateRecipe = (itemName: string) => {
-    navigate('/recipes', { state: { createRecipeFor: itemName } });
+  const handleMapPOSItem = (itemName: string) => {
+    setSelectedPOSItemForMapping(itemName);
+    setMapPOSItemDialogOpen(true);
+  };
+
+  const handleMappingComplete = () => {
+    // Refresh sales data to update unmapped items
+    if (selectedRestaurant?.restaurant_id) {
+      syncAllSystems();
+    }
   };
 
   interface ParsedSale {
@@ -340,7 +351,7 @@ export default function POSSales() {
                               <Badge 
                                 variant="destructive" 
                                 className="text-xs cursor-pointer hover:bg-destructive/80 transition-colors"
-                                onClick={() => handleCreateRecipe(sale.itemName)}
+                                onClick={() => handleMapPOSItem(sale.itemName)}
                               >
                                 No Recipe
                               </Badge>
@@ -469,6 +480,17 @@ export default function POSSales() {
           restaurantId={selectedRestaurant.restaurant_id}
           posItemName={selectedItemForDeduction.name}
           quantitySold={selectedItemForDeduction.quantity}
+        />
+      )}
+
+      {/* Map POS Item Dialog */}
+      {selectedPOSItemForMapping && (
+        <MapPOSItemDialog
+          open={mapPOSItemDialogOpen}
+          onOpenChange={setMapPOSItemDialogOpen}
+          restaurantId={selectedRestaurant.restaurant_id}
+          posItemName={selectedPOSItemForMapping}
+          onMappingComplete={handleMappingComplete}
         />
       )}
     </div>

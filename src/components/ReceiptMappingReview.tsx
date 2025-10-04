@@ -482,6 +482,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                       item.matched_product_id
                     }
                     onValueChange={(value) => handleMappingChange(item.id, value)}
+                    products={products}
                     searchTerm={item.parsed_name || item.raw_text}
                     placeholder="Search existing products or create new..."
                   />

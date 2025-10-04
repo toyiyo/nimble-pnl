@@ -34,9 +34,12 @@ export function SearchablePOSItemSelector({
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   
-  const filteredItems = posItems.filter((item) =>
-    item.item_name.toLowerCase().includes(searchValue.toLowerCase())
-  );
+  // Show all items if no search, otherwise filter
+  const filteredItems = searchValue
+    ? posItems.filter((item) =>
+        item.item_name.toLowerCase().includes(searchValue.toLowerCase())
+      )
+    : posItems;
 
   const selectedItem = posItems.find((item) => item.item_name === value);
 

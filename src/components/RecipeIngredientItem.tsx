@@ -3,6 +3,7 @@ import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/comp
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { SearchableProductSelector } from '@/components/SearchableProductSelector';
 import { Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Control } from 'react-hook-form';
 import { Product } from '@/hooks/useProducts';
@@ -41,31 +42,13 @@ export function RecipeIngredientItem({
           render={({ field }) => (
             <FormItem className="flex-1 min-w-[200px]">
               <FormLabel>Product</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select product" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent className="bg-background border shadow-md z-50 max-h-[300px] overflow-y-auto">
-                  {products.length === 0 ? (
-                    <div className="p-2 text-sm text-muted-foreground">No products found</div>
-                  ) : (
-                    products.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        <div className="flex flex-col">
-                          <span>{product.name}</span>
-                          {product.cost_per_unit && (
-                            <span className="text-xs text-muted-foreground">
-                              ${product.cost_per_unit.toFixed(2)}/{product.uom_purchase || 'unit'}
-                            </span>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <SearchableProductSelector
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  products={products}
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}

@@ -387,19 +387,19 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                                     ))}
                                 </CommandGroup>
                               )}
-                              
-                              {searchQuery && !filteredItems.some(item => item.value.toLowerCase() === searchQuery.toLowerCase()) && (
-                                <CommandGroup heading="Create New">
-                                  <CommandItem
-                                    onSelect={() => handleCreateNewItem(searchQuery)}
-                                    className="cursor-pointer"
-                                  >
-                                    <AlertCircle className="mr-2 h-4 w-4 text-muted-foreground" />
-                                    <span>Create new item: <strong>"{searchQuery}"</strong></span>
-                                  </CommandItem>
-                                </CommandGroup>
-                              )}
                             </>
+                          )}
+                          
+                          {searchQuery && (
+                            <CommandGroup heading="Create New">
+                              <CommandItem
+                                onSelect={() => handleCreateNewItem(searchQuery)}
+                                className="cursor-pointer"
+                              >
+                                <AlertCircle className="mr-2 h-4 w-4 text-muted-foreground" />
+                                <span>Create new item: <strong>"{searchQuery}"</strong></span>
+                              </CommandItem>
+                            </CommandGroup>
                           )}
                         </CommandList>
                       </Command>

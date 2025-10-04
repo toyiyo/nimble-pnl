@@ -63,7 +63,7 @@ export default function Reports() {
       ? getWeeklyData().slice(0, 4)
       : pnlTimeFrame === 'monthly'
       ? getMonthlyData().slice(0, 3)
-      : getGroupedPnLData().slice(0, 7);
+      : getGroupedPnLData().slice(0, 1); // Only get today's data for daily view
 
     return data.reduce(
       (acc, item) => ({
@@ -187,7 +187,7 @@ export default function Reports() {
               ) : (
                 <CostBreakdownChart 
                   data={getPnLBreakdownData()} 
-                  title={`Cost Breakdown (${pnlTimeFrame === 'daily' ? 'Last 7 Days' : pnlTimeFrame === 'weekly' ? 'Last 4 Weeks' : 'Last 3 Months'})`}
+                  title={`Cost Breakdown (${pnlTimeFrame === 'daily' ? 'Today' : pnlTimeFrame === 'weekly' ? 'Last 4 Weeks' : 'Last 3 Months'})`}
                 />
               )}
             </CardContent>

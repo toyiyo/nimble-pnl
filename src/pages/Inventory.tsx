@@ -28,6 +28,7 @@ import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
 import { ProductEnhancementService } from '@/services/productEnhancementService';
 import { ocrService } from '@/services/ocrService';
+import { normalizeGTIN } from '@/lib/gtinUtils';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
@@ -86,7 +87,12 @@ export const Inventory: React.FC = () => {
 
   const handleBarcodeScanned = async (gtin: string, format: string, aiData?: string) => {
     console.log('📱 Barcode scanned:', gtin, format, aiData ? 'with AI data' : '');
-    setLastScannedGtin(gtin);
+    
+    // Normalize barcode to GTIN-14 for consistent database lookup
+    const normalizedGtin = gtin === 'MANUAL_ENTRY' ? gtin : normalizeGTIN(gtin);
+    console.log('🔄 Normalized GTIN:', gtin, '→', normalizedGtin);
+    
+    setLastScannedGtin(normalizedGtin);
     setLookupResult(null);
     
     // For manual entry with AI data, create product directly
@@ -132,8 +138,8 @@ export const Inventory: React.FC = () => {
       return;
     }
     
-    // Check if product already exists in inventory
-    const existingProduct = await findProductByGtin(gtin);
+    // Check if product already exists in inventory (using normalized GTIN)
+    const existingProduct = await findProductByGtin(normalizedGtin);
     
     if (existingProduct) {
       // Use quick inventory dialog for scanning existing products
@@ -149,14 +155,14 @@ export const Inventory: React.FC = () => {
     // Look up product information with enhanced catalog lookup
     setIsLookingUp(true);
     try {
-      const result = await productLookupService.lookupProduct(gtin, findProductByGtin);
+      const result = await productLookupService.lookupProduct(normalizedGtin, findProductByGtin);
       
       // Create a new product object with lookup data for the update dialog
       const newProductData: Product = {
         id: '', // Will be generated on creation
         restaurant_id: selectedRestaurant!.restaurant!.id,
-        gtin: gtin,
-        sku: gtin,
+        gtin: normalizedGtin,
+        sku: normalizedGtin,
         name: result?.product_name || 'New Product',
         description: null,
         brand: result?.brand || '',

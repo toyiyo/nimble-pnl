@@ -1,0 +1,32 @@
+{
+  "name": "EasyshiftHQ",
+  "short_name": "EasyshiftHQ",
+  "description": "One stop shop for restaurant owners - inventory, POS, and profit management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://storage.googleapis.com/gpt-engineer-file-uploads/cO0cArQv75e7Zunk5nGEIS6cgmm2/uploads/1758419921543-easyshifthq.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://storage.googleapis.com/gpt-engineer-file-uploads/cO0cArQv75e7Zunk5nGEIS6cgmm2/uploads/1758419921543-easyshifthq.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "screenshots": [
+    {
+      "src": "https://storage.googleapis.com/gpt-engineer-file-uploads/cO0cArQv75e7Zunk5nGEIS6cgmm2/social-images/social-1758419942900-Screenshot 2025-09-20 at 8.56.13 PM.png",
+      "sizes": "1280x720",
+      "type": "image/png"
+    }
+  ]
+}

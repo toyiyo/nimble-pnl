@@ -8,6 +8,7 @@ import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { RestaurantProvider } from "@/contexts/RestaurantContext";
 import { AppHeader } from "@/components/AppHeader";
+import { InstallBanner } from "@/components/InstallBanner";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Team from "./pages/Team";
@@ -61,6 +62,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <InstallBanner />
         <Analytics />
         <SpeedInsights />
         <BrowserRouter>

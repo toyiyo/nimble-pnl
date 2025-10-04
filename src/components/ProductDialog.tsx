@@ -158,6 +158,41 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
     }
   }, [editProduct]);
 
+  // Reset form when initialData or editProduct changes
+  React.useEffect(() => {
+    form.reset(editProduct ? {
+      sku: editProduct.sku,
+      name: editProduct.name,
+      description: editProduct.description || '',
+      brand: editProduct.brand || '',
+      category: editProduct.category || '',
+      size_value: editProduct.size_value || undefined,
+      size_unit: editProduct.size_unit || '',
+      package_qty: editProduct.package_qty || 1,
+      uom_purchase: editProduct.uom_purchase || '',
+      uom_recipe: editProduct.uom_recipe || '',
+      cost_per_unit: editProduct.cost_per_unit || undefined,
+      supplier_name: editProduct.supplier_name || '',
+      supplier_sku: editProduct.supplier_sku || '',
+      par_level_min: editProduct.par_level_min || 0,
+      par_level_max: editProduct.par_level_max || 0,
+      current_stock: editProduct.current_stock || 0,
+      reorder_point: editProduct.reorder_point || 0,
+      pos_item_name: editProduct.pos_item_name || '',
+      image_url: editProduct.image_url || '',
+    } : {
+      sku: initialData?.sku || '',
+      name: initialData?.name || '',
+      package_qty: 1,
+      par_level_min: 0,
+      par_level_max: 0,
+      current_stock: 0,
+      reorder_point: 0,
+      pos_item_name: '',
+      image_url: '',
+    });
+  }, [editProduct, initialData]);
+
   // Watch for unit changes and suggest conversion factor
   const watchedPurchaseUnit = form.watch('uom_purchase');
   const watchedRecipeUnit = form.watch('uom_recipe');

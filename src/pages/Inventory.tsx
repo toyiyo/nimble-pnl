@@ -257,13 +257,19 @@ export const Inventory: React.FC = () => {
       
       console.log('✅ Grok OCR completed:', grokOCRResult);
       
-      // Step 2: Use OCR text for web search to get structured data
+      // Use structured data from OCR if available
+      const ocrData = (grokOCRResult as any).structuredData;
+      
+      // Step 2: Use OCR text for web search to get additional structured data (optional enhancement)
       let enhancedData = null;
-      if (grokOCRResult.text?.trim()) {
+      const searchQuery = ocrData?.productName || grokOCRResult.text?.trim();
+      
+      if (searchQuery && !ocrData) {
+        // Only do web search if we didn't get structured data from OCR
         console.log('🌐 Searching for product information...');
         const searchResponse = await supabase.functions.invoke('web-search', {
           body: { 
-            query: `${grokOCRResult.text} product information nutrition ingredients`,
+            query: `${searchQuery} product information nutrition ingredients`,
             maxResults: 5 
           }
         });
@@ -274,7 +280,7 @@ export const Inventory: React.FC = () => {
           const enhanceResponse = await supabase.functions.invoke('enhance-product-ai', {
             body: {
               searchText: searchResponse.data.results.map((r: any) => r.content).join('\n\n'),
-              productName: grokOCRResult.text,
+              productName: searchQuery,
               brand: '',
               category: '',
               currentDescription: ''
@@ -288,31 +294,43 @@ export const Inventory: React.FC = () => {
         }
       }
       
-      // Create product data with enhanced information and image
+      // Parse size value and unit from OCR data
+      let sizeValue = null;
+      let sizeUnit = null;
+      
+      if (ocrData?.sizeValue && ocrData?.sizeUnit) {
+        sizeValue = parseFloat(ocrData.sizeValue);
+        sizeUnit = ocrData.sizeUnit;
+      } else if (enhancedData?.sizeValue) {
+        sizeValue = enhancedData.sizeValue;
+        sizeUnit = enhancedData.sizeUnit;
+      }
+      
+      // Create product data with structured OCR information and image
       const newProductData: Product = {
         id: '', // Will be generated on creation
         restaurant_id: selectedRestaurant!.restaurant!.id,
-        gtin: enhancedData?.gtin || '',
-        sku: enhancedData?.gtin || Date.now().toString(),
-        name: enhancedData?.productName || grokOCRResult.text || 'New Product',
-        description: enhancedData?.description || null,
-        brand: enhancedData?.brand || '',
+        gtin: ocrData?.upcBarcode || enhancedData?.gtin || '',
+        sku: ocrData?.upcBarcode || enhancedData?.gtin || Date.now().toString(),
+        name: ocrData?.productName || enhancedData?.productName || grokOCRResult.text || 'New Product',
+        description: ocrData?.ingredients || ocrData?.nutritionFacts || enhancedData?.description || null,
+        brand: ocrData?.brand || enhancedData?.brand || '',
         category: enhancedData?.category || '',
-        size_value: enhancedData?.sizeValue || null,
-        size_unit: enhancedData?.sizeUnit || null,
+        size_value: sizeValue,
+        size_unit: sizeUnit,
         package_qty: enhancedData?.packageQty || 1,
-        uom_purchase: null,
+        uom_purchase: sizeUnit || null,
         uom_recipe: null,
         cost_per_unit: null,
         current_stock: 0,
         par_level_min: 0,
         par_level_max: 0,
         reorder_point: 0,
-        supplier_name: null,
-        supplier_sku: null,
-        pos_item_name: enhancedData?.productName || grokOCRResult.text || '',
+        supplier_name: ocrData?.supplier || null,
+        supplier_sku: ocrData?.batchLot || null,
+        pos_item_name: ocrData?.productName || enhancedData?.productName || grokOCRResult.text || '',
         image_url: uploadedImageUrl, // Use the captured image
-        barcode_data: null,
+        barcode_data: ocrData?.upcBarcode || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -320,10 +338,11 @@ export const Inventory: React.FC = () => {
       setSelectedProduct(newProductData);
       setShowUpdateDialog(true);
       
-      if (enhancedData?.productName || grokOCRResult.text) {
+      const productDisplayName = ocrData?.productName || enhancedData?.productName || grokOCRResult.text;
+      if (productDisplayName) {
         toast({
           title: "Product identified from image",
-          description: `${enhancedData?.productName || grokOCRResult.text} - Add details then scan again for quick entry`,
+          description: `${ocrData?.brand ? ocrData.brand + ' ' : ''}${productDisplayName}${ocrData?.packageDescription ? ' - ' + ocrData.packageDescription : ''}`,
         });
       } else {
         toast({

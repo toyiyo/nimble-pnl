@@ -16,7 +16,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { supabase } from '@/integrations/supabase/client';
 import { CheckCircle, AlertCircle, Edit2, Save, X, Upload, Calendar } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -133,7 +134,10 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     if (!date) return;
     
     setSelectedDate(date);
-    const dateString = format(date, 'yyyy-MM-dd');
+    // Get restaurant timezone or fallback to browser timezone
+    const timezone = selectedRestaurant?.restaurant?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // Format the date in the restaurant's timezone to ensure it stays as the selected date
+    const dateString = formatInTimeZone(date, timezone, 'yyyy-MM-dd');
     
     // Apply the date to all sales
     setEditableSales(prev =>
@@ -495,9 +499,12 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                             onChange={(e) => handleFieldChange(sale.id, 'saleDate', e.target.value)}
                             className="w-36"
                           />
-                        ) : sale.saleDate ? (
-                          format(new Date(sale.saleDate), 'MMM d, yyyy')
-                        ) : (
+                        ) : sale.saleDate ? (() => {
+                          // Parse date string as local date, not UTC
+                          const [year, month, day] = sale.saleDate.split('-').map(Number);
+                          const localDate = new Date(year, month - 1, day);
+                          return format(localDate, 'MMM d, yyyy');
+                        })() : (
                           <span className="text-muted-foreground italic">No date</span>
                         )}
                       </TableCell>

@@ -86,11 +86,12 @@ export const Inventory: React.FC = () => {
   }
 
   const handleBarcodeScanned = async (gtin: string, format: string, aiData?: string) => {
-    console.log('📱 Barcode scanned:', gtin, format, aiData ? 'with AI data' : '');
+    console.log('📱 Barcode scanned (original):', gtin, format, aiData ? 'with AI data' : '');
     
-    // Normalize barcode to GTIN-14 for consistent database lookup
+    // Keep original for external API lookups, normalize for database
+    const originalGtin = gtin;
     const normalizedGtin = gtin === 'MANUAL_ENTRY' ? gtin : normalizeGTIN(gtin);
-    console.log('🔄 Normalized GTIN:', gtin, '→', normalizedGtin);
+    console.log('🔄 GTIN normalized for DB lookup:', originalGtin, '→', normalizedGtin);
     
     setLastScannedGtin(normalizedGtin);
     setLookupResult(null);
@@ -153,15 +154,16 @@ export const Inventory: React.FC = () => {
     }
 
     // Look up product information with enhanced catalog lookup
+    // Use original GTIN for external APIs, normalized for database
     setIsLookingUp(true);
     try {
-      const result = await productLookupService.lookupProduct(normalizedGtin, findProductByGtin);
+      const result = await productLookupService.lookupProduct(originalGtin, findProductByGtin);
       
       // Create a new product object with lookup data for the update dialog
       const newProductData: Product = {
         id: '', // Will be generated on creation
         restaurant_id: selectedRestaurant!.restaurant!.id,
-        gtin: normalizedGtin,
+        gtin: normalizedGtin, // Store normalized in DB for consistency
         sku: normalizedGtin,
         name: result?.product_name || 'New Product',
         description: null,

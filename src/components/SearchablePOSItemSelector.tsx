@@ -79,7 +79,7 @@ export function SearchablePOSItemSelector({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[400px] p-0 bg-background border shadow-md z-50" align="start">
-        <Command>
+        <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search POS items..."
             value={searchValue}

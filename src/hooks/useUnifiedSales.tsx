@@ -198,19 +198,19 @@ export const useUnifiedSales = (restaurantId: string | null) => {
         })
         .eq('id', saleId)
         .eq('restaurant_id', restaurantId)
-        .eq('pos_system', 'manual');
+        .in('pos_system', ['manual', 'manual_upload']);
 
       if (error) throw error;
 
       toast({
         title: "Sale updated",
-        description: "Manual sale has been updated successfully",
+        description: "Sale has been updated successfully",
       });
 
       fetchUnifiedSales();
       return true;
     } catch (error) {
-      console.error('Error updating manual sale:', error);
+      console.error('Error updating sale:', error);
       toast({
         title: "Error",
         description: "Failed to update sale",
@@ -229,19 +229,19 @@ export const useUnifiedSales = (restaurantId: string | null) => {
         .delete()
         .eq('id', saleId)
         .eq('restaurant_id', restaurantId)
-        .eq('pos_system', 'manual');
+        .in('pos_system', ['manual', 'manual_upload']);
 
       if (error) throw error;
 
       toast({
         title: "Sale deleted",
-        description: "Manual sale has been deleted successfully",
+        description: "Sale has been deleted successfully",
       });
 
       fetchUnifiedSales();
       return true;
     } catch (error) {
-      console.error('Error deleting manual sale:', error);
+      console.error('Error deleting sale:', error);
       toast({
         title: "Error",
         description: "Failed to delete sale",

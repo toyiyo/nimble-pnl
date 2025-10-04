@@ -359,7 +359,9 @@ export default function POSSales() {
                           </div>
                         </div>
                          <div className="flex items-center gap-2">
-                          {sale.posSystem === 'manual' && (
+                          {(sale.posSystem === 'manual' || sale.posSystem === 'manual_upload') && 
+                           selectedRestaurant && 
+                           (selectedRestaurant.role === 'owner' || selectedRestaurant.role === 'manager') && (
                             <>
                               <Button
                                 variant="outline"

@@ -84,7 +84,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
     defaultValues: {
       name: '',
       description: '',
-      pos_item_name: initialPosItemName || '',
+      pos_item_name: '',
       pos_item_id: '',
       serving_size: 1,
       ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
@@ -127,17 +127,17 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
 
       loadRecipeData();
     } else if (!recipe && isOpen) {
-      console.log('Resetting form for new recipe');
+      console.log('Resetting form for new recipe with initialPosItemName:', initialPosItemName);
       form.reset({
         name: '',
         description: '',
-        pos_item_name: '',
+        pos_item_name: initialPosItemName || '',
         pos_item_id: '',
         serving_size: 1,
         ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
       });
     }
-  }, [recipe?.id, isOpen]); // Only depend on recipe.id, not the whole recipe object or fetchRecipeIngredients
+  }, [recipe?.id, isOpen, initialPosItemName, form]); // Only depend on recipe.id, not the whole recipe object or fetchRecipeIngredients
 
   // Calculate estimated cost when ingredients change using enhanced unit conversions
   useEffect(() => {

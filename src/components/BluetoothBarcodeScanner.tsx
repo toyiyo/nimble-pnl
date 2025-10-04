@@ -101,12 +101,14 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
 
     try {
       // Request device with multiple service filters
+      // Using acceptAllDevices for maximum compatibility on Android
       const device = await navigator.bluetooth.requestDevice({
         filters: [
-          { services: [SPP_SERVICE_UUID, UART_SERVICE_UUID] },
-          { namePrefix: 'NT-1228' },
-          { namePrefix: 'Scanner' },
-          { namePrefix: 'Barcode' }
+          { namePrefix: 'NT' },          // NT CCD and similar scanners
+          { namePrefix: 'Scanner' },      // Generic scanners
+          { namePrefix: 'Barcode' },      // Barcode scanners
+          { namePrefix: 'HID' },          // HID mode scanners
+          { name: 'NT CCD barcode scanner' } // Exact match for NT CCD
         ],
         optionalServices: [BATTERY_SERVICE_UUID, SPP_SERVICE_UUID, UART_SERVICE_UUID]
       });

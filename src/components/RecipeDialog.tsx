@@ -129,7 +129,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
     } else if (!recipe && isOpen) {
       console.log('Resetting form for new recipe with initialPosItemName:', initialPosItemName);
       form.reset({
-        name: '',
+        name: initialPosItemName || '',
         description: '',
         pos_item_name: initialPosItemName || '',
         pos_item_id: '',

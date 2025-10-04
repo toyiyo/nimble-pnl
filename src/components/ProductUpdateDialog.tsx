@@ -160,7 +160,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
     });
     setImageUrl(product.image_url || '');
     setEnhancedData(null); // Clear any enhanced data from previous product
-  }, [product, form]);
+  }, [product]);
 
   const handleEnhance = async () => {
     if (!onEnhance) return;

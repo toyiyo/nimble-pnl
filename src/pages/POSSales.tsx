@@ -20,7 +20,7 @@ import { InventoryDeductionDialog } from '@/components/InventoryDeductionDialog'
 export default function POSSales() {
   const navigate = useNavigate();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
-  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, createManualSale } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
+  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, deleteManualSale } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(selectedRestaurant?.restaurant_id || null);
   const { simulateDeduction } = useInventoryDeduction();
   
@@ -28,6 +28,14 @@ export default function POSSales() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showSaleDialog, setShowSaleDialog] = useState(false);
+  const [editingSale, setEditingSale] = useState<{
+    id: string;
+    itemName: string;
+    quantity: number;
+    totalPrice?: number;
+    saleDate: string;
+    saleTime?: string;
+  } | null>(null);
   const [selectedView, setSelectedView] = useState<'sales' | 'grouped'>('sales');
   const [deductionDialogOpen, setDeductionDialogOpen] = useState(false);
   const [selectedItemForDeduction, setSelectedItemForDeduction] = useState<{name: string; quantity: number} | null>(null);
@@ -100,6 +108,31 @@ export default function POSSales() {
     setImportedSalesData(null);
   };
 
+  const handleEditSale = (sale: any) => {
+    setEditingSale({
+      id: sale.id,
+      itemName: sale.itemName,
+      quantity: sale.quantity,
+      totalPrice: sale.totalPrice,
+      saleDate: sale.saleDate,
+      saleTime: sale.saleTime,
+    });
+    setShowSaleDialog(true);
+  };
+
+  const handleDeleteSale = async (saleId: string) => {
+    if (confirm('Are you sure you want to delete this manual sale?')) {
+      await deleteManualSale(saleId);
+    }
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    setShowSaleDialog(open);
+    if (!open) {
+      setEditingSale(null);
+    }
+  };
+
   if (!selectedRestaurant) {
     return (
       <div className="space-y-6">
@@ -145,6 +178,7 @@ export default function POSSales() {
             variant="outline"
             onClick={() => {
               setActiveTab('manual');
+              setEditingSale(null);
               setShowSaleDialog(true);
             }}
             className="flex items-center gap-2 w-full sm:w-auto"
@@ -324,7 +358,27 @@ export default function POSSales() {
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                         <div className="flex items-center gap-2">
+                          {sale.posSystem === 'manual' && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditSale(sale)}
+                                className="text-xs"
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteSale(sale.id)}
+                                className="text-xs text-destructive hover:text-destructive"
+                              >
+                                Delete
+                              </Button>
+                            </>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
@@ -397,8 +451,9 @@ export default function POSSales() {
 
       <POSSaleDialog
         open={showSaleDialog}
-        onOpenChange={setShowSaleDialog}
+        onOpenChange={handleDialogClose}
         restaurantId={selectedRestaurant.restaurant_id}
+        editingSale={editingSale}
       />
 
       {/* Inventory Deduction Dialog */}

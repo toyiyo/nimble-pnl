@@ -54,14 +54,23 @@ interface POSSaleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
+  editingSale?: {
+    id: string;
+    itemName: string;
+    quantity: number;
+    totalPrice?: number;
+    saleDate: string;
+    saleTime?: string;
+  } | null;
 }
 
 export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   open,
   onOpenChange,
   restaurantId,
+  editingSale = null,
 }) => {
-  const { createManualSale } = useUnifiedSales(restaurantId);
+  const { createManualSale, updateManualSale } = useUnifiedSales(restaurantId);
   const { posItems, loading: posLoading, refetch: refetchPOSItems } = usePOSItems(restaurantId);
   const { recipes, loading: recipesLoading } = useRecipes(restaurantId);
   
@@ -70,7 +79,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
 
   const form = useForm<SaleFormValues>({
     resolver: zodResolver(saleSchema),
-    defaultValues: {
+    defaultValues: editingSale || {
       itemName: '',
       quantity: 1,
       totalPrice: undefined,
@@ -78,6 +87,27 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       saleTime: new Date().toTimeString().slice(0, 5),
     },
   });
+
+  // Update form when editingSale changes
+  React.useEffect(() => {
+    if (editingSale) {
+      form.reset({
+        itemName: editingSale.itemName,
+        quantity: editingSale.quantity,
+        totalPrice: editingSale.totalPrice,
+        saleDate: editingSale.saleDate,
+        saleTime: editingSale.saleTime || '',
+      });
+    } else {
+      form.reset({
+        itemName: '',
+        quantity: 1,
+        totalPrice: undefined,
+        saleDate: new Date().toISOString().split('T')[0],
+        saleTime: new Date().toTimeString().slice(0, 5),
+      });
+    }
+  }, [editingSale, form]);
 
   // Combine recipes and POS items into searchable list
   const searchableItems = useMemo(() => {
@@ -179,13 +209,25 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   };
 
   const onSubmit = async (values: SaleFormValues) => {
-    const success = await createManualSale({
-      itemName: values.itemName,
-      quantity: values.quantity,
-      totalPrice: values.totalPrice,
-      saleDate: values.saleDate,
-      saleTime: values.saleTime,
-    });
+    let success = false;
+    
+    if (editingSale) {
+      success = await updateManualSale(editingSale.id, {
+        itemName: values.itemName,
+        quantity: values.quantity,
+        totalPrice: values.totalPrice,
+        saleDate: values.saleDate,
+        saleTime: values.saleTime,
+      });
+    } else {
+      success = await createManualSale({
+        itemName: values.itemName,
+        quantity: values.quantity,
+        totalPrice: values.totalPrice,
+        saleDate: values.saleDate,
+        saleTime: values.saleTime,
+      });
+    }
 
     if (success) {
       // Refresh POS items list to include the newly created item
@@ -200,7 +242,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Record Manual Sale</DialogTitle>
+          <DialogTitle>{editingSale ? 'Edit Manual Sale' : 'Record Manual Sale'}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -445,7 +487,9 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                 Cancel
               </Button>
               <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Recording...' : 'Record Sale'}
+                {form.formState.isSubmitting 
+                  ? (editingSale ? 'Updating...' : 'Recording...') 
+                  : (editingSale ? 'Update Sale' : 'Record Sale')}
               </Button>
             </DialogFooter>
           </form>

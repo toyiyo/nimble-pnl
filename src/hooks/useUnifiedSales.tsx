@@ -137,8 +137,8 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     totalPrice?: number;
     saleDate: string;
     saleTime?: string;
-  }): Promise<boolean> => {
-    if (!restaurantId || !user) return false;
+  }) => {
+    if (!restaurantId) return false;
 
     try {
       const { error } = await supabase
@@ -150,7 +150,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
           item_name: saleData.itemName,
           quantity: saleData.quantity,
           unit_price: saleData.unitPrice,
-          total_price: saleData.totalPrice || (saleData.unitPrice || 0) * saleData.quantity,
+          total_price: saleData.totalPrice,
           sale_date: saleData.saleDate,
           sale_time: saleData.saleTime,
         });
@@ -159,17 +159,92 @@ export const useUnifiedSales = (restaurantId: string | null) => {
 
       toast({
         title: "Sale recorded",
-        description: `Manual sale for ${saleData.itemName} recorded successfully.`,
+        description: "Manual sale has been recorded successfully",
       });
 
-      // Refresh sales data
-      await fetchUnifiedSales();
+      fetchUnifiedSales();
       return true;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating manual sale:', error);
       toast({
-        title: "Error recording sale",
-        description: error.message,
+        title: "Error",
+        description: "Failed to record sale",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+
+  const updateManualSale = async (saleId: string, saleData: {
+    itemName: string;
+    quantity: number;
+    unitPrice?: number;
+    totalPrice?: number;
+    saleDate: string;
+    saleTime?: string;
+  }) => {
+    if (!restaurantId) return false;
+
+    try {
+      const { error } = await supabase
+        .from('unified_sales')
+        .update({
+          item_name: saleData.itemName,
+          quantity: saleData.quantity,
+          unit_price: saleData.unitPrice,
+          total_price: saleData.totalPrice,
+          sale_date: saleData.saleDate,
+          sale_time: saleData.saleTime,
+        })
+        .eq('id', saleId)
+        .eq('restaurant_id', restaurantId)
+        .eq('pos_system', 'manual');
+
+      if (error) throw error;
+
+      toast({
+        title: "Sale updated",
+        description: "Manual sale has been updated successfully",
+      });
+
+      fetchUnifiedSales();
+      return true;
+    } catch (error) {
+      console.error('Error updating manual sale:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update sale",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+
+  const deleteManualSale = async (saleId: string) => {
+    if (!restaurantId) return false;
+
+    try {
+      const { error } = await supabase
+        .from('unified_sales')
+        .delete()
+        .eq('id', saleId)
+        .eq('restaurant_id', restaurantId)
+        .eq('pos_system', 'manual');
+
+      if (error) throw error;
+
+      toast({
+        title: "Sale deleted",
+        description: "Manual sale has been deleted successfully",
+      });
+
+      fetchUnifiedSales();
+      return true;
+    } catch (error) {
+      console.error('Error deleting manual sale:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete sale",
         variant: "destructive",
       });
       return false;
@@ -189,5 +264,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     getSalesGroupedByItem,
     getSalesByPOSSystem,
     createManualSale,
+    updateManualSale,
+    deleteManualSale,
   };
 };

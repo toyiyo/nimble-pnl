@@ -149,10 +149,6 @@ export const Inventory: React.FC = () => {
       // Use quick inventory dialog for scanning existing products
       setQuickInventoryProduct(existingProduct);
       setShowQuickInventoryDialog(true);
-      toast({
-        title: "Product found",
-        description: `${existingProduct.name} - Enter quantity`,
-      });
       return;
     }
 

@@ -1,17 +1,21 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DataInputDialog } from '@/components/DataInputDialog';
+import { PnLTrendChart } from '@/components/PnLTrendChart';
+import { CostBreakdownChart } from '@/components/CostBreakdownChart';
 
 const Index = () => {
   const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
-  const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, fetchPnLData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
+  const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, getWeeklyData, getMonthlyData, fetchPnLData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
+  const [timeFrame, setTimeFrame] = useState<'daily' | 'weekly' | 'monthly'>('daily');
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -19,6 +23,39 @@ const Index = () => {
 
   const todaysData = getTodaysData();
   const averages = getAverages(7); // 7-day averages
+
+  // Get trend data based on time frame
+  const getTrendData = () => {
+    if (timeFrame === 'weekly') {
+      return getWeeklyData().slice(0, 12); // Last 12 weeks
+    } else if (timeFrame === 'monthly') {
+      return getMonthlyData().slice(0, 12); // Last 12 months
+    } else {
+      // Transform daily data to include period
+      return getGroupedPnLData().slice(0, 30).map(day => ({
+        ...day,
+        period: day.date
+      })); // Last 30 days
+    }
+  };
+
+  // Get breakdown data based on time frame
+  const getBreakdownData = () => {
+    const data = timeFrame === 'weekly' 
+      ? getWeeklyData().slice(0, 4) // Last 4 weeks
+      : timeFrame === 'monthly'
+      ? getMonthlyData().slice(0, 3) // Last 3 months
+      : getGroupedPnLData().slice(0, 7); // Last 7 days
+
+    return data.reduce(
+      (acc, item) => ({
+        food_cost: acc.food_cost + item.food_cost,
+        labor_cost: acc.labor_cost + item.labor_cost,
+        net_revenue: acc.net_revenue + item.net_revenue,
+      }),
+      { food_cost: 0, labor_cost: 0, net_revenue: 0 }
+    );
+  };
 
   return (
     <>
@@ -143,6 +180,56 @@ const Index = () => {
                     <p className="text-sm text-muted-foreground">No historical data available.</p>
                   )}
                 </div>
+              </div>
+
+              <div className="mt-8">
+                <h3 className="text-xl md:text-2xl font-bold mb-4">Performance Analytics</h3>
+                <Tabs value={timeFrame} onValueChange={(value) => setTimeFrame(value as any)}>
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="daily">Daily</TabsTrigger>
+                    <TabsTrigger value="weekly">Weekly</TabsTrigger>
+                    <TabsTrigger value="monthly">Monthly</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="daily" className="space-y-6 mt-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <PnLTrendChart 
+                        data={getTrendData()} 
+                        title="Daily P&L Trends (Last 30 Days)"
+                      />
+                      <CostBreakdownChart 
+                        data={getBreakdownData()} 
+                        title="Cost Breakdown (Last 7 Days)"
+                      />
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="weekly" className="space-y-6 mt-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <PnLTrendChart 
+                        data={getTrendData()} 
+                        title="Weekly P&L Trends (Last 12 Weeks)"
+                      />
+                      <CostBreakdownChart 
+                        data={getBreakdownData()} 
+                        title="Cost Breakdown (Last 4 Weeks)"
+                      />
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="monthly" className="space-y-6 mt-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <PnLTrendChart 
+                        data={getTrendData()} 
+                        title="Monthly P&L Trends (Last 12 Months)"
+                      />
+                      <CostBreakdownChart 
+                        data={getBreakdownData()} 
+                        title="Cost Breakdown (Last 3 Months)"
+                      />
+                    </div>
+                  </TabsContent>
+                </Tabs>
               </div>
             </>
           )}

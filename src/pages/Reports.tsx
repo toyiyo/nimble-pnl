@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TrendingUp, AlertTriangle, DollarSign, Package, Download } from 'lucide-react';
+import { TrendingUp, AlertTriangle, DollarSign, Package, Download, LineChart as LineChartIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -7,13 +7,17 @@ import { Button } from '@/components/ui/button';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRecipeAnalytics } from '@/hooks/useRecipeAnalytics';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
+import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeProfitabilityChart } from '@/components/RecipeProfitabilityChart';
 import { ConsumptionTrendsChart } from '@/components/ConsumptionTrendsChart';
 import { VarianceAnalysis } from '@/components/VarianceAnalysis';
+import { PnLTrendChart } from '@/components/PnLTrendChart';
+import { CostBreakdownChart } from '@/components/CostBreakdownChart';
 
 export default function Reports() {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
+  const [pnlTimeFrame, setPnlTimeFrame] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   
   const { 
     profitabilityData, 
@@ -27,8 +31,48 @@ export default function Reports() {
     loading: alertsLoading 
   } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
 
+  const {
+    getGroupedPnLData,
+    getWeeklyData,
+    getMonthlyData,
+    loading: pnlLoading
+  } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
+
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
+  };
+
+  // Get P&L trend data based on time frame
+  const getPnLTrendData = () => {
+    if (pnlTimeFrame === 'weekly') {
+      return getWeeklyData().slice(0, 12);
+    } else if (pnlTimeFrame === 'monthly') {
+      return getMonthlyData().slice(0, 12);
+    } else {
+      // Transform daily data to include period
+      return getGroupedPnLData().slice(0, 30).map(day => ({
+        ...day,
+        period: day.date
+      }));
+    }
+  };
+
+  // Get breakdown data based on time frame
+  const getPnLBreakdownData = () => {
+    const data = pnlTimeFrame === 'weekly' 
+      ? getWeeklyData().slice(0, 4)
+      : pnlTimeFrame === 'monthly'
+      ? getMonthlyData().slice(0, 3)
+      : getGroupedPnLData().slice(0, 7);
+
+    return data.reduce(
+      (acc, item) => ({
+        food_cost: acc.food_cost + item.food_cost,
+        labor_cost: acc.labor_cost + item.labor_cost,
+        net_revenue: acc.net_revenue + item.net_revenue,
+      }),
+      { food_cost: 0, labor_cost: 0, net_revenue: 0 }
+    );
   };
 
   const exportAlertsToCSV = () => {
@@ -84,16 +128,72 @@ export default function Reports() {
   }
 
   return (
-    <Tabs defaultValue="profitability" className="space-y-4 md:space-y-6">
-      <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto md:h-10">
+    <Tabs defaultValue="pnl-trends" className="space-y-4 md:space-y-6">
+      <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 h-auto md:h-10">
+        <TabsTrigger value="pnl-trends" className="text-xs md:text-sm">
+          <span className="hidden sm:inline">P&L Trends</span>
+          <span className="sm:hidden">P&L</span>
+        </TabsTrigger>
         <TabsTrigger value="profitability" className="text-xs md:text-sm">
-          <span className="hidden sm:inline">Recipe Analysis</span>
+          <span className="hidden sm:inline">Recipes</span>
           <span className="sm:hidden">Recipes</span>
         </TabsTrigger>
         <TabsTrigger value="consumption" className="text-xs md:text-sm">Trends</TabsTrigger>
         <TabsTrigger value="alerts" className="text-xs md:text-sm">Alerts</TabsTrigger>
         <TabsTrigger value="variance" className="text-xs md:text-sm">Variance</TabsTrigger>
       </TabsList>
+
+      <TabsContent value="pnl-trends" className="space-y-6">
+        <div className="grid gap-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <LineChartIcon className="h-5 w-5" />
+                  P&L Performance Trends
+                </CardTitle>
+                <Tabs value={pnlTimeFrame} onValueChange={(value) => setPnlTimeFrame(value as any)}>
+                  <TabsList>
+                    <TabsTrigger value="daily" className="text-xs">Daily</TabsTrigger>
+                    <TabsTrigger value="weekly" className="text-xs">Weekly</TabsTrigger>
+                    <TabsTrigger value="monthly" className="text-xs">Monthly</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {pnlLoading ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">Loading P&L data...</p>
+                </div>
+              ) : (
+                <PnLTrendChart 
+                  data={getPnLTrendData()} 
+                  title={`${pnlTimeFrame === 'daily' ? 'Daily' : pnlTimeFrame === 'weekly' ? 'Weekly' : 'Monthly'} Cost Percentages`}
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Cost Distribution Analysis</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {pnlLoading ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">Loading cost data...</p>
+                </div>
+              ) : (
+                <CostBreakdownChart 
+                  data={getPnLBreakdownData()} 
+                  title={`Cost Breakdown (${pnlTimeFrame === 'daily' ? 'Last 7 Days' : pnlTimeFrame === 'weekly' ? 'Last 4 Weeks' : 'Last 3 Months'})`}
+                />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </TabsContent>
 
       <TabsContent value="profitability" className="space-y-6">
         <div className="grid gap-6">

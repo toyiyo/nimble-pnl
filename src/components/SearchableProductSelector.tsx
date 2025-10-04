@@ -70,7 +70,7 @@ export function SearchableProductSelector({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[400px] p-0 bg-background border shadow-md z-50" align="start">
-        <Command shouldFilter={false}>
+        <Command shouldFilter={false} className="max-h-[400px]">
           <CommandInput
             placeholder={placeholder}
             value={searchValue}
@@ -81,7 +81,7 @@ export function SearchableProductSelector({
               <p className="text-muted-foreground">No products found</p>
             </div>
           </CommandEmpty>
-          <CommandGroup className="max-h-[300px] overflow-y-auto">
+          <CommandGroup className="overflow-y-auto max-h-[300px]">
             {filteredProducts.map((product) => (
               <CommandItem
                 key={product.id}

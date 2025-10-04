@@ -79,7 +79,7 @@ export function SearchablePOSItemSelector({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[400px] p-0 bg-background border shadow-md z-50" align="start">
-        <Command shouldFilter={false}>
+        <Command shouldFilter={false} className="max-h-[400px]">
           <CommandInput
             placeholder="Search POS items..."
             value={searchValue}
@@ -90,7 +90,7 @@ export function SearchablePOSItemSelector({
               <p className="text-muted-foreground">No POS items found</p>
             </div>
           </CommandEmpty>
-          <CommandGroup className="max-h-[300px] overflow-y-auto">
+          <CommandGroup className="overflow-y-auto max-h-[300px]">
             {value && (
               <CommandItem
                 onSelect={handleClear}

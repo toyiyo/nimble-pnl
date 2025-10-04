@@ -291,6 +291,62 @@ export type Database = {
         }
         Relationships: []
       }
+      inventory_reconciliations: {
+        Row: {
+          created_at: string
+          id: string
+          items_with_variance: number | null
+          notes: string | null
+          performed_by: string
+          reconciliation_date: string
+          restaurant_id: string
+          started_at: string
+          status: string
+          submitted_at: string | null
+          total_items_counted: number | null
+          total_shrinkage_value: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          items_with_variance?: number | null
+          notes?: string | null
+          performed_by: string
+          reconciliation_date?: string
+          restaurant_id: string
+          started_at?: string
+          status?: string
+          submitted_at?: string | null
+          total_items_counted?: number | null
+          total_shrinkage_value?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          items_with_variance?: number | null
+          notes?: string | null
+          performed_by?: string
+          reconciliation_date?: string
+          restaurant_id?: string
+          started_at?: string
+          status?: string
+          submitted_at?: string | null
+          total_items_counted?: number | null
+          total_shrinkage_value?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_reconciliations_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_transactions: {
         Row: {
           created_at: string
@@ -864,6 +920,66 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reconciliation_items: {
+        Row: {
+          actual_quantity: number | null
+          counted_at: string | null
+          created_at: string
+          expected_quantity: number
+          id: string
+          notes: string | null
+          product_id: string
+          reconciliation_id: string
+          unit_cost: number
+          updated_at: string
+          variance: number | null
+          variance_value: number | null
+        }
+        Insert: {
+          actual_quantity?: number | null
+          counted_at?: string | null
+          created_at?: string
+          expected_quantity: number
+          id?: string
+          notes?: string | null
+          product_id: string
+          reconciliation_id: string
+          unit_cost: number
+          updated_at?: string
+          variance?: number | null
+          variance_value?: number | null
+        }
+        Update: {
+          actual_quantity?: number | null
+          counted_at?: string | null
+          created_at?: string
+          expected_quantity?: number
+          id?: string
+          notes?: string | null
+          product_id?: string
+          reconciliation_id?: string
+          unit_cost?: number
+          updated_at?: string
+          variance?: number | null
+          variance_value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reconciliation_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reconciliation_items_reconciliation_id_fkey"
+            columns: ["reconciliation_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_reconciliations"
             referencedColumns: ["id"]
           },
         ]

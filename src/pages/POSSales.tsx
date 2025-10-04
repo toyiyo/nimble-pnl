@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Download, Search, Calendar, RefreshCw, Upload as UploadIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +18,7 @@ import { format } from 'date-fns';
 import { InventoryDeductionDialog } from '@/components/InventoryDeductionDialog';
 
 export default function POSSales() {
+  const navigate = useNavigate();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, createManualSale } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(selectedRestaurant?.restaurant_id || null);
@@ -31,6 +33,10 @@ export default function POSSales() {
   const [selectedItemForDeduction, setSelectedItemForDeduction] = useState<{name: string; quantity: number} | null>(null);
   const [importedSalesData, setImportedSalesData] = useState<ParsedSale[] | null>(null);
   const [activeTab, setActiveTab] = useState<'manual' | 'import'>('manual');
+
+  const handleCreateRecipe = (itemName: string) => {
+    navigate('/recipes', { state: { createRecipeFor: itemName } });
+  };
 
   interface ParsedSale {
     itemName: string;
@@ -297,7 +303,11 @@ export default function POSSales() {
                               {sale.posSystem}
                             </Badge>
                             {unmappedItems.includes(sale.itemName) && (
-                              <Badge variant="destructive" className="text-xs">
+                              <Badge 
+                                variant="destructive" 
+                                className="text-xs cursor-pointer hover:bg-destructive/80 transition-colors"
+                                onClick={() => handleCreateRecipe(sale.itemName)}
+                              >
                                 No Recipe
                               </Badge>
                             )}

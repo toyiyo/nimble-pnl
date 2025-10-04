@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRecipes } from '@/hooks/useRecipes';
@@ -27,6 +28,7 @@ import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings } from
 
 export default function Recipes() {
   const { user } = useAuth();
+  const location = useLocation();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
@@ -35,8 +37,19 @@ export default function Recipes() {
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [deletingRecipe, setDeletingRecipe] = useState<any>(null);
   const [showAutoSettings, setShowAutoSettings] = useState(false);
+  const [initialPosItemName, setInitialPosItemName] = useState<string | undefined>();
 
   const { setupAutoDeduction } = useAutomaticInventoryDeduction();
+
+  // Check if we navigated here with a POS item to create a recipe for
+  useEffect(() => {
+    if (location.state?.createRecipeFor) {
+      setInitialPosItemName(location.state.createRecipeFor);
+      setIsCreateDialogOpen(true);
+      // Clear the state after using it
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const handleRestaurantSelect = (restaurant: any) => {
     console.log('Selected restaurant object:', restaurant);
@@ -194,9 +207,13 @@ export default function Recipes() {
       {/* Dialogs */}
       <RecipeDialog
         isOpen={isCreateDialogOpen}
-        onClose={() => setIsCreateDialogOpen(false)}
+        onClose={() => {
+          setIsCreateDialogOpen(false);
+          setInitialPosItemName(undefined);
+        }}
         restaurantId={selectedRestaurant?.restaurant_id}
         onRecipeUpdated={fetchRecipes}
+        initialPosItemName={initialPosItemName}
       />
 
       <RecipeDialog

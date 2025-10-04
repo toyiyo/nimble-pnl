@@ -66,9 +66,10 @@ interface RecipeDialogProps {
   restaurantId: string;
   recipe?: Recipe | null;
   onRecipeUpdated?: () => void;
+  initialPosItemName?: string;
 }
 
-export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUpdated }: RecipeDialogProps) {
+export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUpdated, initialPosItemName }: RecipeDialogProps) {
   const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
   const { products } = useProducts(restaurantId);
   const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
@@ -83,7 +84,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
     defaultValues: {
       name: '',
       description: '',
-      pos_item_name: '',
+      pos_item_name: initialPosItemName || '',
       pos_item_id: '',
       serving_size: 1,
       ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],

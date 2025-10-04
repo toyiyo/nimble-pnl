@@ -100,18 +100,12 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
     setState(prev => ({ ...prev, isConnecting: true, debugInfo: 'Searching for devices...' }));
 
     try {
-      // Request device with multiple service filters
-      // Using acceptAllDevices for maximum compatibility on Android
+      // Request device - accept all devices to ensure scanner appears
+      // Using type assertion as acceptAllDevices is valid but may not be in types
       const device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { namePrefix: 'NT' },          // NT CCD and similar scanners
-          { namePrefix: 'Scanner' },      // Generic scanners
-          { namePrefix: 'Barcode' },      // Barcode scanners
-          { namePrefix: 'HID' },          // HID mode scanners
-          { name: 'NT CCD barcode scanner' } // Exact match for NT CCD
-        ],
+        acceptAllDevices: true,
         optionalServices: [BATTERY_SERVICE_UUID, SPP_SERVICE_UUID, UART_SERVICE_UUID]
-      });
+      } as RequestDeviceOptions);
 
       setState(prev => ({ ...prev, debugInfo: 'Connecting to device...' }));
 

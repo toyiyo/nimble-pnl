@@ -149,13 +149,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const [state, dispatch] = useReducer(scannerReducer, initialState);
 
   // Constants for performance optimization
-  const FRAME_SKIP_COUNT = 4; // Process every 4th frame
+  const FRAME_SKIP_COUNT = 2; // Reduced from 4 - Android needs more frequent scanning
   const OCR_TIMEOUT = 2000; // 2 seconds before OCR fallback
   const MAX_WIDTH = 800;
   const MAX_HEIGHT = 600;
   const JPEG_QUALITY = 0.7;
 
-  // Initialize reader once
+  // Initialize reader once with Android-optimized hints
   useEffect(() => {
     const hints = new Map();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
@@ -164,11 +164,15 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       BarcodeFormat.EAN_13,
       BarcodeFormat.EAN_8,
       BarcodeFormat.CODE_128,
+      BarcodeFormat.CODE_39,     // Added for Android compatibility
+      BarcodeFormat.CODE_93,     // Added for Android compatibility
+      BarcodeFormat.ITF,         // Added for Android compatibility
       BarcodeFormat.QR_CODE,
       BarcodeFormat.DATA_MATRIX,
     ]);
     hints.set(DecodeHintType.TRY_HARDER, true);
     hints.set(DecodeHintType.PURE_BARCODE, false);
+    hints.set(DecodeHintType.ASSUME_GS1, false); // Better for Android
 
     readerRef.current = new BrowserMultiFormatReader(hints);
 
@@ -318,11 +322,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     dispatch({ type: 'START_SCANNING' });
 
     try {
+      // Android-optimized camera constraints
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
-          width: { ideal: 1280, max: 1920 }, // Limit max resolution
-          height: { ideal: 720, max: 1080 }
+          width: { ideal: 1920, max: 3840 },  // Higher resolution for Android
+          height: { ideal: 1080, max: 2160 },
+          frameRate: { ideal: 30, min: 15 }   // Ensure decent frame rate
         }
       });
       

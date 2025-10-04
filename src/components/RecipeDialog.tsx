@@ -34,6 +34,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { usePOSItems } from '@/hooks/usePOSItems';
 import { useUnitConversion } from '@/hooks/useUnitConversion';
 import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
+import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelector';
 import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
 import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
 import { calculateInventoryImpact } from "@/lib/enhancedUnitConversion";
@@ -376,32 +377,19 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>POS Item Name</FormLabel>
-                        <Select onValueChange={(value) => {
-                          field.onChange(value);
-                          // Auto-fill POS item ID if available
-                          const selectedItem = posItems.find(item => item.item_name === value);
-                          if (selectedItem?.item_id) {
-                            form.setValue('pos_item_id', selectedItem.item_id);
-                          }
-                        }} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger id="pos-item-name">
-                              <SelectValue placeholder={posItemsLoading ? "Loading POS items..." : "Select POS item or leave blank"} />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="bg-background border shadow-md z-50 max-h-[200px] overflow-y-auto">
-                            {posItems.map((item) => (
-                              <SelectItem key={item.item_name} value={item.item_name}>
-                                <div className="flex flex-col">
-                                  <span>{item.item_name}</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {item.sales_count} sales • {item.source === 'pos_sales' ? 'POS' : 'Unified'} • Last: {item.last_sold}
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <SearchablePOSItemSelector
+                            value={field.value}
+                            onValueChange={(itemName, itemId) => {
+                              field.onChange(itemName);
+                              if (itemId) {
+                                form.setValue('pos_item_id', itemId);
+                              }
+                            }}
+                            posItems={posItems}
+                            loading={posItemsLoading}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}

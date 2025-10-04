@@ -14,6 +14,7 @@ import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
 import { DeleteProductDialog } from '@/components/DeleteProductDialog';
 import { WasteDialog } from '@/components/WasteDialog';
 import { TransferDialog } from '@/components/TransferDialog';
+import { QuickInventoryDialog } from '@/components/QuickInventoryDialog';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { InventorySettings } from '@/components/InventorySettings';
 import { InventoryValueBadge } from '@/components/InventoryValueBadge';
@@ -55,6 +56,9 @@ export const Inventory: React.FC = () => {
   const [wasteProduct, setWasteProduct] = useState<Product | null>(null);
   const [transferProduct, setTransferProduct] = useState<Product | null>(null);
   const [activeTab, setActiveTab] = useState('scanner');
+  const [showQuickInventoryDialog, setShowQuickInventoryDialog] = useState(false);
+  const [quickInventoryProduct, setQuickInventoryProduct] = useState<Product | null>(null);
+  const [scanMode, setScanMode] = useState<'add' | 'reconcile'>('add');
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -132,11 +136,12 @@ export const Inventory: React.FC = () => {
     const existingProduct = await findProductByGtin(gtin);
     
     if (existingProduct) {
-      setSelectedProduct(existingProduct);
-      setShowUpdateDialog(true);
+      // Use quick inventory dialog for scanning existing products
+      setQuickInventoryProduct(existingProduct);
+      setShowQuickInventoryDialog(true);
       toast({
-        title: "Product found in inventory",
-        description: `${existingProduct.name} - Update details or add stock`,
+        title: "Product found",
+        description: `${existingProduct.name} - Enter quantity`,
       });
       return;
     }
@@ -179,12 +184,12 @@ export const Inventory: React.FC = () => {
       if (result) {
         toast({
           title: "Product identified",
-          description: `Found: ${result.product_name} - Add details and quantity`,
+          description: `${result.product_name} - Add details then scan again for quick entry`,
         });
       } else {
         toast({
           title: "New product scanned",
-          description: "Add product details and initial quantity",
+          description: "Add product details - scan again later for quick entry",
         });
       }
     } catch (error) {
@@ -311,12 +316,12 @@ export const Inventory: React.FC = () => {
       if (enhancedData?.productName || grokOCRResult.text) {
         toast({
           title: "Product identified from image",
-          description: `Found: ${enhancedData?.productName || grokOCRResult.text} - Review and save`,
+          description: `${enhancedData?.productName || grokOCRResult.text} - Add details then scan again for quick entry`,
         });
       } else {
         toast({
           title: "Image captured",
-          description: "Add product details manually",
+          description: "Add product details - scan again later for quick entry",
         });
       }
     } catch (error) {
@@ -557,6 +562,50 @@ export const Inventory: React.FC = () => {
     return await ProductEnhancementService.enhanceProduct(product);
   };
 
+  const handleQuickInventorySave = async (quantity: number) => {
+    if (!quickInventoryProduct || !selectedRestaurant) return;
+
+    const currentStock = quickInventoryProduct.current_stock || 0;
+    const costPerUnit = quickInventoryProduct.cost_per_unit || 0;
+    
+    let finalStock: number;
+    let transactionType: 'purchase' | 'adjustment';
+    let reason: string;
+    
+    if (scanMode === 'add') {
+      // Add mode: add to existing stock
+      finalStock = currentStock + quantity;
+      transactionType = 'purchase';
+      reason = `Purchase - Added ${quantity} via quick scan`;
+    } else {
+      // Reconcile mode: set total stock to scanned quantity
+      finalStock = quantity;
+      transactionType = 'adjustment';
+      reason = `Inventory reconciliation - Set to ${quantity} via quick scan`;
+    }
+    
+    const success = await updateProductStockWithAudit(
+      selectedRestaurant.restaurant_id,
+      quickInventoryProduct.id,
+      finalStock,
+      currentStock,
+      costPerUnit,
+      transactionType,
+      reason,
+      `quick_scan_${Date.now()}`
+    );
+    
+    if (success) {
+      await refetchProducts();
+      toast({
+        title: "Inventory updated",
+        description: scanMode === 'add' 
+          ? `Added ${quantity} to ${quickInventoryProduct.name}`
+          : `Set ${quickInventoryProduct.name} to ${quantity}`,
+      });
+    }
+  };
+
   const handleDeleteProduct = (product: Product) => {
     setProductToDelete(product);
     setShowDeleteDialog(true);
@@ -675,7 +724,31 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="scanner" className="mt-4 md:mt-6">
             <div className="space-y-4 md:space-y-6">
-              {/* Mode Toggle */}
+              {/* Scan Mode Toggle - Add vs Reconcile */}
+              <div className="flex justify-center">
+                <div className="bg-card border border-border p-1 rounded-lg w-full max-w-md">
+                  <div className="grid grid-cols-2 gap-1">
+                    <Button
+                      variant={scanMode === 'add' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setScanMode('add')}
+                      className="flex-1"
+                    >
+                      ➕ Add Stock
+                    </Button>
+                    <Button
+                      variant={scanMode === 'reconcile' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setScanMode('reconcile')}
+                      className="flex-1"
+                    >
+                      ✓ Reconcile
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scanner/Image Mode Toggle */}
               <div className="flex justify-center">
                 <div className="bg-muted p-1 rounded-lg w-full max-w-md">
                   <div className="grid grid-cols-2 gap-1">
@@ -1199,6 +1272,17 @@ export const Inventory: React.FC = () => {
           onTransferCompleted={() => {
             window.location.reload();
           }}
+        />
+      )}
+
+      {/* Quick Inventory Dialog */}
+      {quickInventoryProduct && (
+        <QuickInventoryDialog
+          open={showQuickInventoryDialog}
+          onOpenChange={setShowQuickInventoryDialog}
+          product={quickInventoryProduct}
+          mode={scanMode}
+          onSave={handleQuickInventorySave}
         />
       )}
     </div>

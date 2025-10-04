@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Keyboard, Scan, Plus, ClipboardList, Check, X } from 'lucide-react';
+import { Keyboard, Scan, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface KeyboardBarcodeScannerProps {
@@ -13,8 +13,6 @@ interface KeyboardBarcodeScannerProps {
   autoStart?: boolean;
 }
 
-type ScanMode = 'add' | 'reconcile';
-
 export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
   onScan,
   onError,
@@ -22,7 +20,6 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
   autoStart = false
 }) => {
   const [isActive, setIsActive] = useState(autoStart);
-  const [scanMode, setScanMode] = useState<ScanMode>('add');
   const [buffer, setBuffer] = useState('');
   const [lastScan, setLastScan] = useState<string>('');
   const [scanCount, setScanCount] = useState(0);
@@ -137,38 +134,6 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
       </CardHeader>
       
       <CardContent className="space-y-4">
-        {/* Mode Toggle */}
-        <div className="space-y-2">
-          <div className="text-sm font-medium">Scan Mode:</div>
-          <div className="bg-muted p-1 rounded-lg grid grid-cols-2 gap-1">
-            <Button
-              variant={scanMode === 'add' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setScanMode('add')}
-              disabled={!isActive}
-              className="flex items-center gap-1"
-            >
-              <Plus className="h-4 w-4" />
-              Add Quantity
-            </Button>
-            <Button
-              variant={scanMode === 'reconcile' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setScanMode('reconcile')}
-              disabled={!isActive}
-              className="flex items-center gap-1"
-            >
-              <ClipboardList className="h-4 w-4" />
-              Set Total (Reconcile)
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {scanMode === 'add' 
-              ? 'Scan items to add quantity to existing stock' 
-              : 'Scan items to set the total physical count (reconciliation mode)'}
-          </p>
-        </div>
-
         {/* Scanner Status Area */}
         <div className="min-h-[200px] border-2 border-dashed rounded-lg flex items-center justify-center relative bg-background">
           {isActive ? (
@@ -178,8 +143,8 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
                 Scanner Ready
               </div>
               <div className="text-sm text-muted-foreground max-w-md">
-                Point your Bluetooth HID scanner at a barcode and press the trigger. 
-                {scanMode === 'add' ? ' Items will be added to inventory.' : ' You\'ll set the exact count.'}
+                Point your Bluetooth HID scanner at a barcode and press the trigger.
+                Each scan opens quick entry dialog for fast inventory updates.
               </div>
               
               {lastScan && (

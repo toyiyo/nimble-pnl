@@ -59,14 +59,22 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       setSales(transformedSales);
 
       // Find unmapped items (items that don't have recipes)
+      // Match the logic used in process_unified_inventory_deduction which checks BOTH pos_item_name AND name
       const uniqueItemNames = [...new Set(transformedSales.map(sale => sale.itemName))];
       
       const { data: recipes } = await supabase
         .from('recipes')
-        .select('pos_item_name')
-        .eq('restaurant_id', restaurantId);
+        .select('pos_item_name, name')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true);
 
-      const mappedItems = new Set(recipes?.map(r => r.pos_item_name).filter(Boolean) || []);
+      // Create a set of all possible matches (both pos_item_name and recipe name)
+      const mappedItems = new Set<string>();
+      recipes?.forEach(r => {
+        if (r.pos_item_name) mappedItems.add(r.pos_item_name);
+        if (r.name) mappedItems.add(r.name);
+      });
+      
       const unmapped = uniqueItemNames.filter(name => !mappedItems.has(name));
       
       setUnmappedItems(unmapped);

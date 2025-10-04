@@ -54,6 +54,7 @@ export const Inventory: React.FC = () => {
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [wasteProduct, setWasteProduct] = useState<Product | null>(null);
   const [transferProduct, setTransferProduct] = useState<Product | null>(null);
+  const [activeTab, setActiveTab] = useState('scanner');
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -649,7 +650,7 @@ export const Inventory: React.FC = () => {
       </header>
 
       <div className="max-w-7xl mx-auto p-4 md:p-6">
-        <Tabs defaultValue="scanner" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
             <TabsTrigger value="scanner" className="flex-col py-2 px-1">
               <span className="text-xs md:text-sm">Scanner</span>

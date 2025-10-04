@@ -79,14 +79,14 @@ export function SearchablePOSItemSelector({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full sm:w-[400px] h-[400px] p-0 bg-background border shadow-md z-50 flex flex-col" align="start">
-        <Command shouldFilter={false} className="flex-1 flex flex-col">
+      <PopoverContent className="w-full sm:w-[400px] p-0 bg-background border shadow-md z-50" align="start">
+        <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search POS items..."
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <CommandList className="flex-1 overflow-auto">
+          <CommandList className="max-h-[300px] overflow-y-auto">
             <CommandEmpty>
               <div className="py-6 text-center text-sm">
                 <p className="text-muted-foreground">No POS items found</p>

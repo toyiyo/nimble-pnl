@@ -23,8 +23,9 @@ export const EnhancedBarcodeScanner: React.FC<EnhancedBarcodeScannerProps> = ({
 }) => {
   const [scanMode, setScanMode] = useState<ScanMode>('camera');
 
-  // Check if Web Bluetooth is supported
-  const isBluetoothSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+  // Check if Web Bluetooth is supported and detect iOS
+  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isBluetoothSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator && !isIOS;
 
   return (
     <div className={cn("space-y-4", className)}>
@@ -71,11 +72,16 @@ export const EnhancedBarcodeScanner: React.FC<EnhancedBarcodeScannerProps> = ({
       )}
 
       {/* Browser compatibility notice */}
-      {scanMode === 'bluetooth' && !isBluetoothSupported && (
+      {!isBluetoothSupported && (
         <Card className="border-orange-200 bg-orange-50">
           <CardContent className="pt-4">
             <div className="text-sm text-orange-800">
-              <strong>Note:</strong> Bluetooth scanning requires Chrome, Edge, or another browser with Web Bluetooth API support.
+              <strong>{isIOS ? 'iOS Limitation:' : 'Browser Compatibility:'}</strong> 
+              {isIOS ? (
+                <> iOS devices do not support Web Bluetooth. Please use the camera scanner or switch to an Android device or desktop browser (Chrome/Edge) for Bluetooth scanning.</>
+              ) : (
+                <> Bluetooth scanning requires Chrome, Edge, or another browser with Web Bluetooth API support.</>
+              )}
             </div>
           </CardContent>
         </Card>

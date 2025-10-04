@@ -558,11 +558,13 @@ export const Inventory: React.FC = () => {
           toast({
             title: "Inventory updated",
             description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference} units. New total: ${Math.round(finalStock * 100) / 100}`,
+            duration: 800,
           });
         } else {
           toast({
             title: "Product updated", 
             description: "Product information has been updated",
+            duration: 800,
           });
         }
         
@@ -628,6 +630,7 @@ export const Inventory: React.FC = () => {
         description: scanMode === 'add' 
           ? `Added ${quantity} to ${quickInventoryProduct.name}`
           : `Set ${quickInventoryProduct.name} to ${quantity}`,
+        duration: 800,
       });
     }
   };

@@ -5,11 +5,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
-import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeIntelligenceReport } from '@/components/RecipeIntelligenceReport';
 import { ConsumptionIntelligenceReport } from '@/components/ConsumptionIntelligenceReport';
+import { AlertsIntelligenceReport } from '@/components/AlertsIntelligenceReport';
 import { ReconciliationVarianceReport } from '@/components/ReconciliationVarianceReport';
 import { PnLIntelligenceReport } from '@/components/PnLIntelligenceReport';
 import { PnLTrendChart } from '@/components/PnLTrendChart';
@@ -17,88 +16,9 @@ import { CostBreakdownChart } from '@/components/CostBreakdownChart';
 
 export default function Reports() {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
-  const [pnlTimeFrame, setPnlTimeFrame] = useState<'daily' | 'weekly' | 'monthly'>('daily');
-  
-  const { 
-    lowStockItems, 
-    reorderAlerts, 
-    loading: alertsLoading 
-  } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
-
-  const {
-    getGroupedPnLData,
-    getWeeklyData,
-    getMonthlyData,
-    loading: pnlLoading
-  } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
-  };
-
-  // Get P&L trend data based on time frame
-  const getPnLTrendData = () => {
-    if (pnlTimeFrame === 'weekly') {
-      return getWeeklyData().slice(0, 12);
-    } else if (pnlTimeFrame === 'monthly') {
-      return getMonthlyData().slice(0, 12);
-    } else {
-      // Transform daily data to include period
-      return getGroupedPnLData().slice(0, 30).map(day => ({
-        ...day,
-        period: day.date
-      }));
-    }
-  };
-
-  // Get breakdown data based on time frame
-  const getPnLBreakdownData = () => {
-    const data = pnlTimeFrame === 'weekly' 
-      ? getWeeklyData().slice(0, 4)
-      : pnlTimeFrame === 'monthly'
-      ? getMonthlyData().slice(0, 3)
-      : getGroupedPnLData().slice(0, 1); // Only get today's data for daily view
-
-    return data.reduce(
-      (acc, item) => ({
-        food_cost: acc.food_cost + item.food_cost,
-        labor_cost: acc.labor_cost + item.labor_cost,
-        net_revenue: acc.net_revenue + item.net_revenue,
-      }),
-      { food_cost: 0, labor_cost: 0, net_revenue: 0 }
-    );
-  };
-
-  const exportAlertsToCSV = () => {
-    const csvData = [];
-    csvData.push(['Product Name', 'Category', 'Current Stock', 'Unit', 'Reorder Point', 'Par Level Min', 'Par Level Max', 'Status', 'Supplier', 'Cost Per Unit']);
-    
-    reorderAlerts.forEach(alert => {
-      const status = alert.current_stock === 0 ? 'Out of Stock' : 'Low Stock';
-      csvData.push([
-        alert.name,
-        alert.category,
-        alert.current_stock,
-        alert.uom_purchase,
-        alert.reorder_point,
-        alert.par_level_min,
-        alert.par_level_max,
-        status,
-        alert.supplier_name || '',
-        alert.cost_per_unit || ''
-      ]);
-    });
-
-    const csvContent = csvData.map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `inventory-alerts-${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   if (!selectedRestaurant) {
@@ -150,78 +70,7 @@ export default function Reports() {
       </TabsContent>
 
       <TabsContent value="alerts" className="space-y-6">
-        <div className="grid gap-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5" />
-                  Reorder Alerts
-                  {reorderAlerts.length > 0 && (
-                    <Badge variant="destructive">{reorderAlerts.length}</Badge>
-                  )}
-                </CardTitle>
-                {reorderAlerts.length > 0 && (
-                  <Button onClick={exportAlertsToCSV} variant="outline" size="sm">
-                    <Download className="h-4 w-4 mr-2" />
-                    Export CSV
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {alertsLoading ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">Loading alerts...</p>
-                </div>
-              ) : reorderAlerts.length === 0 ? (
-                <div className="text-center py-8">
-                  <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">All inventory levels are healthy!</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {reorderAlerts.map((alert) => (
-                    <div key={alert.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div>
-                        <h4 className="font-medium">{alert.name}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Current: {alert.current_stock} {alert.uom_purchase} • 
-                          Reorder at: {alert.reorder_point}
-                        </p>
-                      </div>
-                      <Badge variant={alert.current_stock === 0 ? "destructive" : "secondary"}>
-                        {alert.current_stock === 0 ? "Out of Stock" : "Low Stock"}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Low Stock Items</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {lowStockItems.length === 0 ? (
-                <p className="text-muted-foreground">No low stock items</p>
-              ) : (
-                <div className="space-y-2">
-                  {lowStockItems.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center">
-                      <span className="font-medium">{item.name}</span>
-                      <span className="text-sm text-muted-foreground">
-                        {item.current_stock} {item.uom_purchase}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <AlertsIntelligenceReport restaurantId={selectedRestaurant.restaurant_id} />
       </TabsContent>
 
       <TabsContent value="variance" className="space-y-6">

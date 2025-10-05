@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,16 +27,17 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
-  // Initialize input values from items
-  useState(() => {
-    const initialValues: Record<string, string> = {};
+  // Sync input values with items from database whenever items change
+  useEffect(() => {
+    const newValues: Record<string, string> = {};
     items.forEach(item => {
+      // Only update if we don't have a local value or the item has been updated from database
       if (item.actual_quantity !== null && item.actual_quantity !== undefined) {
-        initialValues[item.id] = item.actual_quantity.toString();
+        newValues[item.id] = item.actual_quantity.toString();
       }
     });
-    setInputValues(initialValues);
-  });
+    setInputValues(newValues);
+  }, [items]);
 
   const filteredItems = items.filter(item =>
     item.product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -12,6 +12,7 @@ import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeProfitabilityChart } from '@/components/RecipeProfitabilityChart';
 import { ConsumptionTrendsChart } from '@/components/ConsumptionTrendsChart';
 import { ReconciliationVarianceReport } from '@/components/ReconciliationVarianceReport';
+import { PnLIntelligenceReport } from '@/components/PnLIntelligenceReport';
 import { PnLTrendChart } from '@/components/PnLTrendChart';
 import { CostBreakdownChart } from '@/components/CostBreakdownChart';
 
@@ -144,55 +145,7 @@ export default function Reports() {
       </TabsList>
 
       <TabsContent value="pnl-trends" className="space-y-6">
-        <div className="grid gap-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <LineChartIcon className="h-5 w-5" />
-                  P&L Performance Trends
-                </CardTitle>
-                <Tabs value={pnlTimeFrame} onValueChange={(value) => setPnlTimeFrame(value as any)}>
-                  <TabsList>
-                    <TabsTrigger value="daily" className="text-xs">Daily</TabsTrigger>
-                    <TabsTrigger value="weekly" className="text-xs">Weekly</TabsTrigger>
-                    <TabsTrigger value="monthly" className="text-xs">Monthly</TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {pnlLoading ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">Loading P&L data...</p>
-                </div>
-              ) : (
-                <PnLTrendChart 
-                  data={getPnLTrendData()} 
-                  title={`${pnlTimeFrame === 'daily' ? 'Daily' : pnlTimeFrame === 'weekly' ? 'Weekly' : 'Monthly'} Cost Percentages`}
-                />
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Cost Distribution Analysis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {pnlLoading ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">Loading cost data...</p>
-                </div>
-              ) : (
-                <CostBreakdownChart 
-                  data={getPnLBreakdownData()} 
-                  title={`Cost Breakdown (${pnlTimeFrame === 'daily' ? 'Today' : pnlTimeFrame === 'weekly' ? 'Last 4 Weeks' : 'Last 3 Months'})`}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <PnLIntelligenceReport restaurantId={selectedRestaurant.restaurant_id} />
       </TabsContent>
 
       <TabsContent value="profitability" className="space-y-6">

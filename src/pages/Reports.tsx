@@ -9,7 +9,7 @@ import { useRecipeAnalytics } from '@/hooks/useRecipeAnalytics';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
 import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
-import { RecipeProfitabilityChart } from '@/components/RecipeProfitabilityChart';
+import { RecipeIntelligenceReport } from '@/components/RecipeIntelligenceReport';
 import { ConsumptionTrendsChart } from '@/components/ConsumptionTrendsChart';
 import { ReconciliationVarianceReport } from '@/components/ReconciliationVarianceReport';
 import { PnLIntelligenceReport } from '@/components/PnLIntelligenceReport';
@@ -149,81 +149,7 @@ export default function Reports() {
       </TabsContent>
 
       <TabsContent value="profitability" className="space-y-6">
-        <div className="grid gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Recipe Profitability Analysis
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {analyticsLoading ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">Loading profitability data...</p>
-                </div>
-              ) : (
-                <RecipeProfitabilityChart data={profitabilityData} />
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-            <Card>
-              <CardHeader className="pb-2 md:pb-3">
-                <CardTitle className="text-xs md:text-sm">Highest Margin</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {profitabilityData?.highestMargin ? (
-                  <div>
-                    <p className="font-medium text-sm truncate">{profitabilityData.highestMargin.name}</p>
-                    <p className="text-xl md:text-2xl font-bold text-green-600">
-                      {profitabilityData.highestMargin.margin.toFixed(1)}%
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-sm">No data</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2 md:pb-3">
-                <CardTitle className="text-xs md:text-sm">Lowest Margin</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {profitabilityData?.lowestMargin ? (
-                  <div>
-                    <p className="font-medium text-sm truncate">{profitabilityData.lowestMargin.name}</p>
-                    <p className="text-xl md:text-2xl font-bold text-red-600">
-                      {profitabilityData.lowestMargin.margin.toFixed(1)}%
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-sm">No data</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="sm:col-span-2 lg:col-span-1">
-              <CardHeader className="pb-2 md:pb-3">
-                <CardTitle className="text-xs md:text-sm">Avg Food Cost %</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {profitabilityData?.averageFoodCost ? (
-                  <div>
-                    <p className="text-xl md:text-2xl font-bold text-primary">
-                      {profitabilityData.averageFoodCost.toFixed(1)}%
-                    </p>
-                    <p className="text-xs md:text-sm text-muted-foreground">Across all recipes</p>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-sm">No data</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+        <RecipeIntelligenceReport restaurantId={selectedRestaurant.restaurant_id} />
       </TabsContent>
 
       <TabsContent value="consumption" className="space-y-6">

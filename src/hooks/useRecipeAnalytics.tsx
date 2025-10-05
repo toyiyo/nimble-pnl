@@ -53,29 +53,31 @@ export const useRecipeAnalytics = (restaurantId: string | null) => {
 
       if (recipesError) throw recipesError;
 
-      // Get sales data for each recipe
+      // Get sales data for each recipe from unified_sales
       const recipeProfitability: RecipeProfitability[] = [];
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
       for (const recipe of recipes || []) {
-        if (!recipe.pos_item_name) continue;
-
+        // Match by pos_item_name or recipe name
         const { data: salesData, error: salesError } = await supabase
-          .from('pos_sales')
-          .select('quantity, sale_price')
+          .from('unified_sales')
+          .select('quantity, total_price, unit_price')
           .eq('restaurant_id', restaurantId)
-          .eq('pos_item_name', recipe.pos_item_name)
-          .gte('sale_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]); // Last 30 days
+          .or(`item_name.eq.${recipe.pos_item_name || recipe.name}`)
+          .gte('sale_date', thirtyDaysAgo);
 
         if (salesError) {
           console.error('Error fetching sales data for recipe:', recipe.name, salesError);
           continue;
         }
 
-        const totalQuantitySold = salesData?.reduce((sum, sale) => sum + sale.quantity, 0) || 0;
-        const totalSales = salesData?.reduce((sum, sale) => sum + (sale.sale_price || 0) * sale.quantity, 0) || 0;
+        if (!salesData || salesData.length === 0) continue;
+
+        const totalQuantitySold = salesData.reduce((sum, sale) => sum + (sale.quantity || 0), 0);
+        const totalSales = salesData.reduce((sum, sale) => sum + (sale.total_price || 0), 0);
         const averageSellingPrice = totalQuantitySold > 0 ? totalSales / totalQuantitySold : 0;
 
-        if (totalQuantitySold > 0 && averageSellingPrice > 0) {
+        if (totalQuantitySold > 0 && averageSellingPrice > 0 && recipe.estimated_cost > 0) {
           const foodCostPercentage = (recipe.estimated_cost / averageSellingPrice) * 100;
           const margin = ((averageSellingPrice - recipe.estimated_cost) / averageSellingPrice) * 100;
 
@@ -97,11 +99,15 @@ export const useRecipeAnalytics = (restaurantId: string | null) => {
         ? recipeProfitability.reduce((sum, recipe) => sum + recipe.food_cost_percentage, 0) / recipeProfitability.length
         : 0;
 
-      const highestMargin = recipeProfitability.reduce((max, recipe) => 
-        recipe.margin > (max?.margin || 0) ? recipe : max, recipeProfitability[0]);
+      const highestMargin = recipeProfitability.length > 0
+        ? recipeProfitability.reduce((max, recipe) => 
+            recipe.margin > (max?.margin || -Infinity) ? recipe : max, recipeProfitability[0])
+        : undefined;
 
-      const lowestMargin = recipeProfitability.reduce((min, recipe) => 
-        recipe.margin < (min?.margin || Infinity) ? recipe : min, recipeProfitability[0]);
+      const lowestMargin = recipeProfitability.length > 0
+        ? recipeProfitability.reduce((min, recipe) => 
+            recipe.margin < (min?.margin || Infinity) ? recipe : min, recipeProfitability[0])
+        : undefined;
 
       setProfitabilityData({
         recipes: recipeProfitability,
@@ -136,7 +142,7 @@ export const useRecipeAnalytics = (restaurantId: string | null) => {
           product:products(name)
         `)
         .eq('restaurant_id', restaurantId)
-        .eq('transaction_type', 'sale_deduction')
+        .eq('transaction_type', 'usage')
         .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
         .order('created_at', { ascending: true });
 

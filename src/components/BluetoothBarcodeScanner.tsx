@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Bluetooth, BluetoothConnected, BluetoothSearching, Battery, Loader2, AlertCircle, Settings, Zap, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { normalizeGTIN, validateGTIN } from '@/lib/gtinUtils';
+
 import { useNativeBluetooth } from '@/hooks/useNativeBluetooth';
 import { Capacitor } from '@capacitor/core';
 
@@ -72,16 +72,8 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
     // Basic validation for barcode format
     if (cleanedData.length >= 8 && /^\d+$/.test(cleanedData)) {
       if (cleanedData !== state.lastScan && !state.scanCooldown) {
-        // Normalize GTIN with proper check digit calculation
-        const normalizedGtin = normalizeGTIN(cleanedData);
-        
-        // Log validation result for debugging
-        const isValid = validateGTIN(normalizedGtin);
-        if (!isValid) {
-          console.warn(`⚠️ Generated GTIN may have invalid check digit: ${normalizedGtin}`);
-        }
-        
-        onScan(normalizedGtin, 'Bluetooth');
+        // Pass the raw barcode without normalization
+        onScan(cleanedData, 'Bluetooth');
         
         setState(prev => ({
           ...prev,

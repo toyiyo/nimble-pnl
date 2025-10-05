@@ -246,8 +246,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         const barcodeText = barcodeMatches[0];
         
         if (barcodeText !== state.lastScan) {
-          const normalizedGtin = normalizeGtin(barcodeText, 'AI');
-          onScan(normalizedGtin, 'AI');
+          // Pass the raw barcode without normalization
+          onScan(barcodeText, 'AI');
           
           dispatch({ type: 'SCAN_SUCCESS', payload: { result: barcodeText, format: 'AI' } });
           dispatch({ type: 'SET_DEBUG_INFO', payload: `AI found barcode: ${barcodeText}` });
@@ -300,8 +300,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   // Handle successful barcode scan
   const handleScanSuccess = useCallback((result: any, format: string) => {
     if (result !== state.lastScan && !state.scanCooldown) {
-      const normalizedGtin = normalizeGtin(result, format);
-      onScan(normalizedGtin, format);
+      // Pass the raw barcode without normalization
+      onScan(result, format);
       
       dispatch({ type: 'SCAN_SUCCESS', payload: { result, format } });
 

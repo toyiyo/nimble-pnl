@@ -5,7 +5,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useRecipeAnalytics } from '@/hooks/useRecipeAnalytics';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
 import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
@@ -19,12 +18,6 @@ import { CostBreakdownChart } from '@/components/CostBreakdownChart';
 export default function Reports() {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const [pnlTimeFrame, setPnlTimeFrame] = useState<'daily' | 'weekly' | 'monthly'>('daily');
-  
-  const { 
-    profitabilityData, 
-    consumptionData, 
-    loading: analyticsLoading 
-  } = useRecipeAnalytics(selectedRestaurant?.restaurant_id || null);
   
   const { 
     lowStockItems, 
@@ -161,13 +154,9 @@ export default function Reports() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {analyticsLoading ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">Loading consumption data...</p>
-              </div>
-            ) : (
-              <ConsumptionTrendsChart data={consumptionData} />
-            )}
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">Consumption trends coming soon...</p>
+            </div>
           </CardContent>
         </Card>
       </TabsContent>

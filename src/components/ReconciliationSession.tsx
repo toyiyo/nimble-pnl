@@ -2,9 +2,14 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Save, CheckCircle } from 'lucide-react';
+import { Search, Save, CheckCircle, ScanBarcode, X } from 'lucide-react';
 import { ReconciliationItemDetail } from './ReconciliationItemDetail';
 import { useReconciliation } from '@/hooks/useReconciliation';
+import { EnhancedBarcodeScanner } from './EnhancedBarcodeScanner';
+import { QuickInventoryDialog } from './QuickInventoryDialog';
+import { supabase } from '@/integrations/supabase/client';
+import { Product } from '@/hooks/useProducts';
+import { useToast } from '@/hooks/use-toast';
 
 interface ReconciliationSessionProps {
   restaurantId: string;
@@ -16,6 +21,10 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [scannerMode, setScannerMode] = useState(false);
+  const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
+  const [quickDialogOpen, setQuickDialogOpen] = useState(false);
+  const { toast } = useToast();
 
   const filteredItems = items.filter(item =>
     item.product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -43,6 +52,64 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
     setDetailOpen(true);
   };
 
+  const handleBarcodeScan = async (barcode: string) => {
+    try {
+      // Look up product by GTIN
+      const { data: products, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('gtin', barcode)
+        .limit(1);
+
+      if (error) throw error;
+
+      if (!products || products.length === 0) {
+        toast({
+          title: 'Product not found',
+          description: `No product found with barcode: ${barcode}`,
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      const product = products[0] as Product;
+      setScannedProduct(product);
+      setQuickDialogOpen(true);
+    } catch (error: any) {
+      console.error('Error looking up product:', error);
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleQuickInventorySave = async (quantity: number) => {
+    if (!scannedProduct) return;
+
+    // Find the reconciliation item for this product
+    const item = items.find(i => i.product_id === scannedProduct.id);
+    
+    if (!item) {
+      toast({
+        title: 'Error',
+        description: 'This product is not in the current reconciliation session',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Update the item count
+    await updateItemCount(item.id, quantity);
+    
+    toast({
+      title: 'Count updated',
+      description: `${scannedProduct.name}: ${quantity} ${scannedProduct.uom_purchase || 'units'}`
+    });
+  };
+
   return (
     <div className="space-y-4">
       {/* Progress Header */}
@@ -55,6 +122,13 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
             </p>
           </div>
           <div className="flex gap-2">
+            <Button 
+              onClick={() => setScannerMode(!scannerMode)} 
+              variant={scannerMode ? "default" : "outline"}
+            >
+              {scannerMode ? <X className="mr-2 h-4 w-4" /> : <ScanBarcode className="mr-2 h-4 w-4" />}
+              {scannerMode ? 'Close Scanner' : 'Scan Items'}
+            </Button>
             <Button onClick={saveProgress} variant="outline" disabled={loading}>
               <Save className="mr-2 h-4 w-4" />
               Save Progress
@@ -73,8 +147,24 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
         </div>
       </div>
 
+      {/* Scanner Mode */}
+      {scannerMode && (
+        <div className="bg-card p-4 rounded-lg border">
+          <EnhancedBarcodeScanner
+            onScan={(barcode) => handleBarcodeScan(barcode)}
+            onError={(error) => toast({ 
+              title: 'Scanner error', 
+              description: error, 
+              variant: 'destructive' 
+            })}
+            autoStart={true}
+          />
+        </div>
+      )}
+
       {/* Search Bar */}
-      <div className="relative">
+      {!scannerMode && (
+        <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
         <Input
           placeholder="Search products..."
@@ -82,10 +172,12 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10"
         />
-      </div>
+        </div>
+      )}
 
       {/* Items Table */}
-      <div className="border rounded-lg overflow-hidden">
+      {!scannerMode && (
+        <div className="border rounded-lg overflow-hidden">
         <table className="w-full">
           <thead className="bg-muted">
             <tr>
@@ -137,7 +229,19 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
             ))}
           </tbody>
         </table>
-      </div>
+        </div>
+      )}
+
+      {/* Quick Inventory Dialog for Scanned Items */}
+      {scannedProduct && (
+        <QuickInventoryDialog
+          open={quickDialogOpen}
+          onOpenChange={setQuickDialogOpen}
+          product={scannedProduct}
+          mode="reconcile"
+          onSave={handleQuickInventorySave}
+        />
+      )}
 
       {/* Item Detail Modal */}
       {selectedItem && (

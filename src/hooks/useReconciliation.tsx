@@ -300,7 +300,7 @@ export function useReconciliation(restaurantId: string | null) {
     return {
       total_items_counted: countedItems.length,
       items_with_variance: itemsWithVariance.length,
-      total_shrinkage_value: totalShrinkage - totalOverage,
+      total_shrinkage_value: totalOverage - totalShrinkage,
       total_overage_value: totalOverage,
       items: items,
     };

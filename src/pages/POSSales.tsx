@@ -358,7 +358,11 @@ export default function POSSales() {
                             )}
                           </div>
                           <div className="text-xs md:text-sm text-muted-foreground">
-                            {format(new Date(sale.saleDate), 'MMM d, yyyy')}
+                            {(() => {
+                              const [year, month, day] = sale.saleDate.split('-').map(Number);
+                              const localDate = new Date(year, month - 1, day);
+                              return format(localDate, 'MMM d, yyyy');
+                            })()}
                             {sale.saleTime && ` at ${sale.saleTime}`}
                             {sale.externalOrderId && (
                               <>

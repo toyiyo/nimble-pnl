@@ -9,7 +9,7 @@ import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
 import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeIntelligenceReport } from '@/components/RecipeIntelligenceReport';
-import { ConsumptionTrendsChart } from '@/components/ConsumptionTrendsChart';
+import { ConsumptionIntelligenceReport } from '@/components/ConsumptionIntelligenceReport';
 import { ReconciliationVarianceReport } from '@/components/ReconciliationVarianceReport';
 import { PnLIntelligenceReport } from '@/components/PnLIntelligenceReport';
 import { PnLTrendChart } from '@/components/PnLTrendChart';
@@ -146,19 +146,7 @@ export default function Reports() {
       </TabsContent>
 
       <TabsContent value="consumption" className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              Ingredient Consumption Trends
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">Consumption trends coming soon...</p>
-            </div>
-          </CardContent>
-        </Card>
+        <ConsumptionIntelligenceReport restaurantId={selectedRestaurant.restaurant_id} />
       </TabsContent>
 
       <TabsContent value="alerts" className="space-y-6">

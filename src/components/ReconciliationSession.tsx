@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Save, CheckCircle, ScanBarcode, X } from 'lucide-react';
+import { Search, Save, CheckCircle, ScanBarcode, X, Eye } from 'lucide-react';
 import { ReconciliationItemDetail } from './ReconciliationItemDetail';
 import { useReconciliation } from '@/hooks/useReconciliation';
 import { EnhancedBarcodeScanner } from './EnhancedBarcodeScanner';
@@ -47,17 +47,47 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
   const summary = calculateSummary();
   const progress = items.length > 0 ? (summary.total_items_counted / items.length) * 100 : 0;
 
-  const getVarianceBadge = (varianceValue: number | null) => {
-    if (varianceValue === null) return null;
-    if (varianceValue === 0) return <Badge className="bg-green-500">🟢 OK</Badge>;
-    const absValue = Math.abs(varianceValue);
-    if (absValue < 50) return <Badge className="bg-yellow-500">🟡 -${absValue.toFixed(2)}</Badge>;
-    return <Badge variant="destructive">🔴 -${absValue.toFixed(2)}</Badge>;
+  const getVarianceBadge = (varianceQty: number | null, varianceValue: number | null, unitCost: number | null) => {
+    // If no count entered yet
+    if (varianceQty === null) return <Badge variant="outline">Not Counted</Badge>;
+    
+    // If quantity variance is zero, it's OK regardless of price
+    if (varianceQty === 0) return <Badge className="bg-green-500">🟢 OK</Badge>;
+    
+    // If we have a price, use monetary variance
+    if (varianceValue !== null && unitCost !== null && unitCost > 0) {
+      const absValue = Math.abs(varianceValue);
+      if (absValue < 50) return <Badge className="bg-yellow-500">🟡 -${absValue.toFixed(2)}</Badge>;
+      return <Badge variant="destructive">🔴 -${absValue.toFixed(2)}</Badge>;
+    }
+    
+    // No price but we have quantity variance - use quantity
+    const absQty = Math.abs(varianceQty);
+    if (absQty < 10) return <Badge className="bg-yellow-500">🟡 -{absQty.toFixed(2)} units</Badge>;
+    return <Badge variant="destructive">🔴 -{absQty.toFixed(2)} units</Badge>;
   };
 
   const handleInputChange = (itemId: string, value: string) => {
-    // Update local state immediately (no database call)
+    // Update local state immediately for responsive UI
     setInputValues(prev => ({ ...prev, [itemId]: value }));
+  };
+  
+  // Calculate live variance for an item based on current input
+  const calculateLiveVariance = (item: any) => {
+    const inputValue = inputValues[item.id];
+    if (!inputValue || inputValue === '') {
+      return { variance: null, varianceValue: null };
+    }
+    
+    const actualQty = parseFloat(inputValue);
+    if (isNaN(actualQty)) {
+      return { variance: null, varianceValue: null };
+    }
+    
+    const variance = actualQty - item.expected_quantity;
+    const varianceValue = item.unit_cost ? variance * item.unit_cost : null;
+    
+    return { variance, varianceValue };
   };
 
   const handleInputBlur = async (itemId: string, value: string) => {
@@ -217,45 +247,50 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
             </tr>
           </thead>
           <tbody>
-            {filteredItems.map((item) => (
-              <tr
-                key={item.id}
-                className="border-t hover:bg-muted/50 cursor-pointer"
-                onClick={() => handleItemClick(item)}
-              >
-                <td className="p-3">
-                  <div>
-                    <div className="font-medium">{item.product?.name}</div>
-                    <div className="text-sm text-muted-foreground">{item.product?.sku}</div>
-                  </div>
-                </td>
-                <td className="p-3">{item.product?.uom_purchase}</td>
-                <td className="text-right p-3">{item.expected_quantity}</td>
-                <td className="p-3">
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    value={inputValues[item.id] ?? ''}
-                    onChange={(e) => handleInputChange(item.id, e.target.value)}
-                    onBlur={(e) => handleInputBlur(item.id, e.target.value)}
-                    onKeyDown={(e) => handleInputKeyDown(e, item.id, inputValues[item.id] ?? '')}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-24 text-center"
-                    placeholder="Count"
-                  />
-                </td>
-                <td className="text-right p-3">
-                  {item.variance !== null ? item.variance.toFixed(2) : '-'}
-                </td>
-                <td className="text-center p-3">
-                  {item.actual_quantity !== null ? (
-                    getVarianceBadge(item.variance_value)
-                  ) : (
-                    <Badge variant="outline">Not Counted</Badge>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {filteredItems.map((item) => {
+              const liveVariance = calculateLiveVariance(item);
+              const displayVariance = liveVariance.variance !== null ? liveVariance.variance : item.variance;
+              const displayVarianceValue = liveVariance.varianceValue !== null ? liveVariance.varianceValue : item.variance_value;
+              
+              return (
+                <tr
+                  key={item.id}
+                  className="border-t hover:bg-accent/50 cursor-pointer transition-colors group"
+                  onClick={() => handleItemClick(item)}
+                >
+                  <td className="p-3">
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <div className="font-medium">{item.product?.name}</div>
+                        <div className="text-sm text-muted-foreground">{item.product?.sku}</div>
+                      </div>
+                      <Eye className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </td>
+                  <td className="p-3">{item.product?.uom_purchase}</td>
+                  <td className="text-right p-3">{item.expected_quantity}</td>
+                  <td className="p-3">
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={inputValues[item.id] ?? ''}
+                      onChange={(e) => handleInputChange(item.id, e.target.value)}
+                      onBlur={(e) => handleInputBlur(item.id, e.target.value)}
+                      onKeyDown={(e) => handleInputKeyDown(e, item.id, inputValues[item.id] ?? '')}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-24 text-center"
+                      placeholder="Count"
+                    />
+                  </td>
+                  <td className="text-right p-3">
+                    {displayVariance !== null ? displayVariance.toFixed(2) : '-'}
+                  </td>
+                  <td className="text-center p-3">
+                    {getVarianceBadge(displayVariance, displayVarianceValue, item.unit_cost)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         </div>

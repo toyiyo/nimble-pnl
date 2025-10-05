@@ -686,20 +686,18 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Category</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select category" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {CATEGORIES.map((category) => (
-                              <SelectItem key={category} value={category}>
-                                {category}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <Input
+                            list="categories-list"
+                            placeholder="Enter or select category"
+                            {...field}
+                          />
+                        </FormControl>
+                        <datalist id="categories-list">
+                          {CATEGORIES.map((category) => (
+                            <option key={category} value={category} />
+                          ))}
+                        </datalist>
                         <FormMessage />
                       </FormItem>
                     )}

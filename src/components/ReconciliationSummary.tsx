@@ -61,15 +61,16 @@ export function ReconciliationSummary({ restaurantId, onBack, onComplete }: Reco
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h2 className="text-2xl font-bold">Reconciliation Summary</h2>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={onBack} size="sm" className="flex-1 sm:flex-none">
             Back to Counting
           </Button>
-          <Button variant="outline" onClick={handleExportCSV}>
+          <Button variant="outline" onClick={handleExportCSV} size="sm" className="flex-1 sm:flex-none">
             <Download className="mr-2 h-4 w-4" />
-            Export CSV
+            <span className="hidden sm:inline">Export CSV</span>
+            <span className="sm:hidden">Export</span>
           </Button>
         </div>
       </div>
@@ -133,17 +134,21 @@ export function ReconciliationSummary({ restaurantId, onBack, onComplete }: Reco
           ) : (
             <div className="space-y-2">
               {topVariances.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-3 border rounded-lg">
+                <div key={item.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
                   <div className="flex-1">
                     <div className="font-medium">{item.product?.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      Expected: {item.expected_quantity} • Actual: {item.actual_quantity} • Variance: {item.variance}
+                    <div className="text-sm text-muted-foreground flex flex-wrap gap-2">
+                      <span>Expected: {item.expected_quantity}</span>
+                      <span>•</span>
+                      <span>Actual: {item.actual_quantity}</span>
+                      <span>•</span>
+                      <span>Variance: {item.variance}</span>
                     </div>
                     {item.notes && (
                       <div className="text-sm text-muted-foreground mt-1">Note: {item.notes}</div>
                     )}
                   </div>
-                  <Badge variant={item.variance_value! < 0 ? 'destructive' : 'default'}>
+                  <Badge variant={item.variance_value! < 0 ? 'destructive' : 'default'} className="self-start sm:self-center">
                     {item.variance_value! < 0 ? '-' : '+'}${Math.abs(item.variance_value!).toFixed(2)}
                   </Badge>
                 </div>

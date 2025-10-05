@@ -171,28 +171,30 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
     <div className="space-y-4">
       {/* Progress Header */}
       <div className="bg-card p-4 rounded-lg border">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
           <div>
             <h3 className="text-lg font-semibold">Counting in Progress</h3>
             <p className="text-sm text-muted-foreground">
               {summary.total_items_counted} of {items.length} items counted ({progress.toFixed(0)}%)
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button 
               onClick={() => setScannerMode(!scannerMode)} 
               variant={scannerMode ? "default" : "outline"}
+              size="sm"
+              className="flex-1 md:flex-none"
             >
               {scannerMode ? <X className="mr-2 h-4 w-4" /> : <ScanBarcode className="mr-2 h-4 w-4" />}
-              {scannerMode ? 'Close Scanner' : 'Scan Items'}
+              <span className="hidden sm:inline">{scannerMode ? 'Close' : 'Scan'}</span>
             </Button>
-            <Button onClick={saveProgress} variant="outline" disabled={loading}>
+            <Button onClick={saveProgress} variant="outline" size="sm" disabled={loading} className="flex-1 md:flex-none">
               <Save className="mr-2 h-4 w-4" />
-              Save Progress
+              <span className="hidden sm:inline">Save</span>
             </Button>
-            <Button onClick={onComplete} disabled={summary.total_items_counted === 0}>
+            <Button onClick={onComplete} size="sm" disabled={summary.total_items_counted === 0} className="flex-1 md:flex-none">
               <CheckCircle className="mr-2 h-4 w-4" />
-              Review & Submit
+              <span className="hidden sm:inline">Review</span>
             </Button>
           </div>
         </div>
@@ -232,44 +234,104 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
         </div>
       )}
 
-      {/* Items Table */}
+      {/* Items Table - Desktop */}
       {!scannerMode && (
-        <div className="border rounded-lg overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-muted">
-            <tr>
-              <th className="text-left p-3 font-medium">Product</th>
-              <th className="text-left p-3 font-medium">Unit</th>
-              <th className="text-right p-3 font-medium">Expected</th>
-              <th className="text-center p-3 font-medium">Actual Count</th>
-              <th className="text-right p-3 font-medium">Variance</th>
-              <th className="text-center p-3 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
+        <>
+          <div className="hidden md:block border rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-muted">
+                <tr>
+                  <th className="text-left p-3 font-medium">Product</th>
+                  <th className="text-left p-3 font-medium">Unit</th>
+                  <th className="text-right p-3 font-medium">Expected</th>
+                  <th className="text-center p-3 font-medium">Actual Count</th>
+                  <th className="text-right p-3 font-medium">Variance</th>
+                  <th className="text-center p-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.map((item) => {
+                  const liveVariance = calculateLiveVariance(item);
+                  const displayVariance = liveVariance.variance !== null ? liveVariance.variance : item.variance;
+                  const displayVarianceValue = liveVariance.varianceValue !== null ? liveVariance.varianceValue : item.variance_value;
+                  
+                  return (
+                    <tr
+                      key={item.id}
+                      className="border-t hover:bg-accent/50 cursor-pointer transition-colors group"
+                      onClick={() => handleItemClick(item)}
+                    >
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <div className="font-medium">{item.product?.name}</div>
+                            <div className="text-sm text-muted-foreground">{item.product?.sku}</div>
+                          </div>
+                          <Eye className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                      </td>
+                      <td className="p-3">{item.product?.uom_purchase}</td>
+                      <td className="text-right p-3">{item.expected_quantity}</td>
+                      <td className="p-3">
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          value={inputValues[item.id] ?? ''}
+                          onChange={(e) => handleInputChange(item.id, e.target.value)}
+                          onBlur={(e) => handleInputBlur(item.id, e.target.value)}
+                          onKeyDown={(e) => handleInputKeyDown(e, item.id, inputValues[item.id] ?? '')}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-24 text-center"
+                          placeholder="Count"
+                        />
+                      </td>
+                      <td className="text-right p-3">
+                        {displayVariance !== null ? displayVariance.toFixed(2) : '-'}
+                      </td>
+                      <td className="text-center p-3">
+                        {getVarianceBadge(displayVariance, displayVarianceValue, item.unit_cost)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Items List - Mobile */}
+          <div className="md:hidden space-y-3">
             {filteredItems.map((item) => {
               const liveVariance = calculateLiveVariance(item);
               const displayVariance = liveVariance.variance !== null ? liveVariance.variance : item.variance;
               const displayVarianceValue = liveVariance.varianceValue !== null ? liveVariance.varianceValue : item.variance_value;
               
               return (
-                <tr
+                <div
                   key={item.id}
-                  className="border-t hover:bg-accent/50 cursor-pointer transition-colors group"
+                  className="border rounded-lg p-4 space-y-3 bg-card"
                   onClick={() => handleItemClick(item)}
                 >
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <div>
-                        <div className="font-medium">{item.product?.name}</div>
-                        <div className="text-sm text-muted-foreground">{item.product?.sku}</div>
-                      </div>
-                      <Eye className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="font-medium">{item.product?.name}</div>
+                      <div className="text-sm text-muted-foreground">{item.product?.sku}</div>
                     </div>
-                  </td>
-                  <td className="p-3">{item.product?.uom_purchase}</td>
-                  <td className="text-right p-3">{item.expected_quantity}</td>
-                  <td className="p-3">
+                    {getVarianceBadge(displayVariance, displayVarianceValue, item.unit_cost)}
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div className="text-muted-foreground">Expected</div>
+                      <div className="font-medium">{item.expected_quantity} {item.product?.uom_purchase}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Variance</div>
+                      <div className="font-medium">{displayVariance !== null ? displayVariance.toFixed(2) : '-'}</div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-muted-foreground text-sm mb-1">Actual Count</div>
                     <Input
                       type="text"
                       inputMode="decimal"
@@ -278,22 +340,15 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
                       onBlur={(e) => handleInputBlur(item.id, e.target.value)}
                       onKeyDown={(e) => handleInputKeyDown(e, item.id, inputValues[item.id] ?? '')}
                       onClick={(e) => e.stopPropagation()}
-                      className="w-24 text-center"
-                      placeholder="Count"
+                      className="w-full text-center text-lg"
+                      placeholder="Enter count"
                     />
-                  </td>
-                  <td className="text-right p-3">
-                    {displayVariance !== null ? displayVariance.toFixed(2) : '-'}
-                  </td>
-                  <td className="text-center p-3">
-                    {getVarianceBadge(displayVariance, displayVarianceValue, item.unit_cost)}
-                  </td>
-                </tr>
+                  </div>
+                </div>
               );
             })}
-          </tbody>
-        </table>
-        </div>
+          </div>
+        </>
       )}
 
       {/* Quick Inventory Dialog for Scanned Items */}

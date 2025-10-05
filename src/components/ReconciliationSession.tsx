@@ -111,12 +111,12 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
 
   const handleBarcodeScan = async (barcode: string) => {
     try {
-      // Look up product by GTIN
+      // Look up product by GTIN, SKU, or barcode_data
       const { data: products, error } = await supabase
         .from('products')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .eq('gtin', barcode)
+        .or(`gtin.eq.${barcode},sku.eq.${barcode}`)
         .limit(1);
 
       if (error) throw error;

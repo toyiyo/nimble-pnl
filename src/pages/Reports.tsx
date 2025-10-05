@@ -11,7 +11,7 @@ import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeProfitabilityChart } from '@/components/RecipeProfitabilityChart';
 import { ConsumptionTrendsChart } from '@/components/ConsumptionTrendsChart';
-import { VarianceAnalysis } from '@/components/VarianceAnalysis';
+import { ReconciliationVarianceReport } from '@/components/ReconciliationVarianceReport';
 import { PnLTrendChart } from '@/components/PnLTrendChart';
 import { CostBreakdownChart } from '@/components/CostBreakdownChart';
 
@@ -369,14 +369,7 @@ export default function Reports() {
       </TabsContent>
 
       <TabsContent value="variance" className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Theoretical vs Actual Usage</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <VarianceAnalysis restaurantId={selectedRestaurant.restaurant_id} />
-          </CardContent>
-        </Card>
+        <ReconciliationVarianceReport restaurantId={selectedRestaurant.restaurant_id} />
       </TabsContent>
     </Tabs>
   );

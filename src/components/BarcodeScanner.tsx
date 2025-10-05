@@ -87,23 +87,6 @@ const scannerReducer = (state: ScannerState, action: ScannerAction): ScannerStat
   }
 };
 
-// Normalize common barcode formats to GTIN-14
-const normalizeGtin = (barcode: string, format: string): string => {
-  const digits = barcode.replace(/\D/g, '');
-  
-  switch (format) {
-    case 'UPC_A':
-      return digits.padStart(14, '0');
-    case 'UPC_E':
-      return digits.padStart(14, '0');
-    case 'EAN_13':
-      return digits.padStart(14, '0');
-    case 'EAN_8':
-      return digits.padStart(14, '0');
-    default:
-      return /^\d+$/.test(digits) ? digits.padStart(14, '0') : barcode;
-  }
-};
 
 // Canvas pool for memory efficiency
 class CanvasPool {

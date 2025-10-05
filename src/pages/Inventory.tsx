@@ -32,7 +32,6 @@ import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
 import { ProductEnhancementService } from '@/services/productEnhancementService';
 import { ocrService } from '@/services/ocrService';
-import { normalizeGTIN } from '@/lib/gtinUtils';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
@@ -92,14 +91,9 @@ export const Inventory: React.FC = () => {
   }
 
   const handleBarcodeScanned = async (gtin: string, format: string, aiData?: string) => {
-    console.log('📱 Barcode scanned (original):', gtin, format, aiData ? 'with AI data' : '');
+    console.log('📱 Barcode scanned:', gtin, format, aiData ? 'with AI data' : '');
     
-    // Keep original for external API lookups, normalize for database
-    const originalGtin = gtin;
-    const normalizedGtin = gtin === 'MANUAL_ENTRY' ? gtin : normalizeGTIN(gtin);
-    console.log('🔄 GTIN normalized for DB lookup:', originalGtin, '→', normalizedGtin);
-    
-    setLastScannedGtin(normalizedGtin);
+    setLastScannedGtin(gtin);
     setLookupResult(null);
     
     // For manual entry with AI data, create product directly
@@ -145,11 +139,8 @@ export const Inventory: React.FC = () => {
       return;
     }
     
-    // Check if product already exists in inventory (try both original and normalized)
-    let existingProduct = await findProductByGtin(normalizedGtin);
-    if (!existingProduct && originalGtin !== normalizedGtin) {
-      existingProduct = await findProductByGtin(originalGtin);
-    }
+    // Check if product already exists in inventory
+    const existingProduct = await findProductByGtin(gtin);
     
     if (existingProduct) {
       // Use quick inventory dialog for scanning existing products
@@ -159,17 +150,16 @@ export const Inventory: React.FC = () => {
     }
 
     // Look up product information with enhanced catalog lookup
-    // Use original GTIN for external APIs, normalized for database
     setIsLookingUp(true);
     try {
-      const result = await productLookupService.lookupProduct(originalGtin, findProductByGtin);
+      const result = await productLookupService.lookupProduct(gtin, findProductByGtin);
       
       // Create a new product object with lookup data for the update dialog
       const newProductData: Product = {
         id: '', // Will be generated on creation
         restaurant_id: selectedRestaurant!.restaurant!.id,
-        gtin: normalizedGtin, // Store normalized in DB for consistency
-        sku: normalizedGtin,
+        gtin: gtin,
+        sku: gtin,
         name: result?.product_name || 'New Product',
         description: null,
         brand: result?.brand || '',

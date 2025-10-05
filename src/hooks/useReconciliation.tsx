@@ -199,6 +199,9 @@ export function useReconciliation(restaurantId: string | null) {
 
       if (error) throw error;
 
+      // Refresh items to get updated variance calculations
+      await fetchSessionItems(activeSession.id);
+
       toast({ title: 'Progress saved', description: 'Your counts have been saved' });
       return true;
     } catch (error: any) {

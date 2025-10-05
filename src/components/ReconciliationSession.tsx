@@ -24,7 +24,19 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
   const [scannerMode, setScannerMode] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [quickDialogOpen, setQuickDialogOpen] = useState(false);
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const { toast } = useToast();
+
+  // Initialize input values from items
+  useState(() => {
+    const initialValues: Record<string, string> = {};
+    items.forEach(item => {
+      if (item.actual_quantity !== null && item.actual_quantity !== undefined) {
+        initialValues[item.id] = item.actual_quantity.toString();
+      }
+    });
+    setInputValues(initialValues);
+  });
 
   const filteredItems = items.filter(item =>
     item.product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -42,9 +54,23 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
     return <Badge variant="destructive">🔴 -${absValue.toFixed(2)}</Badge>;
   };
 
-  const handleQuickCount = async (itemId: string, value: string) => {
+  const handleInputChange = (itemId: string, value: string) => {
+    // Update local state immediately (no database call)
+    setInputValues(prev => ({ ...prev, [itemId]: value }));
+  };
+
+  const handleInputBlur = async (itemId: string, value: string) => {
+    // Save to database when user finishes typing
     const qty = value === '' ? null : parseFloat(value);
-    await updateItemCount(itemId, qty);
+    if (!isNaN(qty as number) || qty === null) {
+      await updateItemCount(itemId, qty);
+    }
+  };
+
+  const handleInputKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>, itemId: string, value: string) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur(); // Trigger blur to save
+    }
   };
 
   const handleItemClick = (item: any) => {
@@ -206,10 +232,12 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
                 <td className="text-right p-3">{item.expected_quantity}</td>
                 <td className="p-3">
                   <Input
-                    type="number"
-                    step="0.01"
-                    value={item.actual_quantity ?? ''}
-                    onChange={(e) => handleQuickCount(item.id, e.target.value)}
+                    type="text"
+                    inputMode="decimal"
+                    value={inputValues[item.id] ?? ''}
+                    onChange={(e) => handleInputChange(item.id, e.target.value)}
+                    onBlur={(e) => handleInputBlur(item.id, e.target.value)}
+                    onKeyDown={(e) => handleInputKeyDown(e, item.id, inputValues[item.id] ?? '')}
                     onClick={(e) => e.stopPropagation()}
                     className="w-24 text-center"
                     placeholder="Count"

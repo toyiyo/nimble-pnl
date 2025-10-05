@@ -90,7 +90,9 @@ export function ReconciliationHistory({ restaurantId, onStartNew }: Reconciliati
                   <td className="p-3">
                     {format(new Date(rec.reconciliation_date), 'MMM d, yyyy')}
                   </td>
-                  <td className="p-3">User</td>
+                  <td className="p-3">
+                    {rec.performer?.full_name || rec.performer?.email || 'Unknown User'}
+                  </td>
                   <td className="text-right p-3">{rec.total_items_counted}</td>
                   <td className="text-right p-3">{rec.items_with_variance}</td>
                   <td className="text-right p-3">

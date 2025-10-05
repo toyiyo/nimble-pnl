@@ -14,6 +14,10 @@ interface ReconciliationHistoryItem {
   items_with_variance: number;
   total_shrinkage_value: number;
   notes: string | null;
+  performer?: {
+    full_name: string | null;
+    email: string | null;
+  };
 }
 
 interface ReconciliationDetail {
@@ -55,6 +59,7 @@ export function useReconciliationHistory(restaurantId: string | null) {
 
     setLoading(true);
     try {
+      // First fetch reconciliations
       let query = supabase
         .from('inventory_reconciliations')
         .select('*')
@@ -71,10 +76,25 @@ export function useReconciliationHistory(restaurantId: string | null) {
         query = query.eq('status', filters.status);
       }
 
-      const { data, error } = await query;
+      const { data: reconciliationsData, error } = await query;
 
       if (error) throw error;
-      setReconciliations((data || []) as ReconciliationHistoryItem[]);
+
+      // Then fetch user profiles for all performed_by IDs
+      const userIds = [...new Set(reconciliationsData?.map(r => r.performed_by) || [])];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', userIds);
+
+      // Map profiles to reconciliations
+      const profileMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
+      const enrichedReconciliations = reconciliationsData?.map(rec => ({
+        ...rec,
+        performer: profileMap.get(rec.performed_by) || null
+      }));
+
+      setReconciliations((enrichedReconciliations || []) as ReconciliationHistoryItem[]);
     } catch (error: any) {
       console.error('Error fetching reconciliations:', error);
       toast({ title: 'Error', description: error.message, variant: 'destructive' });

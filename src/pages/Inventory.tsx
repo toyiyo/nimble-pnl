@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +27,7 @@ import { useInventoryAudit } from '@/hooks/useInventoryAudit';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useInventoryMetrics } from '@/hooks/useInventoryMetrics';
+import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
@@ -42,6 +43,7 @@ export const Inventory: React.FC = () => {
   const { products, loading, createProduct, updateProductWithQuantity, deleteProduct, findProductByGtin, refetchProducts } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { updateProductStockWithAudit } = useInventoryAudit();
   const inventoryMetrics = useInventoryMetrics(selectedRestaurant?.restaurant_id || null, products);
+  const { lowStockItems: lowStockProducts, exportLowStockCSV } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showProductDialog, setShowProductDialog] = useState(false);
@@ -656,10 +658,6 @@ export const Inventory: React.FC = () => {
     product.category?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const lowStockProducts = products.filter(product => 
-    (product.current_stock || 0) <= (product.reorder_point || 0)
-  );
-
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1154,9 +1152,17 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="low-stock" className="mt-6">
             <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
-                <h2 className="text-xl font-semibold">Low Stock Alert</h2>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  <h2 className="text-xl font-semibold">Low Stock Alert</h2>
+                </div>
+                {lowStockProducts.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={exportLowStockCSV}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export List
+                  </Button>
+                )}
               </div>
 
               {lowStockProducts.length === 0 ? (

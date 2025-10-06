@@ -343,11 +343,17 @@ export const useConsumptionIntelligence = (restaurantId: string | null) => {
         });
       }
 
-      // Calculate benchmarks
+      // Calculate benchmarks with safe division
       const totalCost = ingredientPatterns.reduce((sum, i) => sum + i.total_cost, 0);
-      const avgWaste = ingredientPatterns.reduce((sum, i) => sum + i.waste_percentage, 0) / ingredientPatterns.length;
-      const avgEfficiency = ingredientPatterns.reduce((sum, i) => sum + i.efficiency_score, 0) / ingredientPatterns.length;
-      const avgVariance = ingredientPatterns.reduce((sum, i) => sum + i.usage_variance, 0) / ingredientPatterns.length;
+      const avgWaste = ingredientPatterns.length 
+        ? ingredientPatterns.reduce((sum, i) => sum + i.waste_percentage, 0) / ingredientPatterns.length 
+        : 0;
+      const avgEfficiency = ingredientPatterns.length 
+        ? ingredientPatterns.reduce((sum, i) => sum + i.efficiency_score, 0) / ingredientPatterns.length 
+        : 0;
+      const avgVariance = ingredientPatterns.length 
+        ? ingredientPatterns.reduce((sum, i) => sum + i.usage_variance, 0) / ingredientPatterns.length 
+        : 0;
 
       const previousCost = previousTransactions?.reduce((sum, t) => sum + Math.abs(t.total_cost || 0), 0) || 0;
       const costChange = previousCost > 0 ? ((totalCost - previousCost) / previousCost) * 100 : 0;
@@ -414,7 +420,7 @@ export const useConsumptionIntelligence = (restaurantId: string | null) => {
       const summary = {
         total_consumption_cost: totalCost,
         total_items_tracked: ingredientPatterns.length,
-        avg_daily_cost: totalCost / 30,
+        avg_daily_cost: ingredientPatterns.length ? totalCost / 30 : 0,
         waste_percentage: avgWaste,
         efficiency_score: avgEfficiency,
         top_cost_drivers: topCostDrivers,

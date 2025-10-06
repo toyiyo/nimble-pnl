@@ -59,6 +59,7 @@ interface POSSaleDialogProps {
     itemName: string;
     quantity: number;
     totalPrice?: number;
+    unitPrice?: number;
     saleDate: string;
     saleTime?: string;
   } | null;
@@ -216,6 +217,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
         itemName: values.itemName,
         quantity: values.quantity,
         totalPrice: values.totalPrice,
+        unitPrice: editingSale.unitPrice,
         saleDate: values.saleDate,
         saleTime: values.saleTime,
       });

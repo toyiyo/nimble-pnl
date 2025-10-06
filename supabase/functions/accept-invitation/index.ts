@@ -105,23 +105,31 @@ const handler = async (req: Request): Promise<Response> => {
       .eq('restaurant_id', invitation.restaurant_id)
       .single();
 
-    if (existingMember) {
-      throw new Error('You are already a member of this restaurant');
+    // If user is not a member yet, add them
+    if (!existingMember) {
+      const { error: memberError } = await supabase
+        .from('user_restaurants')
+        .insert({
+          user_id: user.id,
+          restaurant_id: invitation.restaurant_id,
+          role: invitation.role,
+        });
+
+      if (memberError) {
+        console.error('Error adding user to restaurant:', memberError);
+        throw new Error('Failed to add you to the restaurant team');
+      }
+    } else {
+      console.log('User is already a member, just marking invitation as accepted');
     }
 
-    // Accept the invitation - add user to restaurant and update invitation status
-    const { error: memberError } = await supabase
-      .from('user_restaurants')
-      .insert({
-        user_id: user.id,
-        restaurant_id: invitation.restaurant_id,
-        role: invitation.role,
-      });
-
-    if (memberError) {
-      console.error('Error adding user to restaurant:', memberError);
-      throw new Error('Failed to add you to the restaurant team');
-    }
+    // Delete any old accepted invitations for this email/restaurant combo to avoid unique constraint violations
+    await supabase
+      .from('invitations')
+      .delete()
+      .eq('restaurant_id', invitation.restaurant_id)
+      .eq('email', invitation.email)
+      .eq('status', 'accepted');
 
     // Update invitation status
     const { error: updateError } = await supabase

@@ -48,7 +48,21 @@ Deno.serve(async (req) => {
 
     // Determine environment based on request origin  
     const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
-    const isPreview = origin && origin.includes('lovableproject.com');
+    let isPreview = false;
+    
+    // Securely check if origin is from lovableproject.com
+    if (origin) {
+      try {
+        const originUrl = new URL(origin);
+        const hostname = originUrl.hostname.toLowerCase();
+        // Only match if hostname is exactly lovableproject.com or a subdomain
+        isPreview = hostname === 'lovableproject.com' || hostname.endsWith('.lovableproject.com');
+      } catch (e) {
+        // Invalid URL, default to production
+        console.warn('Invalid origin URL:', origin);
+        isPreview = false;
+      }
+    }
     
     // Use sandbox for preview/development, production for app.easyshifthq.com
     const SQUARE_ENVIRONMENT = isPreview ? 'sandbox' : 'production';

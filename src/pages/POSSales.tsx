@@ -44,6 +44,7 @@ export default function POSSales() {
     itemName: string;
     quantity: number;
     totalPrice?: number;
+    unitPrice?: number;
     saleDate: string;
     saleTime?: string;
   } | null>(null);
@@ -135,6 +136,7 @@ export default function POSSales() {
       itemName: sale.itemName,
       quantity: sale.quantity,
       totalPrice: sale.totalPrice,
+      unitPrice: sale.unitPrice,
       saleDate: sale.saleDate,
       saleTime: sale.saleTime,
     });

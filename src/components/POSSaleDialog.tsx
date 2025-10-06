@@ -43,7 +43,8 @@ import Fuse from 'fuse.js';
 const saleSchema = z.object({
   itemName: z.string().min(1, 'Item name is required'),
   quantity: z.number().min(1, 'Quantity must be at least 1'),
-  totalPrice: z.number().min(0, 'Price must be positive').optional(),
+  unitPrice: z.number().min(0, 'Unit price must be positive').optional(),
+  totalPrice: z.number().min(0, 'Total price must be positive').optional(),
   saleDate: z.string().min(1, 'Sale date is required'),
   saleTime: z.string().optional(),
 });
@@ -83,6 +84,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
     defaultValues: editingSale || {
       itemName: '',
       quantity: 1,
+      unitPrice: undefined,
       totalPrice: undefined,
       saleDate: new Date().toISOString().split('T')[0],
       saleTime: new Date().toTimeString().slice(0, 5),
@@ -95,6 +97,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       form.reset({
         itemName: editingSale.itemName,
         quantity: editingSale.quantity,
+        unitPrice: editingSale.unitPrice,
         totalPrice: editingSale.totalPrice,
         saleDate: editingSale.saleDate,
         saleTime: editingSale.saleTime || '',
@@ -103,6 +106,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       form.reset({
         itemName: '',
         quantity: 1,
+        unitPrice: undefined,
         totalPrice: undefined,
         saleDate: new Date().toISOString().split('T')[0],
         saleTime: new Date().toTimeString().slice(0, 5),
@@ -216,8 +220,8 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       success = await updateManualSale(editingSale.id, {
         itemName: values.itemName,
         quantity: values.quantity,
+        unitPrice: values.unitPrice,
         totalPrice: values.totalPrice,
-        unitPrice: editingSale.unitPrice,
         saleDate: values.saleDate,
         saleTime: values.saleTime,
       });
@@ -225,6 +229,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       success = await createManualSale({
         itemName: values.itemName,
         quantity: values.quantity,
+        unitPrice: values.unitPrice,
         totalPrice: values.totalPrice,
         saleDate: values.saleDate,
         saleTime: values.saleTime,
@@ -446,10 +451,10 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
 
               <FormField
                 control={form.control}
-                name="totalPrice"
+                name="unitPrice"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Total Price</FormLabel>
+                    <FormLabel>Unit Price</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -465,6 +470,30 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="totalPrice"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Total Price</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      {...field}
+                      onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                    />
+                  </FormControl>
+                  <FormDescription className="text-xs">
+                    Optional - will be calculated from Unit Price × Quantity if not provided
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <div className="grid grid-cols-2 gap-4">
               <FormField

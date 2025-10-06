@@ -56,6 +56,20 @@ export default function Recipes() {
     setSelectedRestaurant(restaurant);
   };
 
+  // Compute filtered recipes and memoized lists before early returns
+  const filteredRecipes = recipes.filter(recipe =>
+    recipe.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    recipe.pos_item_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const unmappedRecipes = useMemo(() => {
+    return filteredRecipes.filter(recipe => !recipe.pos_item_name);
+  }, [filteredRecipes]);
+
+  const mappedRecipes = useMemo(() => {
+    return filteredRecipes.filter(recipe => recipe.pos_item_name);
+  }, [filteredRecipes]);
+
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -88,19 +102,6 @@ export default function Recipes() {
       </div>
     );
   }
-
-  const filteredRecipes = recipes.filter(recipe =>
-    recipe.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    recipe.pos_item_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const unmappedRecipes = useMemo(() => {
-    return filteredRecipes.filter(recipe => !recipe.pos_item_name);
-  }, [filteredRecipes]);
-
-  const mappedRecipes = useMemo(() => {
-    return filteredRecipes.filter(recipe => recipe.pos_item_name);
-  }, [filteredRecipes]);
 
   return (
     <div className="space-y-6 md:space-y-8">

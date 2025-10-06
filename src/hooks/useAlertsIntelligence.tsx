@@ -298,13 +298,27 @@ export const useAlertsIntelligence = (restaurantId: string | null) => {
         });
       }
 
-      // Calculate benchmarks
-      const avgDaysUntilStockout = alertItems.reduce((sum, i) => sum + i.days_until_stockout, 0) / alertItems.length;
+      // Calculate benchmarks with safe division
+      const avgDaysUntilStockout = alertItems.length 
+        ? alertItems.reduce((sum, i) => sum + i.days_until_stockout, 0) / alertItems.length 
+        : 0;
+      
       const stockoutItems = alertItems.filter(i => i.current_stock === 0).length;
+      
       const parLevelEfficiency = products?.filter(p => 
         p.current_stock >= p.par_level_min && p.current_stock <= p.par_level_max
       ).length || 0;
-      const parLevelEfficiencyPercent = (parLevelEfficiency / (products?.length || 1)) * 100;
+      const parLevelEfficiencyPercent = (products?.length ?? 0) > 0
+        ? (parLevelEfficiency / products.length) * 100
+        : 0;
+
+      const stockAvailabilityPercent = (products?.length ?? 0) > 0
+        ? ((products.length - stockoutItems) / products.length) * 100
+        : 0;
+
+      const supplierReliabilityAvg = supplierPerformance.length
+        ? supplierPerformance.reduce((sum, s) => sum + s.reliability_score, 0) / supplierPerformance.length
+        : 0;
 
       const benchmarks: AlertBenchmark[] = [
         {
@@ -323,17 +337,17 @@ export const useAlertsIntelligence = (restaurantId: string | null) => {
         },
         {
           metric: 'Stock Availability',
-          current_value: ((products?.length || 0) - stockoutItems) / (products?.length || 1) * 100,
+          current_value: stockAvailabilityPercent,
           target_value: 98,
-          performance: ((products?.length || 0) - stockoutItems) / (products?.length || 1) * 100 >= 98 ? 'above' : 'below',
-          gap: (((products?.length || 0) - stockoutItems) / (products?.length || 1) * 100) - 98
+          performance: stockAvailabilityPercent >= 98 ? 'above' : 'below',
+          gap: stockAvailabilityPercent - 98
         },
         {
           metric: 'Supplier Reliability',
-          current_value: supplierPerformance.reduce((sum, s) => sum + s.reliability_score, 0) / supplierPerformance.length,
+          current_value: supplierReliabilityAvg,
           target_value: 85,
-          performance: (supplierPerformance.reduce((sum, s) => sum + s.reliability_score, 0) / supplierPerformance.length) >= 85 ? 'above' : 'at',
-          gap: (supplierPerformance.reduce((sum, s) => sum + s.reliability_score, 0) / supplierPerformance.length) - 85
+          performance: supplierReliabilityAvg >= 85 ? 'above' : 'at',
+          gap: supplierReliabilityAvg - 85
         }
       ];
 

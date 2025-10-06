@@ -218,7 +218,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
           item_name: sale.itemName,
           quantity: sale.quantity,
           unit_price: sale.unitPrice,
-          total_price: sale.totalPrice || (sale.unitPrice ? sale.unitPrice * sale.quantity : undefined),
+          total_price: sale.totalPrice ?? (sale.unitPrice != null ? sale.unitPrice * sale.quantity : undefined),
           sale_date: sale.saleDate,
           sale_time: sale.saleTime,
           // Remove the category field from direct insert since it doesn't exist in the DB schema

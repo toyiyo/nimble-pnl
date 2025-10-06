@@ -1,34 +1,43 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Download, Search, Calendar, RefreshCw, Upload as UploadIcon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useUnifiedSales } from '@/hooks/useUnifiedSales';
-import { usePOSIntegrations } from '@/hooks/usePOSIntegrations';
-import { useInventoryDeduction } from '@/hooks/useInventoryDeduction';
-import { RestaurantSelector } from '@/components/RestaurantSelector';
-import { POSSaleDialog } from '@/components/POSSaleDialog';
-import { POSSalesFileUpload } from '@/components/POSSalesFileUpload';
-import { POSSalesImportReview } from '@/components/POSSalesImportReview';
-import { format } from 'date-fns';
-import { InventoryDeductionDialog } from '@/components/InventoryDeductionDialog';
-import { MapPOSItemDialog } from '@/components/MapPOSItemDialog';
-import { UnifiedSaleItem } from '@/types/pos';
+import React, { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Download, Search, Calendar, RefreshCw, Upload as UploadIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { useUnifiedSales } from "@/hooks/useUnifiedSales";
+import { usePOSIntegrations } from "@/hooks/usePOSIntegrations";
+import { useInventoryDeduction } from "@/hooks/useInventoryDeduction";
+import { RestaurantSelector } from "@/components/RestaurantSelector";
+import { POSSaleDialog } from "@/components/POSSaleDialog";
+import { POSSalesFileUpload } from "@/components/POSSalesFileUpload";
+import { POSSalesImportReview } from "@/components/POSSalesImportReview";
+import { format } from "date-fns";
+import { InventoryDeductionDialog } from "@/components/InventoryDeductionDialog";
+import { MapPOSItemDialog } from "@/components/MapPOSItemDialog";
+import { UnifiedSaleItem } from "@/types/pos";
 
 export default function POSSales() {
   const navigate = useNavigate();
-  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
-  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, deleteManualSale } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
-  const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(selectedRestaurant?.restaurant_id || null);
+  const {
+    selectedRestaurant,
+    setSelectedRestaurant,
+    restaurants,
+    loading: restaurantsLoading,
+    createRestaurant,
+  } = useRestaurantContext();
+  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, deleteManualSale } =
+    useUnifiedSales(selectedRestaurant?.restaurant_id || null);
+  const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(
+    selectedRestaurant?.restaurant_id || null,
+  );
   const { simulateDeduction } = useInventoryDeduction();
-  
-  const [searchTerm, setSearchTerm] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [showSaleDialog, setShowSaleDialog] = useState(false);
   const [editingSale, setEditingSale] = useState<{
     id: string;
@@ -38,11 +47,13 @@ export default function POSSales() {
     saleDate: string;
     saleTime?: string;
   } | null>(null);
-  const [selectedView, setSelectedView] = useState<'sales' | 'grouped'>('sales');
+  const [selectedView, setSelectedView] = useState<"sales" | "grouped">("sales");
   const [deductionDialogOpen, setDeductionDialogOpen] = useState(false);
-  const [selectedItemForDeduction, setSelectedItemForDeduction] = useState<{name: string; quantity: number} | null>(null);
+  const [selectedItemForDeduction, setSelectedItemForDeduction] = useState<{ name: string; quantity: number } | null>(
+    null,
+  );
   const [importedSalesData, setImportedSalesData] = useState<ParsedSale[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'manual' | 'import'>('manual');
+  const [activeTab, setActiveTab] = useState<"manual" | "import">("manual");
   const [mapPOSItemDialogOpen, setMapPOSItemDialogOpen] = useState(false);
   const [selectedPOSItemForMapping, setSelectedPOSItemForMapping] = useState<string | null>(null);
 
@@ -80,13 +91,9 @@ export default function POSSales() {
     }
   }, [selectedRestaurant?.restaurant_id, hasAnyConnectedSystem, syncAllSystems]);
 
-  const filteredSales = sales.filter(sale =>
-    sale.itemName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredSales = sales.filter((sale) => sale.itemName.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  const dateFilteredSales = startDate && endDate 
-    ? getSalesByDateRange(startDate, endDate)
-    : filteredSales;
+  const dateFilteredSales = startDate && endDate ? getSalesByDateRange(startDate, endDate) : filteredSales;
 
   const handleSyncSales = async () => {
     if (selectedRestaurant?.restaurant_id) {
@@ -100,7 +107,7 @@ export default function POSSales() {
 
   const handleSimulateDeduction = async (itemName: string, quantity: number) => {
     if (!selectedRestaurant?.restaurant_id) return;
-    
+
     setSelectedItemForDeduction({ name: itemName, quantity });
     setDeductionDialogOpen(true);
   };
@@ -111,10 +118,10 @@ export default function POSSales() {
 
   const handleImportComplete = () => {
     setImportedSalesData(null);
-    setActiveTab('manual');
+    setActiveTab("manual");
     // Refresh sales data to show newly imported sales
     if (selectedRestaurant?.restaurant_id) {
-      syncAllSystems();
+      await syncAllSystems();
     }
   };
 
@@ -135,7 +142,7 @@ export default function POSSales() {
   };
 
   const handleDeleteSale = async (saleId: string) => {
-    if (confirm('Are you sure you want to delete this manual sale?')) {
+    if (confirm("Are you sure you want to delete this manual sale?")) {
       await deleteManualSale(saleId);
     }
   };
@@ -156,10 +163,10 @@ export default function POSSales() {
             Select a restaurant to manage POS sales and inventory deductions.
           </p>
         </div>
-        <RestaurantSelector 
+        <RestaurantSelector
           selectedRestaurant={selectedRestaurant}
           onSelectRestaurant={handleRestaurantSelect}
-          restaurants={restaurants} 
+          restaurants={restaurants}
           loading={restaurantsLoading}
           createRestaurant={createRestaurant}
         />
@@ -176,13 +183,9 @@ export default function POSSales() {
             Unified sales data from all connected POS systems for {selectedRestaurant.restaurant.name}
           </p>
           <div className="flex flex-wrap gap-1 md:gap-2 mt-2 justify-center lg:justify-start">
-            {integrationStatuses.map(status => (
-              <Badge 
-                key={status.system} 
-                variant={status.isConnected ? 'default' : 'secondary'}
-                className="text-xs"
-              >
-                {status.system} {status.isConnected ? '✓' : '○'}
+            {integrationStatuses.map((status) => (
+              <Badge key={status.system} variant={status.isConnected ? "default" : "secondary"} className="text-xs">
+                {status.system} {status.isConnected ? "✓" : "○"}
               </Badge>
             ))}
           </div>
@@ -191,7 +194,7 @@ export default function POSSales() {
           <Button
             variant="outline"
             onClick={() => {
-              setActiveTab('manual');
+              setActiveTab("manual");
               setEditingSale(null);
               setShowSaleDialog(true);
             }}
@@ -203,7 +206,7 @@ export default function POSSales() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => setActiveTab('import')}
+            onClick={() => setActiveTab("import")}
             className="flex items-center gap-2 w-full sm:w-auto"
           >
             <UploadIcon className="h-4 w-4" />
@@ -217,8 +220,8 @@ export default function POSSales() {
               disabled={isSyncing}
               className="flex items-center gap-2 w-full sm:w-auto"
             >
-              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Syncing...' : 'Sync Sales'}
+              <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+              {isSyncing ? "Syncing..." : "Sync Sales"}
             </Button>
           )}
           <Button variant="outline" className="flex items-center gap-2 w-full sm:w-auto">
@@ -234,12 +237,12 @@ export default function POSSales() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'manual' | 'import')} className="w-full">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "manual" | "import")} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="manual">View Sales</TabsTrigger>
           <TabsTrigger value="import">Import from File</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="manual" className="space-y-6">
           <div className="grid gap-4 md:gap-6">
             <Card>
@@ -258,7 +261,7 @@ export default function POSSales() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div className="relative">
                     <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -281,11 +284,11 @@ export default function POSSales() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Button
-                    variant={selectedView === 'sales' ? 'default' : 'outline'}
-                    onClick={() => setSelectedView('sales')}
+                    variant={selectedView === "sales" ? "default" : "outline"}
+                    onClick={() => setSelectedView("sales")}
                     size="sm"
                     className="w-full"
                   >
@@ -293,8 +296,8 @@ export default function POSSales() {
                     <span className="sm:hidden">Sales</span>
                   </Button>
                   <Button
-                    variant={selectedView === 'grouped' ? 'default' : 'outline'}
-                    onClick={() => setSelectedView('grouped')}
+                    variant={selectedView === "grouped" ? "default" : "outline"}
+                    onClick={() => setSelectedView("grouped")}
                     size="sm"
                     className="w-full"
                   >
@@ -309,12 +312,10 @@ export default function POSSales() {
           {loading ? (
             <Card>
               <CardContent className="py-8">
-                <div className="text-center text-muted-foreground">
-                  Loading sales data...
-                </div>
+                <div className="text-center text-muted-foreground">Loading sales data...</div>
               </CardContent>
             </Card>
-          ) : selectedView === 'sales' ? (
+          ) : selectedView === "sales" ? (
             <Card>
               <CardHeader>
                 <CardTitle>Sales Transactions</CardTitle>
@@ -351,8 +352,8 @@ export default function POSSales() {
                               {sale.posSystem}
                             </Badge>
                             {unmappedItems.includes(sale.itemName) && (
-                              <Badge 
-                                variant="destructive" 
+                              <Badge
+                                variant="destructive"
                                 className="text-xs cursor-pointer hover:bg-destructive/80 transition-colors"
                                 onClick={() => handleMapPOSItem(sale.itemName)}
                               >
@@ -362,9 +363,9 @@ export default function POSSales() {
                           </div>
                           <div className="text-xs md:text-sm text-muted-foreground">
                             {(() => {
-                              const [year, month, day] = sale.saleDate.split('-').map(Number);
+                              const [year, month, day] = sale.saleDate.split("-").map(Number);
                               const localDate = new Date(year, month - 1, day);
-                              return format(localDate, 'MMM d, yyyy');
+                              return format(localDate, "MMM d, yyyy");
                             })()}
                             {sale.saleTime && ` at ${sale.saleTime}`}
                             {sale.externalOrderId && (
@@ -376,29 +377,29 @@ export default function POSSales() {
                             )}
                           </div>
                         </div>
-                         <div className="flex items-center gap-2">
-                          {(sale.posSystem === 'manual' || sale.posSystem === 'manual_upload') && 
-                           selectedRestaurant && 
-                           (selectedRestaurant.role === 'owner' || selectedRestaurant.role === 'manager') && (
-                            <>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleEditSale(sale)}
-                                className="text-xs"
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleDeleteSale(sale.id)}
-                                className="text-xs text-destructive hover:text-destructive"
-                              >
-                                Delete
-                              </Button>
-                            </>
-                          )}
+                        <div className="flex items-center gap-2">
+                          {(sale.posSystem === "manual" || sale.posSystem === "manual_upload") &&
+                            selectedRestaurant &&
+                            (selectedRestaurant.role === "owner" || selectedRestaurant.role === "manager") && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleEditSale(sale)}
+                                  className="text-xs"
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDeleteSale(sale.id)}
+                                  className="text-xs text-destructive hover:text-destructive"
+                                >
+                                  Delete
+                                </Button>
+                              </>
+                            )}
                           <Button
                             variant="outline"
                             size="sm"
@@ -422,40 +423,42 @@ export default function POSSales() {
               </CardHeader>
               <CardContent>
                 {groupedSales.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No sales data available.
-                  </div>
+                  <div className="text-center py-8 text-muted-foreground">No sales data available.</div>
                 ) : (
                   <div className="space-y-4">
-                    {groupedSales.map((item: { item_name: string; total_quantity: number; sale_count: number; total_revenue: number }) => (
-                      <div
-                        key={item.item_name}
-                        className="flex items-center justify-between p-4 border rounded-lg"
-                      >
-                        <div className="flex-1">
-                          <h3 className="font-medium">{item.item_name}</h3>
-                          <div className="flex gap-4 text-sm text-muted-foreground mt-1">
-                            <span>Total Quantity: {item.total_quantity}</span>
-                            <span>Sales Count: {item.sale_count}</span>
-                            <span>Total Revenue: ${item.total_revenue.toFixed(2)}</span>
+                    {groupedSales.map(
+                      (item: {
+                        item_name: string;
+                        total_quantity: number;
+                        sale_count: number;
+                        total_revenue: number;
+                      }) => (
+                        <div key={item.item_name} className="flex items-center justify-between p-4 border rounded-lg">
+                          <div className="flex-1">
+                            <h3 className="font-medium">{item.item_name}</h3>
+                            <div className="flex gap-4 text-sm text-muted-foreground mt-1">
+                              <span>Total Quantity: {item.total_quantity}</span>
+                              <span>Sales Count: {item.sale_count}</span>
+                              <span>Total Revenue: ${item.total_revenue.toFixed(2)}</span>
+                            </div>
                           </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSimulateDeduction(item.item_name, 1)}
+                          >
+                            Check Recipe Impact
+                          </Button>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleSimulateDeduction(item.item_name, 1)}
-                        >
-                          Check Recipe Impact
-                        </Button>
-                      </div>
-                    ))}
+                      ),
+                    )}
                   </div>
                 )}
               </CardContent>
             </Card>
           )}
         </TabsContent>
-        
+
         <TabsContent value="import" className="space-y-6">
           {importedSalesData ? (
             <POSSalesImportReview

@@ -81,7 +81,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   
                   // Remove currency symbols, thousands separators, and trim
                   let normalized = value.trim()
-                    .replace(/[$£€¥]/, '')  // Remove currency symbols
+                    .replace(/[$£€¥]/g, '')  // Remove currency symbols (all occurrences)
                     .replace(/,/g, '');     // Remove thousands separators
                   
                   // Handle parentheses for negative values: (123.45) -> -123.45

@@ -65,6 +65,14 @@ export const Inventory: React.FC = () => {
   const [showQuickInventoryDialog, setShowQuickInventoryDialog] = useState(false);
   const [quickInventoryProduct, setQuickInventoryProduct] = useState<Product | null>(null);
   const [scanMode, setScanMode] = useState<'add' | 'reconcile'>('add');
+
+  // Handler to close quick inventory dialog and clear product state
+  const handleCloseQuickInventoryDialog = (open: boolean) => {
+    setShowQuickInventoryDialog(open);
+    if (!open) {
+      setQuickInventoryProduct(null);
+    }
+  };
   const [reconciliationView, setReconciliationView] = useState<'history' | 'session' | 'summary'>('history');
   const { activeSession, startReconciliation } = useReconciliation(selectedRestaurant?.restaurant_id || null);
 
@@ -1348,7 +1356,7 @@ export const Inventory: React.FC = () => {
       {quickInventoryProduct && (
         <QuickInventoryDialog
           open={showQuickInventoryDialog}
-          onOpenChange={setShowQuickInventoryDialog}
+          onOpenChange={handleCloseQuickInventoryDialog}
           product={quickInventoryProduct}
           mode={scanMode}
           onSave={handleQuickInventorySave}

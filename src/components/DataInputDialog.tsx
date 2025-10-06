@@ -13,9 +13,10 @@ import { supabase } from '@/integrations/supabase/client';
 interface DataInputDialogProps {
   restaurantId: string;
   onDataUpdated?: () => void;
+  className?: string;
 }
 
-export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialogProps) {
+export function DataInputDialog({ restaurantId, onDataUpdated, className }: DataInputDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedSource, setSelectedSource] = useState('manual');
@@ -239,7 +240,7 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
+        <Button className={className}>
           <DollarSign className="mr-2 h-4 w-4" />
           Add Daily Data
         </Button>

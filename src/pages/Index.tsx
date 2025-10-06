@@ -160,6 +160,7 @@ const Index = () => {
                   // Refresh PnL data after manual entry
                   window.location.reload();
                 }}
+                className="w-full sm:w-auto"
               />
               <Button variant="outline" onClick={() => navigate('/reports')} className="w-full sm:w-auto">
                 <TrendingUp className="h-4 w-4 mr-2" />

@@ -413,6 +413,7 @@ export type Database = {
           created_at: string
           email: string
           expires_at: string
+          hashed_token: string | null
           id: string
           invited_by: string
           restaurant_id: string
@@ -427,6 +428,7 @@ export type Database = {
           created_at?: string
           email: string
           expires_at?: string
+          hashed_token?: string | null
           id?: string
           invited_by: string
           restaurant_id: string
@@ -441,6 +443,7 @@ export type Database = {
           created_at?: string
           email?: string
           expires_at?: string
+          hashed_token?: string | null
           id?: string
           invited_by?: string
           restaurant_id?: string
@@ -2058,6 +2061,10 @@ export type Database = {
       gtrgm_out: {
         Args: { "": unknown }
         Returns: unknown
+      }
+      hash_invitation_token: {
+        Args: { token: string }
+        Returns: string
       }
       is_restaurant_owner: {
         Args: { p_restaurant_id: string; p_user_id: string }

@@ -29,6 +29,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log('Validating invitation with token');
+    console.log('Plain token from URL:', token);
 
     // Hash the token using Web Crypto API
     const encoder = new TextEncoder();
@@ -36,6 +37,8 @@ const handler = async (req: Request): Promise<Response> => {
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const hashedToken = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    console.log('Hashed token for DB lookup:', hashedToken);
 
     // Get invitation details using hashed token (public endpoint - no auth required)
     const { data: invitation, error: invitationError } = await supabase

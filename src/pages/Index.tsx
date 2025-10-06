@@ -139,7 +139,7 @@ const Index = () => {
       ) : (
         <div className="space-y-6">
           {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex flex-col gap-4">
             <div>
               <h1 className="text-3xl font-bold tracking-tight">
                 Welcome back! 👋
@@ -153,7 +153,7 @@ const Index = () => {
                 })}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <DataInputDialog 
                 restaurantId={selectedRestaurant.restaurant_id}
                 onDataUpdated={() => {
@@ -161,11 +161,11 @@ const Index = () => {
                   window.location.reload();
                 }}
               />
-              <Button variant="outline" onClick={() => navigate('/reports')}>
+              <Button variant="outline" onClick={() => navigate('/reports')} className="w-full sm:w-auto">
                 <TrendingUp className="h-4 w-4 mr-2" />
                 View Reports
               </Button>
-              <Button onClick={() => navigate('/inventory')}>
+              <Button onClick={() => navigate('/inventory')} className="w-full sm:w-auto">
                 <Package className="h-4 w-4 mr-2" />
                 Manage Inventory
               </Button>

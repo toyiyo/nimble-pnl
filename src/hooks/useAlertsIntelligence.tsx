@@ -143,25 +143,25 @@ export const useAlertsIntelligence = (restaurantId: string | null) => {
           t.transaction_type === 'purchase'
         ).length || 0;
 
-        // Track stockout history - collect actual stockout events
-        const stockoutEvents = transactions?.filter(
-          t => t.product_id === product.id && 
-          t.transaction_type === 'usage' &&
-          t.quantity === 0
-        ) || [];
+        // Track stockout history for products currently at 0 stock
+        if (product.current_stock === 0) {
+          // Find the most recent transaction for this product to estimate when it went to 0
+          const lastTransaction = transactions?.filter(
+            t => t.product_id === product.id
+          ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
-        if (stockoutEvents.length > 0) {
-          // Find the most recent stockout event
-          const lastStockoutEvent = stockoutEvents.reduce((latest, event) => {
-            return new Date(event.created_at) > new Date(latest.created_at) ? event : latest;
-          });
+          // Count how many times this product has been replenished (indicating previous stockouts)
+          const restockCount = transactions?.filter(
+            t => t.product_id === product.id && 
+            t.transaction_type === 'purchase'
+          ).length || 0;
 
           stockoutHistoryMap.set(product.name, {
             product_name: product.name,
-            stockout_count: stockoutEvents.length,
-            total_days_out: stockoutEvents.length,
-            last_stockout: format(new Date(lastStockoutEvent.created_at), 'yyyy-MM-dd'),
-            estimated_lost_sales: stockoutEvents.length * (product.cost_per_unit || 0) * 10 // Assume 10x markup
+            stockout_count: restockCount + 1, // Current stockout plus previous restocks
+            total_days_out: 1, // Currently out of stock
+            last_stockout: lastTransaction ? format(new Date(lastTransaction.created_at), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+            estimated_lost_sales: (restockCount + 1) * (product.cost_per_unit || 0) * 10 // Assume 10x markup
           });
         }
 

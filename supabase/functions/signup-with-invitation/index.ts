@@ -59,41 +59,63 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create the user account first
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      user_metadata: {
-        full_name: fullName,
-      }
-    });
+    // Check if user already exists
+    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+    const existingUser = existingUsers?.users.find(u => u.email === email);
 
-    if (authError) {
-      console.error('Error creating user:', authError);
-      return new Response(
-        JSON.stringify({ success: false, error: authError.message }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+    let userId: string;
+
+    if (existingUser) {
+      console.log('User already exists, using existing account:', existingUser.id);
+      userId = existingUser.id;
+      
+      // Update password for existing user
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+        existingUser.id,
+        { 
+          password,
+          email_confirm: true,
+          user_metadata: {
+            full_name: fullName,
+          }
+        }
       );
-    }
 
-    console.log('User created successfully:', authData.user.id);
+      if (updateError) {
+        console.error('Error updating existing user:', updateError);
+        return new Response(
+          JSON.stringify({ success: false, error: updateError.message }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+    } else {
+      // Create new user account
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        user_metadata: {
+          full_name: fullName,
+        },
+        email_confirm: true
+      });
 
-    // Now confirm the user's email manually
-    const { error: confirmError } = await supabaseAdmin.auth.admin.updateUserById(
-      authData.user.id,
-      { email_confirm: true }
-    );
+      if (authError) {
+        console.error('Error creating user:', authError);
+        return new Response(
+          JSON.stringify({ success: false, error: authError.message }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
 
-    if (confirmError) {
-      console.error('Error confirming user email:', confirmError);
-      // Continue anyway, as the user is created
+      console.log('User created successfully:', authData.user.id);
+      userId = authData.user.id;
     }
 
     // Check if user is already a member of the restaurant
     const { data: existingMembership } = await supabaseAdmin
       .from('user_restaurants')
       .select('*')
-      .eq('user_id', authData.user.id)
+      .eq('user_id', userId)
       .eq('restaurant_id', invitation.restaurant_id)
       .single();
 
@@ -102,7 +124,7 @@ Deno.serve(async (req) => {
       const { error: membershipError } = await supabaseAdmin
         .from('user_restaurants')
         .insert({
-          user_id: authData.user.id,
+          user_id: userId,
           restaurant_id: invitation.restaurant_id,
           role: invitation.role
         });
@@ -122,7 +144,7 @@ Deno.serve(async (req) => {
       .update({
         status: 'accepted',
         accepted_at: new Date().toISOString(),
-        accepted_by: authData.user.id,
+        accepted_by: userId,
         updated_at: new Date().toISOString()
       })
       .eq('id', invitation.id);

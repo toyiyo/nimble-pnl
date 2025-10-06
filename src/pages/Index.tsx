@@ -304,7 +304,7 @@ const Index = () => {
                     {todaysData ? (
                       <div className="space-y-3">
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-muted-foreground">Gross Revenue</span>
+                          <span className="text-sm text-muted-foreground">Net Revenue</span>
                           <span className="font-semibold">${todaysData.net_revenue.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between items-center">

@@ -38,7 +38,7 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
     // Strip optional prefix like "@@" or "]Q"
     const cleanCode = code.replace(/^(@@|]Q)/, '').trim();
     
-    if (cleanCode.length >= 8 && /^\d+$/.test(cleanCode)) {
+    if (cleanCode.length > 0) {
       setLastScan(cleanCode);
       setScanCount(prev => prev + 1);
       onScan(cleanCode, 'KeyboardHID');
@@ -50,7 +50,7 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
       // Refocus after short delay
       setTimeout(focusHiddenInput, 100);
     } else {
-      onError?.(`Invalid barcode format: ${cleanCode}`);
+      onError?.(`Empty barcode scan`);
     }
   }, [onScan, onError, focusHiddenInput]);
 

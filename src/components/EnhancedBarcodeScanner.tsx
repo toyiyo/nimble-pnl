@@ -24,8 +24,11 @@ export const EnhancedBarcodeScanner: React.FC<EnhancedBarcodeScannerProps> = ({
 }) => {
   const [scanMode, setScanMode] = useState<ScanMode>('camera');
 
-  // Check if Web Bluetooth is supported and detect iOS
-  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  // Check if Web Bluetooth is supported and detect iOS (including iPadOS)
+  const isIOS = typeof navigator !== 'undefined' && (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+    (navigator.userAgent.includes('MacIntel') && navigator.maxTouchPoints > 1)
+  );
   const isBluetoothSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator && !isIOS;
 
   return (

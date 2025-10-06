@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,9 +41,9 @@ const Index = () => {
   const averages = getAverages(7);
   const recentData = getGroupedPnLData().slice(0, 30);
 
-  // Generate AI insights
-  const generateInsights = () => {
-    const insights: Array<{
+  // Generate AI insights with memoization
+  const insights = useMemo(() => {
+    const insightsArray: Array<{
       type: 'critical' | 'warning' | 'success' | 'info' | 'tip';
       title: string;
       description: string;
@@ -51,7 +51,7 @@ const Index = () => {
 
     // Critical alerts
     if (reorderAlerts.length > 5) {
-      insights.push({
+      insightsArray.push({
         type: 'critical',
         title: `${reorderAlerts.length} Items Need Immediate Reorder`,
         description: 'Multiple items are below reorder point. Review inventory to avoid stockouts.'
@@ -61,13 +61,13 @@ const Index = () => {
     // Food cost performance
     if (todaysData && averages) {
       if (todaysData.food_cost_percentage > averages.avgFoodCostPercentage + 5) {
-        insights.push({
+        insightsArray.push({
           type: 'warning',
           title: 'Food Cost Above Average',
           description: `Today's food cost (${todaysData.food_cost_percentage.toFixed(1)}%) is ${(todaysData.food_cost_percentage - averages.avgFoodCostPercentage).toFixed(1)}% higher than your 7-day average. Check for waste or price increases.`
         });
       } else if (todaysData.food_cost_percentage < averages.avgFoodCostPercentage - 2) {
-        insights.push({
+        insightsArray.push({
           type: 'success',
           title: 'Excellent Food Cost Control',
           description: `Food cost is ${(averages.avgFoodCostPercentage - todaysData.food_cost_percentage).toFixed(1)}% below your average. Great work!`
@@ -77,7 +77,7 @@ const Index = () => {
 
     // Prime cost check
     if (todaysData && todaysData.prime_cost_percentage > 65) {
-      insights.push({
+      insightsArray.push({
         type: 'warning',
         title: 'Prime Cost Above Target',
         description: `Prime cost at ${todaysData.prime_cost_percentage.toFixed(1)}% exceeds the recommended 60-65% range. Consider reviewing labor schedules and food costs.`
@@ -86,7 +86,7 @@ const Index = () => {
 
     // Low stock warning
     if (lowStockItems.length > 0 && lowStockItems.length <= 5) {
-      insights.push({
+      insightsArray.push({
         type: 'info',
         title: `${lowStockItems.length} Items Running Low`,
         description: 'Some items are below par levels. Plan your next order accordingly.'
@@ -94,24 +94,26 @@ const Index = () => {
     }
 
     // Helpful tip
-    if (insights.length === 0) {
-      insights.push({
+    if (insightsArray.length === 0) {
+      insightsArray.push({
         type: 'tip',
         title: 'All Systems Running Smoothly',
         description: 'Your restaurant operations are looking good! Keep monitoring your metrics daily for best results.'
       });
     }
 
-    return insights;
-  };
+    return insightsArray;
+  }, [reorderAlerts, todaysData, averages, lowStockItems]);
 
-  // Prepare chart data
-  const getChartData = (key: 'net_revenue' | 'food_cost_percentage' | 'prime_cost_percentage') => {
-    return recentData.slice(0, 14).reverse().map(day => ({
-      date: day.date,
-      value: day[key]
-    }));
-  };
+  // Prepare chart data with memoization
+  const getChartData = useMemo(() => {
+    return (key: 'net_revenue' | 'food_cost_percentage' | 'prime_cost_percentage') => {
+      return recentData.slice(0, 14).reverse().map(day => ({
+        date: day.date,
+        value: day[key]
+      }));
+    };
+  }, [recentData]);
 
   const getTrendValue = (current: number, average: number) => {
     if (!average) return 0;
@@ -181,7 +183,7 @@ const Index = () => {
           ) : (
             <>
               {/* AI Insights */}
-              <DashboardInsights insights={generateInsights()} />
+              <DashboardInsights insights={insights} />
 
               {/* Key Metrics */}
               <div>

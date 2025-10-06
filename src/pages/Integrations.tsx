@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -75,15 +75,19 @@ const Integrations = () => {
     }
   ];
 
-  const groupedIntegrations = integrations.reduce((acc, integration) => {
-    if (!acc[integration.category]) {
-      acc[integration.category] = [];
-    }
-    acc[integration.category].push(integration);
-    return acc;
-  }, {} as Record<string, typeof integrations>);
+  const groupedIntegrations = useMemo(() => {
+    return integrations.reduce((acc, integration) => {
+      if (!acc[integration.category]) {
+        acc[integration.category] = [];
+      }
+      acc[integration.category].push(integration);
+      return acc;
+    }, {} as Record<string, typeof integrations>);
+  }, [integrations]);
 
-  const connectedCount = integrations.filter(integration => integration.connected).length;
+  const connectedCount = useMemo(() => {
+    return integrations.filter(integration => integration.connected).length;
+  }, [integrations]);
 
   return (
     <>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Download, Search, Calendar, RefreshCw, Upload as UploadIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -94,7 +94,9 @@ export default function POSSales() {
     }
   };
 
-  const groupedSales = getSalesGroupedByItem();
+  const groupedSales = useMemo(() => {
+    return getSalesGroupedByItem();
+  }, [getSalesGroupedByItem]);
 
   const handleSimulateDeduction = async (itemName: string, quantity: number) => {
     if (!selectedRestaurant?.restaurant_id) return;

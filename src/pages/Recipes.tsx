@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -94,8 +94,13 @@ export default function Recipes() {
     recipe.pos_item_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const unmappedRecipes = filteredRecipes.filter(recipe => !recipe.pos_item_name);
-  const mappedRecipes = filteredRecipes.filter(recipe => recipe.pos_item_name);
+  const unmappedRecipes = useMemo(() => {
+    return filteredRecipes.filter(recipe => !recipe.pos_item_name);
+  }, [filteredRecipes]);
+
+  const mappedRecipes = useMemo(() => {
+    return filteredRecipes.filter(recipe => recipe.pos_item_name);
+  }, [filteredRecipes]);
 
   return (
     <div className="space-y-6 md:space-y-8">

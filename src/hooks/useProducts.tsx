@@ -243,21 +243,16 @@ export const useProducts = (restaurantId: string | null) => {
     return updateProductWithQuantity(id, updates, currentStock, newStock, 'adjustment', 'Product information update');
   };
 
-  const findProductByGtin = useCallback(async (gtinOriginal: string, gtin14?: string): Promise<Product | null> => {
-    if (!restaurantId || !gtinOriginal) return null;
+  const findProductByGtin = useCallback(async (gtin: string): Promise<Product | null> => {
+    if (!restaurantId || !gtin) return null;
 
     try {
-      // Search by both original GTIN, normalized GTIN-14, and SKU
-      // This handles products where barcode is stored in any of these fields
-      const searchTerms = gtin14 && gtin14 !== gtinOriginal
-        ? `gtin.eq.${gtinOriginal},gtin.eq.${gtin14},sku.eq.${gtinOriginal},sku.eq.${gtin14}`
-        : `gtin.eq.${gtinOriginal},sku.eq.${gtinOriginal}`;
-      
+      // Search by both GTIN and SKU fields using the exact scanned barcode
       const { data, error } = await supabase
         .from('products')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .or(searchTerms)
+        .or(`gtin.eq.${gtin},sku.eq.${gtin}`)
         .limit(1);
 
       if (error) throw error;

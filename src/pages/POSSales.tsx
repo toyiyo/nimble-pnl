@@ -62,10 +62,10 @@ export default function POSSales() {
     setMapPOSItemDialogOpen(true);
   };
 
-  const handleMappingComplete = () => {
+  const handleMappingComplete = async () => {
     // Refresh sales data to update unmapped items
     if (selectedRestaurant?.restaurant_id) {
-      syncAllSystems();
+      await syncAllSystems();
     }
   };
 

@@ -95,7 +95,7 @@ class ProductLookupService {
     }
     
     // 2. Check cache
-    const cached = this.getCachedProduct(gtin14);
+    const cached = this.getCachedProduct(gtin);
     if (cached) {
       console.log('📦 Found cached product:', cached.product_name);
       return cached;

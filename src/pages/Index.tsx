@@ -12,7 +12,8 @@ import { DashboardMetricCard } from '@/components/DashboardMetricCard';
 import { DashboardQuickActions } from '@/components/DashboardQuickActions';
 import { DashboardInsights } from '@/components/DashboardInsights';
 import { DashboardMiniChart } from '@/components/DashboardMiniChart';
-import { 
+import { DataInputDialog } from '@/components/DataInputDialog';
+import {
   DollarSign, 
   TrendingUp, 
   TrendingDown,
@@ -153,6 +154,13 @@ const Index = () => {
               </p>
             </div>
             <div className="flex gap-2">
+              <DataInputDialog 
+                restaurantId={selectedRestaurant.restaurant_id}
+                onDataUpdated={() => {
+                  // Refresh PnL data after manual entry
+                  window.location.reload();
+                }}
+              />
               <Button variant="outline" onClick={() => navigate('/reports')}>
                 <TrendingUp className="h-4 w-4 mr-2" />
                 View Reports

@@ -143,20 +143,25 @@ export const useAlertsIntelligence = (restaurantId: string | null) => {
           t.transaction_type === 'purchase'
         ).length || 0;
 
-        // Track stockout history
-        const stockoutDays = transactions?.filter(
+        // Track stockout history - collect actual stockout events
+        const stockoutEvents = transactions?.filter(
           t => t.product_id === product.id && 
           t.transaction_type === 'usage' &&
           t.quantity === 0
-        ).length || 0;
+        ) || [];
 
-        if (stockoutDays > 0) {
+        if (stockoutEvents.length > 0) {
+          // Find the most recent stockout event
+          const lastStockoutEvent = stockoutEvents.reduce((latest, event) => {
+            return new Date(event.created_at) > new Date(latest.created_at) ? event : latest;
+          });
+
           stockoutHistoryMap.set(product.name, {
             product_name: product.name,
-            stockout_count: reorderEvents,
-            total_days_out: stockoutDays,
-            last_stockout: format(new Date(), 'yyyy-MM-dd'),
-            estimated_lost_sales: stockoutDays * (product.cost_per_unit || 0) * 10 // Assume 10x markup
+            stockout_count: stockoutEvents.length,
+            total_days_out: stockoutEvents.length,
+            last_stockout: format(new Date(lastStockoutEvent.created_at), 'yyyy-MM-dd'),
+            estimated_lost_sales: stockoutEvents.length * (product.cost_per_unit || 0) * 10 // Assume 10x markup
           });
         }
 

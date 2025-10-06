@@ -111,49 +111,7 @@ Deno.serve(async (req) => {
       userId = authData.user.id;
     }
 
-    // Check if user is already a member of the restaurant
-    const { data: existingMembership } = await supabaseAdmin
-      .from('user_restaurants')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('restaurant_id', invitation.restaurant_id)
-      .single();
-
-    if (!existingMembership) {
-      // Add user to restaurant
-      const { error: membershipError } = await supabaseAdmin
-        .from('user_restaurants')
-        .insert({
-          user_id: userId,
-          restaurant_id: invitation.restaurant_id,
-          role: invitation.role
-        });
-
-      if (membershipError) {
-        console.error('Error adding user to restaurant:', membershipError);
-        return new Response(
-          JSON.stringify({ success: false, error: 'Failed to add user to restaurant' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-        );
-      }
-    }
-
-    // Mark invitation as accepted
-    const { error: updateError } = await supabaseAdmin
-      .from('invitations')
-      .update({
-        status: 'accepted',
-        accepted_at: new Date().toISOString(),
-        accepted_by: userId,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', invitation.id);
-
-    if (updateError) {
-      console.error('Error updating invitation:', updateError);
-    }
-
-    console.log('Invitation accepted successfully');
+    console.log('User account ready for invitation acceptance');
 
     // Get restaurant information
     const { data: restaurant } = await supabaseAdmin

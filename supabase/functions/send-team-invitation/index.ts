@@ -97,16 +97,14 @@ const handler = async (req: Request): Promise<Response> => {
     crypto.getRandomValues(tokenBytes);
     const invitationToken = Array.from(tokenBytes, byte => byte.toString(16).padStart(2, '0')).join('');
     
-    // Hash the token before storing
-    const { data: hashedToken, error: hashError } = await supabase
-      .rpc('hash_invitation_token', { token: invitationToken });
+    // Hash the token using Web Crypto API (available in Deno)
+    const encoder = new TextEncoder();
+    const data = encoder.encode(invitationToken);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashedToken = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     
-    if (hashError || !hashedToken) {
-      console.error('Hash error:', hashError);
-      throw new Error('Failed to hash invitation token');
-    }
-    
-    console.log('Token hashed successfully');
+    console.log('Token hashed successfully with Web Crypto API');
     
     // Store invitation with hashed token in database
     const { data: invitation, error: invitationError } = await supabase

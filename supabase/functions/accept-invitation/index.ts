@@ -56,13 +56,12 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Unauthorized');
     }
 
-    // Hash the token to look up in database
-    const { data: hashedToken, error: hashError } = await supabase
-      .rpc('hash_invitation_token', { token });
-    
-    if (hashError) {
-      throw new Error('Failed to validate token');
-    }
+    // Hash the token using Web Crypto API
+    const encoder = new TextEncoder();
+    const data = encoder.encode(token);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashedToken = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
     // Get invitation details and validate using hashed token
     const { data: invitation, error: invitationError } = await supabase

@@ -17,6 +17,7 @@ import { POSSalesImportReview } from '@/components/POSSalesImportReview';
 import { format } from 'date-fns';
 import { InventoryDeductionDialog } from '@/components/InventoryDeductionDialog';
 import { MapPOSItemDialog } from '@/components/MapPOSItemDialog';
+import { UnifiedSaleItem } from '@/types/pos';
 
 export default function POSSales() {
   const navigate = useNavigate();
@@ -119,7 +120,7 @@ export default function POSSales() {
     setImportedSalesData(null);
   };
 
-  const handleEditSale = (sale: any) => {
+  const handleEditSale = (sale: UnifiedSaleItem) => {
     setEditingSale({
       id: sale.id,
       itemName: sale.itemName,

@@ -24,11 +24,20 @@ Deno.serve(async (req) => {
     
     console.log('Processing signup with invitation for:', email);
     
+    // Hash the token using Web Crypto API to match database format
+    const encoder = new TextEncoder();
+    const data = encoder.encode(token);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashedToken = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    console.log('Looking up invitation with hashed token');
+    
     // First, validate the invitation
     const { data: invitation, error: inviteError } = await supabaseAdmin
       .from('invitations')
       .select('*')
-      .eq('token', token)
+      .eq('token', hashedToken)
       .eq('status', 'pending')
       .eq('email', email)
       .single();

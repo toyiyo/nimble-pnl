@@ -177,10 +177,10 @@ export const useRecipeIntelligence = (restaurantId: string | null) => {
             else if (change < -10) trend = 'down';
           }
 
-          // Calculate efficiency score (0-100)
-          const marginScore = Math.min((margin / 70) * 40, 40);
-          const velocityScore = Math.min((totalQuantitySold / 30) * 30, 30);
-          const costScore = Math.min((1 - (foodCostPct / 35)) * 30, 30);
+          // Calculate efficiency score (0-100) with proper clamping
+          const marginScore = Math.max(0, Math.min((margin / 70) * 40, 40));
+          const velocityScore = Math.max(0, Math.min((totalQuantitySold / 30) * 30, 30));
+          const costScore = Math.max(0, Math.min((1 - (foodCostPct / 35)) * 30, 30));
           const efficiencyScore = marginScore + velocityScore + costScore;
 
           performance.push({

@@ -98,12 +98,15 @@ const handler = async (req: Request): Promise<Response> => {
     const invitationToken = Array.from(tokenBytes, byte => byte.toString(16).padStart(2, '0')).join('');
     
     // Hash the token before storing
-    const { data: hashedTokenData, error: hashError } = await supabase
+    const { data: hashedToken, error: hashError } = await supabase
       .rpc('hash_invitation_token', { token: invitationToken });
     
-    if (hashError) {
+    if (hashError || !hashedToken) {
+      console.error('Hash error:', hashError);
       throw new Error('Failed to hash invitation token');
     }
+    
+    console.log('Token hashed successfully');
     
     // Store invitation with hashed token in database
     const { data: invitation, error: invitationError } = await supabase
@@ -113,7 +116,7 @@ const handler = async (req: Request): Promise<Response> => {
         invited_by: user.id,
         email,
         role,
-        token: hashedTokenData,
+        token: hashedToken,
         status: 'pending',
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
       })

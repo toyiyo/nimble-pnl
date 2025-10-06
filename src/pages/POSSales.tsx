@@ -116,7 +116,7 @@ export default function POSSales() {
     setImportedSalesData(data);
   };
 
-  const handleImportComplete = () => {
+  const handleImportComplete = async () => {
     setImportedSalesData(null);
     setActiveTab("manual");
     // Refresh sales data to show newly imported sales

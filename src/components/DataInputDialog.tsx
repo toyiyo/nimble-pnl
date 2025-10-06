@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useDailyPnL, DailySales, DailyFoodCosts, DailyLaborCosts } from '@/hooks/useDailyPnL';
 import { supabase } from '@/integrations/supabase/client';
 
+
 interface DataInputDialogProps {
   restaurantId: string;
   onDataUpdated?: () => void;

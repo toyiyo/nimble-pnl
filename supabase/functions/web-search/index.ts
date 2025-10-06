@@ -63,13 +63,23 @@ serve(async (req) => {
           const snippet = match[3].trim()
           
           // Filter out DuckDuckGo internal links and ensure we have real content
-          if (url && !url.includes('duckduckgo.com') && title.length > 0 && snippet.length > 10) {
-            results.push({
-              title,
-              snippet,
-              url
-            })
-            count++
+          try {
+            const urlObj = new URL(url)
+            const hostname = urlObj.hostname.toLowerCase()
+            // Only exclude if hostname is actually duckduckgo.com or a subdomain
+            const isDuckDuckGo = hostname === 'duckduckgo.com' || hostname.endsWith('.duckduckgo.com')
+            
+            if (!isDuckDuckGo && title.length > 0 && snippet.length > 10) {
+              results.push({
+                title,
+                snippet,
+                url
+              })
+              count++
+            }
+          } catch (e) {
+            // Invalid URL, skip it
+            continue
           }
         }
         

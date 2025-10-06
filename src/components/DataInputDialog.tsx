@@ -238,14 +238,13 @@ export function DataInputDialog({ restaurantId, onDataUpdated, className }: Data
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className={className}>
-          <DollarSign className="mr-2 h-4 w-4" />
-          Add Daily Data
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+    <>
+      <Button className={className} onClick={() => setOpen(true)}>
+        <DollarSign className="mr-2 h-4 w-4" />
+        Add Daily Data
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add Daily Operations Data</DialogTitle>
           <DialogDescription>
@@ -532,7 +531,8 @@ export function DataInputDialog({ restaurantId, onDataUpdated, className }: Data
             </TabsContent>
           </Tabs>
         </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

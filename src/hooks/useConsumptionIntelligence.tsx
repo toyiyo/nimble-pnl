@@ -188,20 +188,26 @@ export const useConsumptionIntelligence = (restaurantId: string | null) => {
       const ingredientPatterns: IngredientPattern[] = [];
       ingredientMap.forEach((data, name) => {
         const totalUsage = data.usage.reduce((sum, u) => sum + u, 0);
-        const totalCost = data.costs.reduce((sum, c) => sum + c, 0);
+        const totalCost = data.costs.length > 0 ? data.costs.reduce((sum, c) => sum + c, 0) : 0;
         const avgDailyUsage = totalUsage / 30;
         
         // Calculate variance
         const mean = avgDailyUsage;
-        const variance = data.usage.reduce((sum, u) => sum + Math.pow(u - mean, 2), 0) / data.usage.length;
+        const variance = data.usage.length > 0 
+          ? data.usage.reduce((sum, u) => sum + Math.pow(u - mean, 2), 0) / data.usage.length 
+          : 0;
         const stdDev = Math.sqrt(variance);
         const coefficientOfVariation = mean > 0 ? (stdDev / mean) * 100 : 0;
         
         // Determine trend
         const firstHalf = data.costs.slice(0, Math.floor(data.costs.length / 2));
         const secondHalf = data.costs.slice(Math.floor(data.costs.length / 2));
-        const firstAvg = firstHalf.reduce((sum, c) => sum + c, 0) / firstHalf.length;
-        const secondAvg = secondHalf.reduce((sum, c) => sum + c, 0) / secondHalf.length;
+        const firstAvg = firstHalf.length > 0 
+          ? firstHalf.reduce((sum, c) => sum + c, 0) / firstHalf.length 
+          : 0;
+        const secondAvg = secondHalf.length > 0 
+          ? secondHalf.reduce((sum, c) => sum + c, 0) / secondHalf.length 
+          : 0;
         
         let trend: 'increasing' | 'decreasing' | 'stable' = 'stable';
         if (secondAvg > firstAvg * 1.1) trend = 'increasing';

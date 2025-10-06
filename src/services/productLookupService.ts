@@ -71,13 +71,13 @@ class ProductLookupService {
   private readonly CACHE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days
 
   // Enhanced lookup with multiple resolution strategies
-  async lookupProduct(gtin: string, catalogLookup?: (gtin14: string) => Promise<any | null>): Promise<ProductLookupResult | null> {
+  async lookupProduct(gtin: string, catalogLookup?: (gtin: string, gtin14: string) => Promise<any | null>): Promise<ProductLookupResult | null> {
     const gtin14 = normalizeGTIN(gtin);
     
-    // 1. Check local catalog first
+    // 1. Check local catalog first - try both original and normalized GTIN
     if (catalogLookup) {
       try {
-        const localResult = await catalogLookup(gtin14);
+        const localResult = await catalogLookup(gtin, gtin14);
         if (localResult) {
           console.log('📦 Found in local catalog:', localResult.name);
           return {

@@ -141,7 +141,7 @@ export const Inventory: React.FC = () => {
       return;
     }
     
-    // Check if product already exists in inventory
+    // Check if product already exists in inventory (search by original barcode)
     const existingProduct = await findProductByGtin(gtin);
     
     if (existingProduct) {

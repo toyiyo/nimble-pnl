@@ -97,7 +97,15 @@ const handler = async (req: Request): Promise<Response> => {
     crypto.getRandomValues(tokenBytes);
     const invitationToken = Array.from(tokenBytes, byte => byte.toString(16).padStart(2, '0')).join('');
     
-    // Store invitation in database
+    // Hash the token before storing
+    const { data: hashedTokenData, error: hashError } = await supabase
+      .rpc('hash_invitation_token', { token: invitationToken });
+    
+    if (hashError) {
+      throw new Error('Failed to hash invitation token');
+    }
+    
+    // Store invitation with hashed token in database
     const { data: invitation, error: invitationError } = await supabase
       .from('invitations')
       .insert({
@@ -105,7 +113,7 @@ const handler = async (req: Request): Promise<Response> => {
         invited_by: user.id,
         email,
         role,
-        token: invitationToken,
+        token: hashedTokenData,
         status: 'pending',
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
       })

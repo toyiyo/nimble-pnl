@@ -28,13 +28,21 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Missing token');
     }
 
-    console.log('Validating invitation with token:', token);
+    console.log('Validating invitation with token');
 
-    // Get invitation details (public endpoint - no auth required)
+    // Hash the token to look up in database
+    const { data: hashedToken, error: hashError } = await supabase
+      .rpc('hash_invitation_token', { token });
+    
+    if (hashError) {
+      throw new Error('Failed to validate token');
+    }
+
+    // Get invitation details using hashed token (public endpoint - no auth required)
     const { data: invitation, error: invitationError } = await supabase
       .from('invitations')
       .select('*')
-      .eq('token', token)
+      .eq('token', hashedToken)
       .eq('status', 'pending')
       .single();
 

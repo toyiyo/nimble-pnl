@@ -47,7 +47,7 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Missing token');
     }
 
-    console.log('Accepting invitation with token:', token);
+    console.log('Accepting invitation');
 
     // Get current user info
     const { data: { user }, error: authError } = await userSupabase.auth.getUser();
@@ -56,11 +56,19 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Unauthorized');
     }
 
-    // Get invitation details and validate
+    // Hash the token to look up in database
+    const { data: hashedToken, error: hashError } = await supabase
+      .rpc('hash_invitation_token', { token });
+    
+    if (hashError) {
+      throw new Error('Failed to validate token');
+    }
+
+    // Get invitation details and validate using hashed token
     const { data: invitation, error: invitationError } = await supabase
       .from('invitations')
       .select('*')
-      .eq('token', token)
+      .eq('token', hashedToken)
       .eq('status', 'pending')
       .single();
 

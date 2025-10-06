@@ -64,6 +64,11 @@ export default function RestaurantSettings() {
       });
     } catch (error) {
       console.error('Error saving settings:', error);
+      toast({
+        title: "Failed to save settings",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }

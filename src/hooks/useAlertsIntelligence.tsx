@@ -183,8 +183,12 @@ export const useAlertsIntelligence = (restaurantId: string | null) => {
         }
         supplierPerf.avg_days_until_stockout += daysUntilStockout;
 
-        // Add to alert items if below reorder point or at risk
-        if (product.current_stock <= product.reorder_point || stockoutRisk !== 'low') {
+        // Add to alert items - same logic as useInventoryAlerts for consistency
+        const isOutOfStock = (product.current_stock || 0) === 0;
+        const isBelowParLevel = (product.par_level_min || 0) > 0 && (product.current_stock || 0) < (product.par_level_min || 0);
+        const needsReorder = (product.reorder_point || 0) > 0 && (product.current_stock || 0) <= (product.reorder_point || 0);
+        
+        if (isOutOfStock || isBelowParLevel || needsReorder || stockoutRisk !== 'low') {
           alertItems.push({
             id: product.id,
             name: product.name,

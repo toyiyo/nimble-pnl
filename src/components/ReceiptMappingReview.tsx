@@ -34,7 +34,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
   const { selectedRestaurant } = useRestaurantContext();
   const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
-  const { products } = useProducts(selectedRestaurant?.id || null);
+  const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
 
   // Detect file type based on extension

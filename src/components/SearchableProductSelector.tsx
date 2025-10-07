@@ -35,7 +35,7 @@ export function SearchableProductSelector({
   searchTerm = "",
 }: SearchableProductSelectorProps) {
   const [open, setOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState(searchTerm);
+  const [searchValue, setSearchValue] = useState("");
   
   // Show all products if no search, otherwise filter
   const filteredProducts = searchValue

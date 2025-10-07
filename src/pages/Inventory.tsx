@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,7 @@ import { ocrService } from '@/services/ocrService';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { toast } = useToast();
@@ -65,6 +66,16 @@ export const Inventory: React.FC = () => {
   const [showQuickInventoryDialog, setShowQuickInventoryDialog] = useState(false);
   const [quickInventoryProduct, setQuickInventoryProduct] = useState<Product | null>(null);
   const [scanMode, setScanMode] = useState<'add' | 'reconcile'>('add');
+  
+  // Check for ?create=true query parameter to open product dialog from recipes
+  useEffect(() => {
+    if (searchParams.get('create') === 'true') {
+      setShowProductDialog(true);
+      // Remove the query parameter
+      searchParams.delete('create');
+      setSearchParams(searchParams);
+    }
+  }, [searchParams, setSearchParams]);
 
   // Handler to close quick inventory dialog and clear product state
   const handleCloseQuickInventoryDialog = (open: boolean) => {
@@ -433,6 +444,25 @@ export const Inventory: React.FC = () => {
       setLookupResult(null);
       setLastScannedGtin('');
       setCapturedImage(null);
+      
+      // Check if we came from the recipe dialog
+      const recipeStateJson = sessionStorage.getItem('recipeFormState');
+      if (recipeStateJson) {
+        try {
+          const recipeState = JSON.parse(recipeStateJson);
+          sessionStorage.removeItem('recipeFormState');
+          
+          // Navigate back to recipes with the new product ID
+          navigate(`/recipes?newProductId=${newProduct.id}&returnToRecipe=true`);
+          
+          toast({
+            title: "Product created",
+            description: "Returning to recipe editor with your new product",
+          });
+        } catch (error) {
+          console.error('Error parsing recipe state:', error);
+        }
+      }
     }
   };
 

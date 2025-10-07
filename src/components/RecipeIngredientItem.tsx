@@ -18,6 +18,7 @@ interface RecipeIngredientItemProps {
   showConversionDetails: boolean;
   toggleConversionDetails: () => void;
   measurementUnits: string[];
+  onCreateNewProduct?: () => void;
 }
 
 export function RecipeIngredientItem({
@@ -27,7 +28,8 @@ export function RecipeIngredientItem({
   onRemove,
   showConversionDetails,
   toggleConversionDetails,
-  measurementUnits
+  measurementUnits,
+  onCreateNewProduct
 }: RecipeIngredientItemProps) {
   // Get the currently selected product for smart unit suggestions
   const productField = control._getWatch(`ingredients.${index}.product_id`);
@@ -47,6 +49,8 @@ export function RecipeIngredientItem({
                   value={field.value}
                   onValueChange={field.onChange}
                   products={products}
+                  showSkipOption={false}
+                  onCreateNew={onCreateNewProduct}
                 />
               </FormControl>
               <FormMessage />

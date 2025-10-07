@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogContent,
@@ -74,6 +75,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
   const { products } = useProducts(restaurantId);
   const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
   const { suggestConversionFactor } = useUnitConversion(restaurantId);
+  const navigate = useNavigate();
   
   const [loading, setLoading] = useState(false);
   const [estimatedCost, setEstimatedCost] = useState(0);
@@ -128,14 +130,45 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
       loadRecipeData();
     } else if (!recipe && isOpen) {
       console.log('Resetting form for new recipe with initialPosItemName:', initialPosItemName);
-      form.reset({
-        name: initialPosItemName || '',
-        description: '',
-        pos_item_name: initialPosItemName || '',
-        pos_item_id: '',
-        serving_size: 1,
-        ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
-      });
+      
+      // Check if we're returning from creating a product
+      const recipeStateJson = sessionStorage.getItem('recipeFormState');
+      if (recipeStateJson) {
+        try {
+          const recipeState = JSON.parse(recipeStateJson);
+          sessionStorage.removeItem('recipeFormState');
+          
+          // Restore the form state
+          form.reset({
+            name: recipeState.name || '',
+            description: recipeState.description || '',
+            pos_item_name: recipeState.pos_item_name || '',
+            pos_item_id: recipeState.pos_item_id || '',
+            serving_size: recipeState.serving_size || 1,
+            ingredients: recipeState.ingredients || [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
+          });
+        } catch (error) {
+          console.error('Error restoring recipe state:', error);
+          // Fall back to default behavior
+          form.reset({
+            name: initialPosItemName || '',
+            description: '',
+            pos_item_name: initialPosItemName || '',
+            pos_item_id: '',
+            serving_size: 1,
+            ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
+          });
+        }
+      } else {
+        form.reset({
+          name: initialPosItemName || '',
+          description: '',
+          pos_item_name: initialPosItemName || '',
+          pos_item_id: '',
+          serving_size: 1,
+          ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
+        });
+      }
     }
   }, [recipe?.id, isOpen, initialPosItemName, form]); // Only depend on recipe.id, not the whole recipe object or fetchRecipeIngredients
 
@@ -282,6 +315,20 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
       [index]: !prev[index]
     }));
   };
+  
+  const handleCreateNewProduct = useCallback(() => {
+    // Store the current recipe state in sessionStorage so we can restore it
+    const currentFormData = form.getValues();
+    sessionStorage.setItem('recipeFormState', JSON.stringify({
+      ...currentFormData,
+      restaurantId,
+      isEditing: !!recipe,
+      recipeId: recipe?.id
+    }));
+    
+    // Navigate to inventory page
+    navigate('/inventory?create=true');
+  }, [form, restaurantId, recipe, navigate]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -460,6 +507,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                         showConversionDetails={!!expandedIngredients[index]}
                         toggleConversionDetails={() => toggleConversionDetails(index)}
                         measurementUnits={measurementUnits}
+                        onCreateNewProduct={handleCreateNewProduct}
                       />
                     ))}
                   </div>

@@ -25,6 +25,8 @@ interface SearchableProductSelectorProps {
   disabled?: boolean;
   placeholder?: string;
   searchTerm?: string;
+  showSkipOption?: boolean;
+  onCreateNew?: () => void;
 }
 
 export function SearchableProductSelector({
@@ -34,6 +36,8 @@ export function SearchableProductSelector({
   disabled = false,
   placeholder = "Search products...",
   searchTerm = "",
+  showSkipOption = true,
+  onCreateNew,
 }: SearchableProductSelectorProps) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
@@ -66,6 +70,12 @@ export function SearchableProductSelector({
   };
 
   const handleSelect = (productId: string) => {
+    if (productId === 'new_item' && onCreateNew) {
+      onCreateNew();
+      setOpen(false);
+      return;
+    }
+    
     onValueChange(productId);
     setOpen(false);
     setSearchValue('');
@@ -120,19 +130,21 @@ export function SearchableProductSelector({
                 />
                 <span>+ Create New Item</span>
               </CommandItem>
-              <CommandItem
-                value="skip"
-                onSelect={() => handleSelect('skip')}
-                className="cursor-pointer text-muted-foreground"
-              >
-                <Check
-                  className={cn(
-                    "mr-2 h-4 w-4 flex-shrink-0",
-                    value === 'skip' ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                <span>Skip This Item</span>
-              </CommandItem>
+              {showSkipOption && (
+                <CommandItem
+                  value="skip"
+                  onSelect={() => handleSelect('skip')}
+                  className="cursor-pointer text-muted-foreground"
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4 flex-shrink-0",
+                      value === 'skip' ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <span>Skip This Item</span>
+                </CommandItem>
+              )}
             </CommandGroup>
             
             {/* Existing products group */}

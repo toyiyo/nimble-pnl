@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRecipes } from '@/hooks/useRecipes';
@@ -29,6 +29,7 @@ import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings } from
 export default function Recipes() {
   const { user } = useAuth();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
@@ -38,6 +39,7 @@ export default function Recipes() {
   const [deletingRecipe, setDeletingRecipe] = useState<any>(null);
   const [showAutoSettings, setShowAutoSettings] = useState(false);
   const [initialPosItemName, setInitialPosItemName] = useState<string | undefined>();
+  const [newProductId, setNewProductId] = useState<string | null>(null);
 
   const { setupAutoDeduction } = useAutomaticInventoryDeduction();
 
@@ -50,6 +52,42 @@ export default function Recipes() {
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
+  
+  // Check if we're returning from creating a new product
+  useEffect(() => {
+    const newProductIdParam = searchParams.get('newProductId');
+    const returnToRecipe = searchParams.get('returnToRecipe');
+    
+    if (newProductIdParam && returnToRecipe === 'true') {
+      setNewProductId(newProductIdParam);
+      
+      // Restore recipe dialog state from sessionStorage if available
+      const recipeStateJson = sessionStorage.getItem('recipeFormState');
+      if (recipeStateJson) {
+        try {
+          const recipeState = JSON.parse(recipeStateJson);
+          
+          // Check if we were editing an existing recipe
+          if (recipeState.isEditing && recipeState.recipeId) {
+            const recipe = recipes.find(r => r.id === recipeState.recipeId);
+            if (recipe) {
+              setEditingRecipe(recipe);
+            }
+          } else {
+            // We were creating a new recipe
+            setIsCreateDialogOpen(true);
+          }
+        } catch (error) {
+          console.error('Error restoring recipe state:', error);
+        }
+      }
+      
+      // Clean up query parameters
+      searchParams.delete('newProductId');
+      searchParams.delete('returnToRecipe');
+      setSearchParams(searchParams);
+    }
+  }, [searchParams, setSearchParams, recipes]);
 
   const handleRestaurantSelect = (restaurant: any) => {
     console.log('Selected restaurant object:', restaurant);

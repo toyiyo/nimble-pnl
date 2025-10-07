@@ -47,6 +47,14 @@ export function SearchableProductSelector({
     : products;
 
   const selectedProduct = products.find((product) => product.id === value);
+  
+  // Handle display for special values
+  const getDisplayValue = () => {
+    if (value === 'new_item') return '+ Create New Item';
+    if (value === 'skip') return 'Skip This Item';
+    if (selectedProduct) return selectedProduct.name;
+    return placeholder;
+  };
 
   const handleSelect = (productId: string) => {
     onValueChange(productId);
@@ -64,8 +72,12 @@ export function SearchableProductSelector({
           className="w-full justify-between"
           disabled={disabled}
         >
-          <span className="truncate">
-            {selectedProduct ? selectedProduct.name : placeholder}
+          <span className={cn(
+            "truncate",
+            value === 'new_item' && "text-blue-600 font-medium",
+            value === 'skip' && "text-muted-foreground"
+          )}>
+            {getDisplayValue()}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -83,8 +95,41 @@ export function SearchableProductSelector({
                 <p className="text-muted-foreground">No products found</p>
               </div>
             </CommandEmpty>
-            <CommandGroup>
-              {filteredProducts.map((product) => (
+            
+            {/* Special actions group */}
+            <CommandGroup heading="Actions">
+              <CommandItem
+                value="new_item"
+                onSelect={() => handleSelect('new_item')}
+                className="cursor-pointer font-medium text-blue-600"
+              >
+                <Check
+                  className={cn(
+                    "mr-2 h-4 w-4 flex-shrink-0",
+                    value === 'new_item' ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                <span>+ Create New Item</span>
+              </CommandItem>
+              <CommandItem
+                value="skip"
+                onSelect={() => handleSelect('skip')}
+                className="cursor-pointer text-muted-foreground"
+              >
+                <Check
+                  className={cn(
+                    "mr-2 h-4 w-4 flex-shrink-0",
+                    value === 'skip' ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                <span>Skip This Item</span>
+              </CommandItem>
+            </CommandGroup>
+            
+            {/* Existing products group */}
+            {filteredProducts.length > 0 && (
+              <CommandGroup heading="Existing Products">
+                {filteredProducts.map((product) => (
                 <CommandItem
                   key={product.id}
                   value={product.id}
@@ -107,7 +152,8 @@ export function SearchableProductSelector({
                   </div>
                 </CommandItem>
               ))}
-            </CommandGroup>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

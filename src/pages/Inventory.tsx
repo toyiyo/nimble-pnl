@@ -421,7 +421,7 @@ export const Inventory: React.FC = () => {
     
     const fileExt = 'jpg';
     const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `${selectedRestaurant?.restaurant?.id}/${fileName}`;
+    const filePath = `${selectedRestaurant?.restaurant_id}/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
       .from('product-images')
@@ -1335,7 +1335,7 @@ export const Inventory: React.FC = () => {
         open={showProductDialog}
         onOpenChange={setShowProductDialog}
         onSubmit={handleCreateProduct}
-        restaurantId={selectedRestaurant?.restaurant?.id || ''}
+        restaurantId={selectedRestaurant?.restaurant_id || ''}
         initialData={scannedProductData}
       />
 

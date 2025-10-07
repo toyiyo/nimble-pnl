@@ -62,8 +62,15 @@ export const useInventoryAlerts = (restaurantId: string | null) => {
           reorderNeeded.push(alert);
         }
 
-        // Check if item is below minimum par level
-        if (alert.current_stock < alert.par_level_min) {
+        // Check if item is low stock:
+        // 1. Out of stock (0 units)
+        // 2. Below minimum par level
+        // 3. Has reorder point set and stock is at or below it
+        const isOutOfStock = alert.current_stock === 0;
+        const isBelowParLevel = alert.par_level_min > 0 && alert.current_stock < alert.par_level_min;
+        const needsReorder = alert.reorder_point > 0 && alert.current_stock <= alert.reorder_point;
+        
+        if (isOutOfStock || isBelowParLevel || needsReorder) {
           lowStock.push(alert);
         }
       });

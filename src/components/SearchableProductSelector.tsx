@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Product } from '@/hooks/useProducts';
+import Fuse from 'fuse.js';
 
 interface SearchableProductSelectorProps {
   value?: string;
@@ -37,14 +38,22 @@ export function SearchableProductSelector({
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   
-  // Show all products if no search, otherwise filter
-  const filteredProducts = searchValue
-    ? products.filter((product) =>
-        product.name.toLowerCase().includes(searchValue.toLowerCase()) ||
-        product.sku?.toLowerCase().includes(searchValue.toLowerCase()) ||
-        product.brand?.toLowerCase().includes(searchValue.toLowerCase())
-      )
-    : products;
+  // Fuzzy search implementation with Fuse.js
+  const fuse = useMemo(() => {
+    return new Fuse(products, {
+      keys: ['name', 'sku', 'brand'],
+      threshold: 0.3,
+      includeScore: true,
+    });
+  }, [products]);
+  
+  // Show all products if no search, otherwise use fuzzy search
+  const filteredProducts = useMemo(() => {
+    if (!searchValue) return products;
+    
+    const results = fuse.search(searchValue);
+    return results.map(result => result.item);
+  }, [searchValue, fuse, products]);
 
   const selectedProduct = products.find((product) => product.id === value);
   

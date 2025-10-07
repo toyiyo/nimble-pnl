@@ -288,8 +288,10 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
 
           <div className="grid grid-cols-1 gap-3">
             {data.alert_items
-              .filter(i => i.stockout_risk === 'critical' || i.stockout_risk === 'high')
-              .slice(0, 10)
+              .sort((a, b) => {
+                const riskOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+                return riskOrder[a.stockout_risk] - riskOrder[b.stockout_risk];
+              })
               .map(item => (
                 <Card key={item.id} className="border-l-4 border-l-destructive">
                   <CardContent className="pt-4">

@@ -24,14 +24,16 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
   const [saving, setSaving] = useState(false);
 
   const quickButtons = [6, 10, 20, 24];
-  const numpadButtons = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+  const numpadButtons = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
   const handleQuickSelect = (value: number) => {
     setQuantity(value.toString());
   };
 
-  const handleNumpadClick = (digit: number) => {
-    setQuantity(prev => prev + digit.toString());
+  const handleNumpadClick = (value: string) => {
+    // Prevent multiple decimal points
+    if (value === '.' && quantity.includes('.')) return;
+    setQuantity(prev => prev + value);
   };
 
   const handleClear = () => {
@@ -43,11 +45,12 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
   };
 
   const handleSave = async () => {
-    if (!quantity || parseInt(quantity) <= 0) return;
+    const numValue = parseFloat(quantity);
+    if (!quantity || isNaN(numValue) || numValue <= 0) return;
     
     setSaving(true);
     try {
-      await onSave(parseInt(quantity));
+      await onSave(numValue);
       setQuantity('');
       onOpenChange(false);
     } finally {
@@ -130,7 +133,7 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
                   key={digit}
                   variant="secondary"
                   size="lg"
-                  onClick={() => handleNumpadClick(digit)}
+                  onClick={() => handleNumpadClick(digit.toString())}
                   className="text-xl font-semibold h-16"
                 >
                   {digit}
@@ -139,10 +142,18 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
               <Button
                 variant="secondary"
                 size="lg"
-                onClick={handleClear}
-                className="text-base h-16"
+                onClick={() => handleNumpadClick('.')}
+                className="text-xl font-semibold h-16"
               >
-                Clear
+                .
+              </Button>
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={() => handleNumpadClick('0')}
+                className="text-xl font-semibold h-16"
+              >
+                0
               </Button>
               <Button
                 variant="secondary"
@@ -153,6 +164,14 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
                 ⌫
               </Button>
             </div>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={handleClear}
+              className="text-base h-16 w-full"
+            >
+              Clear
+            </Button>
           </div>
 
           {/* Action Buttons */}
@@ -169,7 +188,7 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
             <Button
               size="lg"
               onClick={handleSave}
-              disabled={!quantity || parseInt(quantity) <= 0 || saving}
+              disabled={!quantity || isNaN(parseFloat(quantity)) || parseFloat(quantity) <= 0 || saving}
               className="h-14 text-lg font-semibold"
             >
               <Check className="h-5 w-5 mr-2" />

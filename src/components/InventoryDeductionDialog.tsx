@@ -65,7 +65,7 @@ export function InventoryDeductionDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calculator className="w-5 h-5" />
@@ -147,15 +147,15 @@ export function InventoryDeductionDialog({
                       Ingredient Deductions
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Ingredient</TableHead>
-                          <TableHead>Recipe Usage</TableHead>
-                          <TableHead>Purchase Deduction</TableHead>
-                          <TableHead>Conversion</TableHead>
-                          <TableHead>Remaining Stock</TableHead>
+                          <TableHead className="min-w-[120px]">Ingredient</TableHead>
+                          <TableHead className="min-w-[100px]">Recipe Usage</TableHead>
+                          <TableHead className="min-w-[120px]">Purchase Deduction</TableHead>
+                          <TableHead className="min-w-[150px] hidden sm:table-cell">Conversion</TableHead>
+                          <TableHead className="min-w-[120px]">Remaining Stock</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -174,7 +174,7 @@ export function InventoryDeductionDialog({
                               {(ingredient.quantity_purchase_units || 0).toFixed(3)} {ingredient.purchase_unit}
                             </Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden sm:table-cell">
                             <div className="text-sm">
                               {ingredient.quantity_recipe_units} {ingredient.recipe_unit} → {(ingredient.quantity_purchase_units || 0).toFixed(3)} {ingredient.purchase_unit}
                             </div>
@@ -210,12 +210,12 @@ export function InventoryDeductionDialog({
               )}
 
               {/* Action Buttons */}
-              <div className="flex justify-end gap-4">
-                <Button variant="outline" onClick={handleClose}>
+              <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
+                <Button variant="outline" onClick={handleClose} className="w-full sm:w-auto">
                   Close
                 </Button>
                 {!hasProcessed && !simulationResult.already_processed && simulationResult.ingredients_deducted.length > 0 && (
-                  <Button onClick={handleProcess} disabled={loading}>
+                  <Button onClick={handleProcess} disabled={loading} className="w-full sm:w-auto">
                     {loading ? 'Processing...' : 'Process Deduction'}
                   </Button>
                 )}

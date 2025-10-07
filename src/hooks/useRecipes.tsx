@@ -335,11 +335,56 @@ export const useRecipes = (restaurantId: string | null) => {
 
   const calculateRecipeCost = async (recipeId: string): Promise<number | null> => {
     try {
-      const { data, error } = await supabase
-        .rpc('calculate_recipe_cost', { recipe_id: recipeId });
+      // Fetch recipe ingredients with product details
+      const { data: ingredients, error } = await supabase
+        .from('recipe_ingredients')
+        .select(`
+          *,
+          product:products(
+            id,
+            name,
+            cost_per_unit,
+            uom_purchase,
+            size_value,
+            size_unit,
+            package_qty
+          )
+        `)
+        .eq('recipe_id', recipeId);
 
       if (error) throw error;
-      return data;
+      if (!ingredients || ingredients.length === 0) return 0;
+
+      // Import the calculation logic used in RecipeDialog
+      const { calculateInventoryImpact } = await import('@/lib/enhancedUnitConversion');
+
+      let totalCost = 0;
+      
+      ingredients.forEach((ingredient: any) => {
+        if (ingredient.product && ingredient.product.cost_per_unit) {
+          const product = ingredient.product;
+          try {
+            const packageQuantity = (product.size_value || 1) * (product.package_qty || 1);
+            const purchaseUnit = product.size_unit || 'unit';
+            const costPerMeasurementUnit = (product.cost_per_unit || 0) / (product.package_qty || 1);
+            
+            const result = calculateInventoryImpact(
+              ingredient.quantity,
+              ingredient.unit,
+              packageQuantity,
+              purchaseUnit,
+              product.name || '',
+              costPerMeasurementUnit
+            );
+            
+            totalCost += result.costImpact;
+          } catch (conversionError) {
+            console.warn(`Conversion error for ${product.name}:`, conversionError);
+          }
+        }
+      });
+
+      return totalCost;
     } catch (error: any) {
       console.error('Error calculating recipe cost:', error);
       return null;

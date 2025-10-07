@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { usePOSItems } from '@/hooks/usePOSItems';
 import { useUnitConversion } from '@/hooks/useUnitConversion';
 import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
+import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelector';
 import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
 import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
 import { calculateInventoryImpact } from "@/lib/enhancedUnitConversion";
@@ -65,13 +67,15 @@ interface RecipeDialogProps {
   restaurantId: string;
   recipe?: Recipe | null;
   onRecipeUpdated?: () => void;
+  initialPosItemName?: string;
 }
 
-export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUpdated }: RecipeDialogProps) {
+export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUpdated, initialPosItemName }: RecipeDialogProps) {
   const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
   const { products } = useProducts(restaurantId);
   const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
   const { suggestConversionFactor } = useUnitConversion(restaurantId);
+  const navigate = useNavigate();
   
   const [loading, setLoading] = useState(false);
   const [estimatedCost, setEstimatedCost] = useState(0);
@@ -125,17 +129,48 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
 
       loadRecipeData();
     } else if (!recipe && isOpen) {
-      console.log('Resetting form for new recipe');
-      form.reset({
-        name: '',
-        description: '',
-        pos_item_name: '',
-        pos_item_id: '',
-        serving_size: 1,
-        ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
-      });
+      console.log('Resetting form for new recipe with initialPosItemName:', initialPosItemName);
+      
+      // Check if we're returning from creating a product
+      const recipeStateJson = sessionStorage.getItem('recipeFormState');
+      if (recipeStateJson) {
+        try {
+          const recipeState = JSON.parse(recipeStateJson);
+          sessionStorage.removeItem('recipeFormState');
+          
+          // Restore the form state
+          form.reset({
+            name: recipeState.name || '',
+            description: recipeState.description || '',
+            pos_item_name: recipeState.pos_item_name || '',
+            pos_item_id: recipeState.pos_item_id || '',
+            serving_size: recipeState.serving_size || 1,
+            ingredients: recipeState.ingredients || [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
+          });
+        } catch (error) {
+          console.error('Error restoring recipe state:', error);
+          // Fall back to default behavior
+          form.reset({
+            name: initialPosItemName || '',
+            description: '',
+            pos_item_name: initialPosItemName || '',
+            pos_item_id: '',
+            serving_size: 1,
+            ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
+          });
+        }
+      } else {
+        form.reset({
+          name: initialPosItemName || '',
+          description: '',
+          pos_item_name: initialPosItemName || '',
+          pos_item_id: '',
+          serving_size: 1,
+          ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
+        });
+      }
     }
-  }, [recipe?.id, isOpen]); // Only depend on recipe.id, not the whole recipe object or fetchRecipeIngredients
+  }, [recipe?.id, isOpen, initialPosItemName, form]); // Only depend on recipe.id, not the whole recipe object or fetchRecipeIngredients
 
   // Calculate estimated cost when ingredients change using enhanced unit conversions
   useEffect(() => {
@@ -280,6 +315,20 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
       [index]: !prev[index]
     }));
   };
+  
+  const handleCreateNewProduct = useCallback(() => {
+    // Store the current recipe state in sessionStorage so we can restore it
+    const currentFormData = form.getValues();
+    sessionStorage.setItem('recipeFormState', JSON.stringify({
+      ...currentFormData,
+      restaurantId,
+      isEditing: !!recipe,
+      recipeId: recipe?.id
+    }));
+    
+    // Navigate to inventory page
+    navigate('/inventory?create=true');
+  }, [form, restaurantId, recipe, navigate]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -376,32 +425,19 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>POS Item Name</FormLabel>
-                        <Select onValueChange={(value) => {
-                          field.onChange(value);
-                          // Auto-fill POS item ID if available
-                          const selectedItem = posItems.find(item => item.item_name === value);
-                          if (selectedItem?.item_id) {
-                            form.setValue('pos_item_id', selectedItem.item_id);
-                          }
-                        }} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger id="pos-item-name">
-                              <SelectValue placeholder={posItemsLoading ? "Loading POS items..." : "Select POS item or leave blank"} />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="bg-background border shadow-md z-50 max-h-[200px] overflow-y-auto">
-                            {posItems.map((item) => (
-                              <SelectItem key={item.item_name} value={item.item_name}>
-                                <div className="flex flex-col">
-                                  <span>{item.item_name}</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {item.sales_count} sales • {item.source === 'pos_sales' ? 'POS' : 'Unified'} • Last: {item.last_sold}
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <SearchablePOSItemSelector
+                            value={field.value}
+                            onValueChange={(itemName, itemId) => {
+                              field.onChange(itemName);
+                              if (itemId) {
+                                form.setValue('pos_item_id', itemId);
+                              }
+                            }}
+                            posItems={posItems}
+                            loading={posItemsLoading}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -471,6 +507,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                         showConversionDetails={!!expandedIngredients[index]}
                         toggleConversionDetails={() => toggleConversionDetails(index)}
                         measurementUnits={measurementUnits}
+                        onCreateNewProduct={handleCreateNewProduct}
                       />
                     ))}
                   </div>

@@ -87,23 +87,6 @@ const scannerReducer = (state: ScannerState, action: ScannerAction): ScannerStat
   }
 };
 
-// Normalize common barcode formats to GTIN-14
-const normalizeGtin = (barcode: string, format: string): string => {
-  const digits = barcode.replace(/\D/g, '');
-  
-  switch (format) {
-    case 'UPC_A':
-      return digits.padStart(14, '0');
-    case 'UPC_E':
-      return digits.padStart(14, '0');
-    case 'EAN_13':
-      return digits.padStart(14, '0');
-    case 'EAN_8':
-      return digits.padStart(14, '0');
-    default:
-      return /^\d+$/.test(digits) ? digits.padStart(14, '0') : barcode;
-  }
-};
 
 // Canvas pool for memory efficiency
 class CanvasPool {
@@ -149,13 +132,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const [state, dispatch] = useReducer(scannerReducer, initialState);
 
   // Constants for performance optimization
-  const FRAME_SKIP_COUNT = 4; // Process every 4th frame
+  const FRAME_SKIP_COUNT = 2; // Reduced from 4 - Android needs more frequent scanning
   const OCR_TIMEOUT = 2000; // 2 seconds before OCR fallback
   const MAX_WIDTH = 800;
   const MAX_HEIGHT = 600;
   const JPEG_QUALITY = 0.7;
 
-  // Initialize reader once
+  // Initialize reader once with Android-optimized hints
   useEffect(() => {
     const hints = new Map();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
@@ -164,11 +147,15 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       BarcodeFormat.EAN_13,
       BarcodeFormat.EAN_8,
       BarcodeFormat.CODE_128,
+      BarcodeFormat.CODE_39,     // Added for Android compatibility
+      BarcodeFormat.CODE_93,     // Added for Android compatibility
+      BarcodeFormat.ITF,         // Added for Android compatibility
       BarcodeFormat.QR_CODE,
       BarcodeFormat.DATA_MATRIX,
     ]);
     hints.set(DecodeHintType.TRY_HARDER, true);
     hints.set(DecodeHintType.PURE_BARCODE, false);
+    hints.set(DecodeHintType.ASSUME_GS1, false); // Better for Android
 
     readerRef.current = new BrowserMultiFormatReader(hints);
 
@@ -242,8 +229,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         const barcodeText = barcodeMatches[0];
         
         if (barcodeText !== state.lastScan) {
-          const normalizedGtin = normalizeGtin(barcodeText, 'AI');
-          onScan(normalizedGtin, 'AI');
+          // Pass the raw barcode without normalization
+          onScan(barcodeText, 'AI');
           
           dispatch({ type: 'SCAN_SUCCESS', payload: { result: barcodeText, format: 'AI' } });
           dispatch({ type: 'SET_DEBUG_INFO', payload: `AI found barcode: ${barcodeText}` });
@@ -296,8 +283,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   // Handle successful barcode scan
   const handleScanSuccess = useCallback((result: any, format: string) => {
     if (result !== state.lastScan && !state.scanCooldown) {
-      const normalizedGtin = normalizeGtin(result, format);
-      onScan(normalizedGtin, format);
+      // Pass the raw barcode without normalization
+      onScan(result, format);
       
       dispatch({ type: 'SCAN_SUCCESS', payload: { result, format } });
 
@@ -318,11 +305,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     dispatch({ type: 'START_SCANNING' });
 
     try {
+      // Android-optimized camera constraints
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
-          width: { ideal: 1280, max: 1920 }, // Limit max resolution
-          height: { ideal: 720, max: 1080 }
+          width: { ideal: 1920, max: 3840 },  // Higher resolution for Android
+          height: { ideal: 1080, max: 2160 },
+          frameRate: { ideal: 30, min: 15 }   // Ensure decent frame rate
         }
       });
       
@@ -455,7 +444,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           )}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <Button 
             onClick={toggleScanning}
             variant={state.isScanning ? "destructive" : "default"}
@@ -475,7 +464,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           </Button>
 
           {state.isPaused && !state.isUsingAIMode && (
-            <Button onClick={resumeScanning} variant="outline">
+            <Button onClick={resumeScanning} variant="outline" className="flex-1 sm:flex-initial">
               Resume
             </Button>
           )}
@@ -484,20 +473,24 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
             <Button 
               onClick={toggleAIMode} 
               variant={state.isUsingAIMode ? "destructive" : "secondary"}
-              className={state.isUsingAIMode ? 
-                "bg-purple-500 hover:bg-purple-600 text-white flex-shrink-0" : 
-                "bg-blue-500 hover:bg-blue-600 text-white flex-shrink-0"
-              }
+              className={cn(
+                "flex-1 sm:flex-initial whitespace-nowrap",
+                state.isUsingAIMode ? 
+                  "bg-purple-500 hover:bg-purple-600 text-white" : 
+                  "bg-blue-500 hover:bg-blue-600 text-white"
+              )}
             >
               {state.isUsingAIMode ? (
                 <>
-                  <X className="h-4 w-4 mr-2" />
-                  Exit AI Mode
+                  <X className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Exit AI Mode</span>
+                  <span className="sm:hidden">Exit AI</span>
                 </>
               ) : (
                 <>
-                  <Zap className="h-4 w-4 mr-2" />
-                  AI Mode
+                  <Zap className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">AI Mode</span>
+                  <span className="sm:hidden">AI</span>
                 </>
               )}
             </Button>
@@ -507,46 +500,47 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           {state.isUsingAIMode && !state.isProcessingAI && (
             <Button 
               onClick={capturePhotoForAI}
-              className="flex-1 bg-green-500 hover:bg-green-600 text-white"
+              className="flex-1 bg-green-500 hover:bg-green-600 text-white whitespace-nowrap"
             >
               <Camera className="h-4 w-4 mr-2" />
-              Capture Photo
+              <span className="hidden sm:inline">Capture Photo</span>
+              <span className="sm:hidden">Capture</span>
             </Button>
           )}
-
-          {/* Show AI result if product found but no barcode */}
-          {state.lastAIResult && state.isUsingAIMode && !state.isProcessingAI && (
-            <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <h4 className="font-medium text-blue-900 mb-1">Product Detected:</h4>
-              <p className="text-sm text-blue-800 mb-2">
-                {state.lastAIResult.split('\n').slice(0, 3).join(' • ')}
-              </p>
-              <div className="flex gap-2">
-                <Button 
-                  onClick={() => {
-                    // Trigger product form with AI data
-                    onScan('MANUAL_ENTRY', 'AI', state.lastAIResult);
-                    dispatch({ type: 'SET_AI_MODE', payload: false });
-                  }}
-                  size="sm"
-                  className="bg-green-500 hover:bg-green-600 text-white flex-1"
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add This Product
-                </Button>
-                <Button 
-                  onClick={capturePhotoForAI}
-                  size="sm"
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <Camera className="h-3 w-3 mr-1" />
-                  Try Again
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Show AI result if product found but no barcode */}
+        {state.lastAIResult && state.isUsingAIMode && !state.isProcessingAI && (
+          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+            <h4 className="font-medium text-blue-900 mb-1">Product Detected:</h4>
+            <p className="text-sm text-blue-800 mb-2">
+              {state.lastAIResult.split('\n').slice(0, 3).join(' • ')}
+            </p>
+            <div className="flex gap-2">
+              <Button 
+                onClick={() => {
+                  // Trigger product form with AI data
+                  onScan('MANUAL_ENTRY', 'AI', state.lastAIResult);
+                  dispatch({ type: 'SET_AI_MODE', payload: false });
+                }}
+                size="sm"
+                className="bg-green-500 hover:bg-green-600 text-white flex-1"
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Add This Product
+              </Button>
+              <Button 
+                onClick={capturePhotoForAI}
+                size="sm"
+                variant="outline"
+                className="flex-1"
+              >
+                <Camera className="h-3 w-3 mr-1" />
+                Try Again
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div className="text-xs text-muted-foreground text-center">
           {state.debugInfo}

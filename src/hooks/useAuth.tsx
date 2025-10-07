@@ -120,10 +120,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     try {
       setLoading(true);
+      // Try to sign out from Supabase
       await supabase.auth.signOut();
-    } catch (error) {
-      console.error('Sign out error:', error);
+    } catch (error: any) {
+      // If session doesn't exist (user was deleted), that's fine
+      // We still want to clear the local state
+      console.log('Sign out error (clearing local state anyway):', error?.message);
     } finally {
+      // Always clear local auth state regardless of server response
+      setSession(null);
+      setUser(null);
       setLoading(false);
     }
   };

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRecipes } from '@/hooks/useRecipes';
@@ -20,12 +21,15 @@ import { RecipeDialog } from '@/components/RecipeDialog';
 import { DeleteRecipeDialog } from '@/components/DeleteRecipeDialog';
 import { RecipeSuggestions } from '@/components/RecipeSuggestions';
 import { AutoDeductionSettings } from '@/components/AutoDeductionSettings';
+import { BulkInventoryDeductionDialog } from '@/components/BulkInventoryDeductionDialog';
 import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDeduction';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings } from 'lucide-react';
 
 export default function Recipes() {
   const { user } = useAuth();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
@@ -34,13 +38,75 @@ export default function Recipes() {
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [deletingRecipe, setDeletingRecipe] = useState<any>(null);
   const [showAutoSettings, setShowAutoSettings] = useState(false);
+  const [initialPosItemName, setInitialPosItemName] = useState<string | undefined>();
+  const [newProductId, setNewProductId] = useState<string | null>(null);
 
   const { setupAutoDeduction } = useAutomaticInventoryDeduction();
+
+  // Check if we navigated here with a POS item to create a recipe for
+  useEffect(() => {
+    if (location.state?.createRecipeFor) {
+      setInitialPosItemName(location.state.createRecipeFor);
+      setIsCreateDialogOpen(true);
+      // Clear the state after using it
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+  
+  // Check if we're returning from creating a new product
+  useEffect(() => {
+    const newProductIdParam = searchParams.get('newProductId');
+    const returnToRecipe = searchParams.get('returnToRecipe');
+    
+    if (newProductIdParam && returnToRecipe === 'true') {
+      setNewProductId(newProductIdParam);
+      
+      // Restore recipe dialog state from sessionStorage if available
+      const recipeStateJson = sessionStorage.getItem('recipeFormState');
+      if (recipeStateJson) {
+        try {
+          const recipeState = JSON.parse(recipeStateJson);
+          
+          // Check if we were editing an existing recipe
+          if (recipeState.isEditing && recipeState.recipeId) {
+            const recipe = recipes.find(r => r.id === recipeState.recipeId);
+            if (recipe) {
+              setEditingRecipe(recipe);
+            }
+          } else {
+            // We were creating a new recipe
+            setIsCreateDialogOpen(true);
+          }
+        } catch (error) {
+          console.error('Error restoring recipe state:', error);
+        }
+      }
+      
+      // Clean up query parameters
+      searchParams.delete('newProductId');
+      searchParams.delete('returnToRecipe');
+      setSearchParams(searchParams);
+    }
+  }, [searchParams, setSearchParams, recipes]);
 
   const handleRestaurantSelect = (restaurant: any) => {
     console.log('Selected restaurant object:', restaurant);
     setSelectedRestaurant(restaurant);
   };
+
+  // Compute filtered recipes and memoized lists before early returns
+  const filteredRecipes = recipes.filter(recipe =>
+    recipe.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    recipe.pos_item_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const unmappedRecipes = useMemo(() => {
+    return filteredRecipes.filter(recipe => !recipe.pos_item_name);
+  }, [filteredRecipes]);
+
+  const mappedRecipes = useMemo(() => {
+    return filteredRecipes.filter(recipe => recipe.pos_item_name);
+  }, [filteredRecipes]);
 
   if (!user) {
     return (
@@ -75,14 +141,6 @@ export default function Recipes() {
     );
   }
 
-  const filteredRecipes = recipes.filter(recipe =>
-    recipe.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    recipe.pos_item_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const unmappedRecipes = filteredRecipes.filter(recipe => !recipe.pos_item_name);
-  const mappedRecipes = filteredRecipes.filter(recipe => recipe.pos_item_name);
-
   return (
     <div className="space-y-6 md:space-y-8">
       {/* Header */}
@@ -93,11 +151,13 @@ export default function Recipes() {
             Create and manage recipes for {selectedRestaurant.restaurant?.name}
           </p>
         </div>
-        <div className="flex justify-center lg:justify-start gap-2">
+        <div className="flex flex-col sm:flex-row justify-center lg:justify-start gap-2 w-full sm:w-auto">
+          <BulkInventoryDeductionDialog />
           <Button 
             variant="outline" 
             onClick={() => setShowAutoSettings(!showAutoSettings)}
             size="sm"
+            className="w-full sm:w-auto"
           >
             <Settings className="w-4 h-4 mr-2" />
             <span className="hidden sm:inline">Auto Deduction</span>
@@ -191,9 +251,13 @@ export default function Recipes() {
       {/* Dialogs */}
       <RecipeDialog
         isOpen={isCreateDialogOpen}
-        onClose={() => setIsCreateDialogOpen(false)}
+        onClose={() => {
+          setIsCreateDialogOpen(false);
+          setInitialPosItemName(undefined);
+        }}
         restaurantId={selectedRestaurant?.restaurant_id}
         onRecipeUpdated={fetchRecipes}
+        initialPosItemName={initialPosItemName}
       />
 
       <RecipeDialog

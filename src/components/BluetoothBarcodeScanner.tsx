@@ -4,7 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Bluetooth, BluetoothConnected, BluetoothSearching, Battery, Loader2, AlertCircle, Settings, Zap, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { normalizeGTIN, validateGTIN } from '@/lib/gtinUtils';
+
+import { useNativeBluetooth } from '@/hooks/useNativeBluetooth';
+import { Capacitor } from '@capacitor/core';
 
 interface BluetoothBarcodeScannerProps {
   onScan: (result: string, format: string) => void;
@@ -50,7 +52,13 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
     debugInfo: 'Ready to connect'
   });
 
+  const [showDeviceList, setShowDeviceList] = useState(false);
+
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Use native Bluetooth on mobile
+  const isNativePlatform = Capacitor.isNativePlatform();
+  const nativeBluetooth = useNativeBluetooth(onScan, onError);
 
   // Check Web Bluetooth API support
   const isBluetoothSupported = useCallback(() => {
@@ -64,16 +72,8 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
     // Basic validation for barcode format
     if (cleanedData.length >= 8 && /^\d+$/.test(cleanedData)) {
       if (cleanedData !== state.lastScan && !state.scanCooldown) {
-        // Normalize GTIN with proper check digit calculation
-        const normalizedGtin = normalizeGTIN(cleanedData);
-        
-        // Log validation result for debugging
-        const isValid = validateGTIN(normalizedGtin);
-        if (!isValid) {
-          console.warn(`⚠️ Generated GTIN may have invalid check digit: ${normalizedGtin}`);
-        }
-        
-        onScan(normalizedGtin, 'Bluetooth');
+        // Pass the raw barcode without normalization
+        onScan(cleanedData, 'Bluetooth');
         
         setState(prev => ({
           ...prev,
@@ -92,6 +92,21 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
 
   // Connect to Bluetooth scanner
   const connectToScanner = useCallback(async () => {
+    // Use native Bluetooth on mobile platforms
+    if (isNativePlatform) {
+      setState(prev => ({ ...prev, isConnecting: true, debugInfo: 'Scanning for devices...' }));
+      try {
+        await nativeBluetooth.startScan();
+        setShowDeviceList(true);
+        setState(prev => ({ ...prev, isConnecting: false }));
+      } catch (error) {
+        setState(prev => ({ ...prev, isConnecting: false }));
+        onError?.(`Scan failed: ${error}`);
+      }
+      return;
+    }
+
+    // Web Bluetooth fallback
     if (!isBluetoothSupported()) {
       onError?.('Web Bluetooth API is not supported in this browser');
       return;
@@ -100,16 +115,12 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
     setState(prev => ({ ...prev, isConnecting: true, debugInfo: 'Searching for devices...' }));
 
     try {
-      // Request device with multiple service filters
+      // Request device - accept all devices to ensure scanner appears
+      // Using type assertion as acceptAllDevices is valid but may not be in types
       const device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { services: [SPP_SERVICE_UUID, UART_SERVICE_UUID] },
-          { namePrefix: 'NT-1228' },
-          { namePrefix: 'Scanner' },
-          { namePrefix: 'Barcode' }
-        ],
+        acceptAllDevices: true,
         optionalServices: [BATTERY_SERVICE_UUID, SPP_SERVICE_UUID, UART_SERVICE_UUID]
-      });
+      } as RequestDeviceOptions);
 
       setState(prev => ({ ...prev, debugInfo: 'Connecting to device...' }));
 
@@ -206,7 +217,19 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
   }, [isBluetoothSupported, onError, handleBluetoothData]);
 
   // Disconnect from scanner
-  const disconnectScanner = useCallback(() => {
+  const disconnectScanner = useCallback(async () => {
+    // Handle native disconnect
+    if (isNativePlatform && nativeBluetooth.isConnected) {
+      await nativeBluetooth.disconnect();
+      setState(prev => ({
+        ...prev,
+        isConnected: false,
+        debugInfo: 'Disconnected'
+      }));
+      return;
+    }
+
+    // Web Bluetooth disconnect
     const currentDevice = state.device.device;
     if (currentDevice?.gatt?.connected) {
       currentDevice.gatt.disconnect();
@@ -224,7 +247,7 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
       batteryLevel: null,
       debugInfo: 'Disconnected'
     }));
-  }, [state.device.device]);
+  }, [state.device.device, isNativePlatform, nativeBluetooth]);
 
   // Auto-start connection if requested
   useEffect(() => {
@@ -240,7 +263,7 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
     };
   }, [disconnectScanner]);
 
-  if (!isBluetoothSupported()) {
+  if (!isBluetoothSupported() && !isNativePlatform) {
     return (
       <Card className={cn("w-full", className)}>
         <CardHeader>
@@ -261,14 +284,15 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {state.isConnected ? (
+            {(state.isConnected || nativeBluetooth.isConnected) ? (
               <BluetoothConnected className="h-5 w-5 text-blue-500" />
-            ) : state.isConnecting ? (
+            ) : (state.isConnecting || nativeBluetooth.isScanning) ? (
               <BluetoothSearching className="h-5 w-5 text-blue-500 animate-pulse" />
             ) : (
               <Bluetooth className="h-5 w-5 text-gray-500" />
             )}
             Bluetooth Scanner
+            {isNativePlatform && <Badge variant="secondary" className="text-xs">Native</Badge>}
           </div>
           <div className="flex items-center gap-2">
             {state.batteryLevel !== null && (
@@ -277,7 +301,7 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
                 {state.batteryLevel}%
               </Badge>
             )}
-            {state.isConnected && (
+            {(state.isConnected || nativeBluetooth.isConnected) && (
               <Badge variant="default" className="bg-green-500">
                 Connected
               </Badge>
@@ -290,9 +314,57 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
       </CardHeader>
       
       <CardContent className="space-y-4">
+        {/* Native Device List (when scanning on mobile) */}
+        {isNativePlatform && showDeviceList && nativeBluetooth.devices.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Available Devices:</div>
+            <div className="max-h-[300px] overflow-y-auto space-y-2">
+              {nativeBluetooth.devices.map((result) => (
+                <Button
+                  key={result.device.deviceId}
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={async () => {
+                    setShowDeviceList(false);
+                    setState(prev => ({ ...prev, isConnecting: true, debugInfo: 'Connecting...' }));
+                    await nativeBluetooth.connect(result.device);
+                    setState(prev => ({ 
+                      ...prev, 
+                      isConnecting: false, 
+                      isConnected: nativeBluetooth.isConnected,
+                      debugInfo: nativeBluetooth.isConnected ? 'Connected' : 'Failed to connect'
+                    }));
+                  }}
+                >
+                  <Bluetooth className="h-4 w-4 mr-2" />
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">
+                      {result.device.name || 'Unknown Device'}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {result.device.deviceId.substring(0, 17)}...
+                    </span>
+                  </div>
+                </Button>
+              ))}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setShowDeviceList(false);
+                nativeBluetooth.stopScan();
+              }}
+              className="w-full"
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
+        
         {/* Connection area */}
         <div className="min-h-[200px] border-2 border-dashed rounded-lg flex items-center justify-center relative">
-          {state.isConnected ? (
+          {(state.isConnected || nativeBluetooth.isConnected) ? (
             <div className="text-center space-y-4">
               <div className="text-6xl">📱</div>
               <div className="text-lg font-medium text-green-600">
@@ -322,7 +394,7 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
 
         {/* Control buttons */}
         <div className="flex gap-2">
-          {!state.isConnected ? (
+          {!(state.isConnected || nativeBluetooth.isConnected) ? (
             <Button
               onClick={connectToScanner}
               disabled={state.isConnecting}

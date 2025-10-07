@@ -37,8 +37,7 @@ interface OpenFoodFactsResponse {
   };
 }
 
-// Import GTIN utilities for proper check digit calculation
-import { normalizeGTIN } from '@/lib/gtinUtils';
+// No GTIN normalization - use barcodes as-is
 
 // Enhanced fetch with timeout and proper error handling
 const fetchJson = async (url: string, init: RequestInit = {}, timeoutMs = 4000): Promise<any> => {
@@ -71,19 +70,19 @@ class ProductLookupService {
   private readonly CACHE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days
 
   // Enhanced lookup with multiple resolution strategies
-  async lookupProduct(gtin: string, catalogLookup?: (gtin14: string) => Promise<any | null>): Promise<ProductLookupResult | null> {
-    const gtin14 = normalizeGTIN(gtin);
+  async lookupProduct(gtin: string, catalogLookup?: (gtin: string) => Promise<any | null>): Promise<ProductLookupResult | null> {
+    // Use barcode as-is, no normalization
     
     // 1. Check local catalog first
     if (catalogLookup) {
       try {
-        const localResult = await catalogLookup(gtin14);
+        const localResult = await catalogLookup(gtin);
         if (localResult) {
           console.log('📦 Found in local catalog:', localResult.name);
           return {
             ...localResult,
             gtin,
-            gtin14,
+            gtin14: gtin, // Use original barcode
             product_name: localResult.name,
             source: 'local',
             resolution: 'catalog',
@@ -96,18 +95,18 @@ class ProductLookupService {
     }
     
     // 2. Check cache
-    const cached = this.getCachedProduct(gtin14);
+    const cached = this.getCachedProduct(gtin);
     if (cached) {
       console.log('📦 Found cached product:', cached.product_name);
       return cached;
     }
 
-    // 3. Try external APIs in priority order
+    // 2. Try external APIs in priority order
     try {
       // UPCItemDB first (better for general products)
       const upcResult = await this.lookupUPCItemDB(gtin);
       if (upcResult) {
-        const enhanced = { ...upcResult, gtin14, resolution: 'external' as const };
+        const enhanced = { ...upcResult, gtin14: gtin, resolution: 'external' as const };
         this.cacheProduct(enhanced);
         return enhanced;
       }
@@ -115,7 +114,7 @@ class ProductLookupService {
       // Open Food Facts fallback (better for food products)
       const offResult = await this.lookupOpenFoodFacts(gtin);
       if (offResult) {
-        const enhanced = { ...offResult, gtin14, resolution: 'external' as const };
+        const enhanced = { ...offResult, gtin14: gtin, resolution: 'external' as const };
         this.cacheProduct(enhanced);
         return enhanced;
       }
@@ -123,7 +122,7 @@ class ProductLookupService {
       console.log('❌ Product not found in any external database');
       return { 
         gtin, 
-        gtin14, 
+        gtin14: gtin, // Use original barcode
         product_name: '', 
         source: 'manual', 
         resolution: 'unknown',
@@ -150,7 +149,7 @@ class ProductLookupService {
         
         return {
           gtin,
-          gtin14: normalizeGTIN(gtin),
+          gtin14: gtin, // Use original barcode
           product_name: item.title,
           brand: item.brand,
           package_size: item.size,
@@ -186,7 +185,7 @@ class ProductLookupService {
         
         return {
           gtin,
-          gtin14: normalizeGTIN(gtin),
+          gtin14: gtin, // Use original barcode
           product_name: product.product_name || product.generic_name,
           brand: product.brands?.split(',')[0]?.trim(),
           package_size: product.quantity,

@@ -10,12 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useDailyPnL, DailySales, DailyFoodCosts, DailyLaborCosts } from '@/hooks/useDailyPnL';
 import { supabase } from '@/integrations/supabase/client';
 
+
 interface DataInputDialogProps {
   restaurantId: string;
   onDataUpdated?: () => void;
+  className?: string;
 }
 
-export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialogProps) {
+export function DataInputDialog({ restaurantId, onDataUpdated, className }: DataInputDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedSource, setSelectedSource] = useState('manual');
@@ -237,14 +239,13 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <DollarSign className="mr-2 h-4 w-4" />
-          Add Daily Data
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+    <>
+      <Button className={className} onClick={() => setOpen(true)}>
+        <DollarSign className="mr-2 h-4 w-4" />
+        Add Daily Data
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add Daily Operations Data</DialogTitle>
           <DialogDescription>
@@ -531,7 +532,8 @@ export function DataInputDialog({ restaurantId, onDataUpdated }: DataInputDialog
             </TabsContent>
           </Tabs>
         </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

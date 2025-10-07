@@ -38,15 +38,19 @@ Look specifically for:
 - Supplier SKU numbers
 - Route delivery information
 
-**FORMAT:** Return structured text maintaining visual layout:
-BRAND: [brand name]
-PRODUCT: [product name]
-SIZE: [size with units]
-SUPPLIER: [if visible]
-DISTRIBUTOR: [if visible]
-BATCH/LOT: [if visible]
-UPC/BARCODE: [if visible]
-OTHER: [remaining text]
+**CRITICAL: Return ONLY valid JSON** in this exact format (no markdown, no code blocks, no extra text):
+{
+  "brand": "brand name or empty string",
+  "productName": "product name",
+  "sizeValue": "numeric value only (e.g., 20, 228) or null",
+  "sizeUnit": "unit only (e.g., oz, lb, g, kg, ct, servings) or null",
+  "packageDescription": "full size description (e.g., '20 Servings Per Container, 1 Pack (228g)')",
+  "supplier": "supplier/distributor name or empty string",
+  "batchLot": "batch or lot number or empty string",
+  "upcBarcode": "UPC/barcode if visible or empty string",
+  "ingredients": "ingredient list if visible or empty string",
+  "nutritionFacts": "brief nutrition summary if visible or empty string"
+}
 
 Be thorough - small text often contains critical supplier and batch information for inventory management.`;
 
@@ -237,19 +241,37 @@ serve(async (req) => {
     }
 
     const extractedText = data.choices[0].message.content || '';
-    console.log('✅ Grok OCR completed. Extracted text:', extractedText);
+    console.log('✅ Grok OCR completed. Raw response:', extractedText);
 
-    // Calculate a confidence score based on text length and structure
-    let confidence = 0.8; // Default confidence for Grok
-    if (extractedText.length > 50) confidence = 0.9;
-    if (extractedText.length > 100) confidence = 0.95;
-    if (extractedText.length === 0) confidence = 0.1;
+    // Try to parse as JSON
+    let structuredData = null;
+    let parseError = null;
+    
+    try {
+      // Remove markdown code blocks if present
+      const cleanedText = extractedText
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+      
+      structuredData = JSON.parse(cleanedText);
+      console.log('✅ Successfully parsed structured data:', structuredData);
+    } catch (e) {
+      parseError = e instanceof Error ? e.message : 'Failed to parse JSON';
+      console.warn('⚠️ Could not parse as JSON, returning raw text:', parseError);
+    }
+
+    // Calculate a confidence score based on whether we got structured data
+    let confidence = structuredData ? 0.95 : 0.7;
+    if (!extractedText || extractedText.length === 0) confidence = 0.1;
 
     return new Response(
       JSON.stringify({ 
         text: extractedText,
+        structuredData: structuredData,
         confidence: confidence,
-        source: 'grok-4-fast'
+        source: 'grok-4-fast',
+        parseError: parseError
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

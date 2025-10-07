@@ -243,6 +243,123 @@ export function useDailyPnL(restaurantId: string | null) {
     };
   };
 
+  const getWeeklyData = () => {
+    if (!pnlData || pnlData.length === 0) return [];
+
+    const weeklyMap = new Map<string, {
+      period: string;
+      net_revenue: number;
+      food_cost: number;
+      labor_cost: number;
+      days_count: number;
+      start_date: string;
+      end_date: string;
+    }>();
+
+    pnlData.forEach((day) => {
+      const date = new Date(day.date + 'T12:00:00Z');
+      const year = date.getUTCFullYear();
+      const week = getISOWeek(date);
+      const weekKey = `${year}-W${week.toString().padStart(2, '0')}`;
+
+      if (!weeklyMap.has(weekKey)) {
+        weeklyMap.set(weekKey, {
+          period: weekKey,
+          net_revenue: 0,
+          food_cost: 0,
+          labor_cost: 0,
+          days_count: 0,
+          start_date: day.date,
+          end_date: day.date,
+        });
+      }
+
+      const weekData = weeklyMap.get(weekKey)!;
+      weekData.net_revenue += day.net_revenue;
+      weekData.food_cost += day.food_cost;
+      weekData.labor_cost += day.labor_cost;
+      weekData.days_count += 1;
+      
+      if (day.date < weekData.start_date) weekData.start_date = day.date;
+      if (day.date > weekData.end_date) weekData.end_date = day.date;
+    });
+
+    return Array.from(weeklyMap.values())
+      .map((week) => ({
+        ...week,
+        food_cost_percentage: week.net_revenue > 0 ? (week.food_cost / week.net_revenue) * 100 : 0,
+        labor_cost_percentage: week.net_revenue > 0 ? (week.labor_cost / week.net_revenue) * 100 : 0,
+        prime_cost_percentage: week.net_revenue > 0 
+          ? ((week.food_cost + week.labor_cost) / week.net_revenue) * 100 
+          : 0,
+        prime_cost: week.food_cost + week.labor_cost,
+        gross_profit: week.net_revenue - week.food_cost - week.labor_cost,
+      }))
+      .sort((a, b) => b.period.localeCompare(a.period));
+  };
+
+  const getMonthlyData = () => {
+    if (!pnlData || pnlData.length === 0) return [];
+
+    const monthlyMap = new Map<string, {
+      period: string;
+      net_revenue: number;
+      food_cost: number;
+      labor_cost: number;
+      days_count: number;
+      start_date: string;
+      end_date: string;
+    }>();
+
+    pnlData.forEach((day) => {
+      const date = new Date(day.date + 'T12:00:00Z');
+      const monthKey = `${date.getUTCFullYear()}-${(date.getUTCMonth() + 1).toString().padStart(2, '0')}`;
+
+      if (!monthlyMap.has(monthKey)) {
+        monthlyMap.set(monthKey, {
+          period: monthKey,
+          net_revenue: 0,
+          food_cost: 0,
+          labor_cost: 0,
+          days_count: 0,
+          start_date: day.date,
+          end_date: day.date,
+        });
+      }
+
+      const monthData = monthlyMap.get(monthKey)!;
+      monthData.net_revenue += day.net_revenue;
+      monthData.food_cost += day.food_cost;
+      monthData.labor_cost += day.labor_cost;
+      monthData.days_count += 1;
+      
+      if (day.date < monthData.start_date) monthData.start_date = day.date;
+      if (day.date > monthData.end_date) monthData.end_date = day.date;
+    });
+
+    return Array.from(monthlyMap.values())
+      .map((month) => ({
+        ...month,
+        food_cost_percentage: month.net_revenue > 0 ? (month.food_cost / month.net_revenue) * 100 : 0,
+        labor_cost_percentage: month.net_revenue > 0 ? (month.labor_cost / month.net_revenue) * 100 : 0,
+        prime_cost_percentage: month.net_revenue > 0 
+          ? ((month.food_cost + month.labor_cost) / month.net_revenue) * 100 
+          : 0,
+        prime_cost: month.food_cost + month.labor_cost,
+        gross_profit: month.net_revenue - month.food_cost - month.labor_cost,
+      }))
+      .sort((a, b) => b.period.localeCompare(a.period));
+  };
+
+  // Helper function to calculate ISO week number
+  const getISOWeek = (date: Date): number => {
+    const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  };
+
   // Fetch restaurant timezone when restaurantId changes
   useEffect(() => {
     if (restaurantId) {
@@ -299,5 +416,7 @@ export function useDailyPnL(restaurantId: string | null) {
     getTodaysData,
     getAverages,
     getGroupedPnLData,
+    getWeeklyData,
+    getMonthlyData,
   };
 }

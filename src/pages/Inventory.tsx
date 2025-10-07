@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +14,12 @@ import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
 import { DeleteProductDialog } from '@/components/DeleteProductDialog';
 import { WasteDialog } from '@/components/WasteDialog';
 import { TransferDialog } from '@/components/TransferDialog';
+import { QuickInventoryDialog } from '@/components/QuickInventoryDialog';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
+import { ReconciliationHistory } from '@/components/ReconciliationHistory';
+import { ReconciliationSession } from '@/components/ReconciliationSession';
+import { ReconciliationSummary } from '@/components/ReconciliationSummary';
+import { useReconciliation } from '@/hooks/useReconciliation';
 import { InventorySettings } from '@/components/InventorySettings';
 import { InventoryValueBadge } from '@/components/InventoryValueBadge';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
@@ -22,6 +27,7 @@ import { useInventoryAudit } from '@/hooks/useInventoryAudit';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useInventoryMetrics } from '@/hooks/useInventoryMetrics';
+import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
@@ -30,6 +36,7 @@ import { ocrService } from '@/services/ocrService';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { toast } = useToast();
@@ -37,6 +44,7 @@ export const Inventory: React.FC = () => {
   const { products, loading, createProduct, updateProductWithQuantity, deleteProduct, findProductByGtin, refetchProducts } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { updateProductStockWithAudit } = useInventoryAudit();
   const inventoryMetrics = useInventoryMetrics(selectedRestaurant?.restaurant_id || null, products);
+  const { lowStockItems: lowStockProducts, exportLowStockCSV } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showProductDialog, setShowProductDialog] = useState(false);
@@ -54,6 +62,30 @@ export const Inventory: React.FC = () => {
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [wasteProduct, setWasteProduct] = useState<Product | null>(null);
   const [transferProduct, setTransferProduct] = useState<Product | null>(null);
+  const [activeTab, setActiveTab] = useState('scanner');
+  const [showQuickInventoryDialog, setShowQuickInventoryDialog] = useState(false);
+  const [quickInventoryProduct, setQuickInventoryProduct] = useState<Product | null>(null);
+  const [scanMode, setScanMode] = useState<'add' | 'reconcile'>('add');
+  
+  // Check for ?create=true query parameter to open product dialog from recipes
+  useEffect(() => {
+    if (searchParams.get('create') === 'true') {
+      setShowProductDialog(true);
+      // Remove the query parameter
+      searchParams.delete('create');
+      setSearchParams(searchParams);
+    }
+  }, [searchParams, setSearchParams]);
+
+  // Handler to close quick inventory dialog and clear product state
+  const handleCloseQuickInventoryDialog = (open: boolean) => {
+    setShowQuickInventoryDialog(open);
+    if (!open) {
+      setQuickInventoryProduct(null);
+    }
+  };
+  const [reconciliationView, setReconciliationView] = useState<'history' | 'session' | 'summary'>('history');
+  const { activeSession, startReconciliation } = useReconciliation(selectedRestaurant?.restaurant_id || null);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -81,6 +113,7 @@ export const Inventory: React.FC = () => {
 
   const handleBarcodeScanned = async (gtin: string, format: string, aiData?: string) => {
     console.log('📱 Barcode scanned:', gtin, format, aiData ? 'with AI data' : '');
+    
     setLastScannedGtin(gtin);
     setLookupResult(null);
     
@@ -127,16 +160,13 @@ export const Inventory: React.FC = () => {
       return;
     }
     
-    // Check if product already exists in inventory
+    // Check if product already exists in inventory (search by original barcode)
     const existingProduct = await findProductByGtin(gtin);
     
     if (existingProduct) {
-      setSelectedProduct(existingProduct);
-      setShowUpdateDialog(true);
-      toast({
-        title: "Product found in inventory",
-        description: `${existingProduct.name} - Update details or add stock`,
-      });
+      // Use quick inventory dialog for scanning existing products
+      setQuickInventoryProduct(existingProduct);
+      setShowQuickInventoryDialog(true);
       return;
     }
 
@@ -178,12 +208,12 @@ export const Inventory: React.FC = () => {
       if (result) {
         toast({
           title: "Product identified",
-          description: `Found: ${result.product_name} - Add details and quantity`,
+          description: `${result.product_name} - Add details then scan again for quick entry`,
         });
       } else {
         toast({
           title: "New product scanned",
-          description: "Add product details and initial quantity",
+          description: "Add product details - scan again later for quick entry",
         });
       }
     } catch (error) {
@@ -244,13 +274,19 @@ export const Inventory: React.FC = () => {
       
       console.log('✅ Grok OCR completed:', grokOCRResult);
       
-      // Step 2: Use OCR text for web search to get structured data
+      // Use structured data from OCR if available
+      const ocrData = (grokOCRResult as any).structuredData;
+      
+      // Step 2: Use OCR text for web search to get additional structured data (optional enhancement)
       let enhancedData = null;
-      if (grokOCRResult.text?.trim()) {
+      const searchQuery = ocrData?.productName || grokOCRResult.text?.trim();
+      
+      if (searchQuery && !ocrData) {
+        // Only do web search if we didn't get structured data from OCR
         console.log('🌐 Searching for product information...');
         const searchResponse = await supabase.functions.invoke('web-search', {
           body: { 
-            query: `${grokOCRResult.text} product information nutrition ingredients`,
+            query: `${searchQuery} product information nutrition ingredients`,
             maxResults: 5 
           }
         });
@@ -261,7 +297,7 @@ export const Inventory: React.FC = () => {
           const enhanceResponse = await supabase.functions.invoke('enhance-product-ai', {
             body: {
               searchText: searchResponse.data.results.map((r: any) => r.content).join('\n\n'),
-              productName: grokOCRResult.text,
+              productName: searchQuery,
               brand: '',
               category: '',
               currentDescription: ''
@@ -275,31 +311,43 @@ export const Inventory: React.FC = () => {
         }
       }
       
-      // Create product data with enhanced information and image
+      // Parse size value and unit from OCR data
+      let sizeValue = null;
+      let sizeUnit = null;
+      
+      if (ocrData?.sizeValue && ocrData?.sizeUnit) {
+        sizeValue = parseFloat(ocrData.sizeValue);
+        sizeUnit = ocrData.sizeUnit;
+      } else if (enhancedData?.sizeValue) {
+        sizeValue = enhancedData.sizeValue;
+        sizeUnit = enhancedData.sizeUnit;
+      }
+      
+      // Create product data with structured OCR information and image
       const newProductData: Product = {
         id: '', // Will be generated on creation
         restaurant_id: selectedRestaurant!.restaurant!.id,
-        gtin: enhancedData?.gtin || '',
-        sku: enhancedData?.gtin || Date.now().toString(),
-        name: enhancedData?.productName || grokOCRResult.text || 'New Product',
-        description: enhancedData?.description || null,
-        brand: enhancedData?.brand || '',
+        gtin: ocrData?.upcBarcode || enhancedData?.gtin || '',
+        sku: ocrData?.upcBarcode || enhancedData?.gtin || Date.now().toString(),
+        name: ocrData?.productName || enhancedData?.productName || grokOCRResult.text || 'New Product',
+        description: ocrData?.ingredients || ocrData?.nutritionFacts || enhancedData?.description || null,
+        brand: ocrData?.brand || enhancedData?.brand || '',
         category: enhancedData?.category || '',
-        size_value: enhancedData?.sizeValue || null,
-        size_unit: enhancedData?.sizeUnit || null,
+        size_value: sizeValue,
+        size_unit: sizeUnit,
         package_qty: enhancedData?.packageQty || 1,
-        uom_purchase: null,
+        uom_purchase: sizeUnit || null,
         uom_recipe: null,
         cost_per_unit: null,
         current_stock: 0,
         par_level_min: 0,
         par_level_max: 0,
         reorder_point: 0,
-        supplier_name: null,
-        supplier_sku: null,
-        pos_item_name: enhancedData?.productName || grokOCRResult.text || '',
+        supplier_name: ocrData?.supplier || null,
+        supplier_sku: ocrData?.batchLot || null,
+        pos_item_name: ocrData?.productName || enhancedData?.productName || grokOCRResult.text || '',
         image_url: uploadedImageUrl, // Use the captured image
-        barcode_data: null,
+        barcode_data: ocrData?.upcBarcode || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -307,15 +355,16 @@ export const Inventory: React.FC = () => {
       setSelectedProduct(newProductData);
       setShowUpdateDialog(true);
       
-      if (enhancedData?.productName || grokOCRResult.text) {
+      const productDisplayName = ocrData?.productName || enhancedData?.productName || grokOCRResult.text;
+      if (productDisplayName) {
         toast({
           title: "Product identified from image",
-          description: `Found: ${enhancedData?.productName || grokOCRResult.text} - Review and save`,
+          description: `${ocrData?.brand ? ocrData.brand + ' ' : ''}${productDisplayName}${ocrData?.packageDescription ? ' - ' + ocrData.packageDescription : ''}`,
         });
       } else {
         toast({
           title: "Image captured",
-          description: "Add product details manually",
+          description: "Add product details - scan again later for quick entry",
         });
       }
     } catch (error) {
@@ -372,7 +421,7 @@ export const Inventory: React.FC = () => {
     
     const fileExt = 'jpg';
     const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `${selectedRestaurant?.restaurant?.id}/${fileName}`;
+    const filePath = `${selectedRestaurant?.restaurant_id}/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
       .from('product-images')
@@ -395,6 +444,25 @@ export const Inventory: React.FC = () => {
       setLookupResult(null);
       setLastScannedGtin('');
       setCapturedImage(null);
+      
+      // Check if we came from the recipe dialog
+      const recipeStateJson = sessionStorage.getItem('recipeFormState');
+      if (recipeStateJson) {
+        try {
+          const recipeState = JSON.parse(recipeStateJson);
+          sessionStorage.removeItem('recipeFormState');
+          
+          // Navigate back to recipes with the new product ID
+          navigate(`/recipes?newProductId=${newProduct.id}&returnToRecipe=true`);
+          
+          toast({
+            title: "Product created",
+            description: "Returning to recipe editor with your new product",
+          });
+        } catch (error) {
+          console.error('Error parsing recipe state:', error);
+        }
+      }
     }
   };
 
@@ -526,11 +594,13 @@ export const Inventory: React.FC = () => {
           toast({
             title: "Inventory updated",
             description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference} units. New total: ${Math.round(finalStock * 100) / 100}`,
+            duration: 800,
           });
         } else {
           toast({
             title: "Product updated", 
             description: "Product information has been updated",
+            duration: 800,
           });
         }
         
@@ -556,6 +626,51 @@ export const Inventory: React.FC = () => {
     return await ProductEnhancementService.enhanceProduct(product);
   };
 
+  const handleQuickInventorySave = async (quantity: number) => {
+    if (!quickInventoryProduct || !selectedRestaurant) return;
+
+    const currentStock = quickInventoryProduct.current_stock || 0;
+    const costPerUnit = quickInventoryProduct.cost_per_unit || 0;
+    
+    let finalStock: number;
+    let transactionType: 'purchase' | 'adjustment';
+    let reason: string;
+    
+    if (scanMode === 'add') {
+      // Add mode: add to existing stock
+      finalStock = currentStock + quantity;
+      transactionType = 'purchase';
+      reason = `Purchase - Added ${quantity} via quick scan`;
+    } else {
+      // Reconcile mode: set total stock to scanned quantity
+      finalStock = quantity;
+      transactionType = 'adjustment';
+      reason = `Inventory reconciliation - Set to ${quantity} via quick scan`;
+    }
+    
+    const success = await updateProductStockWithAudit(
+      selectedRestaurant.restaurant_id,
+      quickInventoryProduct.id,
+      finalStock,
+      currentStock,
+      costPerUnit,
+      transactionType,
+      reason,
+      `quick_scan_${Date.now()}`
+    );
+    
+    if (success) {
+      await refetchProducts();
+      toast({
+        title: "Inventory updated",
+        description: scanMode === 'add' 
+          ? `Added ${quantity} to ${quickInventoryProduct.name}`
+          : `Set ${quickInventoryProduct.name} to ${quantity}`,
+        duration: 800,
+      });
+    }
+  };
+
   const handleDeleteProduct = (product: Product) => {
     setProductToDelete(product);
     setShowDeleteDialog(true);
@@ -579,10 +694,6 @@ export const Inventory: React.FC = () => {
     product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.category?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const lowStockProducts = products.filter(product => 
-    (product.current_stock || 0) <= (product.reorder_point || 0)
   );
 
   if (!user) {
@@ -649,8 +760,8 @@ export const Inventory: React.FC = () => {
       </header>
 
       <div className="max-w-7xl mx-auto p-4 md:p-6">
-        <Tabs defaultValue="scanner" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto">
             <TabsTrigger value="scanner" className="flex-col py-2 px-1">
               <span className="text-xs md:text-sm">Scanner</span>
               <span className="text-lg">{currentMode === 'scanner' ? '📱' : '📸'}</span>
@@ -667,6 +778,12 @@ export const Inventory: React.FC = () => {
                 </Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="reconciliation" className="flex-col py-2 px-1">
+              <span className="text-xs md:text-sm">Reconcile</span>
+              {activeSession && (
+                <Badge className="text-xs h-4 px-1 bg-blue-500">Active</Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="categories" className="flex-col py-2 px-1">
               <span className="text-xs md:text-sm">Settings</span>
             </TabsTrigger>
@@ -674,7 +791,31 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="scanner" className="mt-4 md:mt-6">
             <div className="space-y-4 md:space-y-6">
-              {/* Mode Toggle */}
+              {/* Scan Mode Toggle - Add vs Reconcile */}
+              <div className="flex justify-center">
+                <div className="bg-card border border-border p-1 rounded-lg w-full max-w-md">
+                  <div className="grid grid-cols-2 gap-1">
+                    <Button
+                      variant={scanMode === 'add' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setScanMode('add')}
+                      className="flex-1"
+                    >
+                      ➕ Add Stock
+                    </Button>
+                    <Button
+                      variant={scanMode === 'reconcile' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setScanMode('reconcile')}
+                      className="flex-1"
+                    >
+                      ✓ Reconcile
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scanner/Image Mode Toggle */}
               <div className="flex justify-center">
                 <div className="bg-muted p-1 rounded-lg w-full max-w-md">
                   <div className="grid grid-cols-2 gap-1">
@@ -1049,9 +1190,17 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="low-stock" className="mt-6">
             <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
-                <h2 className="text-xl font-semibold">Low Stock Alert</h2>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  <h2 className="text-xl font-semibold">Low Stock Alert</h2>
+                </div>
+                {lowStockProducts.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={exportLowStockCSV}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export List
+                  </Button>
+                )}
               </div>
 
               {lowStockProducts.length === 0 ? (
@@ -1142,6 +1291,38 @@ export const Inventory: React.FC = () => {
             </div>
           </TabsContent>
 
+          <TabsContent value="reconciliation" className="mt-6">
+            {selectedRestaurant && (
+              <>
+                {reconciliationView === 'history' && !activeSession && (
+                  <ReconciliationHistory
+                    restaurantId={selectedRestaurant.restaurant_id}
+                    onStartNew={async () => {
+                      await startReconciliation();
+                      setReconciliationView('session');
+                    }}
+                  />
+                )}
+                {(reconciliationView === 'session' || activeSession) && (
+                  <ReconciliationSession
+                    restaurantId={selectedRestaurant.restaurant_id}
+                    onComplete={() => setReconciliationView('summary')}
+                  />
+                )}
+                {reconciliationView === 'summary' && (
+                  <ReconciliationSummary
+                    restaurantId={selectedRestaurant.restaurant_id}
+                    onBack={() => setReconciliationView('session')}
+                    onComplete={() => {
+                      setReconciliationView('history');
+                      refetchProducts();
+                    }}
+                  />
+                )}
+              </>
+            )}
+          </TabsContent>
+
           <TabsContent value="categories" className="mt-6">
             {selectedRestaurant && (
               <InventorySettings restaurantId={selectedRestaurant.restaurant_id} />
@@ -1154,7 +1335,7 @@ export const Inventory: React.FC = () => {
         open={showProductDialog}
         onOpenChange={setShowProductDialog}
         onSubmit={handleCreateProduct}
-        restaurantId={selectedRestaurant?.restaurant?.id || ''}
+        restaurantId={selectedRestaurant?.restaurant_id || ''}
         initialData={scannedProductData}
       />
 
@@ -1198,6 +1379,17 @@ export const Inventory: React.FC = () => {
           onTransferCompleted={() => {
             window.location.reload();
           }}
+        />
+      )}
+
+      {/* Quick Inventory Dialog */}
+      {quickInventoryProduct && (
+        <QuickInventoryDialog
+          open={showQuickInventoryDialog}
+          onOpenChange={handleCloseQuickInventoryDialog}
+          product={quickInventoryProduct}
+          mode={scanMode}
+          onSave={handleQuickInventorySave}
         />
       )}
     </div>

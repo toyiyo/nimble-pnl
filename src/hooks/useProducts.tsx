@@ -247,17 +247,20 @@ export const useProducts = (restaurantId: string | null) => {
     if (!restaurantId || !gtin) return null;
 
     try {
+      // Search by both GTIN and SKU fields using the exact scanned barcode
       const { data, error } = await supabase
         .from('products')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .eq('gtin', gtin)
-        .single();
+        .or(`gtin.eq.${gtin},sku.eq.${gtin}`)
+        .limit(1);
 
-      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows returned
-      return data || null;
+      if (error) throw error;
+      
+      // Return first match or null if no products found
+      return (data && data.length > 0) ? data[0] : null;
     } catch (error: any) {
-      console.error('Error finding product by GTIN:', error);
+      console.error('Error finding product by GTIN/SKU:', error);
       return null;
     }
   }, [restaurantId]);

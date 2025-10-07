@@ -97,7 +97,16 @@ const handler = async (req: Request): Promise<Response> => {
     crypto.getRandomValues(tokenBytes);
     const invitationToken = Array.from(tokenBytes, byte => byte.toString(16).padStart(2, '0')).join('');
     
-    // Store invitation in database
+    // Hash the token using Web Crypto API (available in Deno)
+    const encoder = new TextEncoder();
+    const data = encoder.encode(invitationToken);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashedToken = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    console.log('Token hashed successfully with Web Crypto API');
+    
+    // Store invitation with hashed token in database
     const { data: invitation, error: invitationError } = await supabase
       .from('invitations')
       .insert({
@@ -105,7 +114,7 @@ const handler = async (req: Request): Promise<Response> => {
         invited_by: user.id,
         email,
         role,
-        token: invitationToken,
+        token: hashedToken,
         status: 'pending',
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
       })

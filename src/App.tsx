@@ -8,6 +8,7 @@ import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { RestaurantProvider } from "@/contexts/RestaurantContext";
 import { AppHeader } from "@/components/AppHeader";
+import { InstallBanner } from "@/components/InstallBanner";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Team from "./pages/Team";
@@ -15,6 +16,7 @@ import Integrations from "./pages/Integrations";
 import Recipes from "./pages/Recipes";
 import POSSales from "./pages/POSSales";
 import Reports from "./pages/Reports";
+import RestaurantSettings from "./pages/RestaurantSettings";
 import SquareCallback from "./pages/SquareCallback";
 import { AcceptInvitation } from "./pages/AcceptInvitation";
 import { Inventory } from "./pages/Inventory";
@@ -60,12 +62,14 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <InstallBanner />
         <Analytics />
         <SpeedInsights />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/settings" element={<ProtectedRoute><RestaurantSettings /></ProtectedRoute>} />
             <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
             <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
             <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />

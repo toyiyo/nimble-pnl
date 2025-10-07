@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Download, TrendingDown, TrendingUp, Package, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatDateInTimezone } from '@/lib/timezone';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 
 const TRANSACTION_TYPES = [
@@ -222,7 +223,11 @@ export default function InventoryAudit() {
                         <div>
                           <span className="text-muted-foreground">Date:</span>
                           <div className="font-medium">
-                            {format(new Date(transaction.created_at), 'MMM dd, yyyy HH:mm')}
+                            {formatDateInTimezone(
+                              transaction.created_at,
+                              selectedRestaurant.restaurant.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+                              'MMM dd, yyyy HH:mm'
+                            )}
                           </div>
                         </div>
                       </div>

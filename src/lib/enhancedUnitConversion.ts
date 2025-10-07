@@ -140,6 +140,7 @@ export function convertUnits(
   
   const weightUnits = ['lb', 'kg', 'g'];
   const volumeUnits = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
+  const countUnits = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
   
   if (weightUnits.includes(fromUnit) && weightUnits.includes(toUnit)) {
     // Convert through grams
@@ -169,6 +170,17 @@ export function convertUnits(
         conversionPath: [fromUnit, 'ml', toUnit]
       };
     }
+  }
+  
+  // Count-based units convert 1:1 (e.g., bottle -> unit, each -> piece)
+  if (countUnits.includes(fromUnit) && countUnits.includes(toUnit)) {
+    return {
+      value: value, // 1:1 conversion for discrete count units
+      fromUnit,
+      toUnit,
+      conversionPath: [fromUnit, toUnit],
+      productSpecific: false
+    };
   }
 
   return null; // No conversion found

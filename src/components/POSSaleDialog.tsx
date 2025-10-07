@@ -43,7 +43,8 @@ import Fuse from 'fuse.js';
 const saleSchema = z.object({
   itemName: z.string().min(1, 'Item name is required'),
   quantity: z.number().min(1, 'Quantity must be at least 1'),
-  totalPrice: z.number().min(0, 'Price must be positive').optional(),
+  unitPrice: z.number().min(0, 'Unit price must be positive').optional(),
+  totalPrice: z.number().min(0, 'Total price must be positive').optional(),
   saleDate: z.string().min(1, 'Sale date is required'),
   saleTime: z.string().optional(),
 });
@@ -54,14 +55,24 @@ interface POSSaleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
+  editingSale?: {
+    id: string;
+    itemName: string;
+    quantity: number;
+    totalPrice?: number;
+    unitPrice?: number;
+    saleDate: string;
+    saleTime?: string;
+  } | null;
 }
 
 export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   open,
   onOpenChange,
   restaurantId,
+  editingSale = null,
 }) => {
-  const { createManualSale } = useUnifiedSales(restaurantId);
+  const { createManualSale, updateManualSale } = useUnifiedSales(restaurantId);
   const { posItems, loading: posLoading, refetch: refetchPOSItems } = usePOSItems(restaurantId);
   const { recipes, loading: recipesLoading } = useRecipes(restaurantId);
   
@@ -70,14 +81,38 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
 
   const form = useForm<SaleFormValues>({
     resolver: zodResolver(saleSchema),
-    defaultValues: {
+    defaultValues: editingSale || {
       itemName: '',
       quantity: 1,
+      unitPrice: undefined,
       totalPrice: undefined,
       saleDate: new Date().toISOString().split('T')[0],
       saleTime: new Date().toTimeString().slice(0, 5),
     },
   });
+
+  // Update form when editingSale changes
+  React.useEffect(() => {
+    if (editingSale) {
+      form.reset({
+        itemName: editingSale.itemName,
+        quantity: editingSale.quantity,
+        unitPrice: editingSale.unitPrice,
+        totalPrice: editingSale.totalPrice,
+        saleDate: editingSale.saleDate,
+        saleTime: editingSale.saleTime || '',
+      });
+    } else {
+      form.reset({
+        itemName: '',
+        quantity: 1,
+        unitPrice: undefined,
+        totalPrice: undefined,
+        saleDate: new Date().toISOString().split('T')[0],
+        saleTime: new Date().toTimeString().slice(0, 5),
+      });
+    }
+  }, [editingSale, form]);
 
   // Combine recipes and POS items into searchable list
   const searchableItems = useMemo(() => {
@@ -179,13 +214,27 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   };
 
   const onSubmit = async (values: SaleFormValues) => {
-    const success = await createManualSale({
-      itemName: values.itemName,
-      quantity: values.quantity,
-      totalPrice: values.totalPrice,
-      saleDate: values.saleDate,
-      saleTime: values.saleTime,
-    });
+    let success = false;
+    
+    if (editingSale) {
+      success = await updateManualSale(editingSale.id, {
+        itemName: values.itemName,
+        quantity: values.quantity,
+        unitPrice: values.unitPrice,
+        totalPrice: values.totalPrice,
+        saleDate: values.saleDate,
+        saleTime: values.saleTime,
+      });
+    } else {
+      success = await createManualSale({
+        itemName: values.itemName,
+        quantity: values.quantity,
+        unitPrice: values.unitPrice,
+        totalPrice: values.totalPrice,
+        saleDate: values.saleDate,
+        saleTime: values.saleTime,
+      });
+    }
 
     if (success) {
       // Refresh POS items list to include the newly created item
@@ -200,7 +249,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Record Manual Sale</DialogTitle>
+          <DialogTitle>{editingSale ? 'Edit Manual Sale' : 'Record Manual Sale'}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -347,6 +396,18 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                               )}
                             </>
                           )}
+                          
+                          {searchQuery && (
+                            <CommandGroup heading="Create New">
+                              <CommandItem
+                                onSelect={() => handleCreateNewItem(searchQuery)}
+                                className="cursor-pointer"
+                              >
+                                <AlertCircle className="mr-2 h-4 w-4 text-muted-foreground" />
+                                <span>Create new item: <strong>"{searchQuery}"</strong></span>
+                              </CommandItem>
+                            </CommandGroup>
+                          )}
                         </CommandList>
                       </Command>
                     </PopoverContent>
@@ -390,10 +451,10 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
 
               <FormField
                 control={form.control}
-                name="totalPrice"
+                name="unitPrice"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Total Price</FormLabel>
+                    <FormLabel>Unit Price</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -409,6 +470,30 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="totalPrice"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Total Price</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      {...field}
+                      onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                    />
+                  </FormControl>
+                  <FormDescription className="text-xs">
+                    Optional - will be calculated from Unit Price × Quantity if not provided
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <div className="grid grid-cols-2 gap-4">
               <FormField
@@ -445,7 +530,9 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                 Cancel
               </Button>
               <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Recording...' : 'Record Sale'}
+                {form.formState.isSubmitting 
+                  ? (editingSale ? 'Updating...' : 'Recording...') 
+                  : (editingSale ? 'Update Sale' : 'Record Sale')}
               </Button>
             </DialogFooter>
           </form>

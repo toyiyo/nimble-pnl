@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Lightbulb, Loader2 } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Lightbulb, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useProducts } from '@/hooks/useProducts';
@@ -32,6 +33,8 @@ export const RecipeSuggestions: React.FC<RecipeSuggestionsProps> = ({
 }) => {
   const [loadingItems, setLoadingItems] = useState<Set<string>>(new Set());
   const [suggestions, setSuggestions] = useState<Record<string, SuggestedRecipe>>({});
+  // Start collapsed if there are many items to keep the UI clean
+  const [isOpen, setIsOpen] = useState(unmappedItems.length <= 3);
   const { products } = useProducts(restaurantId);
   const { toast } = useToast();
 
@@ -147,108 +150,125 @@ export const RecipeSuggestions: React.FC<RecipeSuggestionsProps> = ({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-          <Lightbulb className="h-4 w-4 md:h-5 md:w-5" />
-          Recipe Suggestions
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          These POS items don't have recipes yet. Use AI to generate recipe suggestions based on your inventory.
-        </p>
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Card className="border-primary/20 bg-primary/5">
+        <CollapsibleTrigger className="w-full">
+          <CardHeader className="cursor-pointer hover:bg-accent/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                <Lightbulb className="h-4 w-4 md:h-5 md:w-5 text-primary" />
+                Recipe Suggestions
+                <Badge variant="secondary" className="ml-2">
+                  {unmappedItems.length}
+                </Badge>
+              </CardTitle>
+              {isOpen ? (
+                <ChevronUp className="h-5 w-5 text-muted-foreground transition-transform" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform" />
+              )}
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
         
-        {unmappedItems.slice(0, 5).map((itemName) => {
-          const isLoading = loadingItems.has(itemName);
-          const suggestion = suggestions[itemName];
-          
-          return (
-            <div key={itemName} className="border rounded-lg p-3 md:p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                <h4 className="font-medium text-sm md:text-base truncate">{itemName}</h4>
-                {!suggestion && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleGenerateSuggestion(itemName)}
-                    disabled={isLoading}
-                    className="shrink-0 w-full sm:w-auto"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        <span className="hidden sm:inline">Generating...</span>
-                        <span className="sm:hidden">AI Thinking...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="hidden sm:inline">Suggest Recipe</span>
-                        <span className="sm:hidden">Generate AI Recipe</span>
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
+        <CollapsibleContent className="animate-accordion-down data-[state=closed]:animate-accordion-up">
+          <CardContent className="space-y-4 pt-0">
+            <p className="text-sm text-muted-foreground">
+              These POS items don't have recipes yet. Use AI to generate recipe suggestions based on your inventory.
+            </p>
+            
+            {unmappedItems.slice(0, 5).map((itemName) => {
+              const isLoading = loadingItems.has(itemName);
+              const suggestion = suggestions[itemName];
               
-              {suggestion && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={suggestion.confidence > 0.7 ? 'default' : 'secondary'} className="text-xs">
-                      {Math.round(suggestion.confidence * 100)}% confidence
-                    </Badge>
-                  </div>
-                  
-                  <div>
-                    <h5 className="font-medium mb-1 text-sm md:text-base">{suggestion.recipeName}</h5>
-                    <p className="text-sm text-muted-foreground mb-2">{suggestion.reasoning}</p>
-                    
-                    <div className="mb-3">
-                      <h6 className="text-sm font-medium mb-1">Ingredients:</h6>
-                      <div className="space-y-1 max-h-32 md:max-h-none overflow-y-auto">
-                        {suggestion.ingredients.map((ingredient, idx) => (
-                          <div key={idx} className="text-sm bg-muted/30 p-2 rounded">
-                            {ingredient.quantity} {ingredient.unit} of {ingredient.ingredientName}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => handleCreateRecipe(itemName, suggestion)}
-                        disabled={suggestion.confidence < 0.3}
-                        className="w-full sm:w-auto"
-                      >
-                        Create Recipe
-                      </Button>
+              return (
+                <div key={itemName} className="border rounded-lg p-3 md:p-4 bg-background">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                    <h4 className="font-medium text-sm md:text-base truncate">{itemName}</h4>
+                    {!suggestion && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setSuggestions(prev => {
-                          const next = { ...prev };
-                          delete next[itemName];
-                          return next;
-                        })}
-                        className="w-full sm:w-auto"
+                        onClick={() => handleGenerateSuggestion(itemName)}
+                        disabled={isLoading}
+                        className="shrink-0 w-full sm:w-auto"
                       >
-                        Dismiss
+                        {isLoading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            <span className="hidden sm:inline">Generating...</span>
+                            <span className="sm:hidden">AI Thinking...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="hidden sm:inline">Suggest Recipe</span>
+                            <span className="sm:hidden">Generate AI Recipe</span>
+                          </>
+                        )}
                       </Button>
-                    </div>
+                    )}
                   </div>
+                  
+                  {suggestion && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={suggestion.confidence > 0.7 ? 'default' : 'secondary'} className="text-xs">
+                          {Math.round(suggestion.confidence * 100)}% confidence
+                        </Badge>
+                      </div>
+                      
+                      <div>
+                        <h5 className="font-medium mb-1 text-sm md:text-base">{suggestion.recipeName}</h5>
+                        <p className="text-sm text-muted-foreground mb-2">{suggestion.reasoning}</p>
+                        
+                        <div className="mb-3">
+                          <h6 className="text-sm font-medium mb-1">Ingredients:</h6>
+                          <div className="space-y-1 max-h-32 md:max-h-none overflow-y-auto">
+                            {suggestion.ingredients.map((ingredient, idx) => (
+                              <div key={idx} className="text-sm bg-muted/30 p-2 rounded">
+                                {ingredient.quantity} {ingredient.unit} of {ingredient.ingredientName}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleCreateRecipe(itemName, suggestion)}
+                            disabled={suggestion.confidence < 0.3}
+                            className="w-full sm:w-auto"
+                          >
+                            Create Recipe
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSuggestions(prev => {
+                              const next = { ...prev };
+                              delete next[itemName];
+                              return next;
+                            })}
+                            className="w-full sm:w-auto"
+                          >
+                            Dismiss
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-        
-        {unmappedItems.length > 5 && (
-          <p className="text-sm text-muted-foreground">
-            And {unmappedItems.length - 5} more items...
-          </p>
-        )}
-      </CardContent>
-    </Card>
+              );
+            })}
+            
+            {unmappedItems.length > 5 && (
+              <p className="text-sm text-muted-foreground">
+                And {unmappedItems.length - 5} more items...
+              </p>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 };

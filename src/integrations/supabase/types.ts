@@ -291,6 +291,62 @@ export type Database = {
         }
         Relationships: []
       }
+      inventory_reconciliations: {
+        Row: {
+          created_at: string
+          id: string
+          items_with_variance: number | null
+          notes: string | null
+          performed_by: string
+          reconciliation_date: string
+          restaurant_id: string
+          started_at: string
+          status: string
+          submitted_at: string | null
+          total_items_counted: number | null
+          total_shrinkage_value: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          items_with_variance?: number | null
+          notes?: string | null
+          performed_by: string
+          reconciliation_date?: string
+          restaurant_id: string
+          started_at?: string
+          status?: string
+          submitted_at?: string | null
+          total_items_counted?: number | null
+          total_shrinkage_value?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          items_with_variance?: number | null
+          notes?: string | null
+          performed_by?: string
+          reconciliation_date?: string
+          restaurant_id?: string
+          started_at?: string
+          status?: string
+          submitted_at?: string | null
+          total_items_counted?: number | null
+          total_shrinkage_value?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_reconciliations_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_transactions: {
         Row: {
           created_at: string
@@ -357,6 +413,7 @@ export type Database = {
           created_at: string
           email: string
           expires_at: string
+          hashed_token: string | null
           id: string
           invited_by: string
           restaurant_id: string
@@ -371,6 +428,7 @@ export type Database = {
           created_at?: string
           email: string
           expires_at?: string
+          hashed_token?: string | null
           id?: string
           invited_by: string
           restaurant_id: string
@@ -385,6 +443,7 @@ export type Database = {
           created_at?: string
           email?: string
           expires_at?: string
+          hashed_token?: string | null
           id?: string
           invited_by?: string
           restaurant_id?: string
@@ -470,6 +529,7 @@ export type Database = {
         Row: {
           barcode_data: Json | null
           brand: string | null
+          bulk_purchase_unit: string | null
           category: string | null
           conversion_factor: number | null
           cost_per_unit: number | null
@@ -479,6 +539,9 @@ export type Database = {
           gtin: string | null
           id: string
           image_url: string | null
+          individual_unit: string | null
+          individual_unit_size: number | null
+          items_per_package: number | null
           name: string
           package_qty: number | null
           par_level_max: number | null
@@ -502,6 +565,7 @@ export type Database = {
         Insert: {
           barcode_data?: Json | null
           brand?: string | null
+          bulk_purchase_unit?: string | null
           category?: string | null
           conversion_factor?: number | null
           cost_per_unit?: number | null
@@ -511,6 +575,9 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
+          individual_unit?: string | null
+          individual_unit_size?: number | null
+          items_per_package?: number | null
           name: string
           package_qty?: number | null
           par_level_max?: number | null
@@ -534,6 +601,7 @@ export type Database = {
         Update: {
           barcode_data?: Json | null
           brand?: string | null
+          bulk_purchase_unit?: string | null
           category?: string | null
           conversion_factor?: number | null
           cost_per_unit?: number | null
@@ -543,6 +611,9 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
+          individual_unit?: string | null
+          individual_unit_size?: number | null
+          items_per_package?: number | null
           name?: string
           package_qty?: number | null
           par_level_max?: number | null
@@ -852,6 +923,66 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reconciliation_items: {
+        Row: {
+          actual_quantity: number | null
+          counted_at: string | null
+          created_at: string
+          expected_quantity: number
+          id: string
+          notes: string | null
+          product_id: string
+          reconciliation_id: string
+          unit_cost: number
+          updated_at: string
+          variance: number | null
+          variance_value: number | null
+        }
+        Insert: {
+          actual_quantity?: number | null
+          counted_at?: string | null
+          created_at?: string
+          expected_quantity: number
+          id?: string
+          notes?: string | null
+          product_id: string
+          reconciliation_id: string
+          unit_cost: number
+          updated_at?: string
+          variance?: number | null
+          variance_value?: number | null
+        }
+        Update: {
+          actual_quantity?: number | null
+          counted_at?: string | null
+          created_at?: string
+          expected_quantity?: number
+          id?: string
+          notes?: string | null
+          product_id?: string
+          reconciliation_id?: string
+          unit_cost?: number
+          updated_at?: string
+          variance?: number | null
+          variance_value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reconciliation_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reconciliation_items_reconciliation_id_fkey"
+            columns: ["reconciliation_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_reconciliations"
             referencedColumns: ["id"]
           },
         ]
@@ -1803,6 +1934,14 @@ export type Database = {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: undefined
       }
+      bulk_process_historical_sales: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: Json
+      }
       calculate_daily_pnl: {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: string
@@ -1821,6 +1960,7 @@ export type Database = {
       }
       check_sale_already_processed: {
         Args: {
+          p_external_order_id?: string
           p_pos_item_name: string
           p_quantity_sold: number
           p_restaurant_id: string
@@ -1922,6 +2062,10 @@ export type Database = {
         Args: { "": unknown }
         Returns: unknown
       }
+      hash_invitation_token: {
+        Args: { token: string }
+        Returns: string
+      }
       is_restaurant_owner: {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: boolean
@@ -1946,6 +2090,7 @@ export type Database = {
       }
       process_unified_inventory_deduction: {
         Args: {
+          p_external_order_id?: string
           p_pos_item_name: string
           p_quantity_sold: number
           p_restaurant_id: string

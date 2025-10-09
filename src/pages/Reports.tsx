@@ -13,6 +13,7 @@ import { ReconciliationVarianceReport } from '@/components/ReconciliationVarianc
 import { PnLIntelligenceReport } from '@/components/PnLIntelligenceReport';
 import { PnLTrendChart } from '@/components/PnLTrendChart';
 import { CostBreakdownChart } from '@/components/CostBreakdownChart';
+import { SupplierPriceAnalysisReport } from '@/components/SupplierPriceAnalysisReport';
 
 export default function Reports() {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -43,7 +44,7 @@ export default function Reports() {
 
   return (
     <Tabs defaultValue="pnl-trends" className="space-y-4 md:space-y-6">
-      <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 h-auto md:h-10">
+      <TabsList className="grid w-full grid-cols-3 md:grid-cols-6 h-auto md:h-10">
         <TabsTrigger value="pnl-trends" className="text-xs md:text-sm">
           <span className="hidden sm:inline">P&L Trends</span>
           <span className="sm:hidden">P&L</span>
@@ -55,6 +56,10 @@ export default function Reports() {
         <TabsTrigger value="consumption" className="text-xs md:text-sm">Trends</TabsTrigger>
         <TabsTrigger value="alerts" className="text-xs md:text-sm">Alerts</TabsTrigger>
         <TabsTrigger value="variance" className="text-xs md:text-sm">Variance</TabsTrigger>
+        <TabsTrigger value="pricing" className="text-xs md:text-sm">
+          <span className="hidden sm:inline">Pricing</span>
+          <span className="sm:hidden">Price</span>
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="pnl-trends" className="space-y-6">
@@ -75,6 +80,10 @@ export default function Reports() {
 
       <TabsContent value="variance" className="space-y-6">
         <ReconciliationVarianceReport restaurantId={selectedRestaurant.restaurant_id} />
+      </TabsContent>
+
+      <TabsContent value="pricing" className="space-y-6">
+        <SupplierPriceAnalysisReport restaurantId={selectedRestaurant.restaurant_id} />
       </TabsContent>
     </Tabs>
   );

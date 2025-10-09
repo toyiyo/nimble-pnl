@@ -321,6 +321,21 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
             Review the extracted items and map them to your existing inventory or create new items
           </CardDescription>
           
+          {/* Vendor Information */}
+          {receiptDetails?.vendor_name && (
+            <div className="mt-4 p-3 bg-muted/50 rounded-lg border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-medium text-muted-foreground">Vendor:</span>
+                  <span className="ml-2 text-sm font-semibold">{receiptDetails.vendor_name}</span>
+                </div>
+                <Badge variant="secondary" className="text-xs">
+                  Will be applied to all new items
+                </Badge>
+              </div>
+            </div>
+          )}
+          
           {/* Summary stats and filters */}
           <div className="flex flex-col sm:flex-row gap-4 pt-2">
             <div className="flex gap-4">

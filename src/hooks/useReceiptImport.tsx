@@ -437,16 +437,26 @@ export const useReceiptImport = () => {
     }
 
     try {
-      // Get all mapped line items
-      const { data: lineItems, error: fetchError } = await supabase
-        .from('receipt_line_items')
-        .select('*')
-        .eq('receipt_id', receiptId)
-        .in('mapping_status', ['mapped', 'new_item']);
+      // Get all mapped line items and receipt details for vendor info
+      const [lineItemsResult, receiptResult] = await Promise.all([
+        supabase
+          .from('receipt_line_items')
+          .select('*')
+          .eq('receipt_id', receiptId)
+          .in('mapping_status', ['mapped', 'new_item']),
+        supabase
+          .from('receipt_imports')
+          .select('vendor_name')
+          .eq('id', receiptId)
+          .single()
+      ]);
 
-      if (fetchError) {
-        throw fetchError;
+      if (lineItemsResult.error) {
+        throw lineItemsResult.error;
       }
+
+      const lineItems = lineItemsResult.data;
+      const vendorName = receiptResult.data?.vendor_name || null;
 
       let importedCount = 0;
 
@@ -537,7 +547,8 @@ export const useReceiptImport = () => {
               current_stock: item.parsed_quantity || 0,
               cost_per_unit: unitPrice,
               uom_purchase: item.parsed_unit || 'unit',
-              receipt_item_names: [receiptItemName]
+              receipt_item_names: [receiptItemName],
+              supplier_name: vendorName
             })
             .select()
             .single();

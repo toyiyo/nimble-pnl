@@ -347,7 +347,10 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
                 )}
               >
                 {/* Category Name */}
-                <div className={cn("col-span-4 flex items-center gap-2", `pl-${row.level * 4}`)}>
+                <div 
+                  className="col-span-4 flex items-center gap-2"
+                  style={{ paddingLeft: `${row.level * 16}px` }}
+                >
                   {row.children && row.children.length > 0 && (
                     <button
                       onClick={() => toggleSection(row.id)}

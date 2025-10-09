@@ -222,7 +222,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
       
       const results = fuse.search(receiptDetails.vendor_name);
       
-      if (results.length > 0 && results[0].score && results[0].score < 0.3) {
+      if (results.length > 0 && typeof results[0].score === 'number' && results[0].score < 0.3) {
         // Good match found
         const matchedSupplier = results[0].item;
         setSelectedSupplierId(matchedSupplier.id);

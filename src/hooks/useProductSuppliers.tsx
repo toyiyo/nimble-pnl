@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -26,7 +26,7 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const fetchSuppliers = async () => {
+  const fetchSuppliers = useCallback(async () => {
     if (!productId || !restaurantId) {
       console.log('[useProductSuppliers] Missing productId or restaurantId:', { productId, restaurantId });
       setSuppliers([]);
@@ -95,7 +95,7 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
     } finally {
       setLoading(false);
     }
-  };
+  }, [productId, restaurantId, toast]);
 
   const setPreferredSupplier = async (productSupplierId: string) => {
     if (!restaurantId || !productId) return;
@@ -159,7 +159,7 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
 
   useEffect(() => {
     fetchSuppliers();
-  }, [productId, restaurantId]);
+  }, [fetchSuppliers]);
 
   return {
     suppliers,

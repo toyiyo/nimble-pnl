@@ -40,9 +40,8 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
           *,
           suppliers!supplier_id (
             name,
-            contact_person,
-            email,
-            phone
+            contact_email,
+            contact_phone
           )
         `)
         .eq('product_id', productId)

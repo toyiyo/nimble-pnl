@@ -34,27 +34,46 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // Fetch product suppliers
+      const { data: psData, error: psError } = await supabase
         .from('product_suppliers')
-        .select(`
-          *,
-          suppliers!supplier_id (
-            name,
-            contact_email,
-            contact_phone
-          )
-        `)
+        .select('*')
         .eq('product_id', productId)
         .eq('restaurant_id', restaurantId)
         .order('is_preferred', { ascending: false })
         .order('last_purchase_date', { ascending: false, nullsFirst: false });
 
-      if (error) throw error;
+      if (psError) throw psError;
 
-      const mappedSuppliers = data?.map((ps: any) => ({
-        ...ps,
-        supplier_name: ps.suppliers?.name || 'Unknown Supplier',
-      })) || [];
+      if (!psData || psData.length === 0) {
+        setSuppliers([]);
+        return;
+      }
+
+      // Get unique supplier IDs
+      const supplierIds = [...new Set(psData.map(ps => ps.supplier_id))];
+
+      // Fetch supplier details
+      const { data: suppliersData, error: suppliersError } = await supabase
+        .from('suppliers')
+        .select('id, name, contact_email, contact_phone')
+        .in('id', supplierIds);
+
+      if (suppliersError) throw suppliersError;
+
+      // Map suppliers by ID for easy lookup
+      const suppliersMap = new Map(
+        (suppliersData || []).map(s => [s.id, s])
+      );
+
+      // Merge product suppliers with supplier details
+      const mappedSuppliers = psData.map((ps: any) => {
+        const supplier = suppliersMap.get(ps.supplier_id);
+        return {
+          ...ps,
+          supplier_name: supplier?.name || 'Unknown Supplier',
+        };
+      });
 
       setSuppliers(mappedSuppliers);
     } catch (error) {

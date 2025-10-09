@@ -138,11 +138,22 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
   };
 
   const removeSupplier = async (productSupplierId: string) => {
+    if (!restaurantId || !productId) {
+      toast({
+        title: 'Error',
+        description: 'Missing restaurant or product information',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('product_suppliers')
         .delete()
-        .eq('id', productSupplierId);
+        .eq('id', productSupplierId)
+        .eq('restaurant_id', restaurantId)
+        .eq('product_id', productId);
 
       if (error) throw error;
 

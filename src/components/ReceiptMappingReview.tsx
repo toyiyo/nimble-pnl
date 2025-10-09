@@ -5,14 +5,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { SearchableProductSelector } from '@/components/SearchableProductSelector';
+import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useReceiptImport, ReceiptLineItem, ReceiptImport } from '@/hooks/useReceiptImport';
 import { useProducts } from '@/hooks/useProducts';
+import { useSuppliers } from '@/hooks/useSuppliers';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download } from 'lucide-react';
+import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { getUnitOptions } from '@/lib/validUnits';
+import Fuse from 'fuse.js';
 
 interface ReceiptMappingReviewProps {
   receiptId: string;
@@ -32,9 +35,12 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [imageError, setImageError] = useState(false);
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
+  const [isNewSupplier, setIsNewSupplier] = useState(false);
   const { selectedRestaurant } = useRestaurantContext();
   const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
   const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const { suppliers, createSupplier } = useSuppliers();
   const { toast } = useToast();
 
   // Detect file type based on extension
@@ -141,6 +147,91 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const handleUnitChange = (itemId: string, unit: string) => {
     handleItemUpdate(itemId, { parsed_unit: unit });
   };
+
+  const handleSupplierChange = async (supplierIdOrName: string, isNew: boolean) => {
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      let supplierId: string;
+      let supplierName: string;
+
+      if (isNew) {
+        // Create new supplier
+        const newSupplier = await createSupplier({
+          name: supplierIdOrName,
+          is_active: true
+        });
+        
+        if (!newSupplier) {
+          throw new Error('Failed to create supplier');
+        }
+        
+        supplierId = newSupplier.id;
+        supplierName = newSupplier.name;
+        setIsNewSupplier(true);
+        
+        toast({
+          title: "New Supplier Created",
+          description: `"${supplierName}" has been added to your suppliers`,
+        });
+      } else {
+        // Use existing supplier
+        const supplier = suppliers.find(s => s.id === supplierIdOrName);
+        if (!supplier) throw new Error('Supplier not found');
+        
+        supplierId = supplier.id;
+        supplierName = supplier.name;
+        setIsNewSupplier(false);
+      }
+
+      // Update receipt with supplier
+      const { error } = await supabase
+        .from('receipt_imports')
+        .update({ 
+          vendor_name: supplierName,
+          supplier_id: supplierId 
+        })
+        .eq('id', receiptId);
+
+      if (error) throw error;
+
+      setReceiptDetails(prev => prev ? { 
+        ...prev, 
+        vendor_name: supplierName,
+        supplier_id: supplierId 
+      } : null);
+      setSelectedSupplierId(supplierId);
+      
+    } catch (error) {
+      console.error('Error updating supplier:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update supplier",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Match supplier using similarity search on initial load and persist
+  useEffect(() => {
+    if (receiptDetails?.vendor_name && suppliers.length > 0 && !selectedSupplierId) {
+      const fuse = new Fuse(suppliers, {
+        keys: ['name'],
+        threshold: 0.4,
+        includeScore: true,
+      });
+      
+      const results = fuse.search(receiptDetails.vendor_name);
+      
+      if (results.length > 0 && typeof results[0].score === 'number' && results[0].score < 0.3) {
+        // Good match found - persist it immediately
+        const matchedSupplier = results[0].item;
+        handleSupplierChange(matchedSupplier.id, false);
+      } else {
+        // No good match - persist as new supplier
+        handleSupplierChange(receiptDetails.vendor_name, true);
+      }
+    }
+  }, [receiptDetails?.vendor_name, suppliers, selectedSupplierId]);
 
   const handleBulkImport = async () => {
     setImporting(true);
@@ -320,6 +411,29 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
           <CardDescription>
             Review the extracted items and map them to your existing inventory or create new items
           </CardDescription>
+          
+          {/* Vendor Information */}
+          {receiptDetails?.vendor_name && (
+            <div className="mt-4 p-3 bg-muted/50 rounded-lg border">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted-foreground">Vendor:</span>
+                </div>
+                <SearchableSupplierSelector
+                  value={selectedSupplierId || undefined}
+                  onValueChange={handleSupplierChange}
+                  suppliers={suppliers}
+                  placeholder="Select or create supplier..."
+                  showNewIndicator={isNewSupplier}
+                />
+                {isNewSupplier && receiptDetails.vendor_name && (
+                  <p className="text-xs text-muted-foreground">
+                    New supplier "{receiptDetails.vendor_name}" will be created when you import
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
           
           {/* Summary stats and filters */}
           <div className="flex flex-col sm:flex-row gap-4 pt-2">

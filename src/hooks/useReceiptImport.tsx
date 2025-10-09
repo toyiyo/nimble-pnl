@@ -437,16 +437,27 @@ export const useReceiptImport = () => {
     }
 
     try {
-      // Get all mapped line items
-      const { data: lineItems, error: fetchError } = await supabase
-        .from('receipt_line_items')
-        .select('*')
-        .eq('receipt_id', receiptId)
-        .in('mapping_status', ['mapped', 'new_item']);
+      // Get all mapped line items and receipt details for vendor info AND supplier_id
+      const [lineItemsResult, receiptResult] = await Promise.all([
+        supabase
+          .from('receipt_line_items')
+          .select('*')
+          .eq('receipt_id', receiptId)
+          .in('mapping_status', ['mapped', 'new_item']),
+        supabase
+          .from('receipt_imports')
+          .select('vendor_name, supplier_id')
+          .eq('id', receiptId)
+          .single()
+      ]);
 
-      if (fetchError) {
-        throw fetchError;
+      if (lineItemsResult.error) {
+        throw lineItemsResult.error;
       }
+
+      const lineItems = lineItemsResult.data;
+      const vendorName = receiptResult.data?.vendor_name || null;
+      const supplierId = receiptResult.data?.supplier_id || null;
 
       let importedCount = 0;
 
@@ -506,7 +517,7 @@ export const useReceiptImport = () => {
             continue;
           }
 
-          // Log inventory transaction
+          // Log inventory transaction WITH supplier tracking
           await supabase.from('inventory_transactions').insert({
             restaurant_id: selectedRestaurant.restaurant_id,
             product_id: item.matched_product_id,
@@ -514,9 +525,26 @@ export const useReceiptImport = () => {
             unit_cost: unitPrice,
             total_cost: item.parsed_price || 0,
             transaction_type: 'purchase',
-            reason: `Receipt import from ${receiptId}`,
-            reference_id: `receipt_${receiptId}_${item.id}`
+            reason: `Receipt import from ${receiptId}${vendorName ? ` - ${vendorName}` : ''}`,
+            reference_id: `receipt_${receiptId}_${item.id}`,
+            supplier_id: supplierId  // Track which supplier this purchase came from
           });
+
+          // Create or update product-supplier relationship
+          if (supplierId) {
+            const { error: supplierError } = await supabase.rpc('upsert_product_supplier', {
+              p_restaurant_id: selectedRestaurant.restaurant_id,
+              p_product_id: item.matched_product_id,
+              p_supplier_id: supplierId,
+              p_unit_cost: unitPrice,
+              p_quantity: item.parsed_quantity || 0
+            });
+
+            if (supplierError) {
+              console.error('Error updating product-supplier relationship:', supplierError);
+              // Don't throw - this is supplemental data
+            }
+          }
 
           importedCount++;
         } else if (item.mapping_status === 'new_item') {
@@ -537,7 +565,9 @@ export const useReceiptImport = () => {
               current_stock: item.parsed_quantity || 0,
               cost_per_unit: unitPrice,
               uom_purchase: item.parsed_unit || 'unit',
-              receipt_item_names: [receiptItemName]
+              receipt_item_names: [receiptItemName],
+              supplier_id: supplierId,  // Set initial supplier
+              supplier_name: vendorName  // Keep for backwards compatibility
             })
             .select()
             .single();
@@ -547,7 +577,7 @@ export const useReceiptImport = () => {
             continue;
           }
 
-          // Log inventory transaction for new product
+          // Log inventory transaction for new product WITH supplier tracking
           await supabase.from('inventory_transactions').insert({
             restaurant_id: selectedRestaurant.restaurant_id,
             product_id: newProduct.id,
@@ -555,9 +585,32 @@ export const useReceiptImport = () => {
             unit_cost: unitPrice,
             total_cost: item.parsed_price || 0,
             transaction_type: 'purchase',
-            reason: `Receipt import (new item) from ${receiptId}`,
-            reference_id: `receipt_${receiptId}_${item.id}`
+            reason: `Receipt import (new item) from ${receiptId}${vendorName ? ` - ${vendorName}` : ''}`,
+            reference_id: `receipt_${receiptId}_${item.id}`,
+            supplier_id: supplierId  // Track which supplier this purchase came from
           });
+
+          // Create product-supplier relationship for new product
+          if (supplierId) {
+            const { error: supplierError } = await supabase
+              .from('product_suppliers')
+              .insert({
+                restaurant_id: selectedRestaurant.restaurant_id,
+                product_id: newProduct.id,
+                supplier_id: supplierId,
+                last_unit_cost: unitPrice,
+                last_purchase_date: new Date().toISOString(),
+                last_purchase_quantity: item.parsed_quantity || 0,
+                average_unit_cost: unitPrice,
+                purchase_count: 1,
+                is_preferred: true  // First supplier is default preferred
+              });
+
+            if (supplierError) {
+              console.error('Error creating product-supplier relationship:', supplierError);
+              // Don't throw - this is supplemental data
+            }
+          }
 
           // Update line item with new product ID
           await supabase

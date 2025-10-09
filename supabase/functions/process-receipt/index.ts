@@ -71,24 +71,38 @@ RESPONSE FORMAT (JSON ONLY):
 
 CRITICAL: Assign confidence scores based on actual text clarity, not wishful thinking.`;
 
-// Model configurations in order of preference
+// Model configurations (free models first, then paid fallbacks)
 const MODELS = [
+  // Free models
   {
-    name: "DeepSeek V3.1",
-    id: "deepseek/deepseek-chat-v3.1:free",
-    systemPrompt: "You are DeepSeek V3.1 (free), a large language model from deepseek.\n\nFormatting Rules:\n- Use Markdown **only when semantically appropriate**. Examples: `inline code`, ```code fences```, tables, and lists.\n- In assistant responses, format file names, directory paths, function names, and class names with backticks (`).\n- For math: use \\( and \\) for inline expressions, and \\[ and \\] for display (block) math.",
-    maxRetries: 3
+    name: "Llama 4 Maverick Free",
+    id: "meta-llama/llama-4-maverick:free",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
+    maxRetries: 2
   },
   {
-    name: "Mistral Small",
-    id: "mistralai/mistral-small-3.2-24b-instruct:free",
-    systemPrompt: "You are an expert receipt parser for restaurant inventory management.",
+    name: "Gemma 3 27B Free",
+    id: "google/gemma-3-27b-it:free",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
+    maxRetries: 2
+  },
+  // Paid models (fallback)
+  {
+    name: "Gemini 2.5 Flash Lite",
+    id: "google/gemini-2.5-flash-lite",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 1
   },
   {
-    name: "Grok 4 Fast",
-    id: "x-ai/grok-4-fast:free",
-    systemPrompt: "You are Grok, an AI assistant specializing in receipt analysis and data extraction.",
+    name: "GPT-4.1 Nano",
+    id: "openai/gpt-4.1-nano",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
+    maxRetries: 1
+  },
+  {
+    name: "Llama 4 Maverick Paid",
+    id: "meta-llama/llama-4-maverick",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 1
   }
 ];

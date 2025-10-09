@@ -35,23 +35,37 @@ CRITICAL RULES:
 - Use proper JSON formatting
 `;
 
-// Model configurations
+// Model configurations (free models first, then paid fallbacks)
 const MODELS = [
+  // Free models
   {
-    name: "DeepSeek V3.1",
-    id: "deepseek/deepseek-chat-v3.1:free",
+    name: "Llama 4 Maverick Free",
+    id: "meta-llama/llama-4-maverick:free",
     systemPrompt: "You are an expert product data analyst. Return only valid JSON.",
-    maxRetries: 3
+    maxRetries: 2
   },
   {
-    name: "Mistral Small",
-    id: "mistralai/mistral-small-3.2-24b-instruct:free",
+    name: "Gemma 3 27B Free",
+    id: "google/gemma-3-27b-it:free",
+    systemPrompt: "You are an expert product data analyst. Return only valid JSON.",
+    maxRetries: 2
+  },
+  // Paid models (fallback)
+  {
+    name: "Gemini 2.5 Flash Lite",
+    id: "google/gemini-2.5-flash-lite",
     systemPrompt: "You are an expert product data analyst. Return only valid JSON.",
     maxRetries: 1
   },
   {
-    name: "Grok 4 Fast",
-    id: "x-ai/grok-4-fast:free",
+    name: "GPT-4.1 Nano",
+    id: "openai/gpt-4.1-nano",
+    systemPrompt: "You are an expert product data analyst. Return only valid JSON.",
+    maxRetries: 1
+  },
+  {
+    name: "Llama 4 Maverick Paid",
+    id: "meta-llama/llama-4-maverick",
     systemPrompt: "You are an expert product data analyst. Return only valid JSON.",
     maxRetries: 1
   }

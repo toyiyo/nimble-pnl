@@ -260,7 +260,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
           row.percentage.toFixed(1) + '%',
           row.previousValue != null ? row.previousValue.toFixed(2) : '',
           row.previousPercentage != null ? row.previousPercentage.toFixed(1) + '%' : '',
-          row.previousValue != null ? ((row.value - row.previousValue) / row.previousValue * 100).toFixed(1) + '%' : '',
+          row.previousValue != null && row.previousValue !== 0 ? ((row.value - row.previousValue) / row.previousValue * 100).toFixed(1) + '%' : '',
           row.benchmark != null ? row.benchmark.toFixed(1) + '%' : '',
           row.status || '',
           row.insight || '',

@@ -289,7 +289,7 @@ export function SupplierPriceAnalysisReport({ restaurantId }: SupplierPriceAnaly
               </TableRow>
             </TableHeader>
             <TableBody>
-              {supplierMetrics
+              {[...supplierMetrics]
                 .sort((a, b) => b.reliability_score - a.reliability_score)
                 .map((supplier) => (
                   <TableRow key={supplier.supplier_id}>

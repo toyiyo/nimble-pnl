@@ -102,19 +102,24 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
 
     try {
       // First, unset all preferred for this product
-      await supabase
+      const { error: clearError } = await supabase
         .from('product_suppliers')
         .update({ is_preferred: false })
         .eq('product_id', productId)
         .eq('restaurant_id', restaurantId);
 
+      if (clearError) {
+        console.error('Error clearing preferred suppliers:', clearError);
+        throw clearError;
+      }
+
       // Then set the new preferred supplier
-      const { error } = await supabase
+      const { error: setError } = await supabase
         .from('product_suppliers')
         .update({ is_preferred: true })
         .eq('id', productSupplierId);
 
-      if (error) throw error;
+      if (setError) throw setError;
 
       toast({
         title: 'Preferred supplier updated',

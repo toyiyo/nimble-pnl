@@ -80,20 +80,20 @@ const MODELS = [
     maxRetries: 2
   },
   {
-    name: "Qwen 2.5 VL 72B",
-    id: "qwen/qwen2.5-vl-72b-instruct:free",
+    name: "Gemma 3 27B",
+    id: "google/gemma-3-27b-it:free",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 2
   },
   {
-    name: "Mistral Small 3.2",
-    id: "mistralai/mistral-small-3.2-24b-instruct:free",
-    systemPrompt: "You are an expert receipt parser for restaurant inventory management.",
+    name: "Gemma 3 12B",
+    id: "google/gemma-3-12b-it:free",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 2
   },
   {
-    name: "Mistral Small 3.1",
-    id: "mistralai/mistral-small-3.1-24b-instruct:free",
+    name: "Gemma 3 4B",
+    id: "google/gemma-3-4b-it:free",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 1
   },
@@ -104,32 +104,32 @@ const MODELS = [
     maxRetries: 1
   },
   {
-    name: "Gemma 3 27B",
-    id: "google/gemma-3-27b-it:free",
-    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
-    maxRetries: 1
-  },
-  {
     name: "Llama 4 Scout",
     id: "meta-llama/llama-4-scout:free",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 1
   },
   {
+    name: "Mistral Small 3.2",
+    id: "mistralai/mistral-small-3.2-24b-instruct:free",
+    systemPrompt: "You are an expert receipt parser for restaurant inventory management.",
+    maxRetries: 1
+  },
+  {
+    name: "Mistral Small 3.1",
+    id: "mistralai/mistral-small-3.1-24b-instruct:free",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
+    maxRetries: 1
+  },
+  {
+    name: "Qwen 2.5 VL 72B",
+    id: "qwen/qwen2.5-vl-72b-instruct:free",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
+    maxRetries: 1
+  },
+  {
     name: "Qwen 2.5 VL 32B",
     id: "qwen/qwen2.5-vl-32b-instruct:free",
-    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
-    maxRetries: 1
-  },
-  {
-    name: "Gemma 3 12B",
-    id: "google/gemma-3-12b-it:free",
-    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
-    maxRetries: 1
-  },
-  {
-    name: "Gemma 3 4B",
-    id: "google/gemma-3-4b-it:free",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 1
   }

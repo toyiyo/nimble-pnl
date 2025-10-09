@@ -156,14 +156,53 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
     try {
       const { supabase } = await import('@/integrations/supabase/client');
+      const vendorName = editedVendorName.trim();
+      
+      // Find or create supplier
+      let supplierId = null;
+      
+      // First, try to find existing supplier with this name
+      const { data: existingSupplier } = await supabase
+        .from('suppliers')
+        .select('id')
+        .eq('restaurant_id', receiptDetails?.restaurant_id)
+        .ilike('name', vendorName)
+        .single();
+      
+      if (existingSupplier) {
+        supplierId = existingSupplier.id;
+      } else {
+        // Create new supplier
+        const { data: newSupplier, error: supplierError } = await supabase
+          .from('suppliers')
+          .insert({
+            restaurant_id: receiptDetails?.restaurant_id,
+            name: vendorName,
+            is_active: true
+          })
+          .select('id')
+          .single();
+        
+        if (supplierError) throw supplierError;
+        supplierId = newSupplier.id;
+      }
+
+      // Update receipt with both vendor_name and supplier_id
       const { error } = await supabase
         .from('receipt_imports')
-        .update({ vendor_name: editedVendorName.trim() })
+        .update({ 
+          vendor_name: vendorName,
+          supplier_id: supplierId 
+        })
         .eq('id', receiptId);
 
       if (error) throw error;
 
-      setReceiptDetails(prev => prev ? { ...prev, vendor_name: editedVendorName.trim() } : null);
+      setReceiptDetails(prev => prev ? { 
+        ...prev, 
+        vendor_name: vendorName,
+        supplier_id: supplierId 
+      } : null);
       setIsEditingVendor(false);
       
       toast({

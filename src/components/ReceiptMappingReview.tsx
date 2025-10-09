@@ -413,7 +413,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 </div>
                 {!isEditingVendor && (
                   <Badge variant="secondary" className="text-xs">
-                    Will be applied to all new items
+                    Will be tracked for all items
                   </Badge>
                 )}
               </div>

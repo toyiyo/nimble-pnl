@@ -360,6 +360,7 @@ export type Database = {
           reason: string | null
           reference_id: string | null
           restaurant_id: string
+          supplier_id: string | null
           total_cost: number | null
           transaction_type: string
           unit_cost: number | null
@@ -376,6 +377,7 @@ export type Database = {
           reason?: string | null
           reference_id?: string | null
           restaurant_id: string
+          supplier_id?: string | null
           total_cost?: number | null
           transaction_type: string
           unit_cost?: number | null
@@ -392,6 +394,7 @@ export type Database = {
           reason?: string | null
           reference_id?: string | null
           restaurant_id?: string
+          supplier_id?: string | null
           total_cost?: number | null
           transaction_type?: string
           unit_cost?: number | null
@@ -402,6 +405,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transactions_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -524,6 +534,88 @@ export type Database = {
           restaurant_id?: string
         }
         Relationships: []
+      }
+      product_suppliers: {
+        Row: {
+          average_unit_cost: number | null
+          created_at: string | null
+          id: string
+          is_preferred: boolean | null
+          last_purchase_date: string | null
+          last_purchase_quantity: number | null
+          last_unit_cost: number | null
+          lead_time_days: number | null
+          minimum_order_quantity: number | null
+          notes: string | null
+          product_id: string
+          purchase_count: number | null
+          restaurant_id: string
+          supplier_id: string
+          supplier_product_name: string | null
+          supplier_sku: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          average_unit_cost?: number | null
+          created_at?: string | null
+          id?: string
+          is_preferred?: boolean | null
+          last_purchase_date?: string | null
+          last_purchase_quantity?: number | null
+          last_unit_cost?: number | null
+          lead_time_days?: number | null
+          minimum_order_quantity?: number | null
+          notes?: string | null
+          product_id: string
+          purchase_count?: number | null
+          restaurant_id: string
+          supplier_id: string
+          supplier_product_name?: string | null
+          supplier_sku?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          average_unit_cost?: number | null
+          created_at?: string | null
+          id?: string
+          is_preferred?: boolean | null
+          last_purchase_date?: string | null
+          last_purchase_quantity?: number | null
+          last_unit_cost?: number | null
+          lead_time_days?: number | null
+          minimum_order_quantity?: number | null
+          notes?: string | null
+          product_id?: string
+          purchase_count?: number | null
+          restaurant_id?: string
+          supplier_id?: string
+          supplier_product_name?: string | null
+          supplier_sku?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_suppliers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_suppliers_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_suppliers_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       products: {
         Row: {
@@ -2152,6 +2244,16 @@ export type Database = {
       unaccent_init: {
         Args: { "": unknown }
         Returns: unknown
+      }
+      upsert_product_supplier: {
+        Args: {
+          p_product_id: string
+          p_quantity: number
+          p_restaurant_id: string
+          p_supplier_id: string
+          p_unit_cost: number
+        }
+        Returns: undefined
       }
     }
     Enums: {

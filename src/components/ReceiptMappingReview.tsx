@@ -32,6 +32,8 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [imageError, setImageError] = useState(false);
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
+  const [isEditingVendor, setIsEditingVendor] = useState(false);
+  const [editedVendorName, setEditedVendorName] = useState<string>('');
   const { selectedRestaurant } = useRestaurantContext();
   const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
   const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
@@ -140,6 +142,42 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   const handleUnitChange = (itemId: string, unit: string) => {
     handleItemUpdate(itemId, { parsed_unit: unit });
+  };
+
+  const handleVendorUpdate = async () => {
+    if (!editedVendorName.trim()) {
+      toast({
+        title: "Error",
+        description: "Vendor name cannot be empty",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { error } = await supabase
+        .from('receipt_imports')
+        .update({ vendor_name: editedVendorName.trim() })
+        .eq('id', receiptId);
+
+      if (error) throw error;
+
+      setReceiptDetails(prev => prev ? { ...prev, vendor_name: editedVendorName.trim() } : null);
+      setIsEditingVendor(false);
+      
+      toast({
+        title: "Success",
+        description: "Vendor name updated successfully",
+      });
+    } catch (error) {
+      console.error('Error updating vendor name:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update vendor name",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleBulkImport = async () => {
@@ -325,13 +363,59 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
           {receiptDetails?.vendor_name && (
             <div className="mt-4 p-3 bg-muted/50 rounded-lg border">
               <div className="flex items-center justify-between">
-                <div>
+                <div className="flex items-center gap-2 flex-1">
                   <span className="text-sm font-medium text-muted-foreground">Vendor:</span>
-                  <span className="ml-2 text-sm font-semibold">{receiptDetails.vendor_name}</span>
+                  {isEditingVendor ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <Input
+                        value={editedVendorName}
+                        onChange={(e) => setEditedVendorName(e.target.value)}
+                        className="h-8 max-w-xs"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleVendorUpdate();
+                          if (e.key === 'Escape') {
+                            setIsEditingVendor(false);
+                            setEditedVendorName(receiptDetails.vendor_name || '');
+                          }
+                        }}
+                      />
+                      <Button size="sm" variant="ghost" onClick={handleVendorUpdate}>
+                        Save
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => {
+                          setIsEditingVendor(false);
+                          setEditedVendorName(receiptDetails.vendor_name || '');
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="text-sm font-semibold">{receiptDetails.vendor_name}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => {
+                          setEditedVendorName(receiptDetails.vendor_name || '');
+                          setIsEditingVendor(true);
+                        }}
+                      >
+                        <Package className="h-3 w-3" />
+                      </Button>
+                    </>
+                  )}
                 </div>
-                <Badge variant="secondary" className="text-xs">
-                  Will be applied to all new items
-                </Badge>
+                {!isEditingVendor && (
+                  <Badge variant="secondary" className="text-xs">
+                    Will be applied to all new items
+                  </Badge>
+                )}
               </div>
             </div>
           )}

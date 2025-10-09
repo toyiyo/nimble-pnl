@@ -5,14 +5,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { SearchableProductSelector } from '@/components/SearchableProductSelector';
+import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useReceiptImport, ReceiptLineItem, ReceiptImport } from '@/hooks/useReceiptImport';
 import { useProducts } from '@/hooks/useProducts';
+import { useSuppliers } from '@/hooks/useSuppliers';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { getUnitOptions } from '@/lib/validUnits';
+import Fuse from 'fuse.js';
 
 interface ReceiptMappingReviewProps {
   receiptId: string;
@@ -32,11 +35,12 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [imageError, setImageError] = useState(false);
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
-  const [isEditingVendor, setIsEditingVendor] = useState(false);
-  const [editedVendorName, setEditedVendorName] = useState<string>('');
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
+  const [isNewSupplier, setIsNewSupplier] = useState(false);
   const { selectedRestaurant } = useRestaurantContext();
   const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
   const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const { suppliers, createSupplier } = useSuppliers();
   const { toast } = useToast();
 
   // Detect file type based on extension
@@ -144,54 +148,46 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     handleItemUpdate(itemId, { parsed_unit: unit });
   };
 
-  const handleVendorUpdate = async () => {
-    if (!editedVendorName.trim()) {
-      toast({
-        title: "Error",
-        description: "Vendor name cannot be empty",
-        variant: "destructive",
-      });
-      return;
-    }
-
+  const handleSupplierChange = async (supplierIdOrName: string, isNew: boolean) => {
     try {
       const { supabase } = await import('@/integrations/supabase/client');
-      const vendorName = editedVendorName.trim();
-      
-      // Find or create supplier
-      let supplierId = null;
-      
-      // First, try to find existing supplier with this name
-      const { data: existingSupplier } = await supabase
-        .from('suppliers')
-        .select('id')
-        .eq('restaurant_id', receiptDetails?.restaurant_id)
-        .ilike('name', vendorName)
-        .single();
-      
-      if (existingSupplier) {
-        supplierId = existingSupplier.id;
-      } else {
+      let supplierId: string;
+      let supplierName: string;
+
+      if (isNew) {
         // Create new supplier
-        const { data: newSupplier, error: supplierError } = await supabase
-          .from('suppliers')
-          .insert({
-            restaurant_id: receiptDetails?.restaurant_id,
-            name: vendorName,
-            is_active: true
-          })
-          .select('id')
-          .single();
+        const newSupplier = await createSupplier({
+          name: supplierIdOrName,
+          is_active: true
+        });
         
-        if (supplierError) throw supplierError;
+        if (!newSupplier) {
+          throw new Error('Failed to create supplier');
+        }
+        
         supplierId = newSupplier.id;
+        supplierName = newSupplier.name;
+        setIsNewSupplier(true);
+        
+        toast({
+          title: "New Supplier Created",
+          description: `"${supplierName}" has been added to your suppliers`,
+        });
+      } else {
+        // Use existing supplier
+        const supplier = suppliers.find(s => s.id === supplierIdOrName);
+        if (!supplier) throw new Error('Supplier not found');
+        
+        supplierId = supplier.id;
+        supplierName = supplier.name;
+        setIsNewSupplier(false);
       }
 
-      // Update receipt with both vendor_name and supplier_id
+      // Update receipt with supplier
       const { error } = await supabase
         .from('receipt_imports')
         .update({ 
-          vendor_name: vendorName,
+          vendor_name: supplierName,
           supplier_id: supplierId 
         })
         .eq('id', receiptId);
@@ -200,24 +196,44 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
       setReceiptDetails(prev => prev ? { 
         ...prev, 
-        vendor_name: vendorName,
+        vendor_name: supplierName,
         supplier_id: supplierId 
       } : null);
-      setIsEditingVendor(false);
+      setSelectedSupplierId(supplierId);
       
-      toast({
-        title: "Success",
-        description: "Vendor name updated successfully",
-      });
     } catch (error) {
-      console.error('Error updating vendor name:', error);
+      console.error('Error updating supplier:', error);
       toast({
         title: "Error",
-        description: "Failed to update vendor name",
+        description: "Failed to update supplier",
         variant: "destructive",
       });
     }
   };
+
+  // Match supplier using similarity search on initial load
+  useEffect(() => {
+    if (receiptDetails?.vendor_name && suppliers.length > 0 && !selectedSupplierId) {
+      const fuse = new Fuse(suppliers, {
+        keys: ['name'],
+        threshold: 0.4,
+        includeScore: true,
+      });
+      
+      const results = fuse.search(receiptDetails.vendor_name);
+      
+      if (results.length > 0 && results[0].score && results[0].score < 0.3) {
+        // Good match found
+        const matchedSupplier = results[0].item;
+        setSelectedSupplierId(matchedSupplier.id);
+        setIsNewSupplier(false);
+      } else {
+        // No good match, mark as new
+        setSelectedSupplierId('new_supplier');
+        setIsNewSupplier(true);
+      }
+    }
+  }, [receiptDetails?.vendor_name, suppliers, selectedSupplierId]);
 
   const handleBulkImport = async () => {
     setImporting(true);
@@ -401,59 +417,21 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
           {/* Vendor Information */}
           {receiptDetails?.vendor_name && (
             <div className="mt-4 p-3 bg-muted/50 rounded-lg border">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 flex-1">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-muted-foreground">Vendor:</span>
-                  {isEditingVendor ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <Input
-                        value={editedVendorName}
-                        onChange={(e) => setEditedVendorName(e.target.value)}
-                        className="h-8 max-w-xs"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleVendorUpdate();
-                          if (e.key === 'Escape') {
-                            setIsEditingVendor(false);
-                            setEditedVendorName(receiptDetails.vendor_name || '');
-                          }
-                        }}
-                      />
-                      <Button size="sm" variant="ghost" onClick={handleVendorUpdate}>
-                        Save
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        onClick={() => {
-                          setIsEditingVendor(false);
-                          setEditedVendorName(receiptDetails.vendor_name || '');
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="text-sm font-semibold">{receiptDetails.vendor_name}</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 w-6 p-0"
-                        onClick={() => {
-                          setEditedVendorName(receiptDetails.vendor_name || '');
-                          setIsEditingVendor(true);
-                        }}
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                    </>
-                  )}
                 </div>
-                {!isEditingVendor && (
-                  <Badge variant="secondary" className="text-xs">
-                    Will be tracked for all items
-                  </Badge>
+                <SearchableSupplierSelector
+                  value={selectedSupplierId || undefined}
+                  onValueChange={handleSupplierChange}
+                  suppliers={suppliers}
+                  placeholder="Select or create supplier..."
+                  showNewIndicator={isNewSupplier}
+                />
+                {isNewSupplier && receiptDetails.vendor_name && (
+                  <p className="text-xs text-muted-foreground">
+                    New supplier "{receiptDetails.vendor_name}" will be created when you import
+                  </p>
                 )}
               </div>
             </div>

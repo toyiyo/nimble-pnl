@@ -11,6 +11,7 @@ import { ConsumptionIntelligenceReport } from '@/components/ConsumptionIntellige
 import { AlertsIntelligenceReport } from '@/components/AlertsIntelligenceReport';
 import { ReconciliationVarianceReport } from '@/components/ReconciliationVarianceReport';
 import { PnLIntelligenceReport } from '@/components/PnLIntelligenceReport';
+import { DetailedPnLBreakdown } from '@/components/DetailedPnLBreakdown';
 import { PnLTrendChart } from '@/components/PnLTrendChart';
 import { CostBreakdownChart } from '@/components/CostBreakdownChart';
 import { SupplierPriceAnalysisReport } from '@/components/SupplierPriceAnalysisReport';
@@ -44,10 +45,14 @@ export default function Reports() {
 
   return (
     <Tabs defaultValue="pnl-trends" className="space-y-4 md:space-y-6">
-      <TabsList className="grid w-full grid-cols-3 md:grid-cols-6 h-auto md:h-10">
+      <TabsList className="grid w-full grid-cols-3 md:grid-cols-7 h-auto md:h-10">
         <TabsTrigger value="pnl-trends" className="text-xs md:text-sm">
           <span className="hidden sm:inline">P&L Trends</span>
           <span className="sm:hidden">P&L</span>
+        </TabsTrigger>
+        <TabsTrigger value="pnl-breakdown" className="text-xs md:text-sm">
+          <span className="hidden sm:inline">P&L Detail</span>
+          <span className="sm:hidden">Detail</span>
         </TabsTrigger>
         <TabsTrigger value="profitability" className="text-xs md:text-sm">
           <span className="hidden sm:inline">Recipes</span>
@@ -64,6 +69,10 @@ export default function Reports() {
 
       <TabsContent value="pnl-trends" className="space-y-6">
         <PnLIntelligenceReport restaurantId={selectedRestaurant.restaurant_id} />
+      </TabsContent>
+
+      <TabsContent value="pnl-breakdown" className="space-y-6">
+        <DetailedPnLBreakdown restaurantId={selectedRestaurant.restaurant_id} days={30} />
       </TabsContent>
 
       <TabsContent value="profitability" className="space-y-6">

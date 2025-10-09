@@ -101,25 +101,14 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
     if (!restaurantId || !productId) return;
 
     try {
-      // First, unset all preferred for this product
-      const { error: clearError } = await supabase
-        .from('product_suppliers')
-        .update({ is_preferred: false })
-        .eq('product_id', productId)
-        .eq('restaurant_id', restaurantId);
+      // Use atomic database function to prevent race conditions
+      const { error } = await supabase.rpc('set_preferred_product_supplier', {
+        p_product_supplier_id: productSupplierId,
+        p_product_id: productId,
+        p_restaurant_id: restaurantId,
+      });
 
-      if (clearError) {
-        console.error('Error clearing preferred suppliers:', clearError);
-        throw clearError;
-      }
-
-      // Then set the new preferred supplier
-      const { error: setError } = await supabase
-        .from('product_suppliers')
-        .update({ is_preferred: true })
-        .eq('id', productSupplierId);
-
-      if (setError) throw setError;
+      if (error) throw error;
 
       toast({
         title: 'Preferred supplier updated',

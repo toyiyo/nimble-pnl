@@ -2205,6 +2205,14 @@ export type Database = {
         Args: { "": number }
         Returns: number
       }
+      set_preferred_product_supplier: {
+        Args: {
+          p_product_id: string
+          p_product_supplier_id: string
+          p_restaurant_id: string
+        }
+        Returns: undefined
+      }
       show_limit: {
         Args: Record<PropertyKey, never>
         Returns: number

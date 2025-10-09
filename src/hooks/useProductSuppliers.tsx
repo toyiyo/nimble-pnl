@@ -28,10 +28,12 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
 
   const fetchSuppliers = async () => {
     if (!productId || !restaurantId) {
+      console.log('[useProductSuppliers] Missing productId or restaurantId:', { productId, restaurantId });
       setSuppliers([]);
       return;
     }
 
+    console.log('[useProductSuppliers] Fetching suppliers for:', { productId, restaurantId });
     setLoading(true);
     try {
       // Fetch product suppliers
@@ -43,21 +45,27 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
         .order('is_preferred', { ascending: false })
         .order('last_purchase_date', { ascending: false, nullsFirst: false });
 
+      console.log('[useProductSuppliers] Product suppliers data:', { psData, psError });
+
       if (psError) throw psError;
 
       if (!psData || psData.length === 0) {
+        console.log('[useProductSuppliers] No product suppliers found');
         setSuppliers([]);
         return;
       }
 
       // Get unique supplier IDs
       const supplierIds = [...new Set(psData.map(ps => ps.supplier_id))];
+      console.log('[useProductSuppliers] Supplier IDs:', supplierIds);
 
       // Fetch supplier details
       const { data: suppliersData, error: suppliersError } = await supabase
         .from('suppliers')
         .select('id, name, contact_email, contact_phone')
         .in('id', supplierIds);
+
+      console.log('[useProductSuppliers] Suppliers data:', { suppliersData, suppliersError });
 
       if (suppliersError) throw suppliersError;
 
@@ -75,6 +83,7 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
         };
       });
 
+      console.log('[useProductSuppliers] Final mapped suppliers:', mappedSuppliers);
       setSuppliers(mappedSuppliers);
     } catch (error) {
       console.error('Error fetching product suppliers:', error);

@@ -112,9 +112,10 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const { toast } = useToast();
   const { restaurants } = useRestaurants();
   const currentRestaurant = restaurants[0];
-  const { recipes } = useProductRecipes(product.id, currentRestaurant?.id || null);
+  const restaurantId = currentRestaurant?.restaurant_id || currentRestaurant?.restaurant?.id || null;
+  const { recipes } = useProductRecipes(product.id, restaurantId);
   const { suppliers: allSuppliers } = useSuppliers();
-  const { suppliers: productSuppliers, loading: suppliersLoading, setPreferredSupplier, removeSupplier, fetchSuppliers } = useProductSuppliers(product.id, currentRestaurant?.id || null);
+  const { suppliers: productSuppliers, loading: suppliersLoading, setPreferredSupplier, removeSupplier, fetchSuppliers } = useProductSuppliers(product.id, restaurantId);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhancedData, setEnhancedData] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
@@ -805,13 +806,13 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                           type="button"
                           size="sm"
                           onClick={async () => {
-                            if (!newSupplier.supplier_id || !currentRestaurant?.id) return;
+                            if (!newSupplier.supplier_id || !restaurantId) return;
                             
                             try {
                               const { error } = await supabase
                                 .from('product_suppliers')
                                 .insert({
-                                  restaurant_id: currentRestaurant.id,
+                                  restaurant_id: restaurantId,
                                   product_id: product.id,
                                   supplier_id: newSupplier.supplier_id,
                                   last_unit_cost: newSupplier.cost,

@@ -254,17 +254,17 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
       ['Generated:', format(new Date(), 'MMM dd, yyyy')],
       [],
       ['Category', 'Amount', '% of Sales', 'Previous Amount', 'Previous %', 'Change', 'Benchmark', 'Status', 'Insight'],
-      ...pnlStructure.map(row => [
-        row.label,
-        row.value.toFixed(2),
-        row.percentage.toFixed(1) + '%',
-        row.previousValue?.toFixed(2) || '',
-        row.previousPercentage?.toFixed(1) + '%' || '',
-        row.previousValue ? ((row.value - row.previousValue) / row.previousValue * 100).toFixed(1) + '%' : '',
-        row.benchmark ? row.benchmark.toFixed(1) + '%' : '',
-        row.status || '',
-        row.insight || '',
-      ]),
+        ...pnlStructure.map(row => [
+          row.label,
+          row.value.toFixed(2),
+          row.percentage.toFixed(1) + '%',
+          row.previousValue != null ? row.previousValue.toFixed(2) : '',
+          row.previousPercentage != null ? row.previousPercentage.toFixed(1) + '%' : '',
+          row.previousValue != null ? ((row.value - row.previousValue) / row.previousValue * 100).toFixed(1) + '%' : '',
+          row.benchmark != null ? row.benchmark.toFixed(1) + '%' : '',
+          row.status || '',
+          row.insight || '',
+        ]),
     ];
 
     const csv = rows.map(row => row.join(',')).join('\n');

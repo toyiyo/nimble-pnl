@@ -38,7 +38,7 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
         .from('product_suppliers')
         .select(`
           *,
-          suppliers (
+          suppliers!supplier_id (
             name,
             contact_person,
             email,
@@ -46,6 +46,7 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
           )
         `)
         .eq('product_id', productId)
+        .eq('restaurant_id', restaurantId)
         .order('is_preferred', { ascending: false })
         .order('last_purchase_date', { ascending: false, nullsFirst: false });
 

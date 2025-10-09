@@ -211,7 +211,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     }
   };
 
-  // Match supplier using similarity search on initial load
+  // Match supplier using similarity search on initial load and persist
   useEffect(() => {
     if (receiptDetails?.vendor_name && suppliers.length > 0 && !selectedSupplierId) {
       const fuse = new Fuse(suppliers, {
@@ -223,14 +223,12 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
       const results = fuse.search(receiptDetails.vendor_name);
       
       if (results.length > 0 && typeof results[0].score === 'number' && results[0].score < 0.3) {
-        // Good match found
+        // Good match found - persist it immediately
         const matchedSupplier = results[0].item;
-        setSelectedSupplierId(matchedSupplier.id);
-        setIsNewSupplier(false);
+        handleSupplierChange(matchedSupplier.id, false);
       } else {
-        // No good match, mark as new
-        setSelectedSupplierId('new_supplier');
-        setIsNewSupplier(true);
+        // No good match - persist as new supplier
+        handleSupplierChange(receiptDetails.vendor_name, true);
       }
     }
   }, [receiptDetails?.vendor_name, suppliers, selectedSupplierId]);

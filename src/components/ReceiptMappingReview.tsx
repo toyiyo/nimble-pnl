@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { useReceiptImport, ReceiptLineItem, ReceiptImport } from '@/hooks/useReceiptImport';
 import { useProducts } from '@/hooks/useProducts';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download } from 'lucide-react';
+import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { getUnitOptions } from '@/lib/validUnits';
 
@@ -406,7 +406,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                           setIsEditingVendor(true);
                         }}
                       >
-                        <Package className="h-3 w-3" />
+                        <Pencil className="h-3 w-3" />
                       </Button>
                     </>
                   )}

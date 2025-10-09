@@ -42,23 +42,65 @@ Please respond with a JSON object containing:
 
 Only suggest ingredients that are actually in the available ingredients list. Use realistic quantities and appropriate measurement units for cooking. If you cannot create a reasonable recipe with the available ingredients, set confidence to 0 and explain why in the reasoning.`;
 
-// Model configurations
+// Model configurations (all free on OpenRouter)
 const MODELS = [
   {
-    name: "DeepSeek V3.1",
-    id: "deepseek/deepseek-chat-v3.1:free",
-    systemPrompt: "You are a professional chef and recipe consultant using DeepSeek V3.1. Always respond with valid JSON only.",
-    maxRetries: 3
+    name: "Gemini 2.0 Flash",
+    id: "google/gemini-2.0-flash-exp:free",
+    systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
+    maxRetries: 2
   },
   {
-    name: "Mistral Small",
+    name: "Qwen 2.5 VL 72B",
+    id: "qwen/qwen2.5-vl-72b-instruct:free",
+    systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
+    maxRetries: 2
+  },
+  {
+    name: "Mistral Small 3.2",
     id: "mistralai/mistral-small-3.2-24b-instruct:free",
+    systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
+    maxRetries: 2
+  },
+  {
+    name: "Mistral Small 3.1",
+    id: "mistralai/mistral-small-3.1-24b-instruct:free",
     systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
     maxRetries: 1
   },
   {
-    name: "Grok 4 Fast",
-    id: "x-ai/grok-4-fast:free",
+    name: "Llama 4 Maverick",
+    id: "meta-llama/llama-4-maverick:free",
+    systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
+    maxRetries: 1
+  },
+  {
+    name: "Gemma 3 27B",
+    id: "google/gemma-3-27b-it:free",
+    systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
+    maxRetries: 1
+  },
+  {
+    name: "Llama 4 Scout",
+    id: "meta-llama/llama-4-scout:free",
+    systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
+    maxRetries: 1
+  },
+  {
+    name: "Qwen 2.5 VL 32B",
+    id: "qwen/qwen2.5-vl-32b-instruct:free",
+    systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
+    maxRetries: 1
+  },
+  {
+    name: "Gemma 3 12B",
+    id: "google/gemma-3-12b-it:free",
+    systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
+    maxRetries: 1
+  },
+  {
+    name: "Gemma 3 4B",
+    id: "google/gemma-3-4b-it:free",
     systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
     maxRetries: 1
   }

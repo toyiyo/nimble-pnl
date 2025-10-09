@@ -38,6 +38,17 @@ import { SizePackagingSection } from '@/components/SizePackagingSection';
 import { RecipeConversionPreview } from '@/components/RecipeConversionPreview';
 import { useProductRecipes } from '@/hooks/useProductRecipes';
 import { useRestaurants } from '@/hooks/useRestaurants';
+import { useProductSuppliers } from '@/hooks/useProductSuppliers';
+import { useSuppliers } from '@/hooks/useSuppliers';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Star, Trash2, Plus } from 'lucide-react';
 
 const updateSchema = z.object({
   quantity_to_add: z.coerce.number().min(0, 'Quantity must be positive').optional(),
@@ -102,11 +113,15 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const { restaurants } = useRestaurants();
   const currentRestaurant = restaurants[0];
   const { recipes } = useProductRecipes(product.id, currentRestaurant?.id || null);
+  const { suppliers: allSuppliers } = useSuppliers();
+  const { suppliers: productSuppliers, loading: suppliersLoading, setPreferredSupplier, removeSupplier, fetchSuppliers } = useProductSuppliers(product.id, currentRestaurant?.id || null);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhancedData, setEnhancedData] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string>('');
   const [adjustmentMode, setAdjustmentMode] = useState<'add' | 'set_exact'>('add');
+  const [showAddSupplier, setShowAddSupplier] = useState(false);
+  const [newSupplier, setNewSupplier] = useState({ supplier_id: '', cost: 0, supplier_sku: '' });
 
   const form = useForm<UpdateFormData>({
     resolver: zodResolver(updateSchema),
@@ -730,64 +745,195 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
             {/* Cost & Supplier */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Cost & Supplier</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Cost & Supplier</CardTitle>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddSupplier(!showAddSupplier)}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Supplier
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="cost_per_unit"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          Cost per {form.watch('uom_purchase') || 'Purchase Unit'} ($)
-                        </FormLabel>
-                        <FormControl>
+                {showAddSupplier && (
+                  <Card className="bg-muted/50">
+                    <CardContent className="pt-4 space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <Label>Supplier</Label>
+                          <Select
+                            value={newSupplier.supplier_id}
+                            onValueChange={(value) => setNewSupplier({ ...newSupplier, supplier_id: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select supplier" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {allSuppliers.map((supplier) => (
+                                <SelectItem key={supplier.id} value={supplier.id}>
+                                  {supplier.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Cost per Unit ($)</Label>
                           <Input
-                            {...field}
                             type="number"
                             step="0.01"
                             placeholder="0.00"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
+                            value={newSupplier.cost || ''}
+                            onChange={(e) => setNewSupplier({ ...newSupplier, cost: Number(e.target.value) })}
                           />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Supplier SKU</Label>
+                          <Input
+                            placeholder="Supplier's code"
+                            value={newSupplier.supplier_sku}
+                            onChange={(e) => setNewSupplier({ ...newSupplier, supplier_sku: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={async () => {
+                            if (!newSupplier.supplier_id || !currentRestaurant?.id) return;
+                            
+                            try {
+                              const { error } = await supabase
+                                .from('product_suppliers')
+                                .insert({
+                                  restaurant_id: currentRestaurant.id,
+                                  product_id: product.id,
+                                  supplier_id: newSupplier.supplier_id,
+                                  last_unit_cost: newSupplier.cost,
+                                  supplier_sku: newSupplier.supplier_sku,
+                                  is_preferred: productSuppliers.length === 0,
+                                });
 
-                  <FormField
-                    control={form.control}
-                    name="supplier_name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Supplier</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="Supplier name" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                              if (error) throw error;
 
-                <FormField
-                  control={form.control}
-                  name="supplier_sku"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Supplier SKU</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="Supplier's product code" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                              toast({
+                                title: 'Supplier added',
+                                description: 'Successfully added supplier to product',
+                              });
+
+                              setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
+                              setShowAddSupplier(false);
+                              fetchSuppliers();
+                            } catch (error) {
+                              console.error('Error adding supplier:', error);
+                              toast({
+                                title: 'Error',
+                                description: 'Failed to add supplier',
+                                variant: 'destructive',
+                              });
+                            }
+                          }}
+                        >
+                          Save Supplier
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowAddSupplier(false);
+                            setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {productSuppliers.length > 0 ? (
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Supplier</TableHead>
+                          <TableHead className="text-right">Last Price</TableHead>
+                          <TableHead className="text-right">Avg Price</TableHead>
+                          <TableHead className="text-center">Purchases</TableHead>
+                          <TableHead>Last Order</TableHead>
+                          <TableHead className="text-center">Preferred</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {productSuppliers.map((ps) => (
+                          <TableRow key={ps.id}>
+                            <TableCell className="font-medium">
+                              {ps.supplier_name}
+                              {ps.supplier_sku && (
+                                <div className="text-xs text-muted-foreground">SKU: {ps.supplier_sku}</div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {ps.last_unit_cost ? `$${ps.last_unit_cost.toFixed(2)}` : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {ps.average_unit_cost ? `$${ps.average_unit_cost.toFixed(2)}` : '-'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {ps.purchase_count || 0}
+                            </TableCell>
+                            <TableCell>
+                              {ps.last_purchase_date
+                                ? new Date(ps.last_purchase_date).toLocaleDateString()
+                                : '-'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setPreferredSupplier(ps.id)}
+                                disabled={ps.is_preferred}
+                              >
+                                <Star
+                                  className={`h-4 w-4 ${
+                                    ps.is_preferred ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'
+                                  }`}
+                                />
+                              </Button>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  if (confirm('Remove this supplier from this product?')) {
+                                    removeSupplier(ps.id);
+                                  }
+                                }}
+                                disabled={productSuppliers.length === 1}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No suppliers added yet. Click "Add Supplier" to get started.
+                  </div>
+                )}
               </CardContent>
             </Card>
 

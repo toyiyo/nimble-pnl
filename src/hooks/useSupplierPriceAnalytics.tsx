@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -38,6 +38,7 @@ export function useSupplierPriceAnalytics(restaurantId: string | null) {
   const [supplierMetrics, setSupplierMetrics] = useState<SupplierMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -46,6 +47,10 @@ export function useSupplierPriceAnalytics(restaurantId: string | null) {
 
   const fetchPriceAnalytics = async () => {
     if (!restaurantId) return;
+
+    // Increment request ID and capture it for this request
+    requestIdRef.current += 1;
+    const currentRequestId = requestIdRef.current;
 
     try {
       setLoading(true);
@@ -211,17 +216,26 @@ export function useSupplierPriceAnalytics(restaurantId: string | null) {
         };
       });
 
-      setProductPricing(pricingData);
-      setSupplierMetrics(supplierData);
+      // Only update state if this is still the latest request
+      if (currentRequestId === requestIdRef.current) {
+        setProductPricing(pricingData);
+        setSupplierMetrics(supplierData);
+      }
     } catch (error) {
-      console.error('Error fetching price analytics:', error);
-      toast({
-        title: 'Error loading price analytics',
-        description: 'Failed to fetch supplier pricing data',
-        variant: 'destructive',
-      });
+      // Only handle error if this is still the latest request
+      if (currentRequestId === requestIdRef.current) {
+        console.error('Error fetching price analytics:', error);
+        toast({
+          title: 'Error loading price analytics',
+          description: 'Failed to fetch supplier pricing data',
+          variant: 'destructive',
+        });
+      }
     } finally {
-      setLoading(false);
+      // Only clear loading if this is still the latest request
+      if (currentRequestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 

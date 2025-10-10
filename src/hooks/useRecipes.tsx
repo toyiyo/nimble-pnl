@@ -359,9 +359,23 @@ export const useRecipes = (restaurantId: string | null) => {
       const { VALID_UNITS } = await import('@/lib/validUnits');
       const COUNT_UNITS = VALID_UNITS.count;
 
+      console.log(`[calculateRecipeCost] Starting calculation for recipe ${recipeId}`);
+      console.log(`[calculateRecipeCost] Found ${ingredients.length} ingredients`);
+
       let totalCost = 0;
       
-      ingredients.forEach((ingredient: any) => {
+      ingredients.forEach((ingredient: any, idx: number) => {
+        console.log(`[calculateRecipeCost] Ingredient ${idx + 1}:`, {
+          product_name: ingredient.product?.name,
+          has_cost: !!ingredient.product?.cost_per_unit,
+          cost_per_unit: ingredient.product?.cost_per_unit,
+          quantity: ingredient.quantity,
+          unit: ingredient.unit,
+          uom_purchase: ingredient.product?.uom_purchase,
+          size_value: ingredient.product?.size_value,
+          size_unit: ingredient.product?.size_unit
+        });
+
         if (ingredient.product && ingredient.product.cost_per_unit) {
           const product = ingredient.product;
           try {
@@ -387,6 +401,16 @@ export const useRecipes = (restaurantId: string | null) => {
             const packageQuantity = sizeValue || 1;
             const costPerUnit = product.cost_per_unit || 0;
             
+            console.log(`[calculateRecipeCost] Calling calculateInventoryImpact with:`, {
+              recipeQuantity: ingredient.quantity,
+              recipeUnit: ingredient.unit,
+              packageQuantity,
+              purchaseUnit,
+              costPerUnit,
+              sizeValue,
+              sizeUnit
+            });
+
             const result = calculateInventoryImpact(
               ingredient.quantity,
               ingredient.unit,
@@ -398,13 +422,22 @@ export const useRecipes = (restaurantId: string | null) => {
               sizeUnit
             );
             
+            console.log(`[calculateRecipeCost] Result for ${product.name}:`, {
+              costImpact: result.costImpact,
+              inventoryDeduction: result.inventoryDeduction,
+              percentageOfPackage: result.percentageOfPackage
+            });
+
             totalCost += result.costImpact;
           } catch (conversionError) {
             console.warn(`Conversion error for ${product.name}:`, conversionError);
           }
+        } else {
+          console.log(`[calculateRecipeCost] Skipping ingredient - no cost_per_unit`);
         }
       });
 
+      console.log(`[calculateRecipeCost] Total cost calculated: $${totalCost.toFixed(2)}`);
       return totalCost;
     } catch (error: any) {
       console.error('Error calculating recipe cost:', error);

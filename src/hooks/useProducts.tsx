@@ -23,6 +23,7 @@ export interface Product {
   par_level_min?: number | null;
   par_level_max?: number | null;
   reorder_point?: number | null;
+  supplier_id?: string | null;
   supplier_name?: string | null;
   supplier_sku?: string | null;
   pos_item_name?: string | null;
@@ -50,6 +51,7 @@ export interface CreateProductData {
   par_level_min?: number | null;
   par_level_max?: number | null;
   reorder_point?: number | null;
+  supplier_id?: string | null;
   supplier_name?: string | null;
   supplier_sku?: string | null;
   pos_item_name?: string | null;

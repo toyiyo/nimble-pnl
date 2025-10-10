@@ -92,9 +92,17 @@ export default function POSSales() {
     }
   }, [selectedRestaurant?.restaurant_id, hasAnyConnectedSystem, syncAllSystems]);
 
-  const filteredSales = sales.filter((sale) => sale.itemName.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredSales = useMemo(() => {
+    let filtered = sales.filter((sale) => sale.itemName.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    if (startDate && endDate) {
+      filtered = filtered.filter((sale) => sale.saleDate >= startDate && sale.saleDate <= endDate);
+    }
+    
+    return filtered;
+  }, [sales, searchTerm, startDate, endDate]);
 
-  const dateFilteredSales = startDate && endDate ? getSalesByDateRange(startDate, endDate) : filteredSales;
+  const dateFilteredSales = filteredSales;
 
   const handleSyncSales = async () => {
     if (selectedRestaurant?.restaurant_id) {

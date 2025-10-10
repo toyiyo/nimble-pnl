@@ -35,8 +35,6 @@ import { useUnitConversion } from '@/hooks/useUnitConversion';
 import { normalizeUnitName, suggestRecipeUnits } from '@/lib/unitConversion';
 import { supabase } from '@/integrations/supabase/client';
 import { SizePackagingSection } from '@/components/SizePackagingSection';
-import { RecipeConversionPreview } from '@/components/RecipeConversionPreview';
-import { useProductRecipes } from '@/hooks/useProductRecipes';
 import { useRestaurants } from '@/hooks/useRestaurants';
 
 const productSchema = z.object({
@@ -113,7 +111,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   const { suggestConversionFactor } = useUnitConversion(restaurantId);
   const { restaurants } = useRestaurants();
   const currentRestaurant = restaurants[0];
-  const { recipes } = useProductRecipes(editProduct?.id || null, currentRestaurant?.id || null);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -464,27 +461,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
 
               </div>
             </div>
-            
-            {/* Recipe Conversion Preview */}
-            {recipes.length > 0 && form.watch('name') && form.watch('size_value') && form.watch('uom_purchase') && (
-              <>
-                {recipes.map((recipeIngredient) => (
-                  <RecipeConversionPreview
-                    key={recipeIngredient.id}
-                    productName={form.watch('name')}
-                    purchaseQuantity={form.watch('size_value') * (form.watch('package_qty') || 1)}
-                    purchaseUnit={form.watch('uom_purchase')}
-                    recipeQuantity={recipeIngredient.quantity}
-                    recipeUnit={recipeIngredient.unit}
-                    costPerUnit={form.watch('cost_per_unit')}
-                    recipeName={recipeIngredient.recipe.name}
-                    sizeValue={form.watch('size_value')}
-                    sizeUnit={form.watch('size_unit')}
-                    packageQty={form.watch('package_qty')}
-                  />
-                ))}
-              </>
-            )}
 
             {/* Cost & Supplier Section */}
             <div className="space-y-4 p-4 bg-muted/50 rounded-lg">

@@ -35,8 +35,6 @@ import { Product } from '@/hooks/useProducts';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { SizePackagingSection } from '@/components/SizePackagingSection';
-import { RecipeConversionPreview } from '@/components/RecipeConversionPreview';
-import { useProductRecipes } from '@/hooks/useProductRecipes';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import { useProductSuppliers } from '@/hooks/useProductSuppliers';
 import { useSuppliers } from '@/hooks/useSuppliers';
@@ -113,7 +111,6 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const { restaurants } = useRestaurants();
   const currentRestaurant = restaurants[0];
   const restaurantId = currentRestaurant?.restaurant_id || currentRestaurant?.restaurant?.id || null;
-  const { recipes } = useProductRecipes(product.id, restaurantId);
   const { suppliers: allSuppliers } = useSuppliers();
   const { suppliers: productSuppliers, loading: suppliersLoading, setPreferredSupplier, removeSupplier, fetchSuppliers } = useProductSuppliers(product.id, restaurantId);
   const [isEnhancing, setIsEnhancing] = useState(false);
@@ -724,27 +721,6 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
 
             {/* Enhanced Size & Packaging Section */}
             <SizePackagingSection form={form} />
-
-            {/* Recipe Conversion Preview */}
-            {recipes.length > 0 && form.watch('name') && form.watch('size_value') && form.watch('uom_purchase') && (
-              <>
-                {recipes.map((recipeIngredient) => (
-                  <RecipeConversionPreview
-                    key={recipeIngredient.id}
-                    productName={form.watch('name')}
-                    purchaseQuantity={form.watch('size_value') * (form.watch('package_qty') || 1)}
-                    purchaseUnit={form.watch('uom_purchase')}
-                    recipeQuantity={recipeIngredient.quantity}
-                    recipeUnit={recipeIngredient.unit}
-                    costPerUnit={form.watch('cost_per_unit')}
-                    recipeName={recipeIngredient.recipe.name}
-                    sizeValue={form.watch('size_value')}
-                    sizeUnit={form.watch('size_unit')}
-                    packageQty={form.watch('package_qty')}
-                  />
-                ))}
-              </>
-            )}
 
             {/* Cost & Supplier */}
             <Card>

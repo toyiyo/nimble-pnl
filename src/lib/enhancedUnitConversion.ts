@@ -1,5 +1,10 @@
 // Enhanced unit conversion system for recipe calculations
 
+// Exported unit constants to avoid duplication across the codebase
+export const WEIGHT_UNITS = ['lb', 'kg', 'g'];
+export const VOLUME_UNITS = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
+export const COUNT_UNITS = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
+
 export interface ConversionResult {
   value: number;
   fromUnit: string;
@@ -138,11 +143,7 @@ export function convertUnits(
   // For weight: convert through grams
   // For volume: convert through ml
   
-  const weightUnits = ['lb', 'kg', 'g'];
-  const volumeUnits = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
-  const countUnits = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
-  
-  if (weightUnits.includes(fromUnit) && weightUnits.includes(toUnit)) {
+  if (WEIGHT_UNITS.includes(fromUnit) && WEIGHT_UNITS.includes(toUnit)) {
     // Convert through grams
     const toGrams = STANDARD_CONVERSIONS[fromUnit]?.['g'];
     const fromGrams = STANDARD_CONVERSIONS['g']?.[toUnit];
@@ -157,7 +158,7 @@ export function convertUnits(
     }
   }
   
-  if (volumeUnits.includes(fromUnit) && volumeUnits.includes(toUnit)) {
+  if (VOLUME_UNITS.includes(fromUnit) && VOLUME_UNITS.includes(toUnit)) {
     // Convert through ml
     const toMl = STANDARD_CONVERSIONS[fromUnit]?.['ml'];
     const fromMl = STANDARD_CONVERSIONS['ml']?.[toUnit];
@@ -173,7 +174,7 @@ export function convertUnits(
   }
   
   // Count-based units convert 1:1 (e.g., bottle -> unit, each -> piece)
-  if (countUnits.includes(fromUnit) && countUnits.includes(toUnit)) {
+  if (COUNT_UNITS.includes(fromUnit) && COUNT_UNITS.includes(toUnit)) {
     return {
       value: value, // 1:1 conversion for discrete count units
       fromUnit,
@@ -207,11 +208,8 @@ export function calculateInventoryImpact(
   conversionDetails: ConversionResult | null;
 } {
   
-  const countUnits = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
-  const volumeUnits = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
-  
   // Step 1: Handle container unit conversions (bottle, can, etc.)
-  if (countUnits.includes(purchaseUnit) && volumeUnits.includes(recipeUnit)) {
+  if (COUNT_UNITS.includes(purchaseUnit) && VOLUME_UNITS.includes(recipeUnit)) {
     // Recipe is in volume (e.g., oz), purchase is in containers (e.g., bottle)
     // Need product size info to convert
     if (!productSizeValue || !productSizeUnit) {
@@ -358,8 +356,6 @@ export function calculateRecipePortions(
   conversionDetails: ConversionResult | null;
 } {
   
-  const countUnits = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
-  
   // If both units are the same, simple division
   if (recipeUnit === purchaseUnit) {
     return {
@@ -375,7 +371,7 @@ export function calculateRecipePortions(
   }
   
   // If recipe unit is a container unit, we can't calculate portions without size info
-  if (countUnits.includes(recipeUnit.toLowerCase())) {
+  if (COUNT_UNITS.includes(recipeUnit.toLowerCase())) {
     // Return 1:1 ratio for container units
     return {
       totalPortions: purchaseQuantity / recipeQuantity,
@@ -396,7 +392,7 @@ export function calculateRecipePortions(
   if (!recipeToWeight) {
     // If direct conversion fails, try common conversions
     // For liquids, try converting through oz
-    if (!countUnits.includes(purchaseUnit.toLowerCase())) {
+    if (!COUNT_UNITS.includes(purchaseUnit.toLowerCase())) {
       const recipeToOz = convertUnits(recipeQuantity, recipeUnit, 'oz', productName);
       if (recipeToOz) {
         const purchaseToOz = convertUnits(purchaseQuantity, purchaseUnit, 'oz', productName);

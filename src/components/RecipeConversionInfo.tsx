@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Calculator, Package } from 'lucide-react';
 import { Product } from '@/hooks/useProducts';
-import { calculateInventoryImpact } from '@/lib/enhancedUnitConversion';
+import { calculateInventoryImpact, COUNT_UNITS } from '@/lib/enhancedUnitConversion';
 
 interface RecipeConversionInfoProps {
   product: Product;
@@ -29,8 +29,7 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
   const costPerUnit = product.cost_per_unit || 0; // Cost per package type (per bottle, per bag)
   
   // Determine if purchase unit is a container unit or direct measurement unit
-  const countUnits = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
-  const isContainerUnit = countUnits.includes((packageType || '').toLowerCase());
+  const isContainerUnit = COUNT_UNITS.includes((packageType || '').toLowerCase());
   
   const purchaseUnit = isContainerUnit ? packageType : (product.size_unit || 'unit');
   const packageQuantity = isContainerUnit ? (product.package_qty || 1) : (product.size_value || 1);

@@ -44,11 +44,11 @@ jobs:
       env:
         PGPASSWORD: postgres
       run: |
+        set -euo pipefail
+        shopt -s nullglob
         for migration in supabase/migrations/*.sql; do
-          echo "Applying migration: $(basename $migration)"
-          psql -h localhost -U postgres -d postgres -f "$migration" || {
-            echo "Warning: Migration $(basename $migration) failed or already applied"
-          }
+          echo "Applying migration: $(basename "$migration")"
+          psql -h localhost -U postgres -d postgres -f "$migration"
         done
     
     - name: Run SQL function tests

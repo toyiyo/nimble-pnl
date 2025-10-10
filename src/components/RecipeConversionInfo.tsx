@@ -32,7 +32,7 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
   const isContainerUnit = COUNT_UNITS.includes((packageType || '').toLowerCase());
   
   const purchaseUnit = isContainerUnit ? packageType : (product.size_unit || 'unit');
-  const packageQuantity = product.size_value || 1;
+  const quantityPerPurchaseUnit = product.size_value || 1;
   const productSizeValue = product.size_value;
   const productSizeUnit = product.size_unit;
 
@@ -42,7 +42,7 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
     impact = calculateInventoryImpact(
       recipeQuantity,
       recipeUnit,
-      packageQuantity,
+      quantityPerPurchaseUnit,
       purchaseUnit,
       product.name || '',
       costPerUnit,
@@ -89,7 +89,7 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
               <div className="flex justify-between py-1 border-b border-blue-200">
                 <span className="text-blue-700">Purchase Unit</span>
                 <span className="font-medium">
-                  {packageQuantity} {purchaseUnit}
+                  {quantityPerPurchaseUnit} {purchaseUnit}
                   <span className="text-blue-600 ml-2 text-xs">
                     (per {packageType})
                   </span>
@@ -104,7 +104,7 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
                 <span className="font-medium">
                   {isContainerUnit 
                     ? `${product.size_value || 0} ${product.size_unit || 'unit'} per ${packageType}`
-                    : `${packageQuantity} ${purchaseUnit} per ${packageType}`
+                    : `${quantityPerPurchaseUnit} ${purchaseUnit} per ${packageType}`
                   }
                 </span>
               </div>

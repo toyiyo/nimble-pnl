@@ -11,7 +11,7 @@ export interface ProductUnitInfo {
   sizeValue: number;
   sizeUnit: string;
   purchaseUnit: string;
-  packageQuantity: number;
+  quantityPerPurchaseUnit: number; // Size of one purchase unit (e.g., 750ml per bottle)
 }
 
 /**
@@ -49,7 +49,7 @@ export function getProductUnitInfo(product: {
   const purchaseUnit = isContainerUnit 
     ? packageType 
     : (product.uom_purchase || sizeUnit || 'unit');
-  const packageQuantity = sizeValue || 1;
+  const quantityPerPurchaseUnit = sizeValue || 1;
   
   return {
     packageType,
@@ -57,7 +57,7 @@ export function getProductUnitInfo(product: {
     sizeValue: sizeValue || 1,
     sizeUnit: sizeUnit || packageType,
     purchaseUnit,
-    packageQuantity,
+    quantityPerPurchaseUnit,
   };
 }
 

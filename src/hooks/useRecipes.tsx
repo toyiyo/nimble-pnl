@@ -378,13 +378,13 @@ export const useRecipes = (restaurantId: string | null) => {
           const product = ingredient.product;
           try {
             // Use shared helper to get validated product unit info
-            const { purchaseUnit, packageQuantity, sizeValue, sizeUnit } = getProductUnitInfo(product);
+            const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(product);
             const costPerUnit = product.cost_per_unit || 0;
             
             console.log(`[calculateRecipeCost] Calling calculateInventoryImpact with:`, {
               recipeQuantity: ingredient.quantity,
               recipeUnit: ingredient.unit,
-              packageQuantity,
+              quantityPerPurchaseUnit,
               purchaseUnit,
               costPerUnit,
               sizeValue,
@@ -394,7 +394,7 @@ export const useRecipes = (restaurantId: string | null) => {
             const result = calculateInventoryImpact(
               ingredient.quantity,
               ingredient.unit,
-              packageQuantity,
+              quantityPerPurchaseUnit,
               purchaseUnit,
               product.name || '',
               costPerUnit,

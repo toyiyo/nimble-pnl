@@ -188,13 +188,13 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                 
                 try {
                   // Use shared helper to get validated product unit info
-                  const { purchaseUnit, packageQuantity, sizeValue, sizeUnit } = getProductUnitInfo(product);
+                  const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(product);
                   const costPerUnit = product.cost_per_unit || 0;
                   
                   const result = calculateInventoryImpact(
                     ingredient.quantity,
                     ingredient.unit,
-                    packageQuantity,
+                    quantityPerPurchaseUnit,
                     purchaseUnit,
                     product.name || '',
                     costPerUnit,

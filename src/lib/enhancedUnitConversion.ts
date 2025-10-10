@@ -44,8 +44,11 @@ export function getProductUnitInfo(product: {
     }
   }
   
-  // Use container unit (bottle) for purchase, or measurement unit (L) for direct measurements
-  const purchaseUnit = isContainerUnit ? packageType : (sizeUnit || 'unit');
+  // Use container unit (bottle) for purchase, or measurement unit for direct measurements
+  // For non-container units: prioritize actual purchase unit, then size_unit, then fallback to 'unit'
+  const purchaseUnit = isContainerUnit 
+    ? packageType 
+    : (product.uom_purchase || sizeUnit || 'unit');
   const packageQuantity = sizeValue || 1;
   
   return {

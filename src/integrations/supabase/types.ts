@@ -2042,10 +2042,6 @@ export type Database = {
         Args: { base13: string }
         Returns: string
       }
-      calculate_recipe_cost: {
-        Args: { recipe_id: string }
-        Returns: number
-      }
       calculate_square_daily_pnl: {
         Args: { p_restaurant_id: string; p_service_date: string }
         Returns: string

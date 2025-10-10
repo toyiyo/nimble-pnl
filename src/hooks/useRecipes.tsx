@@ -363,9 +363,16 @@ export const useRecipes = (restaurantId: string | null) => {
         if (ingredient.product && ingredient.product.cost_per_unit) {
           const product = ingredient.product;
           try {
-            // Use size_value and size_unit directly (no more package_qty)
+            // Import COUNT_UNITS for container detection
+            const COUNT_UNITS = ['bottle', 'can', 'jar', 'container', 'box', 'bag', 'piece', 'unit', 'each', 'pack', 'case'];
+            
+            // Determine if purchase unit is a container unit
+            const packageType = product.uom_purchase || 'unit';
+            const isContainerUnit = COUNT_UNITS.includes(packageType.toLowerCase());
+            
+            // Use container unit (bottle) for purchase, or measurement unit (L) for direct measurements
+            const purchaseUnit = isContainerUnit ? packageType : (product.size_unit || 'unit');
             const packageQuantity = product.size_value || 1;
-            const purchaseUnit = product.size_unit || 'unit';
             const costPerUnit = product.cost_per_unit || 0;
             
             const result = calculateInventoryImpact(

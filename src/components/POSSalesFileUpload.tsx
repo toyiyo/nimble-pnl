@@ -273,7 +273,8 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                 }
                 
                 // Flag items with zero quantity or voided transactions
-                const isVoidedOrZeroQuantity = quantity === 0 || (totalPrice === 0 && row['Void amount'] && parseFloat(row['Void amount']) > 0);
+                const voidAmount = safeParseFloat(row['Void amount'], 0);
+                const isVoidedOrZeroQuantity = quantity === 0 || (totalPrice === 0 && voidAmount && voidAmount > 0);
 
                 return {
                   itemName: itemName.trim(),
@@ -298,7 +299,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                       importedAt: new Date().toISOString(),
                       hasDateWarning, // Flag if date had issues
                       isVoidedOrZeroQuantity, // Flag voided or zero-quantity items
-                      voidAmount: row['Void amount'] ? parseFloat(row['Void amount']) : 0,
+                      voidAmount,
                     }
                   },
                 };

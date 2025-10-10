@@ -102,7 +102,10 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
               <div className="flex justify-between py-1 border-b border-blue-200">
                 <span className="text-blue-700">Package Size</span>
                 <span className="font-medium">
-                  {product.size_value || 0} {purchaseUnit} per {packageType}
+                  {isContainerUnit 
+                    ? `${product.size_value || 0} ${product.size_unit || 'unit'} per ${packageType}`
+                    : `${packageQuantity} ${purchaseUnit} per ${packageType}`
+                  }
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-blue-200">

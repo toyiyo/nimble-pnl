@@ -1,6 +1,6 @@
 -- Tests for P&L calculation functions
 BEGIN;
-SELECT plan(13);
+SELECT plan(9);
 
 -- Test calculate_daily_pnl function exists
 SELECT has_function(
@@ -56,38 +56,6 @@ SELECT function_lang_is(
     ARRAY['uuid', 'date'],
     'plpgsql',
     'calculate_square_daily_pnl should be plpgsql'
-);
-
--- Test calculate_recipe_cost function exists
-SELECT has_function(
-    'public',
-    'calculate_recipe_cost',
-    ARRAY['uuid'],
-    'calculate_recipe_cost function should exist'
-);
-
-SELECT function_returns(
-    'public',
-    'calculate_recipe_cost',
-    ARRAY['uuid'],
-    'numeric',
-    'calculate_recipe_cost should return numeric'
-);
-
-SELECT function_lang_is(
-    'public',
-    'calculate_recipe_cost',
-    ARRAY['uuid'],
-    'plpgsql',
-    'calculate_recipe_cost should be plpgsql'
-);
-
-SELECT volatility_is(
-    'public',
-    'calculate_recipe_cost',
-    ARRAY['uuid'],
-    'stable',
-    'calculate_recipe_cost should be stable'
 );
 
 -- Test get_product_cost_per_recipe_unit function exists

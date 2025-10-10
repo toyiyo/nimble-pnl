@@ -49,7 +49,8 @@ export const useAutomaticInventoryDeduction = () => {
           p_restaurant_id: selectedRestaurant.restaurant_id,
           p_pos_item_name: sale.pos_item_name,
           p_quantity_sold: Math.round(sale.quantity),
-          p_sale_date: sale.sale_date
+          p_sale_date: sale.sale_date,
+          p_external_order_id: sale.external_order_id
         });
 
         if (error) {
@@ -109,7 +110,8 @@ export const useAutomaticInventoryDeduction = () => {
         p_restaurant_id: selectedRestaurant.restaurant_id,
         p_pos_item_name: sale.item_name,
         p_quantity_sold: Math.round(sale.quantity),
-        p_sale_date: sale.sale_date
+        p_sale_date: sale.sale_date,
+        p_external_order_id: sale.external_order_id
       });
 
       if (!alreadyProcessed) {
@@ -131,7 +133,10 @@ export const useAutomaticInventoryDeduction = () => {
     }
   }, [selectedRestaurant?.restaurant_id, autoDeductionEnabled, processBatchDeductions]);
 
-  // Set up real-time subscription for new sales
+  // Set up real-time subscription for new sales - DISABLED
+  // The database trigger already handles automatic deductions
+  // This subscription was causing double-counting
+  /*
   useEffect(() => {
     if (!selectedRestaurant?.restaurant_id || !autoDeductionEnabled) return;
 
@@ -165,6 +170,7 @@ export const useAutomaticInventoryDeduction = () => {
       supabase.removeChannel(channel);
     };
   }, [selectedRestaurant?.restaurant_id, autoDeductionEnabled, processBatchDeductions]);
+  */
 
   return {
     processBatchDeductions,

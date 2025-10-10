@@ -70,6 +70,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
   const [isImporting, setIsImporting] = useState(false);
   const [needsDateInput, setNeedsDateInput] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [importError, setImportError] = useState<{ message: string; details?: string; duplicates?: string[] } | null>(null);
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
 
@@ -204,6 +205,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     }
 
     setIsImporting(true);
+    setImportError(null); // Clear previous errors
 
     try {
       // Prepare data for bulk insert (only include items user wants to import)
@@ -280,12 +282,20 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
             !existingIds.includes(sale.external_order_id)
           );
           
-          // If all are duplicates, throw an error
+          // If all are duplicates, throw an error with details
           if (filteredSales.length === 0) {
-            throw new Error(`All ${recordsToInsert.length} records appear to be duplicates of existing sales data.`);
+            const error = new Error(`All ${recordsToInsert.length} records appear to be duplicates of existing sales data.`);
+            (error as any).duplicates = existingIds.slice(0, 10); // Include up to 10 duplicate IDs for reference
+            throw error;
           }
           
           // Otherwise warn and continue with non-duplicates
+          setImportError({
+            message: `Found ${existingIds.length} duplicate record${existingIds.length !== 1 ? 's' : ''}`,
+            details: `These records already exist in your database and will be skipped. Continuing with ${filteredSales.length} new record${filteredSales.length !== 1 ? 's' : ''}.`,
+            duplicates: existingIds.slice(0, 10)
+          });
+          
           toast({
             title: "Duplicate records detected",
             description: `Found ${existingIds.length} duplicate records that will be skipped.`,
@@ -338,6 +348,16 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     } catch (error) {
       console.error('Error importing sales:', error);
       const errorMessage = error instanceof Error ? error.message : "Failed to import sales data";
+      
+      // Set detailed error for prominent display
+      setImportError({
+        message: errorMessage,
+        details: error instanceof Error && (error as any).duplicates 
+          ? "All records in your file have already been imported. This typically happens when uploading the same file twice."
+          : "There was an error importing your sales data. Please check the details below and try again.",
+        duplicates: (error as any).duplicates
+      });
+      
       toast({
         title: "Import failed",
         description: errorMessage,
@@ -385,6 +405,36 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
           </div>
         </CardHeader>
         <CardContent>
+          {importError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <div className="ml-2">
+                <h4 className="font-semibold mb-2">{importError.message}</h4>
+                {importError.details && (
+                  <p className="text-sm mb-3">{importError.details}</p>
+                )}
+                {importError.duplicates && importError.duplicates.length > 0 && (
+                  <div className="text-sm space-y-2">
+                    <p className="font-medium">Sample duplicate Order IDs:</p>
+                    <ul className="list-disc list-inside space-y-1 max-h-32 overflow-y-auto font-mono text-xs">
+                      {importError.duplicates.map((id, idx) => (
+                        <li key={idx}>{id}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="mt-3 pt-3 border-t border-destructive/20">
+                  <p className="font-medium text-sm">What you can do:</p>
+                  <ul className="list-disc list-inside mt-1 space-y-1 text-sm">
+                    <li>Check if this data was already imported previously</li>
+                    <li>Export a different date range from your POS system</li>
+                    <li>Verify the Order IDs in your CSV file are unique</li>
+                    <li>Contact support if you believe this is an error</li>
+                  </ul>
+                </div>
+              </div>
+            </Alert>
+          )}
           {needsDateInput && (
             <Alert className="mb-4">
               <Calendar className="h-4 w-4" />

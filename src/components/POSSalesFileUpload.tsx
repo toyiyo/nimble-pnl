@@ -3,7 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Upload, FileText } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
+import { Upload, FileText, AlertCircle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import Papa from 'papaparse';
 
@@ -26,6 +27,7 @@ interface ParsedSale {
 
 export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFileProcessed }) => {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [parsingErrors, setParsingErrors] = useState<{ rowNumber: number; reason: string }[]>([]);
   const { toast } = useToast();
 
   const parseCSVFile = async (file: File): Promise<ParsedSale[]> => {
@@ -347,6 +349,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
     }
 
     setIsProcessing(true);
+    setParsingErrors([]); // Clear previous errors
 
     try {
       const parsedSales = await parseCSVFile(file);
@@ -366,14 +369,12 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
       // Check if we have skipped rows
       const skippedRows = (parsedSales as any).skippedRows;
       if (skippedRows && skippedRows.length > 0) {
-        // For better UX, show details about skipped rows
-        const skippedRowsList = skippedRows.length <= 3
-          ? skippedRows.map((r: any) => `Row ${r.rowNumber}: ${r.reason}`).join(', ')
-          : `${skippedRows.length} rows (including row ${skippedRows[0].rowNumber}) due to missing data`;
+        // Store errors for prominent display
+        setParsingErrors(skippedRows);
           
         toast({
           title: "File processed with warnings",
-          description: `Successfully parsed ${parsedSales.length} sales records. Skipped ${skippedRowsList}.`,
+          description: `Successfully parsed ${parsedSales.length} sales records. See details below.`,
           variant: "destructive",
         });
       } else if (needsDateInput) {
@@ -416,6 +417,33 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {parsingErrors.length > 0 && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <div className="ml-2">
+              <h4 className="font-semibold mb-2">Skipped {parsingErrors.length} row{parsingErrors.length !== 1 ? 's' : ''} during import</h4>
+              <div className="text-sm space-y-1">
+                <p className="mb-2">The following rows could not be imported:</p>
+                <ul className="list-disc list-inside space-y-1 max-h-40 overflow-y-auto">
+                  {parsingErrors.map((error, idx) => (
+                    <li key={idx}>
+                      <span className="font-medium">Row {error.rowNumber}:</span> {error.reason}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 pt-3 border-t border-destructive/20">
+                  <p className="font-medium">How to fix:</p>
+                  <ul className="list-disc list-inside mt-1 space-y-1">
+                    <li>Ensure all rows have an item name in the 'Item', 'Product', or 'Name' column</li>
+                    <li>Check that date columns contain valid dates (if your CSV has date columns)</li>
+                    <li>Remove or fix empty rows in your CSV file</li>
+                    <li>If using TOAST POS exports, ensure you're using the detailed item report</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </Alert>
+        )}
         <div className="border-2 border-dashed rounded-lg p-8 text-center">
           <div className="flex flex-col items-center gap-4">
             <div className="p-3 bg-primary/10 rounded-full">

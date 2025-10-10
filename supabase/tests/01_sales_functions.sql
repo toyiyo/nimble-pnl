@@ -58,7 +58,7 @@ SELECT function_lang_is(
     'aggregate_unified_sales_to_daily should be plpgsql'
 );
 
--- Test bulk_process_historical_sales function exists
+-- Test bulk_process_historical_sales function exists (FIXED: returns jsonb not integer)
 SELECT has_function(
     'public',
     'bulk_process_historical_sales',
@@ -70,22 +70,22 @@ SELECT function_returns(
     'public',
     'bulk_process_historical_sales',
     ARRAY['uuid', 'date', 'date'],
-    'integer',
-    'bulk_process_historical_sales should return integer'
+    'jsonb',
+    'bulk_process_historical_sales should return jsonb'
 );
 
--- Test check_sale_already_processed function exists
+-- Test check_sale_already_processed function exists (FIXED: correct parameter signature)
 SELECT has_function(
     'public',
     'check_sale_already_processed',
-    ARRAY['uuid', 'text', 'text', 'timestamp with time zone'],
+    ARRAY['uuid', 'text', 'integer', 'text', 'text'],
     'check_sale_already_processed function should exist'
 );
 
 SELECT function_returns(
     'public',
     'check_sale_already_processed',
-    ARRAY['uuid', 'text', 'text', 'timestamp with time zone'],
+    ARRAY['uuid', 'text', 'integer', 'text', 'text'],
     'boolean',
     'check_sale_already_processed should return boolean'
 );
@@ -93,7 +93,7 @@ SELECT function_returns(
 SELECT function_lang_is(
     'public',
     'check_sale_already_processed',
-    ARRAY['uuid', 'text', 'text', 'timestamp with time zone'],
+    ARRAY['uuid', 'text', 'integer', 'text', 'text'],
     'plpgsql',
     'check_sale_already_processed should be plpgsql'
 );

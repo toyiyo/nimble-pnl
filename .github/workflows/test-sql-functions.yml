@@ -1,0 +1,67 @@
+name: Test SQL Functions
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/**'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: supabase/postgres:15.1.0.117
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install PostgreSQL client
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+    
+    - name: Apply database migrations
+      env:
+        PGPASSWORD: postgres
+      run: |
+        for migration in supabase/migrations/*.sql; do
+          echo "Applying migration: $(basename $migration)"
+          psql -h localhost -U postgres -d postgres -f "$migration" || {
+            echo "Warning: Migration $(basename $migration) failed or already applied"
+          }
+        done
+    
+    - name: Run SQL function tests
+      env:
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_NAME: postgres
+        DB_USER: postgres
+        DB_PASSWORD: postgres
+      run: |
+        chmod +x supabase/tests/run_tests.sh
+        ./supabase/tests/run_tests.sh
+    
+    - name: Test Summary
+      if: always()
+      run: echo "SQL function tests completed"

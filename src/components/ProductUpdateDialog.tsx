@@ -797,6 +797,8 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                                 }
                               }
                               
+                              const isFirstSupplier = productSuppliers.length === 0;
+                              
                               const { error } = await supabase
                                 .from('product_suppliers')
                                 .insert({
@@ -805,10 +807,22 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                                   supplier_id: supplierIdToUse,
                                   last_unit_cost: newSupplier.cost,
                                   supplier_sku: newSupplier.supplier_sku,
-                                  is_preferred: productSuppliers.length === 0,
+                                  is_preferred: isFirstSupplier,
                                 });
 
                               if (error) throw error;
+
+                              // If this is the first/preferred supplier, update product cost_per_unit
+                              if (isFirstSupplier && newSupplier.cost > 0) {
+                                const { error: updateError } = await supabase
+                                  .from('products')
+                                  .update({ cost_per_unit: newSupplier.cost })
+                                  .eq('id', product.id);
+
+                                if (updateError) {
+                                  console.error('Failed to update product cost:', updateError);
+                                }
+                              }
 
                               toast({
                                 title: 'Supplier added',
@@ -890,7 +904,21 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setPreferredSupplier(ps.id)}
+                                onClick={async () => {
+                                  await setPreferredSupplier(ps.id);
+                                  
+                                  // Update product cost_per_unit when setting preferred supplier
+                                  if (ps.last_unit_cost && ps.last_unit_cost > 0) {
+                                    const { error } = await supabase
+                                      .from('products')
+                                      .update({ cost_per_unit: ps.last_unit_cost })
+                                      .eq('id', product.id);
+
+                                    if (error) {
+                                      console.error('Failed to update product cost:', error);
+                                    }
+                                  }
+                                }}
                                 disabled={ps.is_preferred}
                               >
                                 <Star

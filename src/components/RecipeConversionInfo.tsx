@@ -31,7 +31,7 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
   // Determine if purchase unit is a container unit or direct measurement unit
   const isContainerUnit = COUNT_UNITS.includes((packageType || '').toLowerCase());
   
-  const purchaseUnit = isContainerUnit ? (product.size_unit || 'unit') : (product.size_unit || 'unit');
+  const purchaseUnit = isContainerUnit ? packageType : (product.size_unit || 'unit');
   const packageQuantity = product.size_value || 1;
   const productSizeValue = product.size_value;
   const productSizeUnit = product.size_unit;

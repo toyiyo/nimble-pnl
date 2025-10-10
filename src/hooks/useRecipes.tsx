@@ -365,7 +365,7 @@ export const useRecipes = (restaurantId: string | null) => {
           const product = ingredient.product;
           try {
             const packageQuantity = (product.size_value || 1) * (product.package_qty || 1);
-            const purchaseUnit = product.size_unit || 'unit';
+            const purchaseUnit = product.uom_purchase || 'unit';
             const costPerMeasurementUnit = (product.cost_per_unit || 0) / (product.package_qty || 1);
             
             const result = calculateInventoryImpact(

@@ -354,10 +354,8 @@ export const useRecipes = (restaurantId: string | null) => {
       if (error) throw error;
       if (!ingredients || ingredients.length === 0) return 0;
 
-      // Import the calculation logic and units used in RecipeDialog
-      const { calculateInventoryImpact } = await import('@/lib/enhancedUnitConversion');
-      const { VALID_UNITS } = await import('@/lib/validUnits');
-      const COUNT_UNITS = VALID_UNITS.count;
+      // Import the calculation logic and helper
+      const { calculateInventoryImpact, getProductUnitInfo } = await import('@/lib/enhancedUnitConversion');
 
       console.log(`[calculateRecipeCost] Starting calculation for recipe ${recipeId}`);
       console.log(`[calculateRecipeCost] Found ${ingredients.length} ingredients`);
@@ -379,26 +377,8 @@ export const useRecipes = (restaurantId: string | null) => {
         if (ingredient.product && ingredient.product.cost_per_unit) {
           const product = ingredient.product;
           try {
-            // Determine if purchase unit is a container unit
-            const packageType = product.uom_purchase || 'unit';
-            const isContainerUnit = COUNT_UNITS.includes(packageType.toLowerCase());
-            
-            // Validate size_value and size_unit for container units
-            let sizeValue = product.size_value;
-            let sizeUnit = product.size_unit;
-            
-            if (isContainerUnit) {
-              // For container units, we need size_value and size_unit to calculate conversions
-              if (!sizeValue || !sizeUnit) {
-                console.warn(`Container unit "${packageType}" for product "${product.name}" is missing size_value or size_unit. Using defaults.`);
-                sizeValue = sizeValue || 1;
-                sizeUnit = sizeUnit || packageType;
-              }
-            }
-            
-            // Use container unit (bottle) for purchase, or measurement unit (L) for direct measurements
-            const purchaseUnit = isContainerUnit ? packageType : (sizeUnit || 'unit');
-            const packageQuantity = sizeValue || 1;
+            // Use shared helper to get validated product unit info
+            const { purchaseUnit, packageQuantity, sizeValue, sizeUnit } = getProductUnitInfo(product);
             const costPerUnit = product.cost_per_unit || 0;
             
             console.log(`[calculateRecipeCost] Calling calculateInventoryImpact with:`, {

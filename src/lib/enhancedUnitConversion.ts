@@ -5,6 +5,59 @@ export const WEIGHT_UNITS = ['lb', 'kg', 'g'];
 export const VOLUME_UNITS = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
 export const COUNT_UNITS = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
 
+export interface ProductUnitInfo {
+  packageType: string;
+  isContainerUnit: boolean;
+  sizeValue: number;
+  sizeUnit: string;
+  purchaseUnit: string;
+  packageQuantity: number;
+}
+
+/**
+ * Extracts and validates product unit information for container/package calculations.
+ * Handles container units (bottle, can, etc.) vs direct measurement units.
+ * 
+ * @param product - The product object containing unit and size information
+ * @returns ProductUnitInfo with validated unit details
+ */
+export function getProductUnitInfo(product: {
+  uom_purchase?: string | null;
+  size_value?: number | null;
+  size_unit?: string | null;
+  name?: string;
+}): ProductUnitInfo {
+  const packageType = product.uom_purchase || 'unit';
+  const isContainerUnit = COUNT_UNITS.includes(packageType.toLowerCase());
+  
+  let sizeValue = product.size_value;
+  let sizeUnit = product.size_unit;
+  
+  // Validate size_value and size_unit for container units
+  if (isContainerUnit) {
+    if (!sizeValue || !sizeUnit) {
+      console.warn(
+        `Container unit "${packageType}" for product "${product.name}" is missing size_value or size_unit. Using defaults.`
+      );
+      sizeValue = sizeValue || 1;
+      sizeUnit = sizeUnit || packageType;
+    }
+  }
+  
+  // Use container unit (bottle) for purchase, or measurement unit (L) for direct measurements
+  const purchaseUnit = isContainerUnit ? packageType : (sizeUnit || 'unit');
+  const packageQuantity = sizeValue || 1;
+  
+  return {
+    packageType,
+    isContainerUnit,
+    sizeValue: sizeValue || 1,
+    sizeUnit: sizeUnit || packageType,
+    purchaseUnit,
+    packageQuantity,
+  };
+}
+
 export interface ConversionResult {
   value: number;
   fromUnit: string;

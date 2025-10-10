@@ -38,8 +38,7 @@ import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
 import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelector';
 import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
 import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
-import { calculateInventoryImpact } from "@/lib/enhancedUnitConversion";
-import { VALID_UNITS } from '@/lib/validUnits';
+import { calculateInventoryImpact, getProductUnitInfo } from "@/lib/enhancedUnitConversion";
 
 const measurementUnits = [
   'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 
@@ -179,7 +178,6 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
       if (value.ingredients) {
         let totalCost = 0;
         let hasValidIngredients = false;
-        const COUNT_UNITS = VALID_UNITS.count;
 
         try {
           value.ingredients.forEach((ingredient: any) => {
@@ -189,25 +187,8 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                 hasValidIngredients = true;
                 
                 try {
-                  // Determine if purchase unit is a container unit (same logic as useRecipes)
-                  const packageType = product.uom_purchase || 'unit';
-                  const isContainerUnit = COUNT_UNITS.includes(packageType.toLowerCase());
-                  
-                  // Validate size_value and size_unit for container units
-                  let sizeValue = product.size_value;
-                  let sizeUnit = product.size_unit;
-                  
-                  if (isContainerUnit) {
-                    if (!sizeValue || !sizeUnit) {
-                      console.warn(`Container unit "${packageType}" for product "${product.name}" is missing size_value or size_unit. Using defaults.`);
-                      sizeValue = sizeValue || 1;
-                      sizeUnit = sizeUnit || packageType;
-                    }
-                  }
-                  
-                  // Use container unit (bottle) for purchase, or measurement unit (L) for direct measurements
-                  const purchaseUnit = isContainerUnit ? packageType : (sizeUnit || 'unit');
-                  const packageQuantity = sizeValue || 1;
+                  // Use shared helper to get validated product unit info
+                  const { purchaseUnit, packageQuantity, sizeValue, sizeUnit } = getProductUnitInfo(product);
                   const costPerUnit = product.cost_per_unit || 0;
                   
                   const result = calculateInventoryImpact(

@@ -1,6 +1,6 @@
 -- Tests for P&L calculation functions
 BEGIN;
-SELECT plan(12);
+SELECT plan(13);
 
 -- Test calculate_daily_pnl function exists
 SELECT has_function(

@@ -64,8 +64,15 @@ for test_file in "$SCRIPT_DIR"/*.sql; do
     echo "Running: $filename"
     
     # Run the test and capture output
-    output=$(PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f "$test_file" 2>&1)
+    output=$(PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -v ON_ERROR_STOP=1 -f "$test_file" 2>&1)
     exit_code=$?
+    
+    # Check for SQL errors and fail fast
+    if [ $exit_code -ne 0 ]; then
+        echo -e "${RED}✗ SQL error in $filename${NC}"
+        echo "$output"
+        exit $exit_code
+    fi
     
     # Parse test results
     if echo "$output" | grep -q "All .* tests passed"; then

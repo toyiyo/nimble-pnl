@@ -38,6 +38,7 @@ import { SizePackagingSection } from '@/components/SizePackagingSection';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import { useProductSuppliers } from '@/hooks/useProductSuppliers';
 import { useSuppliers } from '@/hooks/useSuppliers';
+import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import {
   Table,
   TableBody,
@@ -111,7 +112,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const { restaurants } = useRestaurants();
   const currentRestaurant = restaurants[0];
   const restaurantId = currentRestaurant?.restaurant_id || currentRestaurant?.restaurant?.id || null;
-  const { suppliers: allSuppliers } = useSuppliers();
+  const { suppliers: allSuppliers, createSupplier } = useSuppliers();
   const { suppliers: productSuppliers, loading: suppliersLoading, setPreferredSupplier, removeSupplier, fetchSuppliers } = useProductSuppliers(product.id, restaurantId);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhancedData, setEnhancedData] = useState<any>(null);
@@ -120,6 +121,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const [adjustmentMode, setAdjustmentMode] = useState<'add' | 'set_exact'>('add');
   const [showAddSupplier, setShowAddSupplier] = useState(false);
   const [newSupplier, setNewSupplier] = useState({ supplier_id: '', cost: 0, supplier_sku: '' });
+  const [isNewSupplier, setIsNewSupplier] = useState(false);
 
   const form = useForm<UpdateFormData>({
     resolver: zodResolver(updateSchema),
@@ -745,21 +747,16 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-2">
                           <Label>Supplier</Label>
-                          <Select
+                          <SearchableSupplierSelector
                             value={newSupplier.supplier_id}
-                            onValueChange={(value) => setNewSupplier({ ...newSupplier, supplier_id: value })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select supplier" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {allSuppliers.map((supplier) => (
-                                <SelectItem key={supplier.id} value={supplier.id}>
-                                  {supplier.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            onValueChange={(value, isNew) => {
+                              setNewSupplier({ ...newSupplier, supplier_id: value });
+                              setIsNewSupplier(isNew);
+                            }}
+                            suppliers={allSuppliers}
+                            placeholder="Search or create supplier..."
+                            showNewIndicator={isNewSupplier}
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label>Cost per Unit ($)</Label>
@@ -788,12 +785,24 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             if (!newSupplier.supplier_id || !restaurantId) return;
                             
                             try {
+                              let supplierIdToUse = newSupplier.supplier_id;
+                              
+                              // Create new supplier if needed
+                              if (isNewSupplier) {
+                                const createdSupplier = await createSupplier({ name: newSupplier.supplier_id });
+                                if (createdSupplier) {
+                                  supplierIdToUse = createdSupplier.id;
+                                } else {
+                                  throw new Error('Failed to create supplier');
+                                }
+                              }
+                              
                               const { error } = await supabase
                                 .from('product_suppliers')
                                 .insert({
                                   restaurant_id: restaurantId,
                                   product_id: product.id,
-                                  supplier_id: newSupplier.supplier_id,
+                                  supplier_id: supplierIdToUse,
                                   last_unit_cost: newSupplier.cost,
                                   supplier_sku: newSupplier.supplier_sku,
                                   is_preferred: productSuppliers.length === 0,
@@ -807,6 +816,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                               });
 
                               setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
+                              setIsNewSupplier(false);
                               setShowAddSupplier(false);
                               fetchSuppliers();
                             } catch (error) {
@@ -828,6 +838,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                           onClick={() => {
                             setShowAddSupplier(false);
                             setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
+                            setIsNewSupplier(false);
                           }}
                         >
                           Cancel

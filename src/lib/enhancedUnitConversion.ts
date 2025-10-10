@@ -358,16 +358,74 @@ export function calculateRecipePortions(
   conversionDetails: ConversionResult | null;
 } {
   
-  // For rice example: how many 1-cup portions in an 80 oz bag?
-  const recipeToWeight = convertUnits(recipeQuantity, recipeUnit, 'oz', productName);
+  const countUnits = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
   
-  if (!recipeToWeight) {
-    throw new Error(`Cannot convert recipe unit ${recipeUnit} to weight for ${productName}`);
+  // If both units are the same, simple division
+  if (recipeUnit === purchaseUnit) {
+    return {
+      totalPortions: purchaseQuantity / recipeQuantity,
+      costPerPortion: 0,
+      conversionDetails: {
+        value: recipeQuantity,
+        fromUnit: recipeUnit,
+        toUnit: purchaseUnit,
+        productSpecific: false
+      }
+    };
   }
   
-  // Rice: 1 cup = 6.3 oz, so 80 oz bag = 80/6.3 = 12.7 cups
+  // If recipe unit is a container unit, we can't calculate portions without size info
+  if (countUnits.includes(recipeUnit.toLowerCase())) {
+    // Return 1:1 ratio for container units
+    return {
+      totalPortions: purchaseQuantity / recipeQuantity,
+      costPerPortion: 0,
+      conversionDetails: {
+        value: recipeQuantity,
+        fromUnit: recipeUnit,
+        toUnit: purchaseUnit,
+        productSpecific: false,
+        conversionPath: ['container', 'units']
+      }
+    };
+  }
+  
+  // Try to convert recipe unit to purchase unit
+  const recipeToWeight = convertUnits(recipeQuantity, recipeUnit, purchaseUnit, productName);
+  
+  if (!recipeToWeight) {
+    // If direct conversion fails, try common conversions
+    // For liquids, try converting through oz
+    if (!countUnits.includes(purchaseUnit.toLowerCase())) {
+      const recipeToOz = convertUnits(recipeQuantity, recipeUnit, 'oz', productName);
+      if (recipeToOz) {
+        const purchaseToOz = convertUnits(purchaseQuantity, purchaseUnit, 'oz', productName);
+        if (purchaseToOz) {
+          const totalPortions = purchaseToOz.value / recipeToOz.value;
+          return {
+            totalPortions,
+            costPerPortion: 0,
+            conversionDetails: {
+              value: recipeToOz.value,
+              fromUnit: recipeUnit,
+              toUnit: 'oz',
+              conversionPath: [recipeUnit, 'oz', purchaseUnit]
+            }
+          };
+        }
+      }
+    }
+    
+    // Last resort: return 1:1
+    return {
+      totalPortions: purchaseQuantity / recipeQuantity,
+      costPerPortion: 0,
+      conversionDetails: null
+    };
+  }
+  
   const totalPortions = purchaseQuantity / recipeToWeight.value;
-  const costPerPortion = 0; // Will be calculated elsewhere with actual cost
+  const costPerPortion = 0;
   
   return {
     totalPortions,

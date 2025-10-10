@@ -12,6 +12,9 @@ interface RecipeConversionPreviewProps {
   recipeUnit: string;
   costPerUnit?: number;
   recipeName?: string;
+  sizeValue?: number;        // Size of package (e.g., 750 for 750ml bottle)
+  sizeUnit?: string;         // Unit of package size (e.g., "ml")
+  packageQty?: number;       // How many packages
 }
 
 export function RecipeConversionPreview({
@@ -21,7 +24,10 @@ export function RecipeConversionPreview({
   recipeQuantity,
   recipeUnit,
   costPerUnit = 0,
-  recipeName
+  recipeName,
+  sizeValue,
+  sizeUnit,
+  packageQty = 1
 }: RecipeConversionPreviewProps) {
   
   if (!productName || !purchaseQuantity || !purchaseUnit || !recipeQuantity || !recipeUnit) {
@@ -29,23 +35,24 @@ export function RecipeConversionPreview({
   }
 
   try {
-    // Note: RecipeConversionPreview doesn't have full product data, so it can't handle
-    // container unit conversions properly. This component should receive full product object.
-    // For now, we pass undefined for size parameters and handle basic conversions only.
     const impact = calculateInventoryImpact(
-      recipeQuantity, // actual recipe quantity
+      recipeQuantity,
       recipeUnit,
       purchaseQuantity,
       purchaseUnit,
       productName,
       costPerUnit,
-      undefined, // productSizeValue - not available in this component
-      undefined  // productSizeUnit - not available in this component
+      sizeValue,
+      sizeUnit
     );
 
+    // For portions calculation, use size info if available
+    const portionPurchaseUnit = sizeUnit || purchaseUnit;
+    const portionPurchaseQty = sizeValue || purchaseQuantity;
+    
     const portions = calculateRecipePortions(
-      purchaseQuantity,
-      purchaseUnit,
+      portionPurchaseQty,
+      portionPurchaseUnit,
       1,
       recipeUnit,
       productName

@@ -478,6 +478,9 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                     recipeUnit={recipeIngredient.unit}
                     costPerUnit={form.watch('cost_per_unit')}
                     recipeName={recipeIngredient.recipe.name}
+                    sizeValue={form.watch('size_value')}
+                    sizeUnit={form.watch('size_unit')}
+                    packageQty={form.watch('package_qty')}
                   />
                 ))}
               </>

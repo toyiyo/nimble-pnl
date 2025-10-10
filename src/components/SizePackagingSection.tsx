@@ -77,7 +77,6 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
   const sizeValue = form.watch('size_value') || 0;
   const sizeUnit = form.watch('size_unit') || '';  // Weight unit (oz, lb, etc.)
   const purchaseUnit = form.watch('uom_purchase') || '';  // Package type (bag, case, etc.)
-  const packageQty = form.watch('package_qty') || 1;  // How many packages you're buying
   const productName = form.watch('name') || '';
 
   // Calculate alternative units  
@@ -141,18 +140,14 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
           <div>• <strong>Amount per Package:</strong> How much is in ONE single package? (e.g., 750 for a 750ml bottle)</div>
           <div>• <strong>Unit:</strong> What unit is that amount measured in? (e.g., ml, oz, lb)</div>
           <div>• <strong>Package Type:</strong> What type of container? (e.g., bottle, bag, case)</div>
-          <div>• <strong>Quantity:</strong> How many of those packages are you buying? (usually 1)</div>
         </div>
         <div className="text-xs text-blue-600 mt-2 p-2 bg-blue-100 rounded border-l-2 border-blue-400">
           <strong>✅ Correct Example:</strong> "1 bottle containing 750 ml"<br/>
-          Amount: <code>750</code>, Unit: <code>ml</code>, Type: <code>bottle</code>, Quantity: <code>1</code>
-        </div>
-        <div className="text-xs text-red-600 mt-1 p-2 bg-red-50 rounded border-l-2 border-red-400">
-          <strong>❌ Common Mistake:</strong> Don't enter 750 in the quantity field - that means 750 bottles!
+          Amount: <code>750</code>, Unit: <code>ml</code>, Type: <code>bottle</code>
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <FormField
           control={form.control}
           name="size_value"
@@ -244,31 +239,6 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="package_qty"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel className="flex items-center gap-2">
-                <span className="text-base font-medium">Quantity</span>
-                <span className="text-xs text-muted-foreground font-normal">🔢</span>
-              </FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  type="number"
-                  min="1"
-                  step="1"
-                  placeholder="1"
-                  className="text-center text-lg font-mono"
-                  onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : 1)}
-                />
-              </FormControl>
-              <p className="text-xs text-muted-foreground">How many packages you're buying</p>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
       </div>
       
       {/* Live example */}
@@ -280,13 +250,8 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
             </div>
             <Label className="text-base font-semibold text-green-800">Your Package Definition:</Label>
           </div>
-          <div className="text-lg font-medium text-green-800 mb-2">
-            <span className="bg-green-200 px-2 py-1 rounded">{packageQty}</span> {purchaseUnit}{packageQty !== 1 ? 's' : ''}, 
-            each containing <span className="bg-green-200 px-2 py-1 rounded">{sizeValue} {sizeUnit}</span>
-          </div>
-          <div className="text-sm text-green-700 bg-green-100 p-2 rounded">
-            <strong>Total you're buying:</strong> {(sizeValue * packageQty).toLocaleString()} {sizeUnit} 
-            ({packageQty} × {sizeValue} {sizeUnit})
+          <div className="text-lg font-medium text-green-800">
+            1 {purchaseUnit} containing <span className="bg-green-200 px-2 py-1 rounded">{sizeValue} {sizeUnit}</span>
           </div>
         </div>
       )}

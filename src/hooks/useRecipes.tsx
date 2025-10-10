@@ -346,8 +346,7 @@ export const useRecipes = (restaurantId: string | null) => {
             cost_per_unit,
             uom_purchase,
             size_value,
-            size_unit,
-            package_qty
+            size_unit
           )
         `)
         .eq('recipe_id', recipeId);
@@ -364,9 +363,10 @@ export const useRecipes = (restaurantId: string | null) => {
         if (ingredient.product && ingredient.product.cost_per_unit) {
           const product = ingredient.product;
           try {
-            const packageQuantity = (product.size_value || 1) * (product.package_qty || 1);
-            const purchaseUnit = product.uom_purchase || 'unit';
-            const costPerMeasurementUnit = (product.cost_per_unit || 0) / (product.package_qty || 1);
+            // Use size_value and size_unit directly (no more package_qty)
+            const packageQuantity = product.size_value || 1;
+            const purchaseUnit = product.size_unit || 'unit';
+            const costPerUnit = product.cost_per_unit || 0;
             
             const result = calculateInventoryImpact(
               ingredient.quantity,
@@ -374,7 +374,9 @@ export const useRecipes = (restaurantId: string | null) => {
               packageQuantity,
               purchaseUnit,
               product.name || '',
-              costPerMeasurementUnit
+              costPerUnit,
+              product.size_value,
+              product.size_unit
             );
             
             totalCost += result.costImpact;

@@ -39,6 +39,7 @@ import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelecto
 import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
 import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
 import { calculateInventoryImpact } from "@/lib/enhancedUnitConversion";
+import { VALID_UNITS } from '@/lib/validUnits';
 
 const measurementUnits = [
   'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 
@@ -178,6 +179,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
       if (value.ingredients) {
         let totalCost = 0;
         let hasValidIngredients = false;
+        const COUNT_UNITS = VALID_UNITS.count;
 
         try {
           value.ingredients.forEach((ingredient: any) => {
@@ -187,10 +189,26 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                 hasValidIngredients = true;
                 
                 try {
-                  // Use enhanced unit conversion logic with proper unit mapping
-                  const packageQuantity = (product.size_value || 1) * (product.package_qty || 1);
-                  const purchaseUnit = product.size_unit || 'unit'; // The measurement unit (ml, oz, etc.)
-                  const costPerMeasurementUnit = (product.cost_per_unit || 0) / (product.package_qty || 1);
+                  // Determine if purchase unit is a container unit (same logic as useRecipes)
+                  const packageType = product.uom_purchase || 'unit';
+                  const isContainerUnit = COUNT_UNITS.includes(packageType.toLowerCase());
+                  
+                  // Validate size_value and size_unit for container units
+                  let sizeValue = product.size_value;
+                  let sizeUnit = product.size_unit;
+                  
+                  if (isContainerUnit) {
+                    if (!sizeValue || !sizeUnit) {
+                      console.warn(`Container unit "${packageType}" for product "${product.name}" is missing size_value or size_unit. Using defaults.`);
+                      sizeValue = sizeValue || 1;
+                      sizeUnit = sizeUnit || packageType;
+                    }
+                  }
+                  
+                  // Use container unit (bottle) for purchase, or measurement unit (L) for direct measurements
+                  const purchaseUnit = isContainerUnit ? packageType : (sizeUnit || 'unit');
+                  const packageQuantity = sizeValue || 1;
+                  const costPerUnit = product.cost_per_unit || 0;
                   
                   const result = calculateInventoryImpact(
                     ingredient.quantity,
@@ -198,7 +216,9 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                     packageQuantity,
                     purchaseUnit,
                     product.name || '',
-                    costPerMeasurementUnit
+                    costPerUnit,
+                    sizeValue,
+                    sizeUnit
                   );
                   
                   totalCost += result.costImpact;

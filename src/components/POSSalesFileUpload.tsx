@@ -272,15 +272,8 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                   return null;
                 }
                 
-                // Also skip rows where both quantity and price are 0 or undefined
-                // (unless explicitly instructed to include these)
-                if (quantity === 0 && !totalPrice) {
-                  skippedRows.push({ 
-                    rowNumber: index + 1, 
-                    reason: 'Zero quantity and no price' 
-                  });
-                  return null;
-                }
+                // Flag items with zero quantity or voided transactions
+                const isVoidedOrZeroQuantity = quantity === 0 || (totalPrice === 0 && row['Void amount'] && parseFloat(row['Void amount']) > 0);
 
                 return {
                   itemName: itemName.trim(),
@@ -304,6 +297,8 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                       compoundOrderId: orderId, // Store the compound ID we created
                       importedAt: new Date().toISOString(),
                       hasDateWarning, // Flag if date had issues
+                      isVoidedOrZeroQuantity, // Flag voided or zero-quantity items
+                      voidAmount: row['Void amount'] ? parseFloat(row['Void amount']) : 0,
                     }
                   },
                 };

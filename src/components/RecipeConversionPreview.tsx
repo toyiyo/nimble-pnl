@@ -29,14 +29,18 @@ export function RecipeConversionPreview({
   }
 
   try {
-    // Calculate for the actual recipe quantity
+    // Note: RecipeConversionPreview doesn't have full product data, so it can't handle
+    // container unit conversions properly. This component should receive full product object.
+    // For now, we pass undefined for size parameters and handle basic conversions only.
     const impact = calculateInventoryImpact(
       recipeQuantity, // actual recipe quantity
       recipeUnit,
       purchaseQuantity,
       purchaseUnit,
       productName,
-      costPerUnit
+      costPerUnit,
+      undefined, // productSizeValue - not available in this component
+      undefined  // productSizeUnit - not available in this component
     );
 
     const portions = calculateRecipePortions(

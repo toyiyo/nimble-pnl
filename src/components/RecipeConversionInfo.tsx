@@ -25,10 +25,17 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
   }
 
   // Calculate enhanced conversions using the enhanced unit conversion system
-  const packageQuantity = product.size_value || 1; // Amount in one package (e.g., 750ml in one bottle)
-  const purchaseUnit = product.size_unit || 'unit'; // The unit of measurement (ml, oz, etc.)
   const packageType = product.uom_purchase || 'unit'; // What you buy by (bottle, bag, etc.)
   const costPerUnit = product.cost_per_unit || 0; // Cost per package type (per bottle, per bag)
+  
+  // Determine if purchase unit is a container unit or direct measurement unit
+  const countUnits = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
+  const isContainerUnit = countUnits.includes((packageType || '').toLowerCase());
+  
+  const purchaseUnit = isContainerUnit ? packageType : (product.size_unit || 'unit');
+  const packageQuantity = isContainerUnit ? (product.package_qty || 1) : (product.size_value || 1);
+  const productSizeValue = product.size_value;
+  const productSizeUnit = product.size_unit;
 
   // Use enhanced unit conversion for accurate calculations
   let impact = null;
@@ -36,10 +43,12 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
     impact = calculateInventoryImpact(
       recipeQuantity,
       recipeUnit,
-      packageQuantity, // Amount in one package
-      purchaseUnit, // Use the actual measurement unit (ml, oz)
+      packageQuantity,
+      purchaseUnit,
       product.name || '',
-      costPerUnit // Cost per package (e.g., $10 per bottle)
+      costPerUnit,
+      productSizeValue,
+      productSizeUnit
     );
   } catch (error) {
     console.warn('Enhanced conversion failed:', error);

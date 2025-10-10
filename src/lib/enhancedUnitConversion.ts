@@ -196,7 +196,9 @@ export function calculateInventoryImpact(
   purchaseQuantity: number,
   purchaseUnit: string,
   productName: string,
-  costPerPackage: number  // This is cost per package (e.g., $10 per bottle)
+  costPerPackage: number,  // This is cost per package (e.g., $10 per bottle)
+  productSizeValue?: number, // Size of container (e.g., 750 for 750ml bottle)
+  productSizeUnit?: string   // Unit of container size (e.g., 'ml')
 ): {
   inventoryDeduction: number;           // How much to deduct from inventory (in purchase units)
   inventoryDeductionUnit: string;       // Unit of the deduction
@@ -205,7 +207,42 @@ export function calculateInventoryImpact(
   conversionDetails: ConversionResult | null;
 } {
   
-  // Step 1: Handle bottle unit conversion
+  const countUnits = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
+  const volumeUnits = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
+  
+  // Step 1: Handle container unit conversions (bottle, can, etc.)
+  if (countUnits.includes(purchaseUnit) && volumeUnits.includes(recipeUnit)) {
+    // Recipe is in volume (e.g., oz), purchase is in containers (e.g., bottle)
+    // Need product size info to convert
+    if (!productSizeValue || !productSizeUnit) {
+      throw new Error(`Cannot convert ${recipeUnit} to ${purchaseUnit} for ${productName}. Container size information (size_value and size_unit) is required.`);
+    }
+    
+    // Convert recipe quantity to the same unit as product size
+    const recipeInSizeUnit = convertUnits(recipeQuantity, recipeUnit, productSizeUnit, productName);
+    if (!recipeInSizeUnit) {
+      throw new Error(`Cannot convert ${recipeUnit} to ${productSizeUnit} for ${productName}.`);
+    }
+    
+    // Calculate how many containers needed
+    const containersNeeded = recipeInSizeUnit.value / productSizeValue;
+    
+    return {
+      inventoryDeduction: containersNeeded,
+      inventoryDeductionUnit: purchaseUnit,
+      costImpact: containersNeeded * costPerPackage,
+      percentageOfPackage: containersNeeded * 100,
+      conversionDetails: {
+        value: containersNeeded,
+        fromUnit: recipeUnit,
+        toUnit: purchaseUnit,
+        productSpecific: true,
+        conversionPath: [recipeUnit, productSizeUnit, purchaseUnit]
+      }
+    };
+  }
+  
+  // Step 2: Handle bottle unit conversion (legacy support)
   if (recipeUnit === 'bottle' && purchaseUnit === 'ml') {
     // If recipe calls for bottles and purchase unit is ml, convert directly
     const inventoryDeduction = recipeQuantity * purchaseQuantity; // e.g., 1 bottle = 750ml

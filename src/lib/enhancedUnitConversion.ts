@@ -299,7 +299,18 @@ export function calculateInventoryImpact(
     // Convert recipe quantity to the same unit as product size
     const recipeInSizeUnit = convertUnits(recipeQuantity, recipeUnit, productSizeUnit, productName);
     if (!recipeInSizeUnit) {
-      throw new Error(`Cannot convert ${recipeUnit} to ${productSizeUnit} for ${productName}. Please ensure the size_unit is compatible with the recipe unit.`);
+      // Determine the appropriate unit type suggestion
+      const recipeUnitCategory = VOLUME_UNITS.includes(recipeUnit.toLowerCase()) ? 'volume' : 'weight';
+      const suggestedUnits = recipeUnitCategory === 'volume' 
+        ? 'oz, ml, cup, L' 
+        : 'oz, lb, g, kg';
+      
+      throw new Error(
+        `Cannot convert ${recipeUnit} to ${productSizeUnit} for ${productName}. ` +
+        `The size_unit "${productSizeUnit}" is not compatible with the recipe unit "${recipeUnit}". ` +
+        `For this product, set the size_unit to a ${recipeUnitCategory} unit like: ${suggestedUnits}. ` +
+        `Example: "16 oz per ${purchaseUnit}" or "1 lb per ${purchaseUnit}"`
+      );
     }
     
     // Calculate how many containers needed

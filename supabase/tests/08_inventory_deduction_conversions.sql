@@ -3,8 +3,11 @@
 BEGIN;
 SELECT plan(30);
 
--- Disable RLS for testing
+-- Setup authenticated user context for tests
 SET LOCAL role TO postgres;
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000000"}';
+
+-- Disable RLS for testing
 ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
 ALTER TABLE products DISABLE ROW LEVEL SECURITY;
 ALTER TABLE recipes DISABLE ROW LEVEL SECURITY;

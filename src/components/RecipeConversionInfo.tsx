@@ -53,12 +53,38 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
     );
   } catch (error) {
     console.warn('Enhanced conversion failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Check if it's a missing size information error
+    const isMissingSizeInfo = errorMessage.includes('size information') || 
+                               errorMessage.includes('size_value and size_unit');
+    
     return (
-      <Card className="bg-red-50 border-red-200">
+      <Card className="bg-amber-50 border-amber-200">
         <CardContent className="p-4">
-          <div className="text-sm text-red-600">
-            Unable to calculate conversion between {recipeUnit} and {purchaseUnit} for {product.name}.
-            Please check the units are compatible.
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-amber-800">
+              ⚠️ Conversion Information Needed
+            </div>
+            <div className="text-sm text-amber-700">
+              {isMissingSizeInfo ? (
+                <>
+                  <p className="mb-2">
+                    This product is purchased by "{packageType}" but needs size information to calculate costs.
+                  </p>
+                  <p className="font-medium">To fix: Edit the product and add:</p>
+                  <ul className="list-disc ml-5 mt-1">
+                    <li>Size Value (e.g., 16)</li>
+                    <li>Size Unit (e.g., oz, lb, g, ml)</li>
+                  </ul>
+                  <p className="mt-2 text-xs">
+                    Example: "16 oz per {packageType}" or "1 lb per {packageType}"
+                  </p>
+                </>
+              ) : (
+                <>Unable to calculate conversion between {recipeUnit} and {purchaseUnit} for {product.name}. {errorMessage}</>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

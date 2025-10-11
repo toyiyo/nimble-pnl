@@ -46,6 +46,7 @@ export function normalizeUnitName(unit: string): string {
     'teaspoons': 'tsp',
     
     // Weight
+    'lbs': 'lb',  // Common variation
     'pound': 'lb',
     'pounds': 'lb',
     'gram': 'g',

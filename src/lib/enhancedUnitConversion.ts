@@ -152,8 +152,27 @@ export function convertUnits(
   productName?: string
 ): ConversionResult | null {
   
-  if (fromUnit === toUnit) {
-    return { value, fromUnit, toUnit };
+  // Normalize units first (handle variations like "lbs" -> "lb")
+  const normalizedFromUnit = fromUnit.toLowerCase().trim();
+  const normalizedToUnit = toUnit.toLowerCase().trim();
+  
+  // Handle common variations
+  const unitNormalizations: Record<string, string> = {
+    'lbs': 'lb',
+    'pounds': 'lb',
+    'ounces': 'oz',
+    'cups': 'cup',
+    'tablespoons': 'tbsp',
+    'teaspoons': 'tsp',
+    'grams': 'g',
+    'kilograms': 'kg',
+  };
+  
+  const from = unitNormalizations[normalizedFromUnit] || normalizedFromUnit;
+  const to = unitNormalizations[normalizedToUnit] || normalizedToUnit;
+  
+  if (from === to) {
+    return { value, fromUnit: from, toUnit: to };
   }
 
   // Try product-specific conversion first
@@ -161,25 +180,25 @@ export function convertUnits(
     const productType = detectProductType(productName);
     if (productType && PRODUCT_SPECIFIC_CONVERSIONS[productType]) {
       const conversions = PRODUCT_SPECIFIC_CONVERSIONS[productType];
-      const conversionKey = `${fromUnit}_to_${toUnit}`;
+      const conversionKey = `${from}_to_${to}`;
       
       if (conversions[conversionKey]) {
         return {
           value: value * conversions[conversionKey],
-          fromUnit,
-          toUnit,
+          fromUnit: from,
+          toUnit: to,
           productSpecific: true,
           conversionPath: [productType, conversionKey]
         };
       }
       
       // Try reverse conversion
-      const reverseKey = `${toUnit}_to_${fromUnit}`;
+      const reverseKey = `${to}_to_${from}`;
       if (conversions[reverseKey]) {
         return {
           value: value / conversions[reverseKey],
-          fromUnit,
-          toUnit,
+          fromUnit: from,
+          toUnit: to,
           productSpecific: true,
           conversionPath: [productType, `reverse_${reverseKey}`]
         };
@@ -188,11 +207,11 @@ export function convertUnits(
   }
 
   // Standard unit conversion
-  if (STANDARD_CONVERSIONS[fromUnit]?.[toUnit]) {
+  if (STANDARD_CONVERSIONS[from]?.[to]) {
     return {
-      value: value * STANDARD_CONVERSIONS[fromUnit][toUnit],
-      fromUnit,
-      toUnit,
+      value: value * STANDARD_CONVERSIONS[from][to],
+      fromUnit: from,
+      toUnit: to,
       productSpecific: false
     };
   }
@@ -201,43 +220,43 @@ export function convertUnits(
   // For weight: convert through grams
   // For volume: convert through ml
   
-  if (WEIGHT_UNITS.includes(fromUnit) && WEIGHT_UNITS.includes(toUnit)) {
+  if (WEIGHT_UNITS.includes(from) && WEIGHT_UNITS.includes(to)) {
     // Convert through grams
-    const toGrams = STANDARD_CONVERSIONS[fromUnit]?.['g'];
-    const fromGrams = STANDARD_CONVERSIONS['g']?.[toUnit];
+    const toGrams = STANDARD_CONVERSIONS[from]?.['g'];
+    const fromGrams = STANDARD_CONVERSIONS['g']?.[to];
     
     if (toGrams && fromGrams) {
       return {
         value: value * toGrams * fromGrams,
-        fromUnit,
-        toUnit,
-        conversionPath: [fromUnit, 'g', toUnit]
+        fromUnit: from,
+        toUnit: to,
+        conversionPath: [from, 'g', to]
       };
     }
   }
   
-  if (VOLUME_UNITS.includes(fromUnit) && VOLUME_UNITS.includes(toUnit)) {
+  if (VOLUME_UNITS.includes(from) && VOLUME_UNITS.includes(to)) {
     // Convert through ml
-    const toMl = STANDARD_CONVERSIONS[fromUnit]?.['ml'];
-    const fromMl = STANDARD_CONVERSIONS['ml']?.[toUnit];
+    const toMl = STANDARD_CONVERSIONS[from]?.['ml'];
+    const fromMl = STANDARD_CONVERSIONS['ml']?.[to];
     
     if (toMl && fromMl) {
       return {
         value: value * toMl * fromMl,
-        fromUnit,
-        toUnit,
-        conversionPath: [fromUnit, 'ml', toUnit]
+        fromUnit: from,
+        toUnit: to,
+        conversionPath: [from, 'ml', to]
       };
     }
   }
   
   // Count-based units convert 1:1 (e.g., bottle -> unit, each -> piece)
-  if (COUNT_UNITS.includes(fromUnit) && COUNT_UNITS.includes(toUnit)) {
+  if (COUNT_UNITS.includes(from) && COUNT_UNITS.includes(to)) {
     return {
       value: value, // 1:1 conversion for discrete count units
-      fromUnit,
-      toUnit,
-      conversionPath: [fromUnit, toUnit],
+      fromUnit: from,
+      toUnit: to,
+      conversionPath: [from, to],
       productSpecific: false
     };
   }
@@ -267,17 +286,18 @@ export function calculateInventoryImpact(
 } {
   
   // Step 1: Handle container unit conversions (bottle, can, etc.)
-  if (COUNT_UNITS.includes(purchaseUnit) && VOLUME_UNITS.includes(recipeUnit)) {
-    // Recipe is in volume (e.g., oz), purchase is in containers (e.g., bottle)
+  if (COUNT_UNITS.includes(purchaseUnit.toLowerCase()) && 
+      (VOLUME_UNITS.includes(recipeUnit.toLowerCase()) || WEIGHT_UNITS.includes(recipeUnit.toLowerCase()))) {
+    // Recipe is in volume/weight (e.g., oz, cup, lb), purchase is in containers (e.g., each, bottle)
     // Need product size info to convert
     if (!productSizeValue || !productSizeUnit) {
-      throw new Error(`Cannot convert ${recipeUnit} to ${purchaseUnit} for ${productName}. Container size information (size_value and size_unit) is required.`);
+      throw new Error(`Cannot convert ${recipeUnit} to ${purchaseUnit} for ${productName}. This product needs size information (e.g., "16 oz per each") to calculate costs. Please update the product's size_value and size_unit fields.`);
     }
     
     // Convert recipe quantity to the same unit as product size
     const recipeInSizeUnit = convertUnits(recipeQuantity, recipeUnit, productSizeUnit, productName);
     if (!recipeInSizeUnit) {
-      throw new Error(`Cannot convert ${recipeUnit} to ${productSizeUnit} for ${productName}.`);
+      throw new Error(`Cannot convert ${recipeUnit} to ${productSizeUnit} for ${productName}. Please ensure the size_unit is compatible with the recipe unit.`);
     }
     
     // Calculate how many containers needed

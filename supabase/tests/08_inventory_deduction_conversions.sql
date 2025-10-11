@@ -55,8 +55,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 1.5, 'oz')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 1.5;
+  ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 1.5, 'oz');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -87,8 +86,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000003', 0.5, 'cup')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 0.5;
+  ('b0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000003', 0.5, 'cup');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -119,8 +117,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000004', 2, 'tbsp')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 2;
+  ('b0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000004', 2, 'tbsp');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -151,8 +148,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000005', 3, 'tsp')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 3;
+  ('b0000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000005', 3, 'tsp');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -187,8 +183,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000006', 'a0000000-0000-0000-0000-000000000006', 300, 'g')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 300;
+  ('b0000000-0000-0000-0000-000000000006', 'a0000000-0000-0000-0000-000000000006', 300, 'g');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -220,8 +215,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000007', 4, 'oz')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 4;
+  ('b0000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000007', 4, 'oz');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -254,8 +248,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000008', 'a0000000-0000-0000-0000-000000000008', 0.15, 'kg')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 0.15;
+  ('b0000000-0000-0000-0000-000000000008', 'a0000000-0000-0000-0000-000000000008', 0.15, 'kg');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -289,8 +282,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000009', 2, 'cup')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 2;
+  ('b0000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000009', 2, 'cup');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -322,8 +314,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-00000000000a', 'a0000000-0000-0000-0000-00000000000a', 3, 'cup')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 3;
+  ('b0000000-0000-0000-0000-00000000000a', 'a0000000-0000-0000-0000-00000000000a', 3, 'cup');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -355,8 +346,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-00000000000b', 'a0000000-0000-0000-0000-00000000000b', 1.5, 'cup')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 1.5;
+  ('b0000000-0000-0000-0000-00000000000b', 'a0000000-0000-0000-0000-00000000000b', 1.5, 'cup');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -389,8 +379,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-00000000000c', 'a0000000-0000-0000-0000-00000000000c', 0.5, 'cup')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 0.5;
+  ('b0000000-0000-0000-0000-00000000000c', 'a0000000-0000-0000-0000-00000000000c', 0.5, 'cup');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -426,8 +415,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-00000000000d', 'a0000000-0000-0000-0000-00000000000d', 2, 'oz')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 2;
+  ('b0000000-0000-0000-0000-00000000000d', 'a0000000-0000-0000-0000-00000000000d', 2, 'oz');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -458,8 +446,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-00000000000e', 'a0000000-0000-0000-0000-00000000000e', 0.25, 'cup')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 0.25;
+  ('b0000000-0000-0000-0000-00000000000e', 'a0000000-0000-0000-0000-00000000000e', 0.25, 'cup');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -491,8 +478,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-00000000000f', 'a0000000-0000-0000-0000-00000000000f', 0.5, 'L')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 0.5;
+  ('b0000000-0000-0000-0000-00000000000f', 'a0000000-0000-0000-0000-00000000000f', 0.5, 'L');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -527,8 +513,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000010', 30, 'g')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 30;
+  ('b0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000010', 30, 'g');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -559,8 +544,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000011', 0.2, 'kg')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 0.2;
+  ('b0000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000011', 0.2, 'kg');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -619,8 +603,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000012', 1, 'unit')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 1;
+  ('b0000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000012', 1, 'unit');
 
 -- First deduction
 SELECT lives_ok(
@@ -686,8 +669,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000013', 'a0000000-0000-0000-0000-000000000013', 1, 'unit')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 1;
+  ('b0000000-0000-0000-0000-000000000013', 'a0000000-0000-0000-0000-000000000013', 1, 'unit');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -716,8 +698,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000014', 'a0000000-0000-0000-0000-000000000014', 1, 'unit')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 1;
+  ('b0000000-0000-0000-0000-000000000014', 'a0000000-0000-0000-0000-000000000014', 1, 'unit');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -821,8 +802,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
   ('b0000000-0000-0000-0000-000000000015', 'a0000000-0000-0000-0000-000000000015', 200, 'g'),
   ('b0000000-0000-0000-0000-000000000015', 'a0000000-0000-0000-0000-000000000016', 100, 'g'),
-  ('b0000000-0000-0000-0000-000000000015', 'a0000000-0000-0000-0000-000000000017', 0.5, 'oz')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity;
+  ('b0000000-0000-0000-0000-000000000015', 'a0000000-0000-0000-0000-000000000017', 0.5, 'oz');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(

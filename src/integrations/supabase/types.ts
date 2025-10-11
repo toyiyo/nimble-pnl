@@ -2276,6 +2276,22 @@ export type Database = {
         | "box"
         | "piece"
         | "serving"
+        | "L"
+        | "gal"
+        | "qt"
+        | "pint"
+        | "jar"
+        | "container"
+        | "case"
+        | "package"
+        | "dozen"
+        | "each"
+        | "unit"
+        | "inch"
+        | "cm"
+        | "mm"
+        | "ft"
+        | "meter"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2418,6 +2434,22 @@ export const Constants = {
         "box",
         "piece",
         "serving",
+        "L",
+        "gal",
+        "qt",
+        "pint",
+        "jar",
+        "container",
+        "case",
+        "package",
+        "dozen",
+        "each",
+        "unit",
+        "inch",
+        "cm",
+        "mm",
+        "ft",
+        "meter",
       ],
     },
   },

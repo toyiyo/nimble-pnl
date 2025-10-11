@@ -1,9 +1,10 @@
 // Enhanced unit conversion system for recipe calculations
 
 // Exported unit constants to avoid duplication across the codebase
-export const WEIGHT_UNITS = ['lb', 'kg', 'g'];
+// Note: 'oz' appears in both WEIGHT_UNITS and VOLUME_UNITS because it can represent both weight ounces and fluid ounces
+export const WEIGHT_UNITS = ['lb', 'kg', 'g', 'oz'];
 export const VOLUME_UNITS = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
-export const COUNT_UNITS = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
+export const COUNT_UNITS = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen', 'jar'];
 
 export interface ProductUnitInfo {
   packageType: string;
@@ -299,7 +300,18 @@ export function calculateInventoryImpact(
     // Convert recipe quantity to the same unit as product size
     const recipeInSizeUnit = convertUnits(recipeQuantity, recipeUnit, productSizeUnit, productName);
     if (!recipeInSizeUnit) {
-      throw new Error(`Cannot convert ${recipeUnit} to ${productSizeUnit} for ${productName}. Please ensure the size_unit is compatible with the recipe unit.`);
+      // Determine the appropriate unit type suggestion
+      const recipeUnitCategory = VOLUME_UNITS.includes(recipeUnit.toLowerCase()) ? 'volume' : 'weight';
+      const suggestedUnits = recipeUnitCategory === 'volume' 
+        ? 'oz, ml, cup, L' 
+        : 'oz, lb, g, kg';
+      
+      throw new Error(
+        `Cannot convert ${recipeUnit} to ${productSizeUnit} for ${productName}. ` +
+        `The size_unit "${productSizeUnit}" is not compatible with the recipe unit "${recipeUnit}". ` +
+        `For this product, set the size_unit to a ${recipeUnitCategory} unit like: ${suggestedUnits}. ` +
+        `Example: "16 oz per ${purchaseUnit}" or "1 lb per ${purchaseUnit}"`
+      );
     }
     
     // Calculate how many containers needed

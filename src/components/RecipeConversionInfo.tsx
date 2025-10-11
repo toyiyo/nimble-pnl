@@ -54,9 +54,22 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
     console.warn('Enhanced conversion failed:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
-    // Check if it's a missing size information error
+    // Check what type of error occurred
     const isMissingSizeInfo = errorMessage.includes('size information') || 
                                errorMessage.includes('size_value and size_unit');
+    const isIncompatibleUnit = errorMessage.includes('not compatible with the recipe unit');
+    
+    // Parse suggestions from error message if available
+    let suggestions = null;
+    if (isIncompatibleUnit) {
+      const match = errorMessage.match(/set the size_unit to a (\w+) unit like: ([^.]+)/);
+      if (match) {
+        suggestions = {
+          category: match[1],
+          units: match[2]
+        };
+      }
+    }
     
     return (
       <Card className="bg-amber-50 border-amber-200">
@@ -80,8 +93,34 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
                     Example: "16 oz per {packageType}" or "1 lb per {packageType}"
                   </p>
                 </>
+              ) : isIncompatibleUnit && suggestions ? (
+                <>
+                  <p className="mb-2">
+                    Unable to calculate conversion between <strong>{recipeUnit}</strong> and <strong>{purchaseUnit}</strong> for {product.name}.
+                  </p>
+                  <p className="mb-2">
+                    The product's size unit (<strong>{productSizeUnit}</strong>) cannot be converted to the recipe unit.
+                  </p>
+                  <p className="font-medium">To fix: Edit the product and change:</p>
+                  <ul className="list-disc ml-5 mt-1">
+                    <li>Size Unit to a {suggestions.category} unit like: <strong>{suggestions.units}</strong></li>
+                  </ul>
+                  <p className="mt-2 text-xs text-amber-600">
+                    Common examples for this product type:
+                  </p>
+                  <ul className="list-disc ml-5 mt-1 text-xs">
+                    <li>Peanut butter jar: "16 oz per jar"</li>
+                    <li>Flour bag: "5 lb per bag" or "80 oz per bag"</li>
+                    <li>Sugar: "1 lb per bag" or "16 oz per bag"</li>
+                  </ul>
+                </>
               ) : (
-                <>Unable to calculate conversion between {recipeUnit} and {purchaseUnit} for {product.name}. {errorMessage}</>
+                <>
+                  <p className="mb-2">
+                    Unable to calculate conversion between <strong>{recipeUnit}</strong> and <strong>{purchaseUnit}</strong> for {product.name}.
+                  </p>
+                  <p className="text-xs">{errorMessage}</p>
+                </>
               )}
             </div>
           </div>

@@ -32,7 +32,9 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
   const isContainerUnit = COUNT_UNITS.includes((packageType || '').toLowerCase());
   
   const purchaseUnit = isContainerUnit ? packageType : (product.size_unit || 'unit');
-  const quantityPerPurchaseUnit = product.size_value || 1;
+  // For container units: quantityPerPurchaseUnit should be 1 (you buy 1 bottle at a time)
+  // For non-container units: use the size_value (e.g., 1000g for a bag)
+  const quantityPerPurchaseUnit = isContainerUnit ? 1 : (product.size_value || 1);
   const productSizeValue = product.size_value;
   const productSizeUnit = product.size_unit;
 
@@ -89,10 +91,12 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
               <div className="flex justify-between py-1 border-b border-blue-200">
                 <span className="text-blue-700">Purchase Unit</span>
                 <span className="font-medium">
-                  {quantityPerPurchaseUnit} {purchaseUnit}
-                  <span className="text-blue-600 ml-2 text-xs">
-                    (per {packageType})
-                  </span>
+                  {packageType}
+                  {isContainerUnit && productSizeValue && productSizeUnit && (
+                    <span className="text-blue-600 ml-2 text-xs">
+                      ({productSizeValue} {productSizeUnit} per {packageType})
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-blue-200">
@@ -119,9 +123,14 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
                 </span>
               </div>
               <div className="flex justify-between py-1 bg-green-100 px-2 rounded">
-                <span className="text-green-800 font-medium">Cost per {purchaseUnit}</span>
+                <span className="text-green-800 font-medium">
+                  Cost per {isContainerUnit && productSizeUnit ? productSizeUnit : purchaseUnit}
+                </span>
                 <span className="font-bold text-green-900">
-                  ${((product.cost_per_unit || 0) / (product.size_value || 1)).toFixed(4)}/{purchaseUnit}
+                  ${isContainerUnit && productSizeValue 
+                    ? ((product.cost_per_unit || 0) / productSizeValue).toFixed(4)
+                    : (product.cost_per_unit || 0).toFixed(4)
+                  }/{isContainerUnit && productSizeUnit ? productSizeUnit : purchaseUnit}
                 </span>
               </div>
             </div>

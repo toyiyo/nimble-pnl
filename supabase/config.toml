@@ -103,3 +103,6 @@ verify_jwt = true
 
 [functions.signup-with-invitation]
 verify_jwt = false
+
+[functions.bulk-recalculate-pnl]
+verify_jwt = true

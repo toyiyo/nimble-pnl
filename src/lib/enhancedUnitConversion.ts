@@ -166,6 +166,8 @@ export function convertUnits(
     'teaspoons': 'tsp',
     'grams': 'g',
     'kilograms': 'kg',
+    'l': 'L',  // Normalize lowercase l to uppercase L for liters
+    'liters': 'L',
   };
   
   const from = unitNormalizations[normalizedFromUnit] || normalizedFromUnit;

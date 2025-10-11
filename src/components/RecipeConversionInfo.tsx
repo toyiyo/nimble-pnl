@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Calculator, Package } from 'lucide-react';
 import { Product } from '@/hooks/useProducts';
-import { calculateInventoryImpact } from '@/lib/enhancedUnitConversion';
+import { calculateInventoryImpact, COUNT_UNITS, getProductUnitInfo } from '@/lib/enhancedUnitConversion';
 
 interface RecipeConversionInfoProps {
   product: Product;
@@ -25,10 +25,17 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
   }
 
   // Calculate enhanced conversions using the enhanced unit conversion system
-  const packageQuantity = product.size_value || 1; // Amount in one package (e.g., 750ml in one bottle)
-  const purchaseUnit = product.size_unit || 'unit'; // The unit of measurement (ml, oz, etc.)
-  const packageType = product.uom_purchase || 'unit'; // What you buy by (bottle, bag, etc.)
   const costPerUnit = product.cost_per_unit || 0; // Cost per package type (per bottle, per bag)
+  
+  // Use shared helper to get validated product unit info
+  const {
+    packageType,
+    isContainerUnit,
+    purchaseUnit,
+    quantityPerPurchaseUnit,
+    sizeValue: productSizeValue,
+    sizeUnit: productSizeUnit
+  } = getProductUnitInfo(product);
 
   // Use enhanced unit conversion for accurate calculations
   let impact = null;
@@ -36,19 +43,47 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
     impact = calculateInventoryImpact(
       recipeQuantity,
       recipeUnit,
-      packageQuantity, // Amount in one package
-      purchaseUnit, // Use the actual measurement unit (ml, oz)
+      quantityPerPurchaseUnit,
+      purchaseUnit,
       product.name || '',
-      costPerUnit // Cost per package (e.g., $10 per bottle)
+      costPerUnit,
+      productSizeValue,
+      productSizeUnit
     );
   } catch (error) {
     console.warn('Enhanced conversion failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Check if it's a missing size information error
+    const isMissingSizeInfo = errorMessage.includes('size information') || 
+                               errorMessage.includes('size_value and size_unit');
+    
     return (
-      <Card className="bg-red-50 border-red-200">
+      <Card className="bg-amber-50 border-amber-200">
         <CardContent className="p-4">
-          <div className="text-sm text-red-600">
-            Unable to calculate conversion between {recipeUnit} and {purchaseUnit} for {product.name}.
-            Please check the units are compatible.
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-amber-800">
+              ⚠️ Conversion Information Needed
+            </div>
+            <div className="text-sm text-amber-700">
+              {isMissingSizeInfo ? (
+                <>
+                  <p className="mb-2">
+                    This product is purchased by "{packageType}" but needs size information to calculate costs.
+                  </p>
+                  <p className="font-medium">To fix: Edit the product and add:</p>
+                  <ul className="list-disc ml-5 mt-1">
+                    <li>Size Value (e.g., 16)</li>
+                    <li>Size Unit (e.g., oz, lb, g, ml)</li>
+                  </ul>
+                  <p className="mt-2 text-xs">
+                    Example: "16 oz per {packageType}" or "1 lb per {packageType}"
+                  </p>
+                </>
+              ) : (
+                <>Unable to calculate conversion between {recipeUnit} and {purchaseUnit} for {product.name}. {errorMessage}</>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -81,10 +116,12 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
               <div className="flex justify-between py-1 border-b border-blue-200">
                 <span className="text-blue-700">Purchase Unit</span>
                 <span className="font-medium">
-                  {packageQuantity} {purchaseUnit}
-                  <span className="text-blue-600 ml-2 text-xs">
-                    (per {packageType})
-                  </span>
+                  {packageType}
+                  {isContainerUnit && productSizeValue && productSizeUnit && (
+                    <span className="text-blue-600 ml-2 text-xs">
+                      ({productSizeValue} {productSizeUnit} per {packageType})
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-blue-200">
@@ -94,7 +131,10 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
               <div className="flex justify-between py-1 border-b border-blue-200">
                 <span className="text-blue-700">Package Size</span>
                 <span className="font-medium">
-                  {product.size_value || 0} {purchaseUnit} per {packageType}
+                  {isContainerUnit 
+                    ? `${product.size_value || 0} ${product.size_unit || 'unit'} per ${packageType}`
+                    : `${quantityPerPurchaseUnit} ${purchaseUnit} per ${packageType}`
+                  }
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-blue-200">
@@ -108,9 +148,14 @@ export function RecipeConversionInfo({ product, recipeQuantity, recipeUnit }: Re
                 </span>
               </div>
               <div className="flex justify-between py-1 bg-green-100 px-2 rounded">
-                <span className="text-green-800 font-medium">Cost per {purchaseUnit}</span>
+                <span className="text-green-800 font-medium">
+                  Cost per {isContainerUnit && productSizeUnit ? productSizeUnit : purchaseUnit}
+                </span>
                 <span className="font-bold text-green-900">
-                  ${((product.cost_per_unit || 0) / (product.size_value || 1)).toFixed(4)}/{purchaseUnit}
+                  ${isContainerUnit && productSizeValue 
+                    ? ((product.cost_per_unit || 0) / productSizeValue).toFixed(4)
+                    : (product.cost_per_unit || 0).toFixed(4)
+                  }/{isContainerUnit && productSizeUnit ? productSizeUnit : purchaseUnit}
                 </span>
               </div>
             </div>

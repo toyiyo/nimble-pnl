@@ -38,7 +38,7 @@ import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
 import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelector';
 import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
 import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
-import { calculateInventoryImpact } from "@/lib/enhancedUnitConversion";
+import { calculateInventoryImpact, getProductUnitInfo } from "@/lib/enhancedUnitConversion";
 
 const measurementUnits = [
   'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 
@@ -187,18 +187,19 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                 hasValidIngredients = true;
                 
                 try {
-                  // Use enhanced unit conversion logic with proper unit mapping
-                  const packageQuantity = (product.size_value || 1) * (product.package_qty || 1);
-                  const purchaseUnit = product.size_unit || 'unit'; // The measurement unit (ml, oz, etc.)
-                  const costPerMeasurementUnit = (product.cost_per_unit || 0) / (product.package_qty || 1);
+                  // Use shared helper to get validated product unit info
+                  const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(product);
+                  const costPerUnit = product.cost_per_unit || 0;
                   
                   const result = calculateInventoryImpact(
                     ingredient.quantity,
                     ingredient.unit,
-                    packageQuantity,
+                    quantityPerPurchaseUnit,
                     purchaseUnit,
                     product.name || '',
-                    costPerMeasurementUnit
+                    costPerUnit,
+                    sizeValue,
+                    sizeUnit
                   );
                   
                   totalCost += result.costImpact;

@@ -36,6 +36,8 @@ interface ParsedSale {
     _parsedMeta?: {
       compoundOrderId?: string;
       posSystem?: string;
+      isVoidedOrZeroQuantity?: boolean;
+      voidAmount?: number;
     };
     masterId?: string;
     parentId?: string;
@@ -49,6 +51,8 @@ interface EditableSale extends ParsedSale {
   isEditing: boolean;
   hasError: boolean;
   errorMessage?: string;
+  isVoidedOrZeroQuantity?: boolean;
+  shouldInclude?: boolean; // User's decision to include or exclude
 }
 
 interface POSSalesImportReviewProps {
@@ -66,6 +70,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
   const [isImporting, setIsImporting] = useState(false);
   const [needsDateInput, setNeedsDateInput] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [importError, setImportError] = useState<{ message: string; details?: string; duplicates?: string[] } | null>(null);
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
 
@@ -75,13 +80,18 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     setNeedsDateInput(needsDate);
     
     // Convert parsed sales to editable format
-    const editable = salesData.map((sale, index) => ({
-      ...sale,
-      id: `temp-${index}`,
-      isEditing: false,
-      hasError: !sale.itemName || (needsDate && !sale.saleDate),
-      errorMessage: !sale.itemName ? 'Item name is required' : (needsDate && !sale.saleDate ? 'Date is required' : undefined),
-    }));
+    const editable = salesData.map((sale, index) => {
+      const isVoided = sale.rawData._parsedMeta?.isVoidedOrZeroQuantity === true;
+      return {
+        ...sale,
+        id: `temp-${index}`,
+        isEditing: false,
+        hasError: !sale.itemName || (needsDate && !sale.saleDate),
+        errorMessage: !sale.itemName ? 'Item name is required' : (needsDate && !sale.saleDate ? 'Date is required' : undefined),
+        isVoidedOrZeroQuantity: isVoided,
+        shouldInclude: !isVoided, // By default, exclude voided items
+      };
+    });
     setEditableSales(editable);
   }, [salesData]);
 
@@ -195,10 +205,13 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     }
 
     setIsImporting(true);
+    setImportError(null); // Clear previous errors
 
     try {
-      // Prepare data for bulk insert
-      const salesToInsert = editableSales.map(sale => {
+      // Prepare data for bulk insert (only include items user wants to import)
+      const salesToInsert = editableSales
+        .filter(sale => sale.shouldInclude !== false)
+        .map(sale => {
         // Get the best possible unique ID
         const externalOrderId = 
           // Try to use the compound ID first (for Toast POS data)
@@ -269,12 +282,20 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
             !existingIds.includes(sale.external_order_id)
           );
           
-          // If all are duplicates, throw an error
+          // If all are duplicates, throw an error with details
           if (filteredSales.length === 0) {
-            throw new Error(`All ${recordsToInsert.length} records appear to be duplicates of existing sales data.`);
+            const error = new Error(`All ${recordsToInsert.length} records appear to be duplicates of existing sales data.`);
+            (error as any).duplicates = existingIds.slice(0, 10); // Include up to 10 duplicate IDs for reference
+            throw error;
           }
           
           // Otherwise warn and continue with non-duplicates
+          setImportError({
+            message: `Found ${existingIds.length} duplicate record${existingIds.length !== 1 ? 's' : ''}`,
+            details: `These records already exist in your database and will be skipped. Continuing with ${filteredSales.length} new record${filteredSales.length !== 1 ? 's' : ''}.`,
+            duplicates: existingIds.slice(0, 10)
+          });
+          
           toast({
             title: "Duplicate records detected",
             description: `Found ${existingIds.length} duplicate records that will be skipped.`,
@@ -327,6 +348,16 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     } catch (error) {
       console.error('Error importing sales:', error);
       const errorMessage = error instanceof Error ? error.message : "Failed to import sales data";
+      
+      // Set detailed error for prominent display
+      setImportError({
+        message: errorMessage,
+        details: error instanceof Error && (error as any).duplicates 
+          ? "All records in your file have already been imported. This typically happens when uploading the same file twice."
+          : "There was an error importing your sales data. Please check the details below and try again.",
+        duplicates: (error as any).duplicates
+      });
+      
       toast({
         title: "Import failed",
         description: errorMessage,
@@ -337,8 +368,10 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     }
   };
 
-  const validCount = editableSales.filter(s => !s.hasError).length;
+  const validCount = editableSales.filter(s => !s.hasError && s.shouldInclude !== false).length;
   const errorCount = editableSales.filter(s => s.hasError).length;
+  const voidedCount = editableSales.filter(s => s.isVoidedOrZeroQuantity).length;
+  const excludedCount = editableSales.filter(s => s.shouldInclude === false).length;
 
   return (
     <div className="space-y-4">
@@ -362,10 +395,46 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                   {errorCount} Errors
                 </Badge>
               )}
+              {voidedCount > 0 && (
+                <Badge variant="outline" className="text-warning">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  {voidedCount} Voided/Zero
+                </Badge>
+              )}
             </div>
           </div>
         </CardHeader>
         <CardContent>
+          {importError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <div className="ml-2">
+                <h4 className="font-semibold mb-2">{importError.message}</h4>
+                {importError.details && (
+                  <p className="text-sm mb-3">{importError.details}</p>
+                )}
+                {importError.duplicates && importError.duplicates.length > 0 && (
+                  <div className="text-sm space-y-2">
+                    <p className="font-medium">Sample duplicate Order IDs:</p>
+                    <ul className="list-disc list-inside space-y-1 max-h-32 overflow-y-auto font-mono text-xs">
+                      {importError.duplicates.map((id, idx) => (
+                        <li key={idx}>{id}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="mt-3 pt-3 border-t border-destructive/20">
+                  <p className="font-medium text-sm">What you can do:</p>
+                  <ul className="list-disc list-inside mt-1 space-y-1 text-sm">
+                    <li>Check if this data was already imported previously</li>
+                    <li>Export a different date range from your POS system</li>
+                    <li>Verify the Order IDs in your CSV file are unique</li>
+                    <li>Contact support if you believe this is an error</li>
+                  </ul>
+                </div>
+              </div>
+            </Alert>
+          )}
           {needsDateInput && (
             <Alert className="mb-4">
               <Calendar className="h-4 w-4" />
@@ -399,6 +468,21 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
               </AlertDescription>
             </Alert>
           )}
+          {voidedCount > 0 && (
+            <Alert className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">
+                    Found {voidedCount} voided or zero-quantity items (e.g., refunds, voids, or items with $0 sales).
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    These items are excluded by default. Click "Include" on any item to add it to the import.
+                  </p>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -423,7 +507,14 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                   </TableRow>
                 ) : (
                   editableSales.map((sale) => (
-                    <TableRow key={sale.id} className={sale.hasError ? 'bg-destructive/10' : ''}>
+                    <TableRow 
+                      key={sale.id} 
+                      className={cn(
+                        sale.hasError ? 'bg-destructive/10' : '',
+                        sale.isVoidedOrZeroQuantity && 'bg-warning/10',
+                        sale.shouldInclude === false && 'opacity-50'
+                      )}
+                    >
                       <TableCell>
                         {sale.isEditing ? (
                           <Input
@@ -434,6 +525,11 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                         ) : (
                           <div className="flex items-center gap-2">
                             {sale.hasError && <AlertCircle className="w-4 h-4 text-destructive" />}
+                            {sale.isVoidedOrZeroQuantity && (
+                              <Badge variant="outline" className="text-xs">
+                                Voided/Zero
+                              </Badge>
+                            )}
                             <span className={sale.hasError ? 'text-destructive' : ''}>{sale.itemName || '(empty)'}</span>
                             {sale.tags && <span className="text-xs px-1 bg-muted rounded">{sale.tags}</span>}
                           </div>
@@ -533,6 +629,21 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          {sale.isVoidedOrZeroQuantity && !sale.isEditing && (
+                            <Button
+                              variant={sale.shouldInclude ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => {
+                                setEditableSales(prev =>
+                                  prev.map(s =>
+                                    s.id === sale.id ? { ...s, shouldInclude: !s.shouldInclude } : s
+                                  )
+                                );
+                              }}
+                            >
+                              {sale.shouldInclude ? "Exclude" : "Include"}
+                            </Button>
+                          )}
                           {sale.isEditing ? (
                             <>
                               <Button

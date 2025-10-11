@@ -2042,10 +2042,6 @@ export type Database = {
         Args: { base13: string }
         Returns: string
       }
-      calculate_recipe_cost: {
-        Args: { recipe_id: string }
-        Returns: number
-      }
       calculate_square_daily_pnl: {
         Args: { p_restaurant_id: string; p_service_date: string }
         Returns: string
@@ -2280,6 +2276,22 @@ export type Database = {
         | "box"
         | "piece"
         | "serving"
+        | "L"
+        | "gal"
+        | "qt"
+        | "pint"
+        | "jar"
+        | "container"
+        | "case"
+        | "package"
+        | "dozen"
+        | "each"
+        | "unit"
+        | "inch"
+        | "cm"
+        | "mm"
+        | "ft"
+        | "meter"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2422,6 +2434,22 @@ export const Constants = {
         "box",
         "piece",
         "serving",
+        "L",
+        "gal",
+        "qt",
+        "pint",
+        "jar",
+        "container",
+        "case",
+        "package",
+        "dozen",
+        "each",
+        "unit",
+        "inch",
+        "cm",
+        "mm",
+        "ft",
+        "meter",
       ],
     },
   },

@@ -168,6 +168,32 @@ OPENAI_API_KEY=your_openai_key
 - Team collaboration tools
 - Multi-restaurant support
 
+## Testing
+
+### SQL Function Tests
+
+The project includes comprehensive tests for all PostgreSQL database functions using pgTAP.
+
+**Running tests locally:**
+```bash
+# Navigate to tests directory
+cd supabase/tests
+
+# Run all tests
+./run_tests.sh
+```
+
+**Test coverage:**
+- Sales and aggregation functions
+- P&L calculation functions
+- Inventory management functions
+- Search and lookup functions
+- Trigger functions
+- Security and authentication functions
+- Utility and maintenance functions
+
+See [supabase/tests/README.md](supabase/tests/README.md) for detailed testing documentation.
+
 ## Contributing
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute to this project.

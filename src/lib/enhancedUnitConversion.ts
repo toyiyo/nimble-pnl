@@ -1,5 +1,68 @@
 // Enhanced unit conversion system for recipe calculations
 
+// Exported unit constants to avoid duplication across the codebase
+export const WEIGHT_UNITS = ['lb', 'kg', 'g'];
+export const VOLUME_UNITS = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
+export const COUNT_UNITS = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
+
+export interface ProductUnitInfo {
+  packageType: string;
+  isContainerUnit: boolean;
+  sizeValue: number;
+  sizeUnit: string;
+  purchaseUnit: string;
+  quantityPerPurchaseUnit: number; // Size of one purchase unit (e.g., 750ml per bottle)
+}
+
+/**
+ * Extracts and validates product unit information for container/package calculations.
+ * Handles container units (bottle, can, etc.) vs direct measurement units.
+ * 
+ * @param product - The product object containing unit and size information
+ * @returns ProductUnitInfo with validated unit details
+ */
+export function getProductUnitInfo(product: {
+  uom_purchase?: string | null;
+  size_value?: number | null;
+  size_unit?: string | null;
+  name?: string;
+}): ProductUnitInfo {
+  const packageType = product.uom_purchase || 'unit';
+  const isContainerUnit = COUNT_UNITS.includes(packageType.toLowerCase());
+  
+  let sizeValue = product.size_value;
+  let sizeUnit = product.size_unit;
+  
+  // Validate size_value and size_unit for container units
+  if (isContainerUnit) {
+    if (!sizeValue || !sizeUnit) {
+      console.warn(
+        `Container unit "${packageType}" for product "${product.name}" is missing size_value or size_unit. Using defaults.`
+      );
+      sizeValue = sizeValue || 1;
+      sizeUnit = sizeUnit || packageType;
+    }
+  }
+  
+  // Use container unit (bottle) for purchase, or measurement unit for direct measurements
+  // For non-container units: prioritize actual purchase unit, then size_unit, then fallback to 'unit'
+  const purchaseUnit = isContainerUnit 
+    ? packageType 
+    : (product.uom_purchase || sizeUnit || 'unit');
+  // For container units: quantityPerPurchaseUnit should be 1 (you buy 1 bottle at a time)
+  // For non-container units: use the size_value (e.g., 1000g for a bag)
+  const quantityPerPurchaseUnit = isContainerUnit ? 1 : (sizeValue || 1);
+  
+  return {
+    packageType,
+    isContainerUnit,
+    sizeValue: sizeValue || 1,
+    sizeUnit: sizeUnit || packageType,
+    purchaseUnit,
+    quantityPerPurchaseUnit,
+  };
+}
+
 export interface ConversionResult {
   value: number;
   fromUnit: string;
@@ -89,8 +152,29 @@ export function convertUnits(
   productName?: string
 ): ConversionResult | null {
   
-  if (fromUnit === toUnit) {
-    return { value, fromUnit, toUnit };
+  // Normalize units first (handle variations like "lbs" -> "lb")
+  const normalizedFromUnit = fromUnit.toLowerCase().trim();
+  const normalizedToUnit = toUnit.toLowerCase().trim();
+  
+  // Handle common variations
+  const unitNormalizations: Record<string, string> = {
+    'lbs': 'lb',
+    'pounds': 'lb',
+    'ounces': 'oz',
+    'cups': 'cup',
+    'tablespoons': 'tbsp',
+    'teaspoons': 'tsp',
+    'grams': 'g',
+    'kilograms': 'kg',
+    'l': 'L',  // Normalize lowercase l to uppercase L for liters
+    'liters': 'L',
+  };
+  
+  const from = unitNormalizations[normalizedFromUnit] || normalizedFromUnit;
+  const to = unitNormalizations[normalizedToUnit] || normalizedToUnit;
+  
+  if (from === to) {
+    return { value, fromUnit: from, toUnit: to };
   }
 
   // Try product-specific conversion first
@@ -98,25 +182,25 @@ export function convertUnits(
     const productType = detectProductType(productName);
     if (productType && PRODUCT_SPECIFIC_CONVERSIONS[productType]) {
       const conversions = PRODUCT_SPECIFIC_CONVERSIONS[productType];
-      const conversionKey = `${fromUnit}_to_${toUnit}`;
+      const conversionKey = `${from}_to_${to}`;
       
       if (conversions[conversionKey]) {
         return {
           value: value * conversions[conversionKey],
-          fromUnit,
-          toUnit,
+          fromUnit: from,
+          toUnit: to,
           productSpecific: true,
           conversionPath: [productType, conversionKey]
         };
       }
       
       // Try reverse conversion
-      const reverseKey = `${toUnit}_to_${fromUnit}`;
+      const reverseKey = `${to}_to_${from}`;
       if (conversions[reverseKey]) {
         return {
           value: value / conversions[reverseKey],
-          fromUnit,
-          toUnit,
+          fromUnit: from,
+          toUnit: to,
           productSpecific: true,
           conversionPath: [productType, `reverse_${reverseKey}`]
         };
@@ -125,11 +209,11 @@ export function convertUnits(
   }
 
   // Standard unit conversion
-  if (STANDARD_CONVERSIONS[fromUnit]?.[toUnit]) {
+  if (STANDARD_CONVERSIONS[from]?.[to]) {
     return {
-      value: value * STANDARD_CONVERSIONS[fromUnit][toUnit],
-      fromUnit,
-      toUnit,
+      value: value * STANDARD_CONVERSIONS[from][to],
+      fromUnit: from,
+      toUnit: to,
       productSpecific: false
     };
   }
@@ -138,47 +222,43 @@ export function convertUnits(
   // For weight: convert through grams
   // For volume: convert through ml
   
-  const weightUnits = ['lb', 'kg', 'g'];
-  const volumeUnits = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
-  const countUnits = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
-  
-  if (weightUnits.includes(fromUnit) && weightUnits.includes(toUnit)) {
+  if (WEIGHT_UNITS.includes(from) && WEIGHT_UNITS.includes(to)) {
     // Convert through grams
-    const toGrams = STANDARD_CONVERSIONS[fromUnit]?.['g'];
-    const fromGrams = STANDARD_CONVERSIONS['g']?.[toUnit];
+    const toGrams = STANDARD_CONVERSIONS[from]?.['g'];
+    const fromGrams = STANDARD_CONVERSIONS['g']?.[to];
     
     if (toGrams && fromGrams) {
       return {
         value: value * toGrams * fromGrams,
-        fromUnit,
-        toUnit,
-        conversionPath: [fromUnit, 'g', toUnit]
+        fromUnit: from,
+        toUnit: to,
+        conversionPath: [from, 'g', to]
       };
     }
   }
   
-  if (volumeUnits.includes(fromUnit) && volumeUnits.includes(toUnit)) {
+  if (VOLUME_UNITS.includes(from) && VOLUME_UNITS.includes(to)) {
     // Convert through ml
-    const toMl = STANDARD_CONVERSIONS[fromUnit]?.['ml'];
-    const fromMl = STANDARD_CONVERSIONS['ml']?.[toUnit];
+    const toMl = STANDARD_CONVERSIONS[from]?.['ml'];
+    const fromMl = STANDARD_CONVERSIONS['ml']?.[to];
     
     if (toMl && fromMl) {
       return {
         value: value * toMl * fromMl,
-        fromUnit,
-        toUnit,
-        conversionPath: [fromUnit, 'ml', toUnit]
+        fromUnit: from,
+        toUnit: to,
+        conversionPath: [from, 'ml', to]
       };
     }
   }
   
   // Count-based units convert 1:1 (e.g., bottle -> unit, each -> piece)
-  if (countUnits.includes(fromUnit) && countUnits.includes(toUnit)) {
+  if (COUNT_UNITS.includes(from) && COUNT_UNITS.includes(to)) {
     return {
       value: value, // 1:1 conversion for discrete count units
-      fromUnit,
-      toUnit,
-      conversionPath: [fromUnit, toUnit],
+      fromUnit: from,
+      toUnit: to,
+      conversionPath: [from, to],
       productSpecific: false
     };
   }
@@ -196,7 +276,9 @@ export function calculateInventoryImpact(
   purchaseQuantity: number,
   purchaseUnit: string,
   productName: string,
-  costPerPackage: number  // This is cost per package (e.g., $10 per bottle)
+  costPerPackage: number,  // This is cost per package (e.g., $10 per bottle)
+  productSizeValue?: number, // Size of container (e.g., 750 for 750ml bottle)
+  productSizeUnit?: string   // Unit of container size (e.g., 'ml')
 ): {
   inventoryDeduction: number;           // How much to deduct from inventory (in purchase units)
   inventoryDeductionUnit: string;       // Unit of the deduction
@@ -205,7 +287,40 @@ export function calculateInventoryImpact(
   conversionDetails: ConversionResult | null;
 } {
   
-  // Step 1: Handle bottle unit conversion
+  // Step 1: Handle container unit conversions (bottle, can, etc.)
+  if (COUNT_UNITS.includes(purchaseUnit.toLowerCase()) && 
+      (VOLUME_UNITS.includes(recipeUnit.toLowerCase()) || WEIGHT_UNITS.includes(recipeUnit.toLowerCase()))) {
+    // Recipe is in volume/weight (e.g., oz, cup, lb), purchase is in containers (e.g., each, bottle)
+    // Need product size info to convert
+    if (!productSizeValue || !productSizeUnit) {
+      throw new Error(`Cannot convert ${recipeUnit} to ${purchaseUnit} for ${productName}. This product needs size information (e.g., "16 oz per each") to calculate costs. Please update the product's size_value and size_unit fields.`);
+    }
+    
+    // Convert recipe quantity to the same unit as product size
+    const recipeInSizeUnit = convertUnits(recipeQuantity, recipeUnit, productSizeUnit, productName);
+    if (!recipeInSizeUnit) {
+      throw new Error(`Cannot convert ${recipeUnit} to ${productSizeUnit} for ${productName}. Please ensure the size_unit is compatible with the recipe unit.`);
+    }
+    
+    // Calculate how many containers needed
+    const containersNeeded = recipeInSizeUnit.value / productSizeValue;
+    
+    return {
+      inventoryDeduction: containersNeeded,
+      inventoryDeductionUnit: purchaseUnit,
+      costImpact: containersNeeded * costPerPackage,
+      percentageOfPackage: containersNeeded * 100,
+      conversionDetails: {
+        value: containersNeeded,
+        fromUnit: recipeUnit,
+        toUnit: purchaseUnit,
+        productSpecific: true,
+        conversionPath: [recipeUnit, productSizeUnit, purchaseUnit]
+      }
+    };
+  }
+  
+  // Step 2: Handle bottle unit conversion (legacy support)
   if (recipeUnit === 'bottle' && purchaseUnit === 'ml') {
     // If recipe calls for bottles and purchase unit is ml, convert directly
     const inventoryDeduction = recipeQuantity * purchaseQuantity; // e.g., 1 bottle = 750ml
@@ -321,16 +436,72 @@ export function calculateRecipePortions(
   conversionDetails: ConversionResult | null;
 } {
   
-  // For rice example: how many 1-cup portions in an 80 oz bag?
-  const recipeToWeight = convertUnits(recipeQuantity, recipeUnit, 'oz', productName);
-  
-  if (!recipeToWeight) {
-    throw new Error(`Cannot convert recipe unit ${recipeUnit} to weight for ${productName}`);
+  // If both units are the same, simple division
+  if (recipeUnit === purchaseUnit) {
+    return {
+      totalPortions: purchaseQuantity / recipeQuantity,
+      costPerPortion: 0,
+      conversionDetails: {
+        value: recipeQuantity,
+        fromUnit: recipeUnit,
+        toUnit: purchaseUnit,
+        productSpecific: false
+      }
+    };
   }
   
-  // Rice: 1 cup = 6.3 oz, so 80 oz bag = 80/6.3 = 12.7 cups
+  // If recipe unit is a container unit, we can't calculate portions without size info
+  if (COUNT_UNITS.includes(recipeUnit.toLowerCase())) {
+    // Return 1:1 ratio for container units
+    return {
+      totalPortions: purchaseQuantity / recipeQuantity,
+      costPerPortion: 0,
+      conversionDetails: {
+        value: recipeQuantity,
+        fromUnit: recipeUnit,
+        toUnit: purchaseUnit,
+        productSpecific: false,
+        conversionPath: ['container', 'units']
+      }
+    };
+  }
+  
+  // Try to convert recipe unit to purchase unit
+  const recipeToWeight = convertUnits(recipeQuantity, recipeUnit, purchaseUnit, productName);
+  
+  if (!recipeToWeight) {
+    // If direct conversion fails, try common conversions
+    // For liquids, try converting through oz
+    if (!COUNT_UNITS.includes(purchaseUnit.toLowerCase())) {
+      const recipeToOz = convertUnits(recipeQuantity, recipeUnit, 'oz', productName);
+      if (recipeToOz) {
+        const purchaseToOz = convertUnits(purchaseQuantity, purchaseUnit, 'oz', productName);
+        if (purchaseToOz) {
+          const totalPortions = purchaseToOz.value / recipeToOz.value;
+          return {
+            totalPortions,
+            costPerPortion: 0,
+            conversionDetails: {
+              value: recipeToOz.value,
+              fromUnit: recipeUnit,
+              toUnit: 'oz',
+              conversionPath: [recipeUnit, 'oz', purchaseUnit]
+            }
+          };
+        }
+      }
+    }
+    
+    // Last resort: return 1:1
+    return {
+      totalPortions: purchaseQuantity / recipeQuantity,
+      costPerPortion: 0,
+      conversionDetails: null
+    };
+  }
+  
   const totalPortions = purchaseQuantity / recipeToWeight.value;
-  const costPerPortion = 0; // Will be calculated elsewhere with actual cost
+  const costPerPortion = 0;
   
   return {
     totalPortions,

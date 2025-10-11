@@ -1,12 +1,15 @@
 // Common unit conversion helper functions
+import { VOLUME_UNITS, WEIGHT_UNITS, COUNT_UNITS } from './enhancedUnitConversion';
 
 export type MeasurementCategory = 'volume' | 'weight' | 'count' | 'length' | 'unknown';
 
 // Helper to determine the category of a unit
 export function getUnitCategory(unit: string): MeasurementCategory {
-  const volumeUnits = ['oz', 'ml', 'l', 'cup', 'tbsp', 'tsp', 'gallon', 'quart', 'pint', 'floz'];
-  const weightUnits = ['lb', 'g', 'kg', 'mg', 'oz'];
-  const countUnits = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package'];
+  // Extended volume units (includes variations like 'l' for 'L', 'gallon', 'quart', 'pint', 'floz')
+  const volumeUnits = [...VOLUME_UNITS, 'l', 'gallon', 'quart', 'pint', 'floz'];
+  // Extended weight units (includes 'mg' variation)
+  const weightUnits = [...WEIGHT_UNITS, 'mg'];
+  const countUnits = COUNT_UNITS;
   const lengthUnits = ['inch', 'cm', 'mm', 'ft', 'meter'];
   
   const normalizedUnit = unit.toLowerCase().trim();
@@ -43,6 +46,7 @@ export function normalizeUnitName(unit: string): string {
     'teaspoons': 'tsp',
     
     // Weight
+    'lbs': 'lb',  // Common variation
     'pound': 'lb',
     'pounds': 'lb',
     'gram': 'g',

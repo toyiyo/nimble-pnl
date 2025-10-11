@@ -346,8 +346,7 @@ export const useRecipes = (restaurantId: string | null) => {
             cost_per_unit,
             uom_purchase,
             size_value,
-            size_unit,
-            package_qty
+            size_unit
           )
         `)
         .eq('recipe_id', recipeId);
@@ -355,35 +354,70 @@ export const useRecipes = (restaurantId: string | null) => {
       if (error) throw error;
       if (!ingredients || ingredients.length === 0) return 0;
 
-      // Import the calculation logic used in RecipeDialog
-      const { calculateInventoryImpact } = await import('@/lib/enhancedUnitConversion');
+      // Import the calculation logic and helper
+      const { calculateInventoryImpact, getProductUnitInfo } = await import('@/lib/enhancedUnitConversion');
+
+      console.log(`[calculateRecipeCost] Starting calculation for recipe ${recipeId}`);
+      console.log(`[calculateRecipeCost] Found ${ingredients.length} ingredients`);
 
       let totalCost = 0;
       
-      ingredients.forEach((ingredient: any) => {
+      ingredients.forEach((ingredient: any, idx: number) => {
+        console.log(`[calculateRecipeCost] Ingredient ${idx + 1}:`, {
+          product_name: ingredient.product?.name,
+          has_cost: !!ingredient.product?.cost_per_unit,
+          cost_per_unit: ingredient.product?.cost_per_unit,
+          quantity: ingredient.quantity,
+          unit: ingredient.unit,
+          uom_purchase: ingredient.product?.uom_purchase,
+          size_value: ingredient.product?.size_value,
+          size_unit: ingredient.product?.size_unit
+        });
+
         if (ingredient.product && ingredient.product.cost_per_unit) {
           const product = ingredient.product;
           try {
-            const packageQuantity = (product.size_value || 1) * (product.package_qty || 1);
-            const purchaseUnit = product.size_unit || 'unit';
-            const costPerMeasurementUnit = (product.cost_per_unit || 0) / (product.package_qty || 1);
+            // Use shared helper to get validated product unit info
+            const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(product);
+            const costPerUnit = product.cost_per_unit || 0;
             
+            console.log(`[calculateRecipeCost] Calling calculateInventoryImpact with:`, {
+              recipeQuantity: ingredient.quantity,
+              recipeUnit: ingredient.unit,
+              quantityPerPurchaseUnit,
+              purchaseUnit,
+              costPerUnit,
+              sizeValue,
+              sizeUnit
+            });
+
             const result = calculateInventoryImpact(
               ingredient.quantity,
               ingredient.unit,
-              packageQuantity,
+              quantityPerPurchaseUnit,
               purchaseUnit,
               product.name || '',
-              costPerMeasurementUnit
+              costPerUnit,
+              sizeValue,
+              sizeUnit
             );
             
+            console.log(`[calculateRecipeCost] Result for ${product.name}:`, {
+              costImpact: result.costImpact,
+              inventoryDeduction: result.inventoryDeduction,
+              percentageOfPackage: result.percentageOfPackage
+            });
+
             totalCost += result.costImpact;
           } catch (conversionError) {
             console.warn(`Conversion error for ${product.name}:`, conversionError);
           }
+        } else {
+          console.log(`[calculateRecipeCost] Skipping ingredient - no cost_per_unit`);
         }
       });
 
+      console.log(`[calculateRecipeCost] Total cost calculated: $${totalCost.toFixed(2)}`);
       return totalCost;
     } catch (error: any) {
       console.error('Error calculating recipe cost:', error);

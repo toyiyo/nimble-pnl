@@ -33,10 +33,10 @@ import { Upload, Calculator, Package } from 'lucide-react';
 import { CreateProductData, Product } from '@/hooks/useProducts';
 import { useUnitConversion } from '@/hooks/useUnitConversion';
 import { normalizeUnitName, suggestRecipeUnits } from '@/lib/unitConversion';
+import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
+import { useSuppliers } from '@/hooks/useSuppliers';
 import { supabase } from '@/integrations/supabase/client';
 import { SizePackagingSection } from '@/components/SizePackagingSection';
-import { RecipeConversionPreview } from '@/components/RecipeConversionPreview';
-import { useProductRecipes } from '@/hooks/useProductRecipes';
 import { useRestaurants } from '@/hooks/useRestaurants';
 
 const productSchema = z.object({
@@ -109,11 +109,13 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
 }) => {
   const [uploading, setUploading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string>('');
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | undefined>();
+  const [isNewSupplier, setIsNewSupplier] = useState(false);
+  const { suppliers, createSupplier } = useSuppliers();
   const [suggestedConversionFactor, setSuggestedConversionFactor] = useState<number | null>(null);
   const { suggestConversionFactor } = useUnitConversion(restaurantId);
   const { restaurants } = useRestaurants();
   const currentRestaurant = restaurants[0];
-  const { recipes } = useProductRecipes(editProduct?.id || null, currentRestaurant?.id || null);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -243,6 +245,15 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   };
 
   const handleSubmit = async (data: ProductFormData) => {
+    // Handle new supplier creation if needed
+    let supplierIdToUse = selectedSupplierId;
+    if (isNewSupplier && data.supplier_name) {
+      const newSupplier = await createSupplier({ name: data.supplier_name });
+      if (newSupplier) {
+        supplierIdToUse = newSupplier.id;
+      }
+    }
+
     const productData: CreateProductData = {
       restaurant_id: restaurantId,
       gtin: initialData?.gtin,
@@ -259,6 +270,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       cost_per_unit: data.cost_per_unit,
       supplier_name: data.supplier_name,
       supplier_sku: data.supplier_sku,
+      supplier_id: supplierIdToUse,
       par_level_min: data.par_level_min,
       par_level_max: data.par_level_max,
       current_stock: data.current_stock,
@@ -271,6 +283,8 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
     onOpenChange(false);
     form.reset();
     setImageUrl('');
+    setSelectedSupplierId(undefined);
+    setIsNewSupplier(false);
   };
 
   return (
@@ -464,24 +478,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
 
               </div>
             </div>
-            
-            {/* Recipe Conversion Preview */}
-            {recipes.length > 0 && form.watch('name') && form.watch('size_value') && form.watch('uom_purchase') && (
-              <>
-                {recipes.map((recipeIngredient) => (
-                  <RecipeConversionPreview
-                    key={recipeIngredient.id}
-                    productName={form.watch('name')}
-                    purchaseQuantity={form.watch('size_value') * (form.watch('package_qty') || 1)}
-                    purchaseUnit={form.watch('uom_purchase')}
-                    recipeQuantity={recipeIngredient.quantity}
-                    recipeUnit={recipeIngredient.unit}
-                    costPerUnit={form.watch('cost_per_unit')}
-                    recipeName={recipeIngredient.recipe.name}
-                  />
-                ))}
-              </>
-            )}
 
             {/* Cost & Supplier Section */}
             <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
@@ -513,19 +509,25 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="supplier_name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Supplier</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="Supplier name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <FormItem>
+                  <FormLabel>Supplier</FormLabel>
+                  <SearchableSupplierSelector
+                    value={selectedSupplierId}
+                    onValueChange={(value, isNew) => {
+                      setSelectedSupplierId(value);
+                      setIsNewSupplier(isNew);
+                      if (!isNew) {
+                        const supplier = suppliers.find(s => s.id === value);
+                        form.setValue('supplier_name', supplier?.name || '');
+                      } else {
+                        form.setValue('supplier_name', value);
+                      }
+                    }}
+                    suppliers={suppliers}
+                    placeholder="Search or create supplier..."
+                    showNewIndicator={isNewSupplier}
+                  />
+                </FormItem>
 
                 <FormField
                   control={form.control}

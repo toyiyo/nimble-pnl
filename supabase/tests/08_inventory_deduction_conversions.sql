@@ -22,8 +22,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 0.5, 'kg')
-ON CONFLICT (recipe_id, product_id) DO UPDATE SET quantity = 0.5;
+  ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 0.5, 'kg');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(

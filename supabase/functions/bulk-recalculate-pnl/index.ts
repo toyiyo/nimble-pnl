@@ -63,37 +63,50 @@ Deno.serve(async (req) => {
       errors: [] as Array<{ restaurant_id: string; date: string; error: string }>
     }
 
-    // Process in batches to avoid timeouts
+    // Process in batches with concurrency limit to avoid timeouts
     const batch = Array.from(uniqueCombinations.values())
+    const CHUNK_SIZE = 10
     
-    for (const item of batch) {
-      try {
-        const { error: pnlError } = await supabase.rpc('calculate_daily_pnl', {
+    // Split into chunks for concurrent processing
+    for (let i = 0; i < batch.length; i += CHUNK_SIZE) {
+      const chunk = batch.slice(i, i + CHUNK_SIZE)
+      
+      // Process chunk concurrently
+      const chunkPromises = chunk.map(item => 
+        supabase.rpc('calculate_daily_pnl', {
           p_restaurant_id: item.restaurant_id,
           p_date: item.date
-        })
-
-        if (pnlError) {
+        }).then(result => ({ item, result }))
+      )
+      
+      const settledResults = await Promise.allSettled(chunkPromises)
+      
+      // Process results
+      for (const settled of settledResults) {
+        if (settled.status === 'rejected') {
           results.failed++
           results.errors.push({
-            restaurant_id: item.restaurant_id,
-            date: item.date,
-            error: pnlError.message
+            restaurant_id: 'unknown',
+            date: 'unknown',
+            error: settled.reason?.message || String(settled.reason)
           })
-          console.error(`Failed to calculate P&L for ${item.restaurant_id} on ${item.date}:`, pnlError)
         } else {
-          results.success++
-          if (results.success % 10 === 0) {
-            console.log(`Progress: ${results.success}/${results.total} completed`)
+          const { item, result } = settled.value
+          if (result.error) {
+            results.failed++
+            results.errors.push({
+              restaurant_id: item.restaurant_id,
+              date: item.date,
+              error: result.error.message
+            })
+            console.error(`Failed to calculate P&L for ${item.restaurant_id} on ${item.date}:`, result.error)
+          } else {
+            results.success++
+            if (results.success % 10 === 0) {
+              console.log(`Progress: ${results.success}/${results.total} completed`)
+            }
           }
         }
-      } catch (err) {
-        results.failed++
-        results.errors.push({
-          restaurant_id: item.restaurant_id,
-          date: item.date,
-          error: err.message
-        })
       }
     }
 

@@ -3,7 +3,15 @@
 BEGIN;
 SELECT plan(30);
 
--- Setup: Create test restaurant (skip user setup as it's handled by test framework)
+-- Disable RLS for testing
+SET LOCAL role TO postgres;
+ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
+ALTER TABLE products DISABLE ROW LEVEL SECURITY;
+ALTER TABLE recipes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE recipe_ingredients DISABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory_transactions DISABLE ROW LEVEL SECURITY;
+
+-- Setup: Create test restaurant
 INSERT INTO restaurants (id, name) VALUES
   ('22222222-2222-2222-2222-222222222222', 'Test Restaurant')
 ON CONFLICT (id) DO NOTHING;
@@ -847,6 +855,13 @@ SELECT is(
   3,
   'Multi-ingredient recipe should return 3 ingredients in result'
 );
+
+-- Re-enable RLS
+ALTER TABLE restaurants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recipes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recipe_ingredients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory_transactions ENABLE ROW LEVEL SECURITY;
 
 SELECT * FROM finish();
 ROLLBACK;

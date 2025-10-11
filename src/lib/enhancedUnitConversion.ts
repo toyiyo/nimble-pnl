@@ -1,9 +1,10 @@
 // Enhanced unit conversion system for recipe calculations
 
 // Exported unit constants to avoid duplication across the codebase
-export const WEIGHT_UNITS = ['lb', 'kg', 'g'];
+// Note: 'oz' appears in both WEIGHT_UNITS and VOLUME_UNITS because it can represent both weight ounces and fluid ounces
+export const WEIGHT_UNITS = ['lb', 'kg', 'g', 'oz'];
 export const VOLUME_UNITS = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
-export const COUNT_UNITS = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen'];
+export const COUNT_UNITS = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen', 'jar'];
 
 export interface ProductUnitInfo {
   packageType: string;

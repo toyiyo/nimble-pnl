@@ -224,8 +224,9 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                 if (itemGuid || masterId || parentId) {
                   // For Toast data, create a compound ID from all available IDs
                   // Include date and time to make it unique per transaction
+                  const datePart = saleDate || `row${index}`;
                   const timeComponent = saleTime ? `_${saleTime.replace(/:/g, '')}` : '';
-                  orderId = `manual_upload_${itemGuid || 'none'}_${masterId || 'none'}_${parentId || 'none'}_${itemName.replace(/\s+/g, '_').toLowerCase()}_${saleDate}${timeComponent}`;
+                  orderId = `manual_upload_${itemGuid || 'none'}_${masterId || 'none'}_${parentId || 'none'}_${itemName.replace(/\s+/g, '_').toLowerCase()}_${datePart}${timeComponent}`;
                 } else {
                   // For other POS systems, try to find a transaction ID
                   const externalOrderId = 

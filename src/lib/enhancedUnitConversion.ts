@@ -49,7 +49,9 @@ export function getProductUnitInfo(product: {
   const purchaseUnit = isContainerUnit 
     ? packageType 
     : (product.uom_purchase || sizeUnit || 'unit');
-  const quantityPerPurchaseUnit = sizeValue || 1;
+  // For container units: quantityPerPurchaseUnit should be 1 (you buy 1 bottle at a time)
+  // For non-container units: use the size_value (e.g., 1000g for a bag)
+  const quantityPerPurchaseUnit = isContainerUnit ? 1 : (sizeValue || 1);
   
   return {
     packageType,

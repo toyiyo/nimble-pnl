@@ -1,26 +1,12 @@
 -- Comprehensive tests for inventory deduction conversions
+-- Note: This test suite validates conversion logic in process_unified_inventory_deduction
 BEGIN;
-SELECT plan(45);
+SELECT plan(30);
 
--- Setup: Create test restaurant and user
-INSERT INTO auth.users (id, email) VALUES 
-  ('11111111-1111-1111-1111-111111111111', 'test@example.com')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO profiles (user_id, email, full_name) VALUES
-  ('11111111-1111-1111-1111-111111111111', 'test@example.com', 'Test User')
-ON CONFLICT (user_id) DO NOTHING;
-
+-- Setup: Create test restaurant (skip user setup as it's handled by test framework)
 INSERT INTO restaurants (id, name) VALUES
   ('22222222-2222-2222-2222-222222222222', 'Test Restaurant')
 ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
-  ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', 'owner')
-ON CONFLICT (user_id, restaurant_id) DO NOTHING;
-
--- Set auth context
-SELECT set_config('request.jwt.claims', json_build_object('sub', '11111111-1111-1111-1111-111111111111')::text, true);
 
 -- ============================================================
 -- TEST CATEGORY 1: DIRECT UNIT MATCH (No Conversion)
@@ -295,9 +281,9 @@ SELECT ok(
 -- ============================================================
 
 -- Test 9: Rice - cup to g conversion
-INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit, name) VALUES
-  ('a0000000-0000-0000-0000-000000000009', '22222222-2222-2222-2222-222222222222', 'White Rice', 'RICE-001', 'bag', 10, 20.00, 10, 'kg', 'White Rice')
-ON CONFLICT (id) DO UPDATE SET current_stock = 10, cost_per_unit = 20.00, name = 'White Rice';
+INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
+  ('a0000000-0000-0000-0000-000000000009', '22222222-2222-2222-2222-222222222222', 'White Rice', 'RICE-001', 'bag', 10, 20.00, 10, 'kg')
+ON CONFLICT (id) DO UPDATE SET current_stock = 10, cost_per_unit = 20.00;
 
 INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
   ('b0000000-0000-0000-0000-000000000009', '22222222-2222-2222-2222-222222222222', 'Fried Rice', 'Fried Rice', true)
@@ -328,9 +314,9 @@ SELECT ok(
 );
 
 -- Test 10: Flour - cup to g conversion
-INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit, name) VALUES
-  ('a0000000-0000-0000-0000-00000000000a', '22222222-2222-2222-2222-222222222222', 'All Purpose Flour', 'FLOUR-002', 'bag', 12, 18.00, 5, 'kg', 'All Purpose Flour')
-ON CONFLICT (id) DO UPDATE SET current_stock = 12, cost_per_unit = 18.00, name = 'All Purpose Flour';
+INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
+  ('a0000000-0000-0000-0000-00000000000a', '22222222-2222-2222-2222-222222222222', 'All Purpose Flour', 'FLOUR-002', 'bag', 12, 18.00, 5, 'kg')
+ON CONFLICT (id) DO UPDATE SET current_stock = 12, cost_per_unit = 18.00;
 
 INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
   ('b0000000-0000-0000-0000-00000000000a', '22222222-2222-2222-2222-222222222222', 'Pizza Dough', 'Pizza Dough', true)
@@ -361,9 +347,9 @@ SELECT ok(
 );
 
 -- Test 11: Sugar - cup to g conversion
-INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit, name) VALUES
-  ('a0000000-0000-0000-0000-00000000000b', '22222222-2222-2222-2222-222222222222', 'Granulated Sugar', 'SUGAR-001', 'bag', 15, 12.00, 2, 'kg', 'Granulated Sugar')
-ON CONFLICT (id) DO UPDATE SET current_stock = 15, cost_per_unit = 12.00, name = 'Granulated Sugar';
+INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
+  ('a0000000-0000-0000-0000-00000000000b', '22222222-2222-2222-2222-222222222222', 'Granulated Sugar', 'SUGAR-001', 'bag', 15, 12.00, 2, 'kg')
+ON CONFLICT (id) DO UPDATE SET current_stock = 15, cost_per_unit = 12.00;
 
 INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
   ('b0000000-0000-0000-0000-00000000000b', '22222222-2222-2222-2222-222222222222', 'Cookies', 'Cookies', true)
@@ -395,9 +381,9 @@ SELECT is(
 );
 
 -- Test 12: Butter - cup to g conversion
-INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit, name) VALUES
-  ('a0000000-0000-0000-0000-00000000000c', '22222222-2222-2222-2222-222222222222', 'Unsalted Butter', 'BUTTER-001', 'box', 20, 5.00, 1, 'lb', 'Unsalted Butter')
-ON CONFLICT (id) DO UPDATE SET current_stock = 20, cost_per_unit = 5.00, name = 'Unsalted Butter';
+INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
+  ('a0000000-0000-0000-0000-00000000000c', '22222222-2222-2222-2222-222222222222', 'Unsalted Butter', 'BUTTER-001', 'box', 20, 5.00, 1, 'lb')
+ON CONFLICT (id) DO UPDATE SET current_stock = 20, cost_per_unit = 5.00;
 
 INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
   ('b0000000-0000-0000-0000-00000000000c', '22222222-2222-2222-2222-222222222222', 'Croissants', 'Croissants', true)
@@ -793,56 +779,41 @@ SELECT ok(
 -- ============================================================
 
 -- Test 27: Verify cost calculation in result
-DO $$
-DECLARE
-  result jsonb;
-BEGIN
-  result := process_unified_inventory_deduction(
+SELECT ok(
+  (SELECT (process_unified_inventory_deduction(
     '22222222-2222-2222-2222-222222222222',
     'Direct Match Item',
     1,
     '2025-01-15',
     'order-cost-test-001'
-  );
-  
-  PERFORM ok(
-    (result->>'total_cost')::numeric > 0,
-    'Deduction result should include positive total_cost'
-  );
-END $$;
+  ))::jsonb->>'total_cost')::numeric > 0,
+  'Deduction result should include positive total_cost'
+);
 
 -- Test 28: Verify ingredients_deducted array in result
-DO $$
-DECLARE
-  result jsonb;
-BEGIN
-  result := process_unified_inventory_deduction(
+SELECT ok(
+  jsonb_array_length((SELECT (process_unified_inventory_deduction(
     '22222222-2222-2222-2222-222222222222',
     'Vodka Cocktail',
     1,
     '2025-01-15',
     'order-ingredients-test-001'
-  );
-  
-  PERFORM ok(
-    jsonb_array_length(result->'ingredients_deducted') > 0,
-    'Deduction result should include ingredients_deducted array'
-  );
-END $$;
+  ))::jsonb->'ingredients_deducted')) > 0,
+  'Deduction result should include ingredients_deducted array'
+);
 
 -- ============================================================
 -- TEST CATEGORY 10: MULTI-INGREDIENT RECIPES
 -- ============================================================
 
 -- Test 29: Recipe with multiple ingredients using different conversions
-INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit, name) VALUES
-  ('a0000000-0000-0000-0000-000000000015', '22222222-2222-2222-2222-222222222222', 'Tomatoes', 'TOM-001', 'lb', 50, 2.50, 1, 'lb', 'Tomatoes'),
-  ('a0000000-0000-0000-0000-000000000016', '22222222-2222-2222-2222-222222222222', 'Onions', 'ONI-001', 'lb', 30, 1.50, 1, 'lb', 'Onions'),
-  ('a0000000-0000-0000-0000-000000000017', '22222222-2222-2222-2222-222222222222', 'Garlic', 'GAR-001', 'oz', 100, 0.25, 1, 'oz', 'Garlic')
+INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
+  ('a0000000-0000-0000-0000-000000000015', '22222222-2222-2222-2222-222222222222', 'Tomatoes', 'TOM-001', 'lb', 50, 2.50, 1, 'lb'),
+  ('a0000000-0000-0000-0000-000000000016', '22222222-2222-2222-2222-222222222222', 'Onions', 'ONI-001', 'lb', 30, 1.50, 1, 'lb'),
+  ('a0000000-0000-0000-0000-000000000017', '22222222-2222-2222-2222-222222222222', 'Garlic', 'GAR-001', 'oz', 100, 0.25, 1, 'oz')
 ON CONFLICT (id) DO UPDATE SET 
   current_stock = EXCLUDED.current_stock,
-  cost_per_unit = EXCLUDED.cost_per_unit,
-  name = EXCLUDED.name;
+  cost_per_unit = EXCLUDED.cost_per_unit;
 
 INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
   ('b0000000-0000-0000-0000-000000000015', '22222222-2222-2222-2222-222222222222', 'Marinara Sauce', 'Marinara', true)
@@ -886,24 +857,17 @@ SELECT is(
 );
 
 -- Test 30: Verify result contains all three ingredients
-DO $$
-DECLARE
-  result jsonb;
-BEGIN
-  result := process_unified_inventory_deduction(
+SELECT is(
+  jsonb_array_length((SELECT (process_unified_inventory_deduction(
     '22222222-2222-2222-2222-222222222222',
     'Marinara',
     1,
     '2025-01-15',
     'order-marinara-verify-001'
-  );
-  
-  PERFORM is(
-    jsonb_array_length(result->'ingredients_deducted'),
-    3,
-    'Multi-ingredient recipe should return 3 ingredients in result'
-  );
-END $$;
+  ))::jsonb->'ingredients_deducted')),
+  3,
+  'Multi-ingredient recipe should return 3 ingredients in result'
+);
 
 SELECT * FROM finish();
 ROLLBACK;

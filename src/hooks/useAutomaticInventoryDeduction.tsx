@@ -8,6 +8,7 @@ interface BatchSale {
   quantity: number;
   sale_date: string;
   external_order_id: string;
+  sale_time?: string;
 }
 
 interface DeductionResponse {
@@ -43,6 +44,15 @@ export const useAutomaticInventoryDeduction = () => {
     if (!selectedRestaurant?.restaurant_id || !autoDeductionEnabled) return;
 
     try {
+      // Fetch restaurant timezone
+      const { data: restaurantData } = await supabase
+        .from('restaurants')
+        .select('timezone')
+        .eq('id', selectedRestaurant.restaurant_id)
+        .single();
+
+      const restaurantTimezone = restaurantData?.timezone || 'America/Chicago';
+
       const results = [];
       for (const sale of sales) {
         const { data, error } = await supabase.rpc('process_unified_inventory_deduction', {
@@ -50,7 +60,9 @@ export const useAutomaticInventoryDeduction = () => {
           p_pos_item_name: sale.pos_item_name,
           p_quantity_sold: Math.round(sale.quantity),
           p_sale_date: sale.sale_date,
-          p_external_order_id: sale.external_order_id
+          p_external_order_id: sale.external_order_id,
+          p_sale_time: sale.sale_time,
+          p_restaurant_timezone: restaurantTimezone
         });
 
         if (error) {
@@ -95,7 +107,7 @@ export const useAutomaticInventoryDeduction = () => {
       
       const { data: unprocessedSales } = await supabase
         .from('unified_sales')
-        .select('item_name, quantity, sale_date, external_order_id')
+        .select('item_name, quantity, sale_date, sale_time, external_order_id')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .gte('sale_date', today)
         .order('created_at', { ascending: false });
@@ -119,6 +131,7 @@ export const useAutomaticInventoryDeduction = () => {
             pos_item_name: sale.item_name,
             quantity: sale.quantity,
             sale_date: sale.sale_date,
+            sale_time: sale.sale_time,
             external_order_id: sale.external_order_id
           });
         }

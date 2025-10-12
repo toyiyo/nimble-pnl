@@ -24,7 +24,9 @@ export const useInventoryDeduction = () => {
     restaurantId: string,
     posItemName: string,
     quantitySold: number,
-    saleDate: string
+    saleDate: string,
+    saleTime?: string,
+    restaurantTimezone?: string
   ): Promise<DeductionResult | null> => {
     setLoading(true);
     try {
@@ -32,7 +34,9 @@ export const useInventoryDeduction = () => {
         p_restaurant_id: restaurantId,
         p_pos_item_name: posItemName,
         p_quantity_sold: quantitySold,
-        p_sale_date: saleDate
+        p_sale_date: saleDate,
+        p_sale_time: saleTime,
+        p_restaurant_timezone: restaurantTimezone || 'America/Chicago'
       });
 
       if (error) throw error;

@@ -9,21 +9,15 @@ max_rows = 1000
 
 [auth]
 enabled = true
-port = 54324
 site_url = "http://localhost:3000"
 additional_redirect_urls = ["https://ncdujvdgqtaunuyigflp.supabase.co"]
 jwt_expiry = 3600
-refresh_token_rotation_enabled = true
-security_captcha_enabled = false
-security_captcha_provider = "hcaptcha"
-security_update_password_require_reauthentication = false
 
 [db]
 port = 54322
 
 [realtime]
 enabled = true
-port = 54323
 
 [studio]
 enabled = true
@@ -35,11 +29,9 @@ port = 54324
 
 [storage]
 enabled = true
-port = 54325
 
-[edge-runtime]
+[functions]
 enabled = true
-port = 54326
 
 [functions.accept-invitation]
 verify_jwt = false

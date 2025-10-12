@@ -19,6 +19,11 @@ export interface Recipe {
   avg_sale_price?: number;
   profit_margin?: number;
   profit_per_serving?: number;
+  ingredients?: Array<{
+    product_id: string;
+    quantity: number;
+    unit: string;
+  }>;
 }
 
 export interface RecipeIngredient {
@@ -69,7 +74,10 @@ export const useRecipes = (restaurantId: string | null) => {
       setLoading(true);
       const { data, error } = await supabase
         .from('recipes')
-        .select('*')
+        .select(`
+          *,
+          ingredients:recipe_ingredients(product_id, quantity, unit)
+        `)
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
         .order('name');

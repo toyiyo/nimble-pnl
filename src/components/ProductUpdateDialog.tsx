@@ -736,7 +736,17 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setShowAddSupplier(!showAddSupplier)}
+                    onClick={() => {
+                      if (!showAddSupplier) {
+                        // Pre-populate with current product cost when opening
+                        setNewSupplier({ 
+                          supplier_id: '', 
+                          cost: product.cost_per_unit || 0, 
+                          supplier_sku: '' 
+                        });
+                      }
+                      setShowAddSupplier(!showAddSupplier);
+                    }}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     Add Supplier
@@ -815,8 +825,8 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
 
                               if (error) throw error;
 
-                              // If this is the first/preferred supplier, update product cost_per_unit
-                              if (isFirstSupplier && newSupplier.cost > 0) {
+                              // Update product cost_per_unit when adding supplier
+                              if (newSupplier.cost > 0) {
                                 const { error: updateError } = await supabase
                                   .from('products')
                                   .update({ cost_per_unit: newSupplier.cost })

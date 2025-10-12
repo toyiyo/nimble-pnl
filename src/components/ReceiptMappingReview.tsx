@@ -211,27 +211,15 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     }
   };
 
-  // Match supplier using similarity search on initial load and persist
+  // Initialize supplier from receipt details (already set by edge function)
   useEffect(() => {
-    if (receiptDetails?.vendor_name && suppliers.length > 0 && !selectedSupplierId) {
-      const fuse = new Fuse(suppliers, {
-        keys: ['name'],
-        threshold: 0.4,
-        includeScore: true,
-      });
-      
-      const results = fuse.search(receiptDetails.vendor_name);
-      
-      if (results.length > 0 && typeof results[0].score === 'number' && results[0].score < 0.3) {
-        // Good match found - persist it immediately
-        const matchedSupplier = results[0].item;
-        handleSupplierChange(matchedSupplier.id, false);
-      } else {
-        // No good match - persist as new supplier
-        handleSupplierChange(receiptDetails.vendor_name, true);
-      }
+    if (receiptDetails?.supplier_id && !selectedSupplierId) {
+      // Edge function already set the supplier correctly, just use it
+      setSelectedSupplierId(receiptDetails.supplier_id);
+      const existingSupplier = suppliers.find(s => s.id === receiptDetails.supplier_id);
+      setIsNewSupplier(!existingSupplier);
     }
-  }, [receiptDetails?.vendor_name, suppliers, selectedSupplierId]);
+  }, [receiptDetails?.supplier_id, suppliers, selectedSupplierId]);
 
   const handleBulkImport = async () => {
     setImporting(true);

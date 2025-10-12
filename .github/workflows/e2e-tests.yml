@@ -1,0 +1,71 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Setup Supabase CLI
+      uses: supabase/setup-cli@v1
+      with:
+        version: latest
+    
+    - name: Start Supabase local instance
+      run: |
+        supabase start
+        echo "Supabase started successfully"
+        supabase status
+    
+    - name: Set Supabase environment variables
+      run: |
+        echo "SUPABASE_URL=http://localhost:54321" >> $GITHUB_ENV
+        ANON_KEY=$(supabase status | grep 'anon key' | cut -d ':' -f 2 | xargs)
+        SERVICE_KEY=$(supabase status | grep 'service_role key' | cut -d ':' -f 2 | xargs)
+        echo "SUPABASE_ANON_KEY=$ANON_KEY" >> $GITHUB_ENV
+        echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_KEY" >> $GITHUB_ENV
+    
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps chromium
+    
+    - name: Run E2E tests
+      run: npm run test:e2e
+    
+    - name: Upload Playwright report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report
+        path: playwright-report/
+        retention-days: 30
+    
+    - name: Upload test videos
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-videos
+        path: test-results/
+        retention-days: 7
+    
+    - name: Stop Supabase
+      if: always()
+      run: supabase stop

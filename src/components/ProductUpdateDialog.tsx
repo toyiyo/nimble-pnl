@@ -1173,7 +1173,9 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                       // Reflect new cost locally to avoid prop mutation
                       try {
                         form.setValue('cost_per_unit', priceNum);
-                      } catch {}
+                      } catch (e) {
+                        console.error('Failed to set form value for cost_per_unit:', e);
+                      }
                     }
 
                     toast({

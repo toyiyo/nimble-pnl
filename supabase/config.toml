@@ -30,9 +30,6 @@ port = 54324
 [storage]
 enabled = true
 
-[functions]
-enabled = true
-
 [functions.accept-invitation]
 verify_jwt = false
 

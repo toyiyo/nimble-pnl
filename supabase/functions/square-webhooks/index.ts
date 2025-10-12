@@ -232,6 +232,11 @@ async function handleOrderUpdated(data: any, restaurantId: string, accessToken: 
     }
   }
 
+  // Sync this order to unified_sales so it appears in POS and triggers auto deductions
+  await supabase.rpc('sync_square_to_unified_sales', {
+    p_restaurant_id: restaurantId
+  });
+
   // Recalculate P&L for the affected date
   if (serviceDate) {
     await supabase.rpc('calculate_square_daily_pnl', {

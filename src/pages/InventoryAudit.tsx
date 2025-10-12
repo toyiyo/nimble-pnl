@@ -235,7 +235,25 @@ export default function InventoryAudit() {
                       {transaction.reason && (
                         <div className="mt-2">
                           <span className="text-muted-foreground text-sm">Reason:</span>
-                          <div className="text-sm">{transaction.reason}</div>
+                          <div className="flex items-start gap-2">
+                            <div className="text-sm flex-1">{transaction.reason}</div>
+                            {transaction.reason.includes('⚠️ FALLBACK') && (
+                              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1 shrink-0">
+                                <AlertTriangle className="h-3 w-3" />
+                                1:1 Fallback
+                              </Badge>
+                            )}
+                            {transaction.reason.includes('✓ VOL') && (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 shrink-0">
+                                Volume
+                              </Badge>
+                            )}
+                            {transaction.reason.includes('✓ WEIGHT') && (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 shrink-0">
+                                Weight
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       )}
 

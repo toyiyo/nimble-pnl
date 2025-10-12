@@ -3,6 +3,7 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRecipes } from '@/hooks/useRecipes';
+import { useProducts } from '@/hooks/useProducts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,8 @@ import { AutoDeductionSettings } from '@/components/AutoDeductionSettings';
 import { BulkInventoryDeductionDialog } from '@/components/BulkInventoryDeductionDialog';
 import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDeduction';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
+import { RecipeConversionStatusBadge } from '@/components/RecipeConversionStatusBadge';
+import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
 import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings } from 'lucide-react';
 
 export default function Recipes() {
@@ -32,6 +35,7 @@ export default function Recipes() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
+  const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -223,6 +227,7 @@ export default function Recipes() {
         <TabsContent value="all">
           <RecipeTable
             recipes={filteredRecipes}
+            products={products}
             loading={loading}
             onEdit={setEditingRecipe}
             onDelete={setDeletingRecipe}
@@ -232,6 +237,7 @@ export default function Recipes() {
         <TabsContent value="mapped">
           <RecipeTable
             recipes={mappedRecipes}
+            products={products}
             loading={loading}
             onEdit={setEditingRecipe}
             onDelete={setDeletingRecipe}
@@ -241,6 +247,7 @@ export default function Recipes() {
         <TabsContent value="unmapped">
           <RecipeTable
             recipes={unmappedRecipes}
+            products={products}
             loading={loading}
             onEdit={setEditingRecipe}
             onDelete={setDeletingRecipe}
@@ -279,12 +286,20 @@ export default function Recipes() {
 
 interface RecipeTableProps {
   recipes: any[];
+  products: any[];
   loading: boolean;
   onEdit: (recipe: any) => void;
   onDelete: (recipe: any) => void;
 }
 
-function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
+function RecipeTable({ recipes, products, loading, onEdit, onDelete }: RecipeTableProps) {
+  // Pre-calculate conversion validation for all recipes
+  const recipeValidations = useMemo(() => {
+    return recipes.map(recipe => {
+      const ingredients = recipe.ingredients || [];
+      return validateRecipeConversions(ingredients, products);
+    });
+  }, [recipes, products]);
   if (loading) {
     return (
       <Card>
@@ -318,53 +333,63 @@ function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
       <CardContent className="p-0">
         {/* Mobile-friendly cards for small screens */}
         <div className="block md:hidden">
-          {recipes.map((recipe) => (
-            <div key={recipe.id} className="p-4 border-b last:border-b-0">
-              <div className="space-y-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-medium truncate">{recipe.name}</h3>
-                    {recipe.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-2">{recipe.description}</p>
+          {recipes.map((recipe, idx) => {
+            const validation = recipeValidations[idx];
+            
+            return (
+              <div key={recipe.id} className="p-4 border-b last:border-b-0">
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium truncate">{recipe.name}</h3>
+                      {recipe.description && (
+                        <p className="text-sm text-muted-foreground line-clamp-2">{recipe.description}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-1 ml-2">
+                      <Button variant="ghost" size="sm" onClick={() => onEdit(recipe)} className="h-8 w-8 p-0">
+                        <Edit className="w-3 h-3" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => onDelete(recipe)} className="h-8 w-8 p-0">
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {recipe.pos_item_name ? (
+                      <Badge variant="secondary" className="text-xs">{recipe.pos_item_name}</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs">Not mapped</Badge>
+                    )}
+                    <RecipeConversionStatusBadge 
+                      hasIssues={validation.hasIssues} 
+                      issueCount={validation.issueCount}
+                      size="sm"
+                      showText={false}
+                    />
+                    <Badge variant="outline" className="text-xs">Size: {recipe.serving_size || 1}</Badge>
+                    <Badge variant="outline" className="text-xs">Cost: ${recipe.estimated_cost?.toFixed(2) || '0.00'}</Badge>
+                    {recipe.avg_sale_price && (
+                      <>
+                        <Badge variant="outline" className="text-xs">Sale: ${recipe.avg_sale_price.toFixed(2)}</Badge>
+                        <Badge 
+                          variant={recipe.profit_margin && recipe.profit_margin > 0 ? "default" : "destructive"} 
+                          className="text-xs"
+                        >
+                          {recipe.profit_margin ? `${recipe.profit_margin.toFixed(1)}%` : 'No profit data'}
+                        </Badge>
+                      </>
                     )}
                   </div>
-                  <div className="flex gap-1 ml-2">
-                    <Button variant="ghost" size="sm" onClick={() => onEdit(recipe)} className="h-8 w-8 p-0">
-                      <Edit className="w-3 h-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => onDelete(recipe)} className="h-8 w-8 p-0">
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                  
+                  <div className="text-xs text-muted-foreground">
+                    {new Date(recipe.created_at).toLocaleDateString()}
                   </div>
                 </div>
-                
-                <div className="flex flex-wrap gap-2">
-                  {recipe.pos_item_name ? (
-                    <Badge variant="secondary" className="text-xs">{recipe.pos_item_name}</Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-xs">Not mapped</Badge>
-                  )}
-                  <Badge variant="outline" className="text-xs">Size: {recipe.serving_size || 1}</Badge>
-                  <Badge variant="outline" className="text-xs">Cost: ${recipe.estimated_cost?.toFixed(2) || '0.00'}</Badge>
-                  {recipe.avg_sale_price && (
-                    <>
-                      <Badge variant="outline" className="text-xs">Sale: ${recipe.avg_sale_price.toFixed(2)}</Badge>
-                      <Badge 
-                        variant={recipe.profit_margin && recipe.profit_margin > 0 ? "default" : "destructive"} 
-                        className="text-xs"
-                      >
-                        {recipe.profit_margin ? `${recipe.profit_margin.toFixed(1)}%` : 'No profit data'}
-                      </Badge>
-                    </>
-                  )}
-                </div>
-                
-                <div className="text-xs text-muted-foreground">
-                  {new Date(recipe.created_at).toLocaleDateString()}
-                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Desktop table for larger screens */}
@@ -374,6 +399,7 @@ function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
               <TableRow>
                 <TableHead>Recipe Name</TableHead>
                 <TableHead>POS Item</TableHead>
+                <TableHead>Conversions</TableHead>
                 <TableHead>Serving Size</TableHead>
                 <TableHead>Cost</TableHead>
                 <TableHead>Avg Sale Price</TableHead>
@@ -384,26 +410,37 @@ function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {recipes.map((recipe) => (
-                <TableRow key={recipe.id}>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{recipe.name}</div>
-                      {recipe.description && (
-                        <div className="text-sm text-muted-foreground">
-                          {recipe.description}
-                        </div>
+              {recipes.map((recipe, idx) => {
+                const validation = recipeValidations[idx];
+                
+                return (
+                  <TableRow key={recipe.id}>
+                    <TableCell>
+                      <div>
+                        <div className="font-medium">{recipe.name}</div>
+                        {recipe.description && (
+                          <div className="text-sm text-muted-foreground">
+                            {recipe.description}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {recipe.pos_item_name ? (
+                        <Badge variant="secondary">{recipe.pos_item_name}</Badge>
+                      ) : (
+                        <Badge variant="outline">Not mapped</Badge>
                       )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {recipe.pos_item_name ? (
-                      <Badge variant="secondary">{recipe.pos_item_name}</Badge>
-                    ) : (
-                      <Badge variant="outline">Not mapped</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>{recipe.serving_size || 1}</TableCell>
+                    </TableCell>
+                    <TableCell>
+                      <RecipeConversionStatusBadge 
+                        hasIssues={validation.hasIssues} 
+                        issueCount={validation.issueCount}
+                        size="sm"
+                        showText={true}
+                      />
+                    </TableCell>
+                    <TableCell>{recipe.serving_size || 1}</TableCell>
                   <TableCell>
                     <div className="flex items-center">
                       <DollarSign className="w-4 h-4 mr-1" />
@@ -463,8 +500,9 @@ function RecipeTable({ recipes, loading, onEdit, onDelete }: RecipeTableProps) {
                       </Button>
                     </div>
                   </TableCell>
-                </TableRow>
-              ))}
+                 </TableRow>
+               );
+             })}
             </TableBody>
           </Table>
         </div>

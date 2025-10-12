@@ -1,17 +1,79 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDeduction';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Settings, Zap, Clock, CheckCircle } from 'lucide-react';
 
 export function AutoDeductionSettings() {
-  const [autoDeductionEnabled, setAutoDeductionEnabled] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
-  const { setupAutoDeduction } = useAutomaticInventoryDeduction();
+  const [isLoading, setIsLoading] = useState(true);
+  const { setupAutoDeduction, autoDeductionEnabled, setAutoDeductionEnabled } = useAutomaticInventoryDeduction();
+  const { selectedRestaurant } = useRestaurantContext();
   const { toast } = useToast();
+
+  // Sync loading state with hook's data fetching
+  useEffect(() => {
+    const initializeSettings = async () => {
+      if (!selectedRestaurant?.restaurant_id) return;
+      
+      setIsLoading(true);
+      // Check if record exists, create if not
+      const { data } = await supabase
+        .from('auto_deduction_settings')
+        .select('enabled')
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .maybeSingle();
+
+      if (!data) {
+        // No record exists, create one with default false
+        await supabase
+          .from('auto_deduction_settings')
+          .insert({
+            restaurant_id: selectedRestaurant.restaurant_id,
+            enabled: false
+          });
+      }
+      setIsLoading(false);
+    };
+
+    initializeSettings();
+  }, [selectedRestaurant?.restaurant_id]);
+
+  // Handle toggle change - save to database
+  const handleToggleChange = async (checked: boolean) => {
+    if (!selectedRestaurant?.restaurant_id) return;
+
+    const { error } = await supabase
+      .from('auto_deduction_settings')
+      .upsert({
+        restaurant_id: selectedRestaurant.restaurant_id,
+        enabled: checked
+      }, {
+        onConflict: 'restaurant_id'
+      });
+
+    if (error) {
+      console.error('Error updating auto deduction settings:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update auto deduction settings",
+        variant: "destructive"
+      });
+    } else {
+      setAutoDeductionEnabled(checked);
+      toast({
+        title: checked ? "Auto Deduction Enabled" : "Auto Deduction Disabled",
+        description: checked 
+          ? "Inventory will be automatically deducted for new POS sales"
+          : "Automatic deduction has been disabled"
+      });
+    }
+  };
 
   const handleManualSync = async () => {
     setIsProcessing(true);
@@ -54,7 +116,8 @@ export function AutoDeductionSettings() {
           </div>
           <Switch
             checked={autoDeductionEnabled}
-            onCheckedChange={setAutoDeductionEnabled}
+            onCheckedChange={handleToggleChange}
+            disabled={isLoading}
           />
         </div>
 

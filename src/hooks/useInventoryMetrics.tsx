@@ -147,8 +147,9 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
               const totalQuantity = recipeSales.reduce((sum, sale) => sum + (sale.quantity || 1), 0);
               recipePrice = totalQuantity > 0 ? totalRevenue / totalQuantity : 0;
             } else if (recipe.estimated_cost) {
-              // Fallback to estimated cost with markup (assuming 3x markup)
-              recipePrice = recipe.estimated_cost * 3;
+              // Fallback to estimated cost with category-specific or default markup
+              const markup = getMarkupForCategory(product.category);
+              recipePrice = recipe.estimated_cost * markup;
             }
 
             if (recipePrice > 0) {

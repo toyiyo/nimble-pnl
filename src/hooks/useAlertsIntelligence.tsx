@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useInventorySettings } from '@/hooks/useInventorySettings';
 import { format, subDays } from 'date-fns';
 
 export interface AlertItem {
@@ -81,6 +82,7 @@ export const useAlertsIntelligence = (restaurantId: string | null) => {
   const [data, setData] = useState<AlertsIntelligenceData | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { getMarkupForCategory } = useInventorySettings(restaurantId);
 
   const fetchIntelligence = async () => {
     if (!restaurantId) return;
@@ -156,12 +158,14 @@ export const useAlertsIntelligence = (restaurantId: string | null) => {
             t.transaction_type === 'purchase'
           ).length || 0;
 
+          const markupMultiplier = getMarkupForCategory(product.category);
+          
           stockoutHistoryMap.set(product.name, {
             product_name: product.name,
             stockout_count: restockCount + 1, // Current stockout plus previous restocks
             total_days_out: 1, // Currently out of stock
             last_stockout: lastTransaction ? format(new Date(lastTransaction.created_at), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
-            estimated_lost_sales: (restockCount + 1) * (product.cost_per_unit || 0) * 10 // Assume 10x markup
+            estimated_lost_sales: (restockCount + 1) * (product.cost_per_unit || 0) * markupMultiplier
           });
         }
 

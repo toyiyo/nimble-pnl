@@ -35,7 +35,7 @@ import { Product } from '@/hooks/useProducts';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { SizePackagingSection } from '@/components/SizePackagingSection';
-import { useRestaurants } from '@/hooks/useRestaurants';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useProductSuppliers } from '@/hooks/useProductSuppliers';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
@@ -109,9 +109,8 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   onEnhance,
 }) => {
   const { toast } = useToast();
-  const { restaurants } = useRestaurants();
-  const currentRestaurant = restaurants[0];
-  const restaurantId = currentRestaurant?.restaurant_id || currentRestaurant?.restaurant?.id || null;
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantId = selectedRestaurant?.restaurant_id || selectedRestaurant?.restaurant?.id || null;
   const { suppliers: allSuppliers, createSupplier } = useSuppliers();
   const { suppliers: productSuppliers, loading: suppliersLoading, setPreferredSupplier, removeSupplier, fetchSuppliers } = useProductSuppliers(product.id, restaurantId);
   const [isEnhancing, setIsEnhancing] = useState(false);

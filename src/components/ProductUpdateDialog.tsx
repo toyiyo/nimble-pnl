@@ -149,33 +149,37 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
     },
   });
 
-  // Reset form when product changes
+  // Reset form when product changes or dialog opens
   useEffect(() => {
-    form.reset({
-      quantity_to_add: undefined,
-      exact_count: product.current_stock || 0,
-      adjustment_mode: 'add',
-      sku: product.sku,
-      name: product.name,
-      description: product.description || '',
-      brand: product.brand || '',
-      category: product.category || '',
-      size_value: product.size_value || undefined,
-      size_unit: product.size_unit && product.size_unit.trim() !== '' ? product.size_unit : undefined,
-      package_qty: product.package_qty || undefined,
-      uom_purchase: product.uom_purchase || 'pieces',
-      uom_recipe: product.uom_recipe || '',
-      cost_per_unit: product.cost_per_unit || undefined,
-      supplier_name: product.supplier_name || '',
-      supplier_sku: product.supplier_sku || '',
-      par_level_min: product.par_level_min || undefined,
-      par_level_max: product.par_level_max || undefined,
-      reorder_point: product.reorder_point || undefined,
-      image_url: product.image_url || '',
-    });
-    setImageUrl(product.image_url || '');
-    setEnhancedData(null); // Clear any enhanced data from previous product
-  }, [product]);
+    if (open) {
+      form.reset({
+        quantity_to_add: undefined,
+        exact_count: product.current_stock || 0,
+        adjustment_mode: 'add',
+        sku: product.sku,
+        name: product.name,
+        description: product.description || '',
+        brand: product.brand || '',
+        category: product.category || '',
+        size_value: product.size_value || undefined,
+        size_unit: product.size_unit && product.size_unit.trim() !== '' ? product.size_unit : undefined,
+        package_qty: product.package_qty || undefined,
+        uom_purchase: product.uom_purchase || 'pieces',
+        uom_recipe: product.uom_recipe || '',
+        cost_per_unit: product.cost_per_unit || undefined,
+        supplier_name: product.supplier_name || '',
+        supplier_sku: product.supplier_sku || '',
+        par_level_min: product.par_level_min || undefined,
+        par_level_max: product.par_level_max || undefined,
+        reorder_point: product.reorder_point || undefined,
+        image_url: product.image_url || '',
+      });
+      setImageUrl(product.image_url || '');
+      setEnhancedData(null);
+      // Refresh supplier data when dialog opens
+      fetchSuppliers();
+    }
+  }, [product, open, fetchSuppliers]);
 
   const handleEnhance = async () => {
     if (!onEnhance) return;

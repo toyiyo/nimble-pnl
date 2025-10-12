@@ -508,6 +508,7 @@ export const useReceiptImport = () => {
               current_stock: newStock,
               cost_per_unit: unitPrice,
               receipt_item_names: updatedMappings,
+              supplier_id: supplierId,  // Update supplier reference
               updated_at: new Date().toISOString()
             })
             .eq('id', item.matched_product_id);

@@ -2192,6 +2192,15 @@ export type Database = {
               p_pos_item_name: string
               p_quantity_sold: number
               p_restaurant_id: string
+              p_restaurant_timezone?: string
+              p_sale_date: string
+              p_sale_time?: string
+            }
+          | {
+              p_external_order_id?: string
+              p_pos_item_name: string
+              p_quantity_sold: number
+              p_restaurant_id: string
               p_sale_date: string
             }
         Returns: Json

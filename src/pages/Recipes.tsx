@@ -437,7 +437,7 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete }: RecipeTab
                         hasIssues={validation.hasIssues} 
                         issueCount={validation.issueCount}
                         size="sm"
-                        showText={false}
+                        showText={true}
                       />
                     </TableCell>
                     <TableCell>{recipe.serving_size || 1}</TableCell>

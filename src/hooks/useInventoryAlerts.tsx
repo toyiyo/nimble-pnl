@@ -82,16 +82,6 @@ export const useInventoryAlerts = (restaurantId: string | null) => {
       setLowStockItems(lowStock);
       setReorderAlerts(reorderNeeded);
 
-      // Show toast for critical alerts
-      const outOfStock = reorderNeeded.filter(item => item.current_stock === 0);
-      if (outOfStock.length > 0) {
-        toast({
-          title: `${outOfStock.length} items out of stock`,
-          description: "Check the Reports page for reorder alerts",
-          variant: "destructive",
-        });
-      }
-
     } catch (error: any) {
       console.error('Error fetching inventory alerts:', error);
       toast({

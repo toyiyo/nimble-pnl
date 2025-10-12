@@ -2,6 +2,16 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
+export interface ConversionWarning {
+  product_name: string;
+  recipe_quantity: number;
+  recipe_unit: string;
+  purchase_unit: string;
+  deduction_amount: number;
+  warning_type: 'fallback_1:1';
+  message: string;
+}
+
 export interface DeductionResult {
   recipe_name: string;
   ingredients_deducted: {
@@ -11,8 +21,10 @@ export interface DeductionResult {
     quantity_purchase_units: number;
     purchase_unit: string;
     remaining_stock_purchase_units: number;
+    conversion_method?: string;
   }[];
   total_cost: number;
+  conversion_warnings?: ConversionWarning[];
   already_processed?: boolean;
 }
 

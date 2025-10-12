@@ -17,8 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useInventoryDeduction, DeductionResult } from '@/hooks/useInventoryDeduction';
-import { Calculator, TrendingDown, Package, ChefHat } from 'lucide-react';
+import { Calculator, TrendingDown, Package, ChefHat, AlertTriangle } from 'lucide-react';
 
 interface InventoryDeductionDialogProps {
   isOpen: boolean;
@@ -110,6 +111,31 @@ export function InventoryDeductionDialog({
 
           {simulationResult && !simulationResult.already_processed && (
             <>
+              {/* Conversion Warnings Alert */}
+              {simulationResult.conversion_warnings && simulationResult.conversion_warnings.length > 0 && (
+                <Alert variant="destructive" className="border-amber-500 bg-amber-50">
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                  <AlertTitle className="text-amber-900 font-semibold">
+                    {simulationResult.conversion_warnings.length} Conversion {simulationResult.conversion_warnings.length === 1 ? 'Warning' : 'Warnings'}
+                  </AlertTitle>
+                  <AlertDescription className="text-amber-800">
+                    <p className="mb-2">
+                      The following ingredients are using 1:1 fallback ratio which may over-deduct inventory:
+                    </p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {simulationResult.conversion_warnings.map((warning, idx) => (
+                        <li key={idx} className="text-sm">
+                          <span className="font-medium">{warning.product_name}</span>: {warning.message}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-3 text-sm font-medium">
+                      💡 Fix by adding size information (e.g., "5 lb" or "750 ml") to these products in your inventory.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {/* Summary Card */}
               <Card>
                 <CardHeader>
@@ -175,8 +201,15 @@ export function InventoryDeductionDialog({
                             </Badge>
                           </TableCell>
                           <TableCell className="hidden sm:table-cell">
-                            <div className="text-sm">
-                              {ingredient.quantity_recipe_units} {ingredient.recipe_unit} → {(ingredient.quantity_purchase_units || 0).toFixed(3)} {ingredient.purchase_unit}
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm">
+                                {ingredient.quantity_recipe_units} {ingredient.recipe_unit} → {(ingredient.quantity_purchase_units || 0).toFixed(3)} {ingredient.purchase_unit}
+                              </div>
+                              {ingredient.conversion_method === 'fallback_1:1' && (
+                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                                  ⚠️ 1:1
+                                </Badge>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>

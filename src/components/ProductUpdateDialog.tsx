@@ -47,7 +47,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Star, Trash2, Plus } from 'lucide-react';
+import { Star, Trash2, Plus, DollarSign } from 'lucide-react';
 
 const updateSchema = z.object({
   quantity_to_add: z.coerce.number().min(0, 'Quantity must be positive').optional(),
@@ -121,6 +121,11 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const [showAddSupplier, setShowAddSupplier] = useState(false);
   const [newSupplier, setNewSupplier] = useState({ supplier_id: '', cost: 0, supplier_sku: '' });
   const [isNewSupplier, setIsNewSupplier] = useState(false);
+  const [priceUpdateDialog, setPriceUpdateDialog] = useState<{ open: boolean; supplier: any; price: string }>({
+    open: false,
+    supplier: null,
+    price: '',
+  });
 
   const form = useForm<UpdateFormData>({
     resolver: zodResolver(updateSchema),
@@ -736,7 +741,17 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setShowAddSupplier(!showAddSupplier)}
+                    onClick={() => {
+                      if (!showAddSupplier) {
+                        // Pre-populate with current product cost when opening
+                        setNewSupplier({ 
+                          supplier_id: '', 
+                          cost: product.cost_per_unit || 0, 
+                          supplier_sku: '' 
+                        });
+                      }
+                      setShowAddSupplier(!showAddSupplier);
+                    }}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     Add Supplier
@@ -815,8 +830,8 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
 
                               if (error) throw error;
 
-                              // If this is the first/preferred supplier, update product cost_per_unit
-                              if (isFirstSupplier && newSupplier.cost > 0) {
+                              // Update product cost_per_unit when adding supplier
+                              if (newSupplier.cost > 0) {
                                 const { error: updateError } = await supabase
                                   .from('products')
                                   .update({ cost_per_unit: newSupplier.cost })
@@ -824,6 +839,17 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
 
                                 if (updateError) {
                                   console.error('Failed to update product cost:', updateError);
+                                }
+                                
+                                // Refetch product data to update UI
+                                const { data: updatedProduct } = await supabase
+                                  .from('products')
+                                  .select('*')
+                                  .eq('id', product.id)
+                                  .single();
+                                
+                                if (updatedProduct) {
+                                  Object.assign(product, updatedProduct);
                                 }
                               }
 
@@ -876,7 +902,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                           <TableHead className="text-center">Purchases</TableHead>
                           <TableHead>Last Order</TableHead>
                           <TableHead className="text-center">Preferred</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
+                          <TableHead className="text-right w-[180px]">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -932,12 +958,27 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                               </Button>
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  if (confirm('Remove this supplier from this product?')) {
+                              <div className="flex gap-1 justify-end">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setPriceUpdateDialog({
+                                      open: true,
+                                      supplier: ps,
+                                      price: ps.last_unit_cost?.toString() || '0',
+                                    });
+                                  }}
+                                >
+                                  <DollarSign className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    if (confirm('Remove this supplier from this product?')) {
                                     removeSupplier(ps.id);
                                   }
                                 }}
@@ -945,6 +986,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1057,6 +1099,108 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
           </form>
         </Form>
       </DialogContent>
+
+      {/* Price Update Dialog */}
+      <Dialog open={priceUpdateDialog.open} onOpenChange={(open) => setPriceUpdateDialog({ ...priceUpdateDialog, open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Supplier Price</DialogTitle>
+            <DialogDescription>
+              Update the price for {priceUpdateDialog.supplier?.supplier_name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="price-input">Price per unit</Label>
+              <Input
+                id="price-input"
+                type="number"
+                step="0.01"
+                min="0"
+                value={priceUpdateDialog.price}
+                onChange={(e) => setPriceUpdateDialog({ ...priceUpdateDialog, price: e.target.value })}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPriceUpdateDialog({ open: false, supplier: null, price: '' })}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={async () => {
+                  const parsed = parseFloat(priceUpdateDialog.price);
+                  const priceNum = Math.round((Number.isFinite(parsed) ? parsed : NaN) * 100) / 100;
+                  
+                  if (!Number.isFinite(priceNum) || priceNum < 0) {
+                    toast({
+                      title: 'Invalid price',
+                      description: 'Please enter a valid price',
+                      variant: 'destructive',
+                    });
+                    return;
+                  }
+                  
+                  try {
+                    const ps = priceUpdateDialog.supplier;
+                    
+                    // Use upsert_product_supplier RPC to track price changes
+                    const { error: rpcError } = await supabase.rpc('upsert_product_supplier', {
+                      p_restaurant_id: restaurantId,
+                      p_product_id: product.id,
+                      p_supplier_id: ps.supplier_id,
+                      p_unit_cost: priceNum,
+                      p_quantity: 1, // Manual price update, quantity=1
+                    });
+
+                    if (rpcError) throw rpcError;
+
+                    // If this is the preferred supplier, update product cost_per_unit
+                    if (ps.is_preferred) {
+                      const { error: updateError } = await supabase
+                        .from('products')
+                        .update({ cost_per_unit: priceNum })
+                        .eq('id', product.id);
+
+                      if (updateError) {
+                        console.error('Failed to update product cost:', updateError);
+                      }
+                      
+                      // Reflect new cost locally to avoid prop mutation
+                      try {
+                        form.setValue('cost_per_unit', priceNum);
+                      } catch (e) {
+                        console.error('Failed to set form value for cost_per_unit:', e);
+                      }
+                    }
+
+                    toast({
+                      title: 'Price updated',
+                      description: `Updated ${ps.supplier_name} price to $${priceNum.toFixed(2)}`,
+                    });
+
+                    fetchSuppliers();
+                    setPriceUpdateDialog({ open: false, supplier: null, price: '' });
+                  } catch (error) {
+                    console.error('Error updating supplier price:', error);
+                    toast({
+                      title: 'Error',
+                      description: 'Failed to update supplier price',
+                      variant: 'destructive',
+                    });
+                  }
+                }}
+              >
+                Update Price
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };

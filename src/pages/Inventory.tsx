@@ -16,6 +16,7 @@ import { WasteDialog } from '@/components/WasteDialog';
 import { TransferDialog } from '@/components/TransferDialog';
 import { QuickInventoryDialog } from '@/components/QuickInventoryDialog';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
+import { ProductRecipeUsage } from '@/components/ProductRecipeUsage';
 import { ReconciliationHistory } from '@/components/ReconciliationHistory';
 import { ReconciliationSession } from '@/components/ReconciliationSession';
 import { ReconciliationSummary } from '@/components/ReconciliationSummary';
@@ -1135,14 +1136,16 @@ export const Inventory: React.FC = () => {
                           setShowUpdateDialog(true);
                         }}
                       >
-                         <div className="space-y-2">
-                           {product.brand && (
-                             <p className="text-sm text-muted-foreground">Brand: {product.brand}</p>
-                           )}
-                           {product.category && (
-                             <Badge variant="secondary">{product.category}</Badge>
-                           )}
-                             <div className="flex justify-between items-center">
+                          <div className="space-y-2">
+                            {product.brand && (
+                              <p className="text-sm text-muted-foreground">Brand: {product.brand}</p>
+                            )}
+                            <div className="flex flex-wrap gap-2">
+                              {product.category && (
+                                <Badge variant="secondary">{product.category}</Badge>
+                              )}
+                            </div>
+                            <div className="flex justify-between items-center">
                                <span className="text-sm">Stock:</span>
                                <div className={`font-medium text-right ${
                                  (product.current_stock || 0) <= (product.reorder_point || 0) 
@@ -1178,13 +1181,20 @@ export const Inventory: React.FC = () => {
                                     markupUsed={inventoryMetrics.productMetrics[product.id].markupUsed}
                                     category={product.category}
                                   />
-                                </div>
-                             </>
-                           )}
-                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                                 </div>
+                              </>
+                            )}
+                            
+                            {/* Recipe Usage with Conversion Warnings */}
+                            <ProductRecipeUsage 
+                              productId={product.id}
+                              restaurantId={selectedRestaurant.restaurant_id}
+                              products={products}
+                            />
+                          </div>
+                       </CardContent>
+                     </Card>
+                   ))}
                 </div>
               )}
             </div>

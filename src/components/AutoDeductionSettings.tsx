@@ -10,47 +10,38 @@ import { supabase } from '@/integrations/supabase/client';
 import { Settings, Zap, Clock, CheckCircle } from 'lucide-react';
 
 export function AutoDeductionSettings() {
-  const [autoDeductionEnabled, setAutoDeductionEnabled] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const { setupAutoDeduction } = useAutomaticInventoryDeduction();
+  const { setupAutoDeduction, autoDeductionEnabled, setAutoDeductionEnabled } = useAutomaticInventoryDeduction();
   const { selectedRestaurant } = useRestaurantContext();
   const { toast } = useToast();
 
-  // Fetch current setting from database
+  // Sync loading state with hook's data fetching
   useEffect(() => {
-    const fetchSettings = async () => {
+    const initializeSettings = async () => {
       if (!selectedRestaurant?.restaurant_id) return;
       
       setIsLoading(true);
-      const { data, error } = await supabase
+      // Check if record exists, create if not
+      const { data } = await supabase
         .from('auto_deduction_settings')
         .select('enabled')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .maybeSingle();
 
-      if (error) {
-        console.error('Error fetching auto deduction settings:', error);
-      } else if (data) {
-        setAutoDeductionEnabled(data.enabled);
-      } else {
+      if (!data) {
         // No record exists, create one with default false
-        const { error: insertError } = await supabase
+        await supabase
           .from('auto_deduction_settings')
           .insert({
             restaurant_id: selectedRestaurant.restaurant_id,
             enabled: false
           });
-        
-        if (insertError) {
-          console.error('Error creating auto deduction settings:', insertError);
-        }
-        setAutoDeductionEnabled(false);
       }
       setIsLoading(false);
     };
 
-    fetchSettings();
+    initializeSettings();
   }, [selectedRestaurant?.restaurant_id]);
 
   // Handle toggle change - save to database

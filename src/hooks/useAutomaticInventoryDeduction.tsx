@@ -188,5 +188,7 @@ export const useAutomaticInventoryDeduction = () => {
   return {
     processBatchDeductions,
     setupAutoDeduction,
+    autoDeductionEnabled,
+    setAutoDeductionEnabled,
   };
 };

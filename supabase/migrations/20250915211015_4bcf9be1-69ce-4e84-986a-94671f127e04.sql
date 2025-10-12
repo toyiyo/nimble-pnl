@@ -58,8 +58,8 @@ CREATE TABLE public.daily_pnl (
     CASE WHEN net_revenue > 0 THEN (labor_cost / net_revenue * 100) ELSE 0 END
   ) STORED,
   prime_cost_percentage DECIMAL(5,2) GENERATED ALWAYS AS (
-    CASE WHEN net_revenue > 0 THEN (prime_cost / net_revenue * 100) ELSE 0 END
-  ) STORED,
+  CASE WHEN net_revenue > 0 THEN ((food_cost + labor_cost) / net_revenue * 100) ELSE 0 END
+) STORED,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   UNIQUE(restaurant_id, date)

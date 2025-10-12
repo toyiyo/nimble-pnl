@@ -61,7 +61,17 @@ export const useInventoryMetrics = (restaurantId: string | null, products: Produ
 
   const calculateMetrics = async () => {
     if (!restaurantId || !products.length) {
-      setMetrics(prev => ({ ...prev, loading: false }));
+      setMetrics({
+        productMetrics: {},
+        totalInventoryCost: 0,
+        totalInventoryValue: 0,
+        loading: false,
+        calculationSummary: {
+          recipeBasedCount: 0,
+          estimatedCount: 0,
+          mixedCount: 0
+        }
+      });
       return;
     }
 

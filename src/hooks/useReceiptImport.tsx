@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 
 // Get Supabase base URL from the client configuration for environment portability
@@ -508,6 +508,7 @@ export const useReceiptImport = () => {
               current_stock: newStock,
               cost_per_unit: unitPrice,
               receipt_item_names: updatedMappings,
+              supplier_id: supplierId,  // Update supplier reference
               updated_at: new Date().toISOString()
             })
             .eq('id', item.matched_product_id);

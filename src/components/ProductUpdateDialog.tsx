@@ -35,7 +35,7 @@ import { Product } from '@/hooks/useProducts';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { SizePackagingSection } from '@/components/SizePackagingSection';
-import { useRestaurants } from '@/hooks/useRestaurants';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useProductSuppliers } from '@/hooks/useProductSuppliers';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
@@ -109,9 +109,8 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   onEnhance,
 }) => {
   const { toast } = useToast();
-  const { restaurants } = useRestaurants();
-  const currentRestaurant = restaurants[0];
-  const restaurantId = currentRestaurant?.restaurant_id || currentRestaurant?.restaurant?.id || null;
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantId = selectedRestaurant?.restaurant_id || selectedRestaurant?.restaurant?.id || null;
   const { suppliers: allSuppliers, createSupplier } = useSuppliers();
   const { suppliers: productSuppliers, loading: suppliersLoading, setPreferredSupplier, removeSupplier, fetchSuppliers } = useProductSuppliers(product.id, restaurantId);
   const [isEnhancing, setIsEnhancing] = useState(false);
@@ -149,33 +148,37 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
     },
   });
 
-  // Reset form when product changes
+  // Reset form when product changes or dialog opens
   useEffect(() => {
-    form.reset({
-      quantity_to_add: undefined,
-      exact_count: product.current_stock || 0,
-      adjustment_mode: 'add',
-      sku: product.sku,
-      name: product.name,
-      description: product.description || '',
-      brand: product.brand || '',
-      category: product.category || '',
-      size_value: product.size_value || undefined,
-      size_unit: product.size_unit && product.size_unit.trim() !== '' ? product.size_unit : undefined,
-      package_qty: product.package_qty || undefined,
-      uom_purchase: product.uom_purchase || 'pieces',
-      uom_recipe: product.uom_recipe || '',
-      cost_per_unit: product.cost_per_unit || undefined,
-      supplier_name: product.supplier_name || '',
-      supplier_sku: product.supplier_sku || '',
-      par_level_min: product.par_level_min || undefined,
-      par_level_max: product.par_level_max || undefined,
-      reorder_point: product.reorder_point || undefined,
-      image_url: product.image_url || '',
-    });
-    setImageUrl(product.image_url || '');
-    setEnhancedData(null); // Clear any enhanced data from previous product
-  }, [product]);
+    if (open) {
+      form.reset({
+        quantity_to_add: undefined,
+        exact_count: product.current_stock || 0,
+        adjustment_mode: 'add',
+        sku: product.sku,
+        name: product.name,
+        description: product.description || '',
+        brand: product.brand || '',
+        category: product.category || '',
+        size_value: product.size_value || undefined,
+        size_unit: product.size_unit && product.size_unit.trim() !== '' ? product.size_unit : undefined,
+        package_qty: product.package_qty || undefined,
+        uom_purchase: product.uom_purchase || 'pieces',
+        uom_recipe: product.uom_recipe || '',
+        cost_per_unit: product.cost_per_unit || undefined,
+        supplier_name: product.supplier_name || '',
+        supplier_sku: product.supplier_sku || '',
+        par_level_min: product.par_level_min || undefined,
+        par_level_max: product.par_level_max || undefined,
+        reorder_point: product.reorder_point || undefined,
+        image_url: product.image_url || '',
+      });
+      setImageUrl(product.image_url || '');
+      setEnhancedData(null);
+      // Refresh supplier data when dialog opens
+      fetchSuppliers();
+    }
+  }, [product, open, fetchSuppliers]);
 
   const handleEnhance = async () => {
     if (!onEnhance) return;

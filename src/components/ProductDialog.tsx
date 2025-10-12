@@ -114,8 +114,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   const { suppliers, createSupplier } = useSuppliers();
   const [suggestedConversionFactor, setSuggestedConversionFactor] = useState<number | null>(null);
   const { suggestConversionFactor } = useUnitConversion(restaurantId);
-  const { restaurants } = useRestaurants();
-  const currentRestaurant = restaurants[0];
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),

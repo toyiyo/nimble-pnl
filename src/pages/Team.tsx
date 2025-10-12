@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/hooks/useAuth';
-import { useRestaurants } from '@/hooks/useRestaurants';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { TeamInvitations } from '@/components/TeamInvitations';
 import { TeamMembers } from '@/components/TeamMembers';
 import { EnterpriseSettings } from '@/components/EnterpriseSettings';
@@ -13,21 +13,14 @@ import { UserPlus, Building, Settings, ArrowLeft } from 'lucide-react';
 
 const Team = () => {
   const { user, loading } = useAuth();
-  const { restaurants, loading: restaurantsLoading } = useRestaurants();
+  const { selectedRestaurant, restaurants } = useRestaurantContext();
   const navigate = useNavigate();
-  const [selectedRestaurant, setSelectedRestaurant] = useState(restaurants[0]);
 
   useEffect(() => {
     if (!loading && !user) {
       navigate('/auth');
     }
   }, [user, loading, navigate]);
-
-  useEffect(() => {
-    if (restaurants.length > 0 && !selectedRestaurant) {
-      setSelectedRestaurant(restaurants[0]);
-    }
-  }, [restaurants, selectedRestaurant]);
 
   if (loading) {
     return (

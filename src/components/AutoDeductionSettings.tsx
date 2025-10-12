@@ -62,6 +62,8 @@ export function AutoDeductionSettings() {
       .upsert({
         restaurant_id: selectedRestaurant.restaurant_id,
         enabled: checked
+      }, {
+        onConflict: 'restaurant_id'
       });
 
     if (error) {

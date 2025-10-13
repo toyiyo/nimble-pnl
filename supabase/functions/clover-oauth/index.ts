@@ -196,8 +196,22 @@ Deno.serve(async (req) => {
       console.log('Merchant ID from token:', tokenData.merchant_id);
       console.log('Access token exists:', !!tokenData.access_token);
 
-      // Extract merchant ID - it might be in different fields
-      const merchantId = tokenData.merchant_uuid || tokenData.merchant_id || tokenData.merchantId || tokenData.mid || tokenData.merchant?.id;
+      // Extract merchant ID - it might be in different fields or encoded in the JWT
+      let merchantId = tokenData.merchant_uuid || tokenData.merchant_id || tokenData.merchantId || tokenData.mid || tokenData.merchant?.id;
+      
+      // If not found at top level, try to decode from JWT access token
+      if (!merchantId && tokenData.access_token) {
+        try {
+          // Decode JWT payload (without verification since we trust Clover)
+          const base64Payload = tokenData.access_token.split('.')[1];
+          const decodedPayload = JSON.parse(atob(base64Payload));
+          console.log('Decoded JWT payload:', decodedPayload);
+          
+          merchantId = decodedPayload.merchant_uuid || decodedPayload.merchant_id || decodedPayload.merchantId;
+        } catch (error) {
+          console.warn('Failed to decode JWT:', error);
+        }
+      }
       
       if (!merchantId) {
         console.error('No merchant ID found in token response:', tokenData);

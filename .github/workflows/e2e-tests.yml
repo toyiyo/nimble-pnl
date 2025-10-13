@@ -32,7 +32,7 @@ jobs:
     
     - name: Start Supabase local instance
       run: |
-        supabase start || true
+        supabase start
         echo "Supabase started (migrations may have warnings)"
         supabase status
       timeout-minutes: 5

@@ -33,6 +33,12 @@ jobs:
         supabase status
       timeout-minutes: 5
     
+    - name: Run database migrations
+      run: |
+        supabase db reset --force
+        echo "Migrations applied successfully"
+      timeout-minutes: 2
+    
     - name: Run SQL function tests
       run: |
         DB_HOST=localhost

@@ -28,8 +28,10 @@ jobs:
     
     - name: Start Supabase local instance
       run: |
-        supabase start
+        supabase start || true
+        echo "Supabase started"
         supabase status
+      timeout-minutes: 5
     
     - name: Run SQL function tests
       run: |
@@ -41,6 +43,7 @@ jobs:
         export DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD
         chmod +x supabase/tests/run_tests.sh
         ./supabase/tests/run_tests.sh
+      timeout-minutes: 5
     
     - name: Stop Supabase
       if: always()

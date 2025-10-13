@@ -35,6 +35,7 @@ jobs:
         supabase start || true
         echo "Supabase started (migrations may have warnings)"
         supabase status
+      timeout-minutes: 5
     
     - name: Set Supabase environment variables
       run: |
@@ -49,6 +50,7 @@ jobs:
     
     - name: Run E2E tests
       run: npm run test:e2e
+      timeout-minutes: 10
     
     - name: Upload Playwright report
       if: always()

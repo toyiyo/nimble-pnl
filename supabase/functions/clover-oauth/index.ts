@@ -196,6 +196,16 @@ Deno.serve(async (req) => {
       console.log('Merchant ID from token:', tokenData.merchant_id);
       console.log('Access token exists:', !!tokenData.access_token);
 
+      // Extract merchant ID - it might be in different fields
+      const merchantId = tokenData.merchant_uuid || tokenData.merchant_id || tokenData.merchantId || tokenData.mid || tokenData.merchant?.id;
+      
+      if (!merchantId) {
+        console.error('No merchant ID found in token response:', tokenData);
+        throw new Error('No merchant ID returned from Clover OAuth');
+      }
+      
+      console.log('Using merchant ID:', merchantId);
+
       // Get merchant info using the access token (optional - don't fail if this doesn't work)
       let merchantData = {
         name: 'Clover Merchant',
@@ -234,15 +244,6 @@ Deno.serve(async (req) => {
         console.warn('Merchant API call failed, using defaults:', error);
       }
 
-      // Extract merchant ID - it might be in different fields
-      const merchantId = tokenData.merchant_id || tokenData.merchantId || tokenData.mid || tokenData.merchant?.id;
-      
-      if (!merchantId) {
-        console.error('No merchant ID found in token response:', tokenData);
-        throw new Error('No merchant ID returned from Clover OAuth');
-      }
-      
-      console.log('Using merchant ID:', merchantId);
       console.log('Using merchant data:', { name: merchantData.name, timezone: merchantData.timezone });
 
       // Encrypt tokens before storage

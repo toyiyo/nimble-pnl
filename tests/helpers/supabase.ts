@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/integrations/supabase/types';
+import type { Database } from '../../src/integrations/supabase/types';
 
 export function getTestSupabaseClient() {
   const url = process.env.SUPABASE_URL || 'http://localhost:54321';

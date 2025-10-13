@@ -52,7 +52,10 @@ Deno.serve(async (req) => {
       try {
         const originUrl = new URL(origin);
         const hostname = originUrl.hostname.toLowerCase();
-        isSandbox = hostname === 'lovableproject.com' || hostname.endsWith('.lovableproject.com');
+        isSandbox = hostname === 'lovableproject.com' || 
+                   hostname.endsWith('.lovableproject.com') ||
+                   hostname.includes('vercel.app') ||
+                   hostname === 'localhost';
       } catch (e) {
         console.warn('Invalid origin URL:', origin);
         isSandbox = false;

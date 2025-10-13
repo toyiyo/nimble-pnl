@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
         const hostname = originUrl.hostname.toLowerCase();
         isSandbox = hostname === 'lovableproject.com' || 
                    hostname.endsWith('.lovableproject.com') ||
+                   hostname.endsWith('.lovable.app') ||
                    hostname.includes('vercel.app') ||
                    hostname === 'localhost';
       } catch (e) {
@@ -94,6 +95,7 @@ Deno.serve(async (req) => {
     console.log('Clover OAuth - Action:', action, 'Region:', region, 'Environment:', isSandbox ? 'sandbox' : 'production', 'Origin:', origin);
     console.log('App ID being used:', CLOVER_APP_ID);
     console.log('Domain being used:', CLOVER_DOMAIN);
+    console.log('Redirect URI:', REDIRECT_URI);
 
     if (!CLOVER_APP_ID || !CLOVER_APP_SECRET) {
       console.error('Clover credentials missing for environment:', isSandbox ? 'sandbox' : 'production');
@@ -162,8 +164,10 @@ Deno.serve(async (req) => {
         redirect_uri: REDIRECT_URI,
       };
 
-      const tokenUrl = `https://${regionAPIDomains[callbackRegion]}/oauth/v2/token`;
+      const callbackAPIDomain = regionAPIDomains[callbackRegion as keyof typeof regionAPIDomains] || regionAPIDomains.na;
+      const tokenUrl = `https://${callbackAPIDomain}/oauth/v2/token`;
       console.log('Token exchange URL:', tokenUrl);
+      console.log('Callback region:', callbackRegion, 'Using API domain:', callbackAPIDomain);
 
       const tokenResponse = await fetch(tokenUrl, {
         method: 'POST',
@@ -187,7 +191,7 @@ Deno.serve(async (req) => {
       console.log('Clover token exchange successful');
 
       // Get merchant info using the access token
-      const merchantUrl = `https://${regionAPIDomains[callbackRegion]}/v3/merchants/${tokenData.merchant_id}`;
+      const merchantUrl = `https://${callbackAPIDomain}/v3/merchants/${tokenData.merchant_id}`;
       const merchantResponse = await fetch(merchantUrl, {
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`,

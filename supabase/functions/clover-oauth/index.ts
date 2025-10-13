@@ -191,8 +191,10 @@ Deno.serve(async (req) => {
 
       const tokenData = await tokenResponse.json();
       console.log('Clover token exchange successful');
+      console.log('Full token data:', JSON.stringify(tokenData, null, 2));
       console.log('Token data keys:', Object.keys(tokenData));
       console.log('Merchant ID from token:', tokenData.merchant_id);
+      console.log('Access token exists:', !!tokenData.access_token);
 
       // Get merchant info using the access token (optional - don't fail if this doesn't work)
       let merchantData = {
@@ -203,7 +205,7 @@ Deno.serve(async (req) => {
       };
 
       try {
-        const merchantUrl = `https://${callbackAPIDomain}/v3/merchants/${tokenData.merchant_id}`;
+        const merchantUrl = `https://${callbackAPIDomain}/v3/merchants/${merchantId}`;
         console.log('Fetching merchant info from:', merchantUrl);
         
         const merchantResponse = await fetch(merchantUrl, {
@@ -232,6 +234,15 @@ Deno.serve(async (req) => {
         console.warn('Merchant API call failed, using defaults:', error);
       }
 
+      // Extract merchant ID - it might be in different fields
+      const merchantId = tokenData.merchant_id || tokenData.merchantId || tokenData.mid || tokenData.merchant?.id;
+      
+      if (!merchantId) {
+        console.error('No merchant ID found in token response:', tokenData);
+        throw new Error('No merchant ID returned from Clover OAuth');
+      }
+      
+      console.log('Using merchant ID:', merchantId);
       console.log('Using merchant data:', { name: merchantData.name, timezone: merchantData.timezone });
 
       // Encrypt tokens before storage
@@ -241,7 +252,7 @@ Deno.serve(async (req) => {
       // Store the connection
       const connectionData = {
         restaurant_id: restaurantId,
-        merchant_id: tokenData.merchant_id,
+        merchant_id: merchantId,
         access_token: encryptedAccessToken,
         region: callbackRegion,
         scopes: ['ORDERS_R', 'PAYMENTS_R', 'INVENTORY_R', 'MERCHANT_R', 'EMPLOYEES_R'],
@@ -257,7 +268,7 @@ Deno.serve(async (req) => {
         .single();
 
       await logSecurityEvent(supabase, 'CLOVER_OAUTH_TOKEN_STORED', undefined, restaurantId, {
-        merchantId: tokenData.merchant_id,
+        merchantId: merchantId,
         region: callbackRegion
       });
 
@@ -272,7 +283,7 @@ Deno.serve(async (req) => {
         .upsert({
           connection_id: connection.id,
           restaurant_id: restaurantId,
-          location_id: tokenData.merchant_id,
+          location_id: merchantId,
           name: merchantData.name || 'Main Location',
           timezone: merchantData.timezone,
           currency: merchantData.currency || 'USD',
@@ -284,7 +295,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         success: true,
         message: 'Clover connection established successfully',
-        merchantId: tokenData.merchant_id,
+        merchantId: merchantId,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

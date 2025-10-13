@@ -191,26 +191,36 @@ Deno.serve(async (req) => {
 
       const tokenData = await tokenResponse.json();
       console.log('Clover token exchange successful');
+      console.log('Token data keys:', Object.keys(tokenData));
+      console.log('Merchant ID from token:', tokenData.merchant_id);
 
       // Get merchant info using the access token
       const merchantUrl = `https://${callbackAPIDomain}/v3/merchants/${tokenData.merchant_id}`;
+      console.log('Fetching merchant info from:', merchantUrl);
+      
       const merchantResponse = await fetch(merchantUrl, {
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`,
+          'Accept': 'application/json',
         },
       });
 
+      console.log('Merchant API response status:', merchantResponse.status);
+      
       if (!merchantResponse.ok) {
         const errorText = await merchantResponse.text();
         console.error('Failed to get merchant information:', {
           status: merchantResponse.status,
+          statusText: merchantResponse.statusText,
+          url: merchantUrl,
           error: errorText
         });
-        throw new Error('Failed to get merchant information');
+        throw new Error(`Failed to get merchant information: ${merchantResponse.status} ${merchantResponse.statusText} - ${errorText}`);
       }
 
       const merchantData = await merchantResponse.json();
       console.log('Merchant ID:', tokenData.merchant_id);
+      console.log('Merchant data keys:', Object.keys(merchantData));
 
       // Encrypt tokens before storage
       const encryption = await getEncryptionService();

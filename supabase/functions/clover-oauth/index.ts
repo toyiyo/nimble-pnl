@@ -96,6 +96,7 @@ Deno.serve(async (req) => {
     console.log('App ID being used:', CLOVER_APP_ID);
     console.log('Domain being used:', CLOVER_DOMAIN);
     console.log('Redirect URI:', REDIRECT_URI);
+    console.log('Full hostname:', origin ? new URL(origin).hostname : 'unknown');
 
     if (!CLOVER_APP_ID || !CLOVER_APP_SECRET) {
       console.error('Clover credentials missing for environment:', isSandbox ? 'sandbox' : 'production');
@@ -172,9 +173,10 @@ Deno.serve(async (req) => {
       const tokenResponse = await fetch(tokenUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
-        body: new URLSearchParams(tokenRequestBody),
+        body: JSON.stringify(tokenRequestBody),
       });
 
       if (!tokenResponse.ok) {

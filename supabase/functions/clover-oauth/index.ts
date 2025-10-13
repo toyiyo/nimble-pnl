@@ -194,33 +194,45 @@ Deno.serve(async (req) => {
       console.log('Token data keys:', Object.keys(tokenData));
       console.log('Merchant ID from token:', tokenData.merchant_id);
 
-      // Get merchant info using the access token
-      const merchantUrl = `https://${callbackAPIDomain}/v3/merchants/${tokenData.merchant_id}`;
-      console.log('Fetching merchant info from:', merchantUrl);
-      
-      const merchantResponse = await fetch(merchantUrl, {
-        headers: {
-          'Authorization': `Bearer ${tokenData.access_token}`,
-          'Accept': 'application/json',
-        },
-      });
+      // Get merchant info using the access token (optional - don't fail if this doesn't work)
+      let merchantData = {
+        name: 'Clover Merchant',
+        timezone: null,
+        currency: 'USD',
+        address: null
+      };
 
-      console.log('Merchant API response status:', merchantResponse.status);
-      
-      if (!merchantResponse.ok) {
-        const errorText = await merchantResponse.text();
-        console.error('Failed to get merchant information:', {
-          status: merchantResponse.status,
-          statusText: merchantResponse.statusText,
-          url: merchantUrl,
-          error: errorText
+      try {
+        const merchantUrl = `https://${callbackAPIDomain}/v3/merchants/${tokenData.merchant_id}`;
+        console.log('Fetching merchant info from:', merchantUrl);
+        
+        const merchantResponse = await fetch(merchantUrl, {
+          headers: {
+            'Authorization': `Bearer ${tokenData.access_token}`,
+            'Accept': 'application/json',
+          },
         });
-        throw new Error(`Failed to get merchant information: ${merchantResponse.status} ${merchantResponse.statusText} - ${errorText}`);
+
+        console.log('Merchant API response status:', merchantResponse.status);
+        
+        if (merchantResponse.ok) {
+          const fetchedMerchantData = await merchantResponse.json();
+          console.log('Merchant data keys:', Object.keys(fetchedMerchantData));
+          merchantData = fetchedMerchantData;
+        } else {
+          const errorText = await merchantResponse.text();
+          console.warn('Could not fetch merchant information (continuing anyway):', {
+            status: merchantResponse.status,
+            statusText: merchantResponse.statusText,
+            url: merchantUrl,
+            error: errorText
+          });
+        }
+      } catch (error) {
+        console.warn('Merchant API call failed, using defaults:', error);
       }
 
-      const merchantData = await merchantResponse.json();
-      console.log('Merchant ID:', tokenData.merchant_id);
-      console.log('Merchant data keys:', Object.keys(merchantData));
+      console.log('Using merchant data:', { name: merchantData.name, timezone: merchantData.timezone });
 
       // Encrypt tokens before storage
       const encryption = await getEncryptionService();

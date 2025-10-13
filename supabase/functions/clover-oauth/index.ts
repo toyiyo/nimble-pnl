@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
 
       const authUrl = new URL(`https://${CLOVER_DOMAIN}/oauth/v2/authorize`);
       authUrl.searchParams.set('client_id', CLOVER_APP_ID);
-      authUrl.searchParams.set('permissions', permissions);
+      authUrl.searchParams.set('scope', permissions);
       authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
       authUrl.searchParams.set('state', JSON.stringify({ restaurantId, region }));
 
@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
         merchant_id: tokenData.merchant_id,
         access_token: encryptedAccessToken,
         region: callbackRegion,
-        scopes: [],
+        scopes: ['ORDERS_R', 'PAYMENTS_R', 'INVENTORY_R', 'MERCHANT_R', 'EMPLOYEES_R'],
         connected_at: new Date().toISOString(),
       };
 

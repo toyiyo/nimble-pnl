@@ -92,6 +92,8 @@ Deno.serve(async (req) => {
       : 'https://app.easyshifthq.com/clover/callback';
 
     console.log('Clover OAuth - Action:', action, 'Region:', region, 'Environment:', isSandbox ? 'sandbox' : 'production', 'Origin:', origin);
+    console.log('App ID being used:', CLOVER_APP_ID);
+    console.log('Domain being used:', CLOVER_DOMAIN);
 
     if (!CLOVER_APP_ID || !CLOVER_APP_SECRET) {
       console.error('Clover credentials missing for environment:', isSandbox ? 'sandbox' : 'production');

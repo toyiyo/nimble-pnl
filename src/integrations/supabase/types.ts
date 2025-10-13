@@ -46,6 +46,249 @@ export type Database = {
           },
         ]
       }
+      clover_connections: {
+        Row: {
+          access_token: string
+          connected_at: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          merchant_id: string
+          refresh_token: string | null
+          region: string
+          restaurant_id: string
+          scopes: string[]
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          connected_at?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          merchant_id: string
+          refresh_token?: string | null
+          region?: string
+          restaurant_id: string
+          scopes?: string[]
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          connected_at?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          merchant_id?: string
+          refresh_token?: string | null
+          region?: string
+          restaurant_id?: string
+          scopes?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clover_connections_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clover_locations: {
+        Row: {
+          address: Json | null
+          connection_id: string
+          created_at: string
+          currency: string | null
+          id: string
+          location_id: string
+          name: string
+          restaurant_id: string
+          timezone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: Json | null
+          connection_id: string
+          created_at?: string
+          currency?: string | null
+          id?: string
+          location_id: string
+          name: string
+          restaurant_id: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: Json | null
+          connection_id?: string
+          created_at?: string
+          currency?: string | null
+          id?: string
+          location_id?: string
+          name?: string
+          restaurant_id?: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clover_locations_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "clover_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clover_locations_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clover_order_line_items: {
+        Row: {
+          alternate_name: string | null
+          category_id: string | null
+          created_at: string
+          id: string
+          is_revenue: boolean | null
+          item_id: string | null
+          line_item_id: string
+          name: string
+          note: string | null
+          order_id: string
+          price: number | null
+          printed: boolean | null
+          raw_json: Json | null
+          restaurant_id: string
+          unit_quantity: number | null
+          updated_at: string
+        }
+        Insert: {
+          alternate_name?: string | null
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          is_revenue?: boolean | null
+          item_id?: string | null
+          line_item_id: string
+          name: string
+          note?: string | null
+          order_id: string
+          price?: number | null
+          printed?: boolean | null
+          raw_json?: Json | null
+          restaurant_id: string
+          unit_quantity?: number | null
+          updated_at?: string
+        }
+        Update: {
+          alternate_name?: string | null
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          is_revenue?: boolean | null
+          item_id?: string | null
+          line_item_id?: string
+          name?: string
+          note?: string | null
+          order_id?: string
+          price?: number | null
+          printed?: boolean | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          unit_quantity?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clover_order_line_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clover_orders: {
+        Row: {
+          closed_time: string | null
+          created_at: string
+          created_time: string | null
+          discount_amount: number | null
+          employee_id: string | null
+          id: string
+          merchant_id: string
+          modified_time: string | null
+          order_id: string
+          raw_json: Json | null
+          restaurant_id: string
+          service_charge_amount: number | null
+          service_date: string | null
+          state: string | null
+          synced_at: string
+          tax_amount: number | null
+          tip_amount: number | null
+          total: number | null
+          updated_at: string
+        }
+        Insert: {
+          closed_time?: string | null
+          created_at?: string
+          created_time?: string | null
+          discount_amount?: number | null
+          employee_id?: string | null
+          id?: string
+          merchant_id: string
+          modified_time?: string | null
+          order_id: string
+          raw_json?: Json | null
+          restaurant_id: string
+          service_charge_amount?: number | null
+          service_date?: string | null
+          state?: string | null
+          synced_at?: string
+          tax_amount?: number | null
+          tip_amount?: number | null
+          total?: number | null
+          updated_at?: string
+        }
+        Update: {
+          closed_time?: string | null
+          created_at?: string
+          created_time?: string | null
+          discount_amount?: number | null
+          employee_id?: string | null
+          id?: string
+          merchant_id?: string
+          modified_time?: string | null
+          order_id?: string
+          raw_json?: Json | null
+          restaurant_id?: string
+          service_charge_amount?: number | null
+          service_date?: string | null
+          state?: string | null
+          synced_at?: string
+          tax_amount?: number | null
+          tip_amount?: number | null
+          total?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clover_orders_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       daily_food_costs: {
         Row: {
           created_at: string
@@ -2247,6 +2490,10 @@ export type Database = {
       soundex: {
         Args: { "": string }
         Returns: string
+      }
+      sync_clover_to_unified_sales: {
+        Args: { p_restaurant_id: string }
+        Returns: number
       }
       sync_square_to_unified_sales: {
         Args: { p_restaurant_id: string }

@@ -35,7 +35,7 @@ jobs:
     
     - name: Run database migrations
       run: |
-        supabase db reset --force
+        supabase db reset
         echo "Migrations applied successfully"
       timeout-minutes: 2
     

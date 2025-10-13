@@ -131,8 +131,21 @@ test.describe('Add Product to Inventory', () => {
     // Wait for success
     await expect(page.locator('text=Product added successfully')).toBeVisible({ timeout: 5000 });
     
-    // Wait for metrics to update
-    await page.waitForTimeout(2000);
+    // Wait for metrics to update by checking when the value changes
+    await page.waitForFunction(
+      (initialValue) => {
+        const metricElement = document.evaluate(
+          "//text()[contains(., 'Total Inventory Cost')]/ancestor::*[1]//text()[contains(., '$')]",
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null
+        ).singleNodeValue;
+        return metricElement && metricElement.textContent !== initialValue;
+      },
+      initialCostText,
+      { timeout: 10000 }
+    );
     
     // Verify metrics updated (should now show $255.00 for this product: 10 * $25.50)
     const updatedCostText = await page.locator('text=Total Inventory Cost').locator('..').locator('text=/\\$[\\d,]+\\.\\d{2}/').first().textContent();

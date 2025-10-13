@@ -39,11 +39,11 @@ jobs:
     
     - name: Set Supabase environment variables
       run: |
-        echo "SUPABASE_URL=http://localhost:54321" >> $GITHUB_ENV
-        ANON_KEY=$(supabase status | grep 'anon key' | cut -d ':' -f 2 | xargs)
-        SERVICE_KEY=$(supabase status | grep 'service_role key' | cut -d ':' -f 2 | xargs)
-        echo "SUPABASE_ANON_KEY=$ANON_KEY" >> $GITHUB_ENV
-        echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_KEY" >> $GITHUB_ENV
+        echo "SUPABASE_URL=http://localhost:54321" >> "$GITHUB_ENV"
+        ANON_KEY="$(supabase status | grep 'anon key' | cut -d ':' -f 2 | xargs)"
+        SERVICE_KEY="$(supabase status | grep 'service_role key' | cut -d ':' -f 2 | xargs)"
+        echo "SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+        echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_KEY" >> "$GITHUB_ENV"
     
     - name: Install Playwright browsers
       run: npx playwright install --with-deps chromium

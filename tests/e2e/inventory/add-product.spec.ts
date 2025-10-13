@@ -72,8 +72,8 @@ test.describe('Add Product to Inventory', () => {
     
     expect(product).toBeTruthy();
     expect(product.name).toBe('Test Product');
-    expect(product.current_stock).toBe('50');
-    expect(product.cost_per_unit).toBe('10.99');
+    expect(Number(product.current_stock)).toBe(50);
+    expect(Number(product.cost_per_unit)).toBeCloseTo(10.99, 2);
   });
 
   test('should show validation errors for invalid data', async ({ page }) => {

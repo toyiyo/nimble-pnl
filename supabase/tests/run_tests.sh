@@ -67,10 +67,14 @@ for test_file in "$SCRIPT_DIR"/*.sql; do
     output=$(PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -v ON_ERROR_STOP=1 -f "$test_file" 2>&1)
     exit_code=$?
     
+    # Always show output for debugging in CI
+    echo "--- Test Output ---"
+    echo "$output"
+    echo "--- End Output ---"
+    
     # Check for SQL errors and fail fast
     if [ $exit_code -ne 0 ]; then
-        echo -e "${RED}✗ SQL error in $filename${NC}"
-        echo "$output"
+        echo -e "${RED}✗ SQL error in $filename (exit code: $exit_code)${NC}"
         exit $exit_code
     fi
     

@@ -87,8 +87,11 @@ Deno.serve(async (req) => {
       let offset = 0;
       const limit = 100;
       let hasMore = true;
+      let maxIterations = 50; // Safety limit to prevent infinite loops
+      let iterations = 0;
 
-      while (hasMore) {
+      while (hasMore && iterations < maxIterations) {
+        iterations++;
         const ordersUrl = new URL(`${BASE_URL}/orders`);
         
         // Try using Clover's modifiedTime filter instead of createdTime
@@ -111,11 +114,26 @@ Deno.serve(async (req) => {
           note: 'Using modifiedTime filter instead of createdTime'
         });
 
-        const ordersResponse = await fetch(ordersUrl.toString(), {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-          },
-        });
+        // Add timeout and abort controller to prevent hanging requests
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
+        let ordersResponse;
+        try {
+          ordersResponse = await fetch(ordersUrl.toString(), {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+            },
+            signal: controller.signal,
+          });
+          
+          clearTimeout(timeoutId);
+        } catch (fetchError: any) {
+          clearTimeout(timeoutId);
+          console.error('Fetch timeout or error:', fetchError.message);
+          errors.push(`Fetch error: ${fetchError.message}`);
+          break;
+        }
 
         if (!ordersResponse.ok) {
           const errorText = await ordersResponse.text();

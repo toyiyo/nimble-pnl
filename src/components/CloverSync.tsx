@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { RefreshCw, Download, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { CloverWebhookSetup } from './CloverWebhookSetup';
 
 interface CloverSyncProps {
   restaurantId: string;
@@ -108,6 +109,7 @@ export const CloverSync = ({ restaurantId, isConnected }: CloverSyncProps) => {
   }
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -232,5 +234,8 @@ export const CloverSync = ({ restaurantId, isConnected }: CloverSyncProps) => {
         </Alert>
       </CardContent>
     </Card>
+
+    <CloverWebhookSetup isConnected={isConnected} />
+    </>
   );
 };

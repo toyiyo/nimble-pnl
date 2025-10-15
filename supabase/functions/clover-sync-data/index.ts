@@ -193,7 +193,7 @@ Deno.serve(async (req) => {
             // Store line items
             if (order.lineItems?.elements) {
               for (const lineItem of order.lineItems.elements) {
-                // Clover stores quantities in thousands (1000 = 1 item) and prices in cents
+                // Clover stores quantities in thousands (1000 = 1 item) and prices in cents (3000 = $30.00)
                 const actualQuantity = lineItem.unitQty ? lineItem.unitQty / 1000 : 1;
                 const actualPrice = lineItem.price ? lineItem.price / 100 : null;
                 

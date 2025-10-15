@@ -154,7 +154,8 @@ Deno.serve(async (req) => {
                 tip_amount: order.tipAmount ? order.tipAmount / 100 : null,
                 created_time: order.createdTime ? new Date(order.createdTime).toISOString() : null,
                 modified_time: order.modifiedTime ? new Date(order.modifiedTime).toISOString() : null,
-                closed_time: order.clientCreatedTime ? new Date(order.clientCreatedTime).toISOString() : null,
+                closed_time: order.clientCreatedTime ? new Date(order.clientCreatedTime).toISOString() : 
+                           order.createdTime ? new Date(order.createdTime).toISOString() : null,
                 service_date: serviceDate,
                 raw_json: order,
               }, {
@@ -175,7 +176,7 @@ Deno.serve(async (req) => {
                     alternate_name: lineItem.alternateName,
                     price: lineItem.price ? lineItem.price / 100 : null,
                     unit_quantity: lineItem.unitQty || 1,
-                    is_revenue: !lineItem.isRevenue || lineItem.isRevenue === true,
+                    is_revenue: lineItem.isRevenue !== false, // Default to true if undefined, false only if explicitly false
                     note: lineItem.note,
                     printed: lineItem.printed || false,
                     category_id: lineItem.item?.categories?.elements?.[0]?.id,
@@ -200,6 +201,20 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Debug: Check what orders we have before sync
+      const { data: ordersCheck } = await supabase
+        .from('clover_orders')
+        .select('order_id, state, service_date, closed_time')
+        .eq('restaurant_id', restaurantId);
+      
+      const { data: lineItemsCheck } = await supabase
+        .from('clover_order_line_items')
+        .select('line_item_id, is_revenue, price')
+        .eq('restaurant_id', restaurantId);
+      
+      console.log('Orders before sync:', ordersCheck);
+      console.log('Line items before sync:', lineItemsCheck);
+
       // Sync to unified_sales table
       const { data: syncResult, error: syncError } = await supabase
         .rpc('sync_clover_to_unified_sales', {
@@ -211,6 +226,14 @@ Deno.serve(async (req) => {
         errors.push(`Unified sales sync error: ${syncError.message}`);
       } else {
         console.log(`Synced ${syncResult} items to unified_sales`);
+        
+        // Debug: Check what got synced
+        const { data: syncedItems } = await supabase
+          .from('unified_sales')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .eq('pos_system', 'clover');
+        console.log('Items in unified_sales after sync:', syncedItems?.length || 0);
       }
 
     } catch (syncError: any) {

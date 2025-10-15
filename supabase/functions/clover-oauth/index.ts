@@ -270,6 +270,7 @@ Deno.serve(async (req) => {
         merchant_id: merchantId,
         access_token: encryptedAccessToken,
         region: callbackRegion,
+        environment: isSandbox ? 'sandbox' : 'production',
         scopes: ['ORDERS_R', 'PAYMENTS_R', 'INVENTORY_R', 'MERCHANT_R', 'EMPLOYEES_R'],
         connected_at: new Date().toISOString(),
       };

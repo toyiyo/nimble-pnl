@@ -95,3 +95,9 @@ verify_jwt = false
 
 [functions.bulk-recalculate-pnl]
 verify_jwt = true
+
+[functions.clover-oauth]
+verify_jwt = false
+
+[functions.clover-sync-data]
+verify_jwt = true

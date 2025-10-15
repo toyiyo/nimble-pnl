@@ -47,15 +47,20 @@ Deno.serve(async (req) => {
     const encryption = await getEncryptionService();
     const accessToken = await encryption.decrypt(connection.access_token);
 
+    // Determine if this is a sandbox or production connection
+    const isSandbox = connection.environment === 'sandbox';
+
     const regionAPIDomains = {
-      na: 'api.clover.com',
-      eu: 'api.eu.clover.com',
-      latam: 'api.la.clover.com',
-      apac: 'api.clover.com'
+      na: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com',
+      eu: isSandbox ? 'apisandbox.dev.clover.com' : 'api.eu.clover.com',
+      latam: isSandbox ? 'apisandbox.dev.clover.com' : 'api.la.clover.com',
+      apac: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com'
     };
 
-    const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as keyof typeof regionAPIDomains] || 'api.clover.com';
+    const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as keyof typeof regionAPIDomains] || (isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com');
     const BASE_URL = `https://${CLOVER_API_DOMAIN}/v3/merchants/${connection.merchant_id}`;
+    
+    console.log('Using Clover API:', { environment: isSandbox ? 'sandbox' : 'production', domain: CLOVER_API_DOMAIN, region: connection.region });
 
     // Calculate date range
     let startDate: Date, endDate: Date;

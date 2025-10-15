@@ -51,6 +51,7 @@ export type Database = {
           access_token: string
           connected_at: string
           created_at: string
+          environment: string
           expires_at: string | null
           id: string
           merchant_id: string
@@ -64,6 +65,7 @@ export type Database = {
           access_token: string
           connected_at?: string
           created_at?: string
+          environment?: string
           expires_at?: string | null
           id?: string
           merchant_id: string
@@ -77,6 +79,7 @@ export type Database = {
           access_token?: string
           connected_at?: string
           created_at?: string
+          environment?: string
           expires_at?: string | null
           id?: string
           merchant_id?: string

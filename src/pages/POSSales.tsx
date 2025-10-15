@@ -85,12 +85,13 @@ export default function POSSales() {
     setSelectedRestaurant(restaurant);
   };
 
-  // Auto-sync when restaurant is selected
+  // Auto-sync when restaurant is selected (only once)
   useEffect(() => {
     if (selectedRestaurant?.restaurant_id && hasAnyConnectedSystem()) {
       syncAllSystems();
     }
-  }, [selectedRestaurant?.restaurant_id, hasAnyConnectedSystem, syncAllSystems]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRestaurant?.restaurant_id]); // Only re-run when restaurant changes
 
   const filteredSales = useMemo(() => {
     let filtered = sales.filter((sale) => sale.itemName.toLowerCase().includes(searchTerm.toLowerCase()));

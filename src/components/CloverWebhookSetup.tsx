@@ -41,7 +41,7 @@ export const CloverWebhookSetup = ({ isConnected }: CloverWebhookSetupProps) => 
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          Webhook Setup
+          Webhook Configuration
           <a
             href="https://docs.clover.com/dev/docs/webhooks"
             target="_blank"
@@ -52,19 +52,12 @@ export const CloverWebhookSetup = ({ isConnected }: CloverWebhookSetupProps) => 
           </a>
         </CardTitle>
         <CardDescription>
-          Configure real-time data sync from Clover
+          Technical reference for debugging
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="text-sm">
-            Webhooks were automatically configured when you connected to Clover. You can verify the setup below or reconfigure if needed.
-          </AlertDescription>
-        </Alert>
-
         <div className="space-y-2">
-          <label className="text-sm font-medium">Webhook URL</label>
+          <label className="text-sm font-medium">Webhook Endpoint</label>
           <div className="flex gap-2">
             <div className="flex-1 p-3 bg-muted rounded-md font-mono text-sm break-all">
               {webhookUrl}
@@ -82,47 +75,10 @@ export const CloverWebhookSetup = ({ isConnected }: CloverWebhookSetupProps) => 
               )}
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            This endpoint was automatically registered with your Clover account during connection.
+          </p>
         </div>
-
-        <div className="space-y-3 text-sm">
-          <p className="font-medium">Setup Instructions:</p>
-          <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-            <li>
-              Go to your{" "}
-              <a
-                href="https://sandbox.dev.clover.com/developer-home/dashboard"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                Clover Developer Dashboard
-              </a>
-            </li>
-            <li>Navigate to Your Apps → Your App → App Settings → Webhooks</li>
-            <li>Paste the webhook URL above in the "Webhook URL" field</li>
-            <li>Click "Send Verification Code"</li>
-            <li>
-              Copy the verification code from the response and paste it in the
-              "Verification Code" field
-            </li>
-            <li>Click "Verify" and then "Save"</li>
-            <li>
-              Subscribe to event types:
-              <ul className="list-disc list-inside ml-4 mt-1">
-                <li><strong>Orders</strong> - For real-time sales data</li>
-                <li><strong>Payments</strong> - For payment processing updates</li>
-                <li><strong>Inventory</strong> - For inventory changes (optional)</li>
-              </ul>
-            </li>
-          </ol>
-        </div>
-
-        <Alert>
-          <AlertDescription className="text-xs text-muted-foreground">
-            <strong>Note:</strong> Each event subscription requires the corresponding read
-            permission. Merchants may need to reinstall your app if permissions change.
-          </AlertDescription>
-        </Alert>
       </CardContent>
     </Card>
   );

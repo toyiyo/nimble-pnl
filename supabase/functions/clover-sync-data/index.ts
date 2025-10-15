@@ -193,6 +193,10 @@ Deno.serve(async (req) => {
             // Store line items
             if (order.lineItems?.elements) {
               for (const lineItem of order.lineItems.elements) {
+                // Clover stores quantities in thousands (1000 = 1 item) and prices in cents
+                const actualQuantity = lineItem.unitQty ? lineItem.unitQty / 1000 : 1;
+                const actualPrice = lineItem.price ? lineItem.price / 100 : null;
+                
                 await supabase
                   .from('clover_order_line_items')
                   .upsert({
@@ -202,8 +206,8 @@ Deno.serve(async (req) => {
                     item_id: lineItem.item?.id,
                     name: lineItem.name || 'Unknown Item',
                     alternate_name: lineItem.alternateName,
-                    price: lineItem.price ? lineItem.price / 100 : null,
-                    unit_quantity: lineItem.unitQty || 1,
+                    price: actualPrice,
+                    unit_quantity: actualQuantity,
                     is_revenue: lineItem.isRevenue !== false, // Default to true if undefined, false only if explicitly false
                     note: lineItem.note,
                     printed: lineItem.printed || false,

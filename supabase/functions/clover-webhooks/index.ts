@@ -111,8 +111,8 @@ serve(async (req) => {
                     action: "daily",
                     // Use timestamp to sync recent data
                     dateRange: {
-                      start: new Date(update.ts - 86400000).toISOString().split('T')[0], // 1 day before
-                      end: new Date(update.ts).toISOString().split('T')[0]
+                      startDate: new Date(update.ts - 86400000).toISOString().split('T')[0], // 1 day before
+                      endDate: new Date(update.ts).toISOString().split('T')[0]
                     }
                   }
                 });
@@ -133,8 +133,8 @@ serve(async (req) => {
                     restaurantId,
                     action: "daily",
                     dateRange: {
-                      start: new Date(update.ts - 86400000).toISOString().split('T')[0],
-                      end: new Date(update.ts).toISOString().split('T')[0]
+                      startDate: new Date(update.ts - 86400000).toISOString().split('T')[0],
+                      endDate: new Date(update.ts).toISOString().split('T')[0]
                     }
                   }
                 });

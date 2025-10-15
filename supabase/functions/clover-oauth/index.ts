@@ -263,12 +263,32 @@ Deno.serve(async (req) => {
       // Encrypt tokens before storage
       const encryption = await getEncryptionService();
       const encryptedAccessToken = await encryption.encrypt(tokenData.access_token);
+      
+      // Encrypt refresh token if present
+      let encryptedRefreshToken = null;
+      if (tokenData.refresh_token) {
+        encryptedRefreshToken = await encryption.encrypt(tokenData.refresh_token);
+      }
+
+      // Calculate expiry time (Clover tokens typically expire in 1 year, but check the response)
+      let expiresAt = null;
+      if (tokenData.expires_in) {
+        expiresAt = new Date(Date.now() + (tokenData.expires_in * 1000)).toISOString();
+      }
+
+      console.log('Token expiry info:', {
+        expires_in: tokenData.expires_in,
+        expires_at: expiresAt,
+        has_refresh_token: !!tokenData.refresh_token
+      });
 
       // Store the connection
       const connectionData = {
         restaurant_id: restaurantId,
         merchant_id: merchantId,
         access_token: encryptedAccessToken,
+        refresh_token: encryptedRefreshToken,
+        expires_at: expiresAt,
         region: callbackRegion,
         environment: isSandbox ? 'sandbox' : 'production',
         scopes: ['ORDERS_R', 'PAYMENTS_R', 'INVENTORY_R', 'MERCHANT_R', 'EMPLOYEES_R'],

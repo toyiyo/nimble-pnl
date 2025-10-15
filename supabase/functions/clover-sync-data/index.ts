@@ -43,9 +43,20 @@ Deno.serve(async (req) => {
       throw new Error('Clover connection not found');
     }
 
+    // Check if token is expired
+    if (connection.expires_at && new Date(connection.expires_at) < new Date()) {
+      console.error('Clover access token has expired:', {
+        expires_at: connection.expires_at,
+        now: new Date().toISOString()
+      });
+      throw new Error('Clover access token has expired. Please reconnect your Clover account.');
+    }
+
     // Decrypt access token
     const encryption = await getEncryptionService();
     const accessToken = await encryption.decrypt(connection.access_token);
+    
+    console.log('Access token decrypted, length:', accessToken?.length, 'first 20 chars:', accessToken?.substring(0, 20));
 
     // Determine if this is a sandbox or production connection
     const isSandbox = connection.environment === 'sandbox';

@@ -58,7 +58,7 @@ serve(async (req) => {
     console.log("Webhook authenticated successfully");
 
     // Step 3: Process webhook events
-    if (!payload.merchants || payload.merchants.length === 0) {
+    if (!payload.merchants || typeof payload.merchants !== 'object') {
       console.log("No merchant data in webhook");
       return new Response(
         JSON.stringify({ message: "No merchant data" }),
@@ -66,8 +66,9 @@ serve(async (req) => {
       );
     }
 
-    for (const merchant of payload.merchants) {
-      const merchantId = merchant.mId;
+    // Iterate over merchant IDs (payload.merchants is an object, not an array)
+    for (const merchantId in payload.merchants) {
+      const merchantEvents = payload.merchants[merchantId];
       console.log(`Processing webhook for merchant: ${merchantId}`);
 
       // Find the restaurant associated with this Clover merchant
@@ -84,13 +85,13 @@ serve(async (req) => {
 
       const restaurantId = connection.restaurant_id;
 
-      if (!merchant.update || merchant.update.length === 0) {
-        console.log("No updates in merchant data");
+      if (!Array.isArray(merchantEvents) || merchantEvents.length === 0) {
+        console.log("No events in merchant data");
         continue;
       }
 
-      // Process each update event
-      for (const update of merchant.update) {
+      // Process each event
+      for (const update of merchantEvents) {
         console.log(`Processing ${update.type} event for ${update.objectId}`);
 
         // Parse objectId to get event type and ID

@@ -102,5 +102,8 @@ verify_jwt = false
 [functions.clover-sync-data]
 verify_jwt = true
 
+[functions.clover-webhook-register]
+verify_jwt = true
+
 [functions.clover-webhooks]
 verify_jwt = false

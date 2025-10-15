@@ -25,6 +25,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
     }),
   }), []);
 
+  // Build adapters map once when restaurant changes or adapter connection status changes
   useEffect(() => {
     const adapterMap: Partial<Record<POSSystemType, POSAdapter>> = {
       square: squareAdapter,
@@ -42,7 +43,12 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
       adapter!.getIntegrationStatus()
     );
     setIntegrationStatuses(statuses);
-  }, [squareAdapter, cloverAdapter, manualAdapter]);
+  }, [
+    restaurantId,
+    squareAdapter.isConnected,
+    cloverAdapter.isConnected,
+    manualAdapter
+  ]);
 
   const getConnectedSystems = useCallback((): POSSystemType[] => {
     return integrationStatuses

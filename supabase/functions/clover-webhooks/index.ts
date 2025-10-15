@@ -105,7 +105,7 @@ serve(async (req) => {
             // Trigger order sync for this specific order
             if (update.type === "CREATE" || update.type === "UPDATE") {
               try {
-                await supabase.functions.invoke("clover-sync-data", {
+                const syncResult = await supabase.functions.invoke("clover-sync-data", {
                   body: {
                     restaurantId,
                     action: "daily",
@@ -116,7 +116,15 @@ serve(async (req) => {
                     }
                   }
                 });
-                console.log(`Triggered sync for order ${objectId}`);
+                console.log(`Triggered sync for order ${objectId}`, syncResult);
+                
+                // Trigger P&L calculation for the affected date
+                const affectedDate = new Date(update.ts).toISOString().split('T')[0];
+                await supabase.rpc('aggregate_unified_sales_to_daily', {
+                  p_restaurant_id: restaurantId,
+                  p_date: affectedDate
+                });
+                console.log(`Triggered P&L calculation for ${affectedDate}`);
               } catch (syncError) {
                 console.error(`Failed to trigger sync for order ${objectId}:`, syncError);
               }
@@ -128,7 +136,7 @@ serve(async (req) => {
             // Payments are part of orders, so trigger order sync
             if (update.type === "CREATE" || update.type === "UPDATE") {
               try {
-                await supabase.functions.invoke("clover-sync-data", {
+                const syncResult = await supabase.functions.invoke("clover-sync-data", {
                   body: {
                     restaurantId,
                     action: "daily",
@@ -138,7 +146,15 @@ serve(async (req) => {
                     }
                   }
                 });
-                console.log(`Triggered sync for payment ${objectId}`);
+                console.log(`Triggered sync for payment ${objectId}`, syncResult);
+                
+                // Trigger P&L calculation for the affected date
+                const affectedDate = new Date(update.ts).toISOString().split('T')[0];
+                await supabase.rpc('aggregate_unified_sales_to_daily', {
+                  p_restaurant_id: restaurantId,
+                  p_date: affectedDate
+                });
+                console.log(`Triggered P&L calculation for ${affectedDate}`);
               } catch (syncError) {
                 console.error(`Failed to trigger sync for payment ${objectId}:`, syncError);
               }

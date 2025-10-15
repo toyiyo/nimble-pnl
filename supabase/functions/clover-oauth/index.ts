@@ -334,6 +334,29 @@ Deno.serve(async (req) => {
           onConflict: 'restaurant_id,location_id'
         });
 
+      console.log('Successfully stored Clover connection');
+
+      // Auto-register webhook for real-time updates
+      console.log('Auto-registering webhook for restaurant:', restaurantId);
+      try {
+        const webhookResult = await supabase.functions.invoke(
+          'clover-webhook-register',
+          {
+            body: { restaurantId }
+          }
+        );
+
+        if (webhookResult.error) {
+          console.error('Webhook registration error:', webhookResult.error);
+          // Don't fail the entire OAuth flow if webhook registration fails
+        } else {
+          console.log('Webhook registered successfully:', webhookResult.data);
+        }
+      } catch (webhookErr) {
+        console.error('Failed to register webhook:', webhookErr);
+        // Continue even if webhook registration fails
+      }
+
       return new Response(JSON.stringify({
         success: true,
         message: 'Clover connection established successfully',

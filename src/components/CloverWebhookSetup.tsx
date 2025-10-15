@@ -59,7 +59,7 @@ export const CloverWebhookSetup = ({ isConnected }: CloverWebhookSetupProps) => 
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="text-sm">
-            Set up webhooks in your Clover Developer Dashboard to receive real-time updates when orders, payments, and inventory change.
+            Webhooks were automatically configured when you connected to Clover. You can verify the setup below or reconfigure if needed.
           </AlertDescription>
         </Alert>
 

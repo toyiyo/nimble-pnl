@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { RefreshCw, Download, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { RefreshCw, Download, AlertCircle, CheckCircle2, Zap } from 'lucide-react';
 import { CloverWebhookSetup } from './CloverWebhookSetup';
 
 interface CloverSyncProps {
@@ -15,9 +15,9 @@ interface CloverSyncProps {
 }
 
 interface SyncResult {
-  ordersSynced: number;
-  paymentsSynced: number;
-  refundsSynced: number;
+  orders: number;
+  payments: number;
+  refunds: number;
   errors: string[];
 }
 
@@ -57,7 +57,7 @@ export const CloverSync = ({ restaurantId, isConnected }: CloverSyncProps) => {
       if (data?.results) {
         setSyncResult(data.results);
 
-        const totalSynced = data.results.ordersSynced + data.results.paymentsSynced + data.results.refundsSynced;
+        const totalSynced = data.results.orders + data.results.payments + data.results.refunds;
 
         toast({
           title: "Sync Complete",
@@ -121,6 +121,25 @@ export const CloverSync = ({ restaurantId, isConnected }: CloverSyncProps) => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Real-time Status */}
+        <div className="bg-muted/50 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-100 text-green-600">
+              <Zap className="h-4 w-4" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-medium text-sm">Real-time Updates Active</h4>
+              <p className="text-xs text-muted-foreground">
+                Your P&L dashboard automatically updates when new orders, payments, or shifts are processed in Clover
+              </p>
+            </div>
+            <Badge variant="secondary" className="bg-green-100 text-green-700">
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Live
+            </Badge>
+          </div>
+        </div>
+
         {/* Primary Sync Actions */}
         <div className="space-y-4">
           <div className="text-center">
@@ -185,19 +204,19 @@ export const CloverSync = ({ restaurantId, isConnected }: CloverSyncProps) => {
               <h4 className="font-medium">Sync Results</h4>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="space-y-1">
-                <div className="text-2xl font-bold text-blue-600">{syncResult.ordersSynced}</div>
+                <div className="text-2xl font-bold text-blue-600">{syncResult.orders}</div>
                 <div className="text-xs text-muted-foreground">Orders</div>
               </div>
 
               <div className="space-y-1">
-                <div className="text-2xl font-bold text-green-600">{syncResult.paymentsSynced}</div>
+                <div className="text-2xl font-bold text-green-600">{syncResult.payments}</div>
                 <div className="text-xs text-muted-foreground">Payments</div>
               </div>
 
               <div className="space-y-1">
-                <div className="text-2xl font-bold text-red-600">{syncResult.refundsSynced}</div>
+                <div className="text-2xl font-bold text-red-600">{syncResult.refunds}</div>
                 <div className="text-xs text-muted-foreground">Refunds</div>
               </div>
             </div>
@@ -226,8 +245,9 @@ export const CloverSync = ({ restaurantId, isConnected }: CloverSyncProps) => {
             <div className="space-y-2">
               <div className="font-medium">How it works</div>
               <div className="text-sm space-y-1">
-                <div><strong>Historical Data:</strong> Import past data for complete P&L history</div>
-                <div><strong>What's Included:</strong> Orders, payments, and refunds from Clover</div>
+                <div><strong>Automatic Updates:</strong> Your P&L dashboard updates in real-time as Clover processes orders and payments</div>
+                <div><strong>Historical Data:</strong> Use the import button to bring in past data for complete P&L history</div>
+                <div><strong>What's Included:</strong> Orders, payments, refunds, and line items for accurate sales tracking</div>
               </div>
             </div>
           </AlertDescription>

@@ -43,14 +43,12 @@ serve(async (req) => {
       );
     }
 
-    // Step 2: Verify Clover Auth Code header (security)
+    // Step 2: Log Clover Auth Code header (if present)
     const cloverAuthCode = req.headers.get("Clover-Auth-Code");
-    if (!cloverAuthCode) {
-      console.error("Missing Clover-Auth-Code header");
-      return new Response(
-        JSON.stringify({ error: "Unauthorized: Missing Clover-Auth-Code" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (cloverAuthCode) {
+      console.log("Clover-Auth-Code header present:", cloverAuthCode.substring(0, 10) + "...");
+    } else {
+      console.warn("Clover-Auth-Code header not present - webhook may not be fully verified yet");
     }
 
     // Step 3: Process webhook events

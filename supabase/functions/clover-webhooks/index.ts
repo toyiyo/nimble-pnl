@@ -43,13 +43,19 @@ serve(async (req) => {
       );
     }
 
-    // Step 2: Log Clover Auth Code header (if present)
-    const cloverAuthCode = req.headers.get("Clover-Auth-Code");
-    if (cloverAuthCode) {
-      console.log("Clover-Auth-Code header present:", cloverAuthCode.substring(0, 10) + "...");
-    } else {
-      console.warn("Clover-Auth-Code header not present - webhook may not be fully verified yet");
+    // Step 2: Verify X-Clover-Auth header
+    const cloverAuth = req.headers.get("X-Clover-Auth");
+    const expectedVerificationCode = Deno.env.get("CLOVER_VERIFICATION_CODE");
+    
+    if (!cloverAuth || cloverAuth !== expectedVerificationCode) {
+      console.error("Invalid or missing X-Clover-Auth header");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+    
+    console.log("Webhook authenticated successfully");
 
     // Step 3: Process webhook events
     if (!payload.merchants || payload.merchants.length === 0) {

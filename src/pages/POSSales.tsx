@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { Plus, Download, Search, Calendar, RefreshCw, Upload as UploadIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +19,6 @@ import { MapPOSItemDialog } from "@/components/MapPOSItemDialog";
 import { UnifiedSaleItem } from "@/types/pos";
 
 export default function POSSales() {
-  const navigate = useNavigate();
   const {
     selectedRestaurant,
     setSelectedRestaurant,

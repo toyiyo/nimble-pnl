@@ -94,10 +94,9 @@ Deno.serve(async (req) => {
         iterations++;
         const ordersUrl = new URL(`${BASE_URL}/orders`);
         
-        // Try using Clover's modifiedTime filter instead of createdTime
-        // and use ISO format which Clover documentation suggests
-        const startTimestamp = startDate.getTime();
-        const endTimestamp = endDate.getTime();
+        // Clover API expects Unix timestamps in SECONDS (not milliseconds)
+        const startTimestamp = Math.floor(startDate.getTime() / 1000);
+        const endTimestamp = Math.floor(endDate.getTime() / 1000);
         
         // Use modifiedTime which is more commonly supported in Clover API
         ordersUrl.searchParams.set('filter', `modifiedTime>=${startTimestamp}`);

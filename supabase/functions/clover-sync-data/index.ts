@@ -43,13 +43,102 @@ Deno.serve(async (req) => {
       throw new Error('Clover connection not found');
     }
 
-    // Check if token is expired
-    if (connection.expires_at && new Date(connection.expires_at) < new Date()) {
-      console.error('Clover access token has expired:', {
+    // Check if token is expired or will expire soon (within 7 days)
+    const sevenDaysFromNow = new Date();
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+    
+    if (connection.expires_at && new Date(connection.expires_at) < sevenDaysFromNow) {
+      console.log('Clover token expired or expiring soon, attempting refresh:', {
         expires_at: connection.expires_at,
         now: new Date().toISOString()
       });
-      throw new Error('Clover access token has expired. Please reconnect your Clover account.');
+      
+      if (!connection.refresh_token) {
+        console.error('No refresh token available');
+        throw new Error('Clover access token has expired. Please reconnect your Clover account.');
+      }
+      
+      // Attempt to refresh the token
+      try {
+        const encryption = await getEncryptionService();
+        const decryptedRefreshToken = await encryption.decrypt(connection.refresh_token);
+        
+        const isSandbox = connection.environment === 'sandbox';
+        const CLOVER_APP_ID = isSandbox
+          ? Deno.env.get('CLOVER_SANDBOX_APP_ID')
+          : Deno.env.get('CLOVER_APP_ID');
+        const CLOVER_APP_SECRET = isSandbox
+          ? Deno.env.get('CLOVER_SANDBOX_APP_SECRET')
+          : Deno.env.get('CLOVER_APP_SECRET');
+          
+        const regionAPIDomains = {
+          na: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com',
+          eu: isSandbox ? 'apisandbox.dev.clover.com' : 'api.eu.clover.com',
+          latam: isSandbox ? 'apisandbox.dev.clover.com' : 'api.la.clover.com',
+          apac: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com'
+        };
+        
+        const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as keyof typeof regionAPIDomains] || regionAPIDomains.na;
+        
+        const tokenRefreshUrl = `https://${CLOVER_API_DOMAIN}/oauth/v2/refresh`;
+        const refreshResponse = await fetch(tokenRefreshUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            client_id: CLOVER_APP_ID,
+            client_secret: CLOVER_APP_SECRET,
+            refresh_token: decryptedRefreshToken,
+          }),
+        });
+        
+        if (!refreshResponse.ok) {
+          const errorText = await refreshResponse.text();
+          console.error('Token refresh failed:', errorText);
+          throw new Error('Failed to refresh Clover token. Please reconnect your account.');
+        }
+        
+        const refreshData = await refreshResponse.json();
+        console.log('Token refresh successful');
+        
+        // Calculate new expiry
+        let newExpiresAt = null;
+        if (refreshData.expires_in) {
+          newExpiresAt = new Date(Date.now() + (refreshData.expires_in * 1000)).toISOString();
+        } else {
+          // Default to 1 year if not provided
+          const oneYearFromNow = new Date();
+          oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+          newExpiresAt = oneYearFromNow.toISOString();
+        }
+        
+        // Update the connection with new tokens
+        const encryptedAccessToken = await encryption.encrypt(refreshData.access_token);
+        let encryptedRefreshToken = connection.refresh_token; // Keep old one unless we get a new one
+        if (refreshData.refresh_token) {
+          encryptedRefreshToken = await encryption.encrypt(refreshData.refresh_token);
+        }
+        
+        await supabase
+          .from('clover_connections')
+          .update({
+            access_token: encryptedAccessToken,
+            refresh_token: encryptedRefreshToken,
+            expires_at: newExpiresAt,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', connection.id);
+        
+        console.log('Connection updated with refreshed token, new expiry:', newExpiresAt);
+        
+        // Update connection object for use in this request
+        connection.access_token = encryptedAccessToken;
+        connection.expires_at = newExpiresAt;
+      } catch (refreshError: any) {
+        console.error('Error refreshing token:', refreshError);
+        throw new Error('Failed to refresh Clover token. Please reconnect your account.');
+      }
     }
 
     // Decrypt access token

@@ -274,6 +274,12 @@ Deno.serve(async (req) => {
       let expiresAt = null;
       if (tokenData.expires_in) {
         expiresAt = new Date(Date.now() + (tokenData.expires_in * 1000)).toISOString();
+      } else {
+        // Default to 1 year for Clover sandbox tokens if no expires_in provided
+        const oneYearFromNow = new Date();
+        oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+        expiresAt = oneYearFromNow.toISOString();
+        console.log('No expires_in provided by Clover, using default 1 year expiry');
       }
 
       console.log('Token expiry info:', {

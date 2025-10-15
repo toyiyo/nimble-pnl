@@ -90,12 +90,21 @@ Deno.serve(async (req) => {
 
       while (hasMore) {
         const ordersUrl = new URL(`${BASE_URL}/orders`);
-        ordersUrl.searchParams.set('filter', `createdTime>=${startDate.getTime()}&createdTime<=${endDate.getTime()}`);
+        // Convert to seconds (Clover expects Unix timestamp in seconds, not milliseconds)
+        const startTimestamp = Math.floor(startDate.getTime() / 1000);
+        const endTimestamp = Math.floor(endDate.getTime() / 1000);
+        ordersUrl.searchParams.set('filter', `createdTime>=${startTimestamp}&createdTime<=${endTimestamp}`);
         ordersUrl.searchParams.set('expand', 'lineItems');
         ordersUrl.searchParams.set('limit', limit.toString());
         ordersUrl.searchParams.set('offset', offset.toString());
 
         console.log('Fetching orders:', ordersUrl.toString());
+        console.log('Date range:', { 
+          startDate: startDate.toISOString(), 
+          endDate: endDate.toISOString(),
+          startTimestamp,
+          endTimestamp 
+        });
 
         const ordersResponse = await fetch(ordersUrl.toString(), {
           headers: {

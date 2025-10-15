@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ChefHat } from 'lucide-react';
@@ -54,7 +55,12 @@ export function ProductRecipeUsage({ productId, restaurantId, products }: Produc
             <div className="space-y-1">
               {recipeValidations.map(({ recipe, validation }, idx) => (
                 <div key={idx} className="flex items-center gap-2 flex-wrap">
-                  <span className="text-muted-foreground">{recipe.name}</span>
+                  <Link 
+                    to={`/recipes?recipeId=${recipe.id}`}
+                    className="text-primary hover:underline font-medium touch-manipulation min-h-[44px] flex items-center"
+                  >
+                    {recipe.name}
+                  </Link>
                   {recipe.pos_item_name && (
                     <Badge variant="outline" className="text-xs">
                       {recipe.pos_item_name}

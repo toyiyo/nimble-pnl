@@ -57,6 +57,20 @@ export default function Recipes() {
     }
   }, [location.state]);
   
+  // Check if we navigated here with a recipe ID to view
+  useEffect(() => {
+    const recipeIdParam = searchParams.get('recipeId');
+    if (recipeIdParam && recipes.length > 0) {
+      const recipe = recipes.find(r => r.id === recipeIdParam);
+      if (recipe) {
+        setEditingRecipe(recipe);
+        // Clean up query parameter
+        searchParams.delete('recipeId');
+        setSearchParams(searchParams, { replace: true });
+      }
+    }
+  }, [searchParams, recipes, setSearchParams]);
+  
   // Check if we're returning from creating a new product
   useEffect(() => {
     const newProductIdParam = searchParams.get('newProductId');

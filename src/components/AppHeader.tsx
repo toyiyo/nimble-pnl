@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Building2 } from 'lucide-react';
+import { Plus, Building2, CalendarCheck } from 'lucide-react';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 
 export const AppHeader = () => {
@@ -78,7 +78,10 @@ export const AppHeader = () => {
         <div className="container px-4">
           <div className="flex h-14 items-center justify-between">
             <div className="flex items-center gap-2 md:gap-4 min-w-0">
-              <h1 className="text-lg md:text-xl font-semibold truncate">Restaurant Operations</h1>
+              <div className="flex gap-2 items-center text-lg md:text-xl font-bold">
+                <CalendarCheck className="h-6 w-6 text-emerald-600" />
+                <span>EasyShiftHQ</span>
+              </div>
               
               {/* Restaurant Selector */}
               <div className="hidden sm:flex items-center gap-2">

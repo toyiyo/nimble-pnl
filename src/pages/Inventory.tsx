@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { EnhancedBarcodeScanner } from '@/components/EnhancedBarcodeScanner';
 import { ImageCapture } from '@/components/ImageCapture';
 import { ProductDialog } from '@/components/ProductDialog';
@@ -1062,12 +1063,23 @@ export const Inventory: React.FC = () => {
                                />
                              </div>
                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 flex-1">
-                                  <CardTitle className="text-lg truncate">{product.name}</CardTitle>
-                                  <CardDescription className="truncate">SKU: {product.sku}</CardDescription>
-                                </div>
+                             <div className="flex-1 min-w-0">
+                               <div className="flex items-start justify-between gap-2">
+                                 <div className="min-w-0 flex-1">
+                                   <TooltipProvider>
+                                     <Tooltip>
+                                       <TooltipTrigger asChild>
+                                         <CardTitle className="text-lg line-clamp-2 cursor-help leading-snug">
+                                           {product.name}
+                                         </CardTitle>
+                                       </TooltipTrigger>
+                                       <TooltipContent className="max-w-md">
+                                         <p>{product.name}</p>
+                                       </TooltipContent>
+                                     </Tooltip>
+                                   </TooltipProvider>
+                                   <CardDescription className="truncate">SKU: {product.sku}</CardDescription>
+                                 </div>
                                  <div className="flex-shrink-0 flex flex-wrap items-center gap-1 max-w-[120px] sm:max-w-none">
                                    {(product.current_stock || 0) <= (product.reorder_point || 0) && (
                                      <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />

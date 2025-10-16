@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
+import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
 import { ExternalLink, Settings } from 'lucide-react';
@@ -13,6 +14,7 @@ const Integrations = () => {
   const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { isConnected: squareConnected } = useSquareIntegration(selectedRestaurant?.restaurant_id || null);
+  const { isConnected: cloverConnected } = useCloverIntegration(selectedRestaurant?.restaurant_id || null);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -36,6 +38,15 @@ const Integrations = () => {
       logo: '⬜',
       connected: squareConnected,
       features: ['Sales Data', 'Payment Processing', 'Inventory', 'Analytics']
+    },
+    {
+      id: 'clover-pos',
+      name: 'Clover',
+      description: 'Sync orders, payments, and menu items from Clover POS',
+      category: 'Point of Sale',
+      logo: '🍀',
+      connected: cloverConnected,
+      features: ['Orders', 'Payments', 'Menu Items', 'Multi-region Support']
     },
     {
       id: '7shifts',

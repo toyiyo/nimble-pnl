@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSquareSalesAdapter } from './adapters/useSquareSalesAdapter';
+import { useCloverSalesAdapter } from './adapters/useCloverSalesAdapter';
 import { POSAdapter, POSIntegrationStatus, POSSystemType } from '@/types/pos';
 
 export const usePOSIntegrations = (restaurantId: string | null) => {
@@ -9,6 +10,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
 
   // Initialize adapters
   const squareAdapter = useSquareSalesAdapter(restaurantId);
+  const cloverAdapter = useCloverSalesAdapter(restaurantId);
 
   // Use useMemo to stabilize the manual adapter object
   const manualAdapter = useCallback(() => ({
@@ -23,12 +25,13 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
     }),
   }), []);
 
+  // Build adapters map once when restaurant changes or adapter connection status changes
   useEffect(() => {
     const adapterMap: Partial<Record<POSSystemType, POSAdapter>> = {
       square: squareAdapter,
+      clover: cloverAdapter,
       // Future adapters will be added here:
       // toast: useToastSalesAdapter(restaurantId),
-      // clover: useCloverSalesAdapter(restaurantId),
       // resy: useResySalesAdapter(restaurantId),
       manual: manualAdapter(),
     };
@@ -40,7 +43,12 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
       adapter!.getIntegrationStatus()
     );
     setIntegrationStatuses(statuses);
-  }, [squareAdapter, manualAdapter]);
+  }, [
+    restaurantId,
+    squareAdapter.isConnected,
+    cloverAdapter.isConnected,
+    manualAdapter
+  ]);
 
   const getConnectedSystems = useCallback((): POSSystemType[] => {
     return integrationStatuses

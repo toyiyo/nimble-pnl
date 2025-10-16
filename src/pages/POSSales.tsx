@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { Plus, Download, Search, Calendar, RefreshCw, Upload as UploadIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +19,6 @@ import { MapPOSItemDialog } from "@/components/MapPOSItemDialog";
 import { UnifiedSaleItem } from "@/types/pos";
 
 export default function POSSales() {
-  const navigate = useNavigate();
   const {
     selectedRestaurant,
     setSelectedRestaurant,
@@ -85,12 +83,13 @@ export default function POSSales() {
     setSelectedRestaurant(restaurant);
   };
 
-  // Auto-sync when restaurant is selected
+  // Auto-sync when restaurant is selected (only once)
   useEffect(() => {
     if (selectedRestaurant?.restaurant_id && hasAnyConnectedSystem()) {
       syncAllSystems();
     }
-  }, [selectedRestaurant?.restaurant_id, hasAnyConnectedSystem, syncAllSystems]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRestaurant?.restaurant_id]); // Only re-run when restaurant changes
 
   const filteredSales = useMemo(() => {
     let filtered = sales.filter((sale) => sale.itemName.toLowerCase().includes(searchTerm.toLowerCase()));

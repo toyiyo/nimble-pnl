@@ -19,6 +19,11 @@ export class EncryptionService {
       throw new Error('Encryption key not initialized');
     }
 
+    // Validate input data
+    if (data === null || data === undefined || (typeof data === 'string' && data.trim() === '')) {
+      throw new Error('Cannot encrypt empty data');
+    }
+
     const encoder = new TextEncoder();
     const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV for AES-GCM
     

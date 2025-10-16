@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
+import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { SquareSync } from '@/components/SquareSync';
+import { CloverSync } from '@/components/CloverSync';
 import { Plug, Settings, CheckCircle } from 'lucide-react';
 
 interface Integration {
@@ -29,15 +31,27 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   // Square-specific integration hook
   const squareIntegration = useSquareIntegration(restaurantId);
   
-  // Check if this integration is Square and if it's connected
+  // Clover-specific integration hook
+  const cloverIntegration = useCloverIntegration(restaurantId);
+  
+  // Check if this integration is Square or Clover and if it's connected
   const isSquareIntegration = integration.id === 'square-pos';
-  const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected : integration.connected;
-  const actuallyConnecting = isSquareIntegration ? squareIntegration.isConnecting : isConnecting;
+  const isCloverIntegration = integration.id === 'clover-pos';
+  const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected : 
+                            isCloverIntegration ? cloverIntegration.isConnected : 
+                            integration.connected;
+  const actuallyConnecting = isSquareIntegration ? squareIntegration.isConnecting : 
+                             isCloverIntegration ? cloverIntegration.isConnecting :
+                             isConnecting;
 
   const handleConnect = async () => {
     if (isSquareIntegration) {
-      // Use Square-specific connection logic
       await squareIntegration.connectSquare();
+      return;
+    }
+    
+    if (isCloverIntegration) {
+      await cloverIntegration.connectClover('na');
       return;
     }
     
@@ -45,7 +59,6 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     setIsConnecting(true);
     
     try {
-      // Simulate connection process
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       toast({
@@ -66,6 +79,11 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   const handleDisconnect = async () => {
     if (isSquareIntegration) {
       await squareIntegration.disconnectSquare();
+      return;
+    }
+    
+    if (isCloverIntegration) {
+      await cloverIntegration.disconnectClover();
       return;
     }
     
@@ -155,6 +173,8 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             <div className="text-xs text-muted-foreground">
               {isSquareIntegration && squareIntegration.connection ? 
                 `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}` :
+              isCloverIntegration && cloverIntegration.connection ?
+                `Connected: ${new Date(cloverIntegration.connection.connected_at).toLocaleDateString()}` :
                 'Last sync: 2 hours ago'
               }
             </div>
@@ -162,6 +182,14 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             {/* Square Sync Component */}
             {isSquareIntegration && (
               <SquareSync 
+                restaurantId={restaurantId} 
+                isConnected={actuallyConnected} 
+              />
+            )}
+            
+            {/* Clover Sync Component */}
+            {isCloverIntegration && (
+              <CloverSync 
                 restaurantId={restaurantId} 
                 isConnected={actuallyConnected} 
               />

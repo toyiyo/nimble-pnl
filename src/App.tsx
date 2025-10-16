@@ -18,6 +18,7 @@ import POSSales from "./pages/POSSales";
 import Reports from "./pages/Reports";
 import RestaurantSettings from "./pages/RestaurantSettings";
 import SquareCallback from "./pages/SquareCallback";
+import CloverCallback from "./pages/CloverCallback";
 import { AcceptInvitation } from "./pages/AcceptInvitation";
 import { Inventory } from "./pages/Inventory";
 import InventoryAudit from "./pages/InventoryAudit";
@@ -79,6 +80,7 @@ const App = () => (
             <Route path="/inventory-audit" element={<ProtectedRoute><InventoryAudit /></ProtectedRoute>} />
             <Route path="/receipt-import" element={<ProtectedRoute><ReceiptImport /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />
+            <Route path="/clover/callback" element={<CloverCallback />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

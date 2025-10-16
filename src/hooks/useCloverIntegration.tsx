@@ -17,26 +17,58 @@ export const useCloverIntegration = (restaurantId: string | null) => {
   const { toast } = useToast();
 
   const checkConnectionStatus = useCallback(async () => {
-    if (!restaurantId) return;
+    if (!restaurantId) {
+      setConnection(null);
+      setIsConnected(false);
+      return;
+    }
 
     try {
+      // First check if there are duplicates
+      const { count, error: countError } = await supabase
+        .from('clover_connections')
+        .select('*', { count: 'exact', head: true })
+        .eq('restaurant_id', restaurantId);
+
+      if (countError) {
+        console.error('Error checking Clover connection count:', countError);
+        setConnection(null);
+        setIsConnected(false);
+        return;
+      }
+
+      // Warn if multiple connections exist (data integrity issue)
+      if (count !== null && count > 1) {
+        console.warn(`Data integrity issue: Found ${count} Clover connections for restaurant ${restaurantId}. Using the most recent one.`);
+      }
+
+      // Deterministically fetch the latest connection
       const { data, error } = await supabase
         .from('clover_connections')
         .select('*')
         .eq('restaurant_id', restaurantId)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error checking Clover connection:', error);
+      if (error) {
+        console.error('Error fetching Clover connection:', error);
+        setConnection(null);
+        setIsConnected(false);
         return;
       }
 
       if (data) {
         setConnection(data);
         setIsConnected(true);
+      } else {
+        setConnection(null);
+        setIsConnected(false);
       }
     } catch (error) {
       console.error('Error checking Clover connection:', error);
+      setConnection(null);
+      setIsConnected(false);
     }
   }, [restaurantId]);
 

@@ -24,6 +24,16 @@ export const CloverWebhookSetup = ({ isConnected }: CloverWebhookSetupProps) => 
     : "Webhook URL not configured - missing VITE_SUPABASE_URL";
 
   const handleCopy = async () => {
+    // Validate webhook URL before attempting to copy
+    if (!supabaseUrl || !webhookUrl.startsWith('http')) {
+      toast({
+        title: "URL Not Configured",
+        description: "Webhook URL is not configured. Please check your environment variables.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(webhookUrl);
       setCopied(true);

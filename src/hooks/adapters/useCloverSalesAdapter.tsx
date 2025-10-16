@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { POSAdapter, POSIntegrationStatus, UnifiedSaleItem } from '@/types/pos';
+import { POSAdapter, POSIntegrationStatus, POSSystemType, UnifiedSaleItem } from '@/types/pos';
 
 export const useCloverSalesAdapter = (restaurantId: string | null): POSAdapter => {
   const [isConnected, setIsConnected] = useState(false);
@@ -67,7 +67,7 @@ export const useCloverSalesAdapter = (restaurantId: string | null): POSAdapter =
     return (data || []).map(item => ({
       id: item.id,
       restaurantId: item.restaurant_id,
-      posSystem: item.pos_system as any,
+      posSystem: item.pos_system as POSSystemType,
       externalOrderId: item.external_order_id,
       externalItemId: item.external_item_id,
       itemName: item.item_name,

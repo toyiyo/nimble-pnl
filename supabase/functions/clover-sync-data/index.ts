@@ -333,7 +333,7 @@ Deno.serve(async (req) => {
                     alternate_name: lineItem.alternateName,
                     price: actualPrice,
                     unit_quantity: actualQuantity,
-                    is_revenue: lineItem.isRevenue !== false, // Default to true if undefined, false only if explicitly false
+                    is_revenue: lineItem.isRevenue ?? null, // Preserve null when undefined, use actual value when explicitly set
                     note: lineItem.note,
                     printed: lineItem.printed || false,
                     category_id: lineItem.item?.categories?.elements?.[0]?.id,

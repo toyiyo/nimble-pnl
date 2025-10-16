@@ -154,7 +154,14 @@ Deno.serve(async (req) => {
     const encryption = await getEncryptionService();
     const accessToken = await encryption.decrypt(connection.access_token);
     
-    console.log('Access token decrypted, length:', accessToken?.length, 'first 20 chars:', accessToken?.substring(0, 20));
+    console.log('Token info:', {
+      tokenLength: accessToken?.length,
+      tokenPrefix: accessToken?.substring(0, 50) + '...',
+      environment: connection.environment,
+      merchantId: connection.merchant_id,
+      expiresAt: connection.expires_at,
+      isExpired: connection.expires_at ? new Date(connection.expires_at) < new Date() : 'unknown'
+    });
 
     // Determine if this is a sandbox or production connection
     const isSandbox = connection.environment === 'sandbox';
@@ -245,7 +252,16 @@ Deno.serve(async (req) => {
 
         if (!ordersResponse.ok) {
           const errorText = await ordersResponse.text();
-          console.error('Failed to fetch orders:', errorText);
+          console.error('Failed to fetch orders - Status:', ordersResponse.status, 'Response:', errorText);
+          console.error('Request details:', {
+            url: ordersUrl.toString(),
+            merchantId: connection.merchant_id,
+            environment: connection.environment,
+            region: connection.region,
+            tokenLength: accessToken?.length,
+            tokenPrefix: accessToken?.substring(0, 50) + '...',
+            expiresAt: connection.expires_at
+          });
           errors.push(`Failed to fetch orders: ${errorText}`);
           break;
         }

@@ -111,11 +111,7 @@ export const AppHeader = () => {
             </div>
             
             {/* Navigation Buttons */}
-            <div className="flex flex-col items-end gap-1">
-              <span className="hidden lg:block text-xs text-muted-foreground truncate max-w-[200px]">
-                Welcome, {user?.email}
-              </span>
-              <div className="flex gap-1 md:gap-2">
+            <div className="flex gap-1 md:gap-2">
                 <Button variant="outline" size="sm" onClick={() => navigate('/')} className="text-xs whitespace-nowrap">
                   Dashboard
                 </Button>
@@ -146,13 +142,7 @@ export const AppHeader = () => {
                 <Button variant="outline" size="sm" onClick={signOut} className="text-xs whitespace-nowrap">
                   Sign Out
                 </Button>
-              </div>
             </div>
-          </div>
-          
-          {/* Welcome message for smaller screens */}
-          <div className="lg:hidden text-xs text-muted-foreground text-right py-1">
-            Welcome, {user?.email}
           </div>
           
           {/* Mobile Restaurant Selector */}

@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
       throw new Error('Restaurant ID is required');
     }
 
-    // Get Clover connection
+    // Get Clover connection and restaurant timezone
     const { data: connection, error: connError } = await supabase
       .from('clover_connections')
       .select('*')
@@ -42,6 +42,15 @@ Deno.serve(async (req) => {
     if (connError || !connection) {
       throw new Error('Clover connection not found');
     }
+
+    // Get restaurant timezone
+    const { data: restaurant } = await supabase
+      .from('restaurants')
+      .select('timezone')
+      .eq('id', restaurantId)
+      .single();
+    
+    const restaurantTimezone = restaurant?.timezone || 'America/Chicago';
 
     // Check if token is expired or will expire soon (within 7 days)
     const sevenDaysFromNow = new Date();
@@ -253,8 +262,19 @@ Deno.serve(async (req) => {
 
         for (const order of orders) {
           try {
-            // Store order
-            const serviceDate = order.createdTime ? new Date(order.createdTime).toISOString().split('T')[0] : null;
+            // Store order - convert UTC timestamp to restaurant's local timezone for service_date
+            let serviceDate = null;
+            if (order.createdTime) {
+              const utcDate = new Date(order.createdTime);
+              // Convert to restaurant timezone using Intl API
+              const localDateStr = new Intl.DateTimeFormat('en-CA', {
+                timeZone: restaurantTimezone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+              }).format(utcDate);
+              serviceDate = localDateStr; // Already in YYYY-MM-DD format from 'en-CA' locale
+            }
             
             await supabase
               .from('clover_orders')

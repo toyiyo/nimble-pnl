@@ -85,6 +85,15 @@ serve(async (req) => {
 
       const restaurantId = connection.restaurant_id;
 
+      // Get restaurant timezone for proper date conversion
+      const { data: restaurant } = await supabase
+        .from("restaurants")
+        .select("timezone")
+        .eq("id", restaurantId)
+        .single();
+      
+      const restaurantTimezone = restaurant?.timezone || 'America/Chicago';
+
       if (!Array.isArray(merchantEvents) || merchantEvents.length === 0) {
         console.log("No events in merchant data");
         continue;
@@ -105,21 +114,38 @@ serve(async (req) => {
             // Trigger order sync for this specific order
             if (update.type === "CREATE" || update.type === "UPDATE") {
               try {
+                // Convert webhook timestamp to restaurant's local date
+                const utcDate = new Date(update.ts);
+                const localDate = new Intl.DateTimeFormat('en-CA', {
+                  timeZone: restaurantTimezone,
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit'
+                }).format(utcDate);
+                
+                const previousDay = new Date(utcDate);
+                previousDay.setDate(previousDay.getDate() - 1);
+                const previousLocalDate = new Intl.DateTimeFormat('en-CA', {
+                  timeZone: restaurantTimezone,
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit'
+                }).format(previousDay);
+
                 const syncResult = await supabase.functions.invoke("clover-sync-data", {
                   body: {
                     restaurantId,
                     action: "daily",
-                    // Use timestamp to sync recent data
                     dateRange: {
-                      startDate: new Date(update.ts - 86400000).toISOString().split('T')[0], // 1 day before
-                      endDate: new Date(update.ts).toISOString().split('T')[0]
+                      startDate: previousLocalDate,
+                      endDate: localDate
                     }
                   }
                 });
                 console.log(`Triggered sync for order ${objectId}`, syncResult);
                 
-                // Trigger P&L calculation for the affected date
-                const affectedDate = new Date(update.ts).toISOString().split('T')[0];
+                // Trigger P&L calculation for the affected date (in restaurant's timezone)
+                const affectedDate = localDate;
                 await supabase.rpc('aggregate_unified_sales_to_daily', {
                   p_restaurant_id: restaurantId,
                   p_date: affectedDate
@@ -136,20 +162,38 @@ serve(async (req) => {
             // Payments are part of orders, so trigger order sync
             if (update.type === "CREATE" || update.type === "UPDATE") {
               try {
+                // Convert webhook timestamp to restaurant's local date
+                const utcDate = new Date(update.ts);
+                const localDate = new Intl.DateTimeFormat('en-CA', {
+                  timeZone: restaurantTimezone,
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit'
+                }).format(utcDate);
+                
+                const previousDay = new Date(utcDate);
+                previousDay.setDate(previousDay.getDate() - 1);
+                const previousLocalDate = new Intl.DateTimeFormat('en-CA', {
+                  timeZone: restaurantTimezone,
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit'
+                }).format(previousDay);
+
                 const syncResult = await supabase.functions.invoke("clover-sync-data", {
                   body: {
                     restaurantId,
                     action: "daily",
                     dateRange: {
-                      startDate: new Date(update.ts - 86400000).toISOString().split('T')[0],
-                      endDate: new Date(update.ts).toISOString().split('T')[0]
+                      startDate: previousLocalDate,
+                      endDate: localDate
                     }
                   }
                 });
                 console.log(`Triggered sync for payment ${objectId}`, syncResult);
                 
-                // Trigger P&L calculation for the affected date
-                const affectedDate = new Date(update.ts).toISOString().split('T')[0];
+                // Trigger P&L calculation for the affected date (in restaurant's timezone)
+                const affectedDate = localDate;
                 await supabase.rpc('aggregate_unified_sales_to_daily', {
                   p_restaurant_id: restaurantId,
                   p_date: affectedDate

@@ -191,9 +191,7 @@ Deno.serve(async (req) => {
 
       const tokenData = await tokenResponse.json();
       console.log('Clover token exchange successful');
-      console.log('Full token data:', JSON.stringify(tokenData, null, 2));
       console.log('Token data keys:', Object.keys(tokenData));
-      console.log('Merchant ID from token:', tokenData.merchant_id);
       console.log('Access token exists:', !!tokenData.access_token);
 
       // Extract merchant ID - it might be in different fields or encoded in the JWT
@@ -205,7 +203,7 @@ Deno.serve(async (req) => {
           // Decode JWT payload (without verification since we trust Clover)
           const base64Payload = tokenData.access_token.split('.')[1];
           const decodedPayload = JSON.parse(atob(base64Payload));
-          console.log('Decoded JWT payload:', decodedPayload);
+          console.log('Decoded JWT payload keys:', Object.keys(decodedPayload));
           
           merchantId = decodedPayload.merchant_uuid || decodedPayload.merchant_id || decodedPayload.merchantId;
         } catch (error) {
@@ -214,7 +212,7 @@ Deno.serve(async (req) => {
       }
       
       if (!merchantId) {
-        console.error('No merchant ID found in token response:', tokenData);
+        console.error('No merchant ID found in token response. Available keys:', Object.keys(tokenData));
         throw new Error('No merchant ID returned from Clover OAuth');
       }
       

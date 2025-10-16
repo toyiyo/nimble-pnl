@@ -18,9 +18,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Building2, CalendarCheck } from 'lucide-react';
+import { Plus, Building2, CalendarCheck, Menu } from 'lucide-react';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 
 export const AppHeader = () => {
@@ -28,6 +35,7 @@ export const AppHeader = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, createRestaurant } = useRestaurantContext();
   const navigate = useNavigate();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     address: '',
@@ -110,39 +118,125 @@ export const AppHeader = () => {
               </div>
             </div>
             
-            {/* Navigation Buttons */}
-            <div className="flex gap-1 md:gap-2">
-                <Button variant="outline" size="sm" onClick={() => navigate('/')} className="text-xs whitespace-nowrap">
-                  Dashboard
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate('/integrations')} className="text-xs whitespace-nowrap">
-                  Integrations
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate('/pos-sales')} className="text-xs whitespace-nowrap">
-                  POS Sales
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate('/recipes')} className="text-xs whitespace-nowrap">
-                  Recipes
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate('/inventory')} className="text-xs whitespace-nowrap">
-                  Inventory
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate('/inventory-audit')} className="text-xs whitespace-nowrap">
-                  Audit
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate('/reports')} className="text-xs whitespace-nowrap">
-                  Reports
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate('/team')} className="text-xs whitespace-nowrap">
-                  Team
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate('/settings')} className="text-xs whitespace-nowrap">
-                  Settings
-                </Button>
-                <Button variant="outline" size="sm" onClick={signOut} className="text-xs whitespace-nowrap">
-                  Sign Out
-                </Button>
+            {/* Desktop Navigation - Hidden on smaller screens */}
+            <div className="hidden xl:flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => navigate('/')} className="text-xs whitespace-nowrap">
+                Dashboard
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate('/integrations')} className="text-xs whitespace-nowrap">
+                Integrations
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate('/pos-sales')} className="text-xs whitespace-nowrap">
+                POS Sales
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate('/recipes')} className="text-xs whitespace-nowrap">
+                Recipes
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate('/inventory')} className="text-xs whitespace-nowrap">
+                Inventory
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate('/inventory-audit')} className="text-xs whitespace-nowrap">
+                Audit
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate('/reports')} className="text-xs whitespace-nowrap">
+                Reports
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate('/team')} className="text-xs whitespace-nowrap">
+                Team
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate('/settings')} className="text-xs whitespace-nowrap">
+                Settings
+              </Button>
+              <Button variant="outline" size="sm" onClick={signOut} className="text-xs whitespace-nowrap">
+                Sign Out
+              </Button>
             </div>
+
+            {/* Mobile Menu Button */}
+            <Sheet open={showMobileMenu} onOpenChange={setShowMobileMenu}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="xl:hidden">
+                  <Menu className="h-4 w-4" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[250px]">
+                <SheetHeader>
+                  <SheetTitle>Navigation</SheetTitle>
+                </SheetHeader>
+                <div className="flex flex-col gap-2 mt-6">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { navigate('/'); setShowMobileMenu(false); }} 
+                    className="justify-start"
+                  >
+                    Dashboard
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { navigate('/integrations'); setShowMobileMenu(false); }} 
+                    className="justify-start"
+                  >
+                    Integrations
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { navigate('/pos-sales'); setShowMobileMenu(false); }} 
+                    className="justify-start"
+                  >
+                    POS Sales
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { navigate('/recipes'); setShowMobileMenu(false); }} 
+                    className="justify-start"
+                  >
+                    Recipes
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { navigate('/inventory'); setShowMobileMenu(false); }} 
+                    className="justify-start"
+                  >
+                    Inventory
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { navigate('/inventory-audit'); setShowMobileMenu(false); }} 
+                    className="justify-start"
+                  >
+                    Audit
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { navigate('/reports'); setShowMobileMenu(false); }} 
+                    className="justify-start"
+                  >
+                    Reports
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { navigate('/team'); setShowMobileMenu(false); }} 
+                    className="justify-start"
+                  >
+                    Team
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { navigate('/settings'); setShowMobileMenu(false); }} 
+                    className="justify-start"
+                  >
+                    Settings
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { signOut(); setShowMobileMenu(false); }} 
+                    className="justify-start"
+                  >
+                    Sign Out
+                  </Button>
+                </div>
+              </SheetContent>
+            </Sheet>
           </div>
           
           {/* Mobile Restaurant Selector */}

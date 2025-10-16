@@ -15,6 +15,61 @@ interface CloverWebhookPayload {
   verificationCode?: string;
 }
 
+/**
+ * Helper function to trigger daily sync and P&L aggregation for a given event
+ */
+async function triggerDailySyncAndAggregate(params: {
+  supabase: any;
+  restaurantId: string;
+  timestamp: number;
+  objectId: string;
+  restaurantTimezone: string;
+  label: string;
+}) {
+  const { supabase, restaurantId, timestamp, objectId, restaurantTimezone, label } = params;
+  
+  try {
+    // Convert webhook timestamp to restaurant's local date
+    const utcDate = new Date(timestamp);
+    const localDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: restaurantTimezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(utcDate);
+    
+    const previousDay = new Date(utcDate);
+    previousDay.setDate(previousDay.getDate() - 1);
+    const previousLocalDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: restaurantTimezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(previousDay);
+
+    const syncResult = await supabase.functions.invoke("clover-sync-data", {
+      body: {
+        restaurantId,
+        action: "daily",
+        dateRange: {
+          startDate: previousLocalDate,
+          endDate: localDate
+        }
+      }
+    });
+    console.log(`Triggered sync for ${label} ${objectId}`, syncResult);
+    
+    // Trigger P&L calculation for the affected date (in restaurant's timezone)
+    await supabase.rpc('aggregate_unified_sales_to_daily', {
+      p_restaurant_id: restaurantId,
+      p_date: localDate
+    });
+    console.log(`Triggered P&L calculation for ${localDate} (${label} ${objectId})`);
+  } catch (error) {
+    console.error(`Failed to trigger sync for ${label} ${objectId}:`, error);
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -111,97 +166,29 @@ serve(async (req) => {
         switch (eventKey) {
           case "O": // Orders
             console.log(`Order ${update.type}: ${objectId}`);
-            // Trigger order sync for this specific order
             if (update.type === "CREATE" || update.type === "UPDATE") {
-              try {
-                // Convert webhook timestamp to restaurant's local date
-                const utcDate = new Date(update.ts);
-                const localDate = new Intl.DateTimeFormat('en-CA', {
-                  timeZone: restaurantTimezone,
-                  year: 'numeric',
-                  month: '2-digit',
-                  day: '2-digit'
-                }).format(utcDate);
-                
-                const previousDay = new Date(utcDate);
-                previousDay.setDate(previousDay.getDate() - 1);
-                const previousLocalDate = new Intl.DateTimeFormat('en-CA', {
-                  timeZone: restaurantTimezone,
-                  year: 'numeric',
-                  month: '2-digit',
-                  day: '2-digit'
-                }).format(previousDay);
-
-                const syncResult = await supabase.functions.invoke("clover-sync-data", {
-                  body: {
-                    restaurantId,
-                    action: "daily",
-                    dateRange: {
-                      startDate: previousLocalDate,
-                      endDate: localDate
-                    }
-                  }
-                });
-                console.log(`Triggered sync for order ${objectId}`, syncResult);
-                
-                // Trigger P&L calculation for the affected date (in restaurant's timezone)
-                const affectedDate = localDate;
-                await supabase.rpc('aggregate_unified_sales_to_daily', {
-                  p_restaurant_id: restaurantId,
-                  p_date: affectedDate
-                });
-                console.log(`Triggered P&L calculation for ${affectedDate}`);
-              } catch (syncError) {
-                console.error(`Failed to trigger sync for order ${objectId}:`, syncError);
-              }
+              await triggerDailySyncAndAggregate({
+                supabase,
+                restaurantId,
+                timestamp: update.ts,
+                objectId,
+                restaurantTimezone,
+                label: "order"
+              });
             }
             break;
 
           case "P": // Payments
             console.log(`Payment ${update.type}: ${objectId}`);
-            // Payments are part of orders, so trigger order sync
             if (update.type === "CREATE" || update.type === "UPDATE") {
-              try {
-                // Convert webhook timestamp to restaurant's local date
-                const utcDate = new Date(update.ts);
-                const localDate = new Intl.DateTimeFormat('en-CA', {
-                  timeZone: restaurantTimezone,
-                  year: 'numeric',
-                  month: '2-digit',
-                  day: '2-digit'
-                }).format(utcDate);
-                
-                const previousDay = new Date(utcDate);
-                previousDay.setDate(previousDay.getDate() - 1);
-                const previousLocalDate = new Intl.DateTimeFormat('en-CA', {
-                  timeZone: restaurantTimezone,
-                  year: 'numeric',
-                  month: '2-digit',
-                  day: '2-digit'
-                }).format(previousDay);
-
-                const syncResult = await supabase.functions.invoke("clover-sync-data", {
-                  body: {
-                    restaurantId,
-                    action: "daily",
-                    dateRange: {
-                      startDate: previousLocalDate,
-                      endDate: localDate
-                    }
-                  }
-                });
-                console.log(`Triggered sync for payment ${objectId}`, syncResult);
-                
-                // Trigger P&L calculation for the affected date (in restaurant's timezone)
-                const affectedDate = localDate;
-                await supabase.rpc('aggregate_unified_sales_to_daily', {
-                  p_restaurant_id: restaurantId,
-                  p_date: affectedDate
-                });
-                console.log(`Triggered P&L calculation for ${affectedDate}`);
-              } catch (syncError) {
-                console.error(`Failed to trigger sync for payment ${objectId}:`, syncError);
-              }
+              await triggerDailySyncAndAggregate({
+                supabase,
+                restaurantId,
+                timestamp: update.ts,
+                objectId,
+                restaurantTimezone,
+                label: "payment"
+              });
             }
             break;
 

@@ -155,8 +155,8 @@ Deno.serve(async (req) => {
     const accessToken = await encryption.decrypt(connection.access_token);
     
     console.log('Token info:', {
+      hasToken: !!accessToken,
       tokenLength: accessToken?.length,
-      tokenPrefix: accessToken?.substring(0, 50) + '...',
       environment: connection.environment,
       merchantId: connection.merchant_id,
       expiresAt: connection.expires_at,

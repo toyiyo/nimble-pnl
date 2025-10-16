@@ -184,8 +184,7 @@ Deno.serve(async (req) => {
     });
     
     return new Response(JSON.stringify({
-      error: error.message,
-      details: error.stack,
+      error: "An unexpected error occurred while setting up Clover webhook.",
       timestamp: new Date().toISOString()
     }), {
       status: 400,

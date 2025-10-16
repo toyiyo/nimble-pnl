@@ -45,12 +45,44 @@ Deno.serve(async (req) => {
     }
 
     // Determine environment based on request origin
-    const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
+    let candidateOrigin: string | null = null;
     let isSandbox = false;
 
-    if (origin) {
+    // Safely extract origin from headers
+    try {
+      candidateOrigin = req.headers.get('origin');
+      
+      // If no origin header, try to extract from referer
+      if (!candidateOrigin) {
+        const referer = req.headers.get('referer');
+        if (referer && typeof referer === 'string' && referer.includes('://')) {
+          const parts = referer.split('/');
+          if (parts.length >= 3) {
+            candidateOrigin = parts.slice(0, 3).join('/');
+          }
+        }
+      }
+      
+      // Trim and validate candidate origin
+      if (candidateOrigin) {
+        candidateOrigin = candidateOrigin.trim();
+        if (!candidateOrigin.includes('://')) {
+          console.warn('Invalid origin format (missing protocol):', candidateOrigin);
+          candidateOrigin = null;
+        }
+      }
+    } catch (e) {
+      console.error('Error parsing origin/referer headers:', e, {
+        origin: req.headers.get('origin'),
+        referer: req.headers.get('referer')
+      });
+      candidateOrigin = null;
+    }
+
+    // Parse origin URL to determine environment
+    if (candidateOrigin) {
       try {
-        const originUrl = new URL(origin);
+        const originUrl = new URL(candidateOrigin);
         const hostname = originUrl.hostname.toLowerCase();
         isSandbox = hostname === 'lovableproject.com' || 
                    hostname.endsWith('.lovableproject.com') ||
@@ -58,9 +90,12 @@ Deno.serve(async (req) => {
                    hostname.includes('vercel.app') ||
                    hostname === 'localhost';
       } catch (e) {
-        console.warn('Invalid origin URL:', origin);
+        console.error('Invalid origin URL:', candidateOrigin, e);
         isSandbox = false;
       }
+    } else {
+      console.warn('No valid origin found, defaulting to production environment');
+      isSandbox = false;
     }
 
     const CLOVER_APP_ID = isSandbox

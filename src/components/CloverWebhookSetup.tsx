@@ -13,7 +13,15 @@ export const CloverWebhookSetup = ({ isConnected }: CloverWebhookSetupProps) => 
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
-  const webhookUrl = "https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/clover-webhooks";
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  
+  if (!supabaseUrl) {
+    console.error("VITE_SUPABASE_URL is not configured");
+  }
+  
+  const webhookUrl = supabaseUrl 
+    ? `${supabaseUrl}/functions/v1/clover-webhooks`
+    : "Webhook URL not configured - missing VITE_SUPABASE_URL";
 
   const handleCopy = async () => {
     try {

@@ -15,9 +15,9 @@ interface CloverSyncProps {
 }
 
 interface SyncResult {
-  orders: number;
-  payments: number;
-  refunds: number;
+  ordersSynced: number;
+  paymentsSynced: number;
+  refundsSynced: number;
   errors: string[];
 }
 
@@ -57,7 +57,7 @@ export const CloverSync = ({ restaurantId, isConnected }: CloverSyncProps) => {
       if (data?.results) {
         setSyncResult(data.results);
 
-        const totalSynced = data.results.orders + data.results.payments + data.results.refunds;
+        const totalSynced = data.results.ordersSynced + data.results.paymentsSynced + data.results.refundsSynced;
 
         toast({
           title: "Sync Complete",
@@ -206,17 +206,17 @@ export const CloverSync = ({ restaurantId, isConnected }: CloverSyncProps) => {
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="space-y-1">
-                <div className="text-2xl font-bold text-blue-600">{syncResult.orders}</div>
+                <div className="text-2xl font-bold text-blue-600">{syncResult.ordersSynced}</div>
                 <div className="text-xs text-muted-foreground">Orders</div>
               </div>
 
               <div className="space-y-1">
-                <div className="text-2xl font-bold text-green-600">{syncResult.payments}</div>
+                <div className="text-2xl font-bold text-green-600">{syncResult.paymentsSynced}</div>
                 <div className="text-xs text-muted-foreground">Payments</div>
               </div>
 
               <div className="space-y-1">
-                <div className="text-2xl font-bold text-red-600">{syncResult.refunds}</div>
+                <div className="text-2xl font-bold text-red-600">{syncResult.refundsSynced}</div>
                 <div className="text-xs text-muted-foreground">Refunds</div>
               </div>
             </div>

@@ -45,7 +45,7 @@ serve(async (req) => {
 
     // Step 2: Verify X-Clover-Auth header
     const cloverAuth = req.headers.get("X-Clover-Auth");
-    const expectedVerificationCode = Deno.env.get("CLOVER_VERIFICATION_CODE");
+    const expectedVerificationCode = Deno.env.get("CLOVER_WEBHOOK_VERIFICATION_CODE");
     
     if (!cloverAuth || cloverAuth !== expectedVerificationCode) {
       console.error("Invalid or missing X-Clover-Auth header");

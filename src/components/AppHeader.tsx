@@ -111,8 +111,8 @@ export const AppHeader = () => {
             </div>
             
             {/* Navigation Buttons */}
-            <div className="flex items-center gap-1 md:gap-4 overflow-x-auto">
-              <span className="hidden md:block text-sm text-muted-foreground truncate">
+            <div className="flex flex-col items-end gap-1">
+              <span className="hidden lg:block text-xs text-muted-foreground truncate max-w-[200px]">
                 Welcome, {user?.email}
               </span>
               <div className="flex gap-1 md:gap-2">
@@ -148,6 +148,11 @@ export const AppHeader = () => {
                 </Button>
               </div>
             </div>
+          </div>
+          
+          {/* Welcome message for smaller screens */}
+          <div className="lg:hidden text-xs text-muted-foreground text-right py-1">
+            Welcome, {user?.email}
           </div>
           
           {/* Mobile Restaurant Selector */}

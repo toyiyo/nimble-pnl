@@ -12,6 +12,8 @@ export const useCloverSalesAdapter = (restaurantId: string | null): POSAdapter =
   useEffect(() => {
     if (!restaurantId) {
       setIsConnected(false);
+      setConnectionId(null);
+      setLastSyncAt(null);
       return;
     }
 
@@ -28,6 +30,8 @@ export const useCloverSalesAdapter = (restaurantId: string | null): POSAdapter =
         setLastSyncAt(data.connected_at);
       } else {
         setIsConnected(false);
+        setConnectionId(null);
+        setLastSyncAt(null);
       }
     };
 

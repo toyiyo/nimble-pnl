@@ -123,15 +123,21 @@ Deno.serve(async (req) => {
     const CLOVER_DOMAIN = regionDomains[region];
     const CLOVER_API_DOMAIN = regionAPIDomains[region];
 
-    const REDIRECT_URI = isSandbox
-      ? `${origin}/clover/callback`
+    const REDIRECT_URI = isSandbox && candidateOrigin
+      ? `${candidateOrigin}/clover/callback`
       : 'https://app.easyshifthq.com/clover/callback';
 
-    console.log('Clover OAuth - Action:', action, 'Region:', region, 'Environment:', isSandbox ? 'sandbox' : 'production', 'Origin:', origin);
+    console.log('Clover OAuth - Action:', action, 'Region:', region, 'Environment:', isSandbox ? 'sandbox' : 'production', 'Origin:', candidateOrigin);
     console.log('App ID being used:', CLOVER_APP_ID);
     console.log('Domain being used:', CLOVER_DOMAIN);
     console.log('Redirect URI:', REDIRECT_URI);
-    console.log('Full hostname:', origin ? new URL(origin).hostname : 'unknown');
+    if (candidateOrigin) {
+      try {
+        console.log('Full hostname:', new URL(candidateOrigin).hostname);
+      } catch (e) {
+        console.log('Could not parse hostname from origin');
+      }
+    }
 
     if (!CLOVER_APP_ID || !CLOVER_APP_SECRET) {
       console.error('Clover credentials missing for environment:', isSandbox ? 'sandbox' : 'production');

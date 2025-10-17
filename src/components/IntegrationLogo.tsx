@@ -7,7 +7,7 @@ interface IntegrationLogoProps {
 }
 
 const logoMap: Record<string, { icon: any; color: string }> = {
-  'toast-pos': { icon: SimpleIcons.siUbereats, color: '#E25041' }, // Using food delivery icon
+  // Toast POS - no direct icon available, using emoji fallback
   'square-pos': { icon: SimpleIcons.siSquare, color: '#000000' },
   'clover-pos': { icon: SimpleIcons.siCashapp, color: '#3FA142' },
   '7shifts': { icon: SimpleIcons.siCalendly, color: '#137CBD' },

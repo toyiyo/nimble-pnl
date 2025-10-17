@@ -91,7 +91,8 @@ export const AppHeader = () => {
 
   const isActivePath = (path: string) => {
     if (path === '/') return location.pathname === '/';
-    return location.pathname.startsWith(path);
+    // Exact match or match with trailing slash to avoid /inventory matching /inventory-audit
+    return location.pathname === path || location.pathname.startsWith(path + '/');
   };
 
   const handleCreateRestaurant = async (e: React.FormEvent) => {

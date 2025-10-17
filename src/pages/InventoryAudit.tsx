@@ -7,18 +7,49 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Download, TrendingDown, TrendingUp, Package, AlertTriangle } from 'lucide-react';
+import { Download, TrendingDown, TrendingUp, Package, AlertTriangle, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatDateInTimezone } from '@/lib/timezone';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const TRANSACTION_TYPES = [
-  { value: 'all', label: 'All Types' },
-  { value: 'purchase', label: 'Purchase' },
-  { value: 'usage', label: 'Usage/Sale' },
-  { value: 'adjustment', label: 'Adjustment' },
-  { value: 'waste', label: 'Waste' },
-  { value: 'transfer', label: 'Transfer' },
+  { 
+    value: 'all', 
+    label: 'All Types',
+    description: 'All inventory transactions',
+    tooltip: 'Shows all types of inventory movements'
+  },
+  { 
+    value: 'purchase', 
+    label: 'Purchases',
+    description: 'Inventory added to stock',
+    tooltip: 'Items purchased and added to your inventory. Amount represents the cost you paid for these items.'
+  },
+  { 
+    value: 'usage', 
+    label: 'Cost of Goods Used',
+    description: 'Inventory cost consumed',
+    tooltip: 'The cost of inventory that was used or sold. This is NOT the retail price charged to customers, but rather the cost of ingredients/products deducted from inventory.'
+  },
+  { 
+    value: 'adjustment', 
+    label: 'Adjustments',
+    description: 'Manual inventory corrections',
+    tooltip: 'Manual corrections to inventory levels (e.g., corrections from reconciliations, found items, or count adjustments).'
+  },
+  { 
+    value: 'waste', 
+    label: 'Waste',
+    description: 'Spoilage & disposal value',
+    tooltip: 'Value of inventory lost due to spoilage, damage, or disposal. Represents the cost of wasted items.'
+  },
+  { 
+    value: 'transfer', 
+    label: 'Transfers',
+    description: 'Items moved between locations',
+    tooltip: 'Inventory transferred between different storage locations or restaurants.'
+  },
 ];
 
 const getTransactionIcon = (type: string) => {
@@ -147,26 +178,50 @@ export default function InventoryAudit() {
       </Card>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        {TRANSACTION_TYPES.filter(t => t.value !== 'all').map(type => {
-          const stats = summary[type.value as keyof typeof summary] || { count: 0, totalCost: 0 };
+      <TooltipProvider>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {TRANSACTION_TYPES.filter(t => t.value !== 'all').map(type => {
+            const stats = summary[type.value as keyof typeof summary] || { count: 0, totalCost: 0 };
+            const isActive = typeFilter === type.value;
 
-          return (
-            <Card key={type.value}>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2 mb-2">
-                  {getTransactionIcon(type.value)}
-                  <span className="font-medium">{type.label}</span>
-                </div>
-                <div className="text-2xl font-bold">{stats.count}</div>
-                <div className="text-sm text-muted-foreground">
-                  ${stats.totalCost.toFixed(2)}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+            return (
+              <Card 
+                key={type.value}
+                className={`cursor-pointer transition-all hover:shadow-md ${
+                  isActive ? 'ring-2 ring-primary shadow-md' : ''
+                }`}
+                onClick={() => setTypeFilter(type.value)}
+              >
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {getTransactionIcon(type.value)}
+                      <span className="font-medium">{type.label}</span>
+                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p>{type.tooltip}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-2xl font-bold">{stats.count} transactions</div>
+                    <div className="text-sm text-muted-foreground">
+                      {type.description}
+                    </div>
+                    <div className="text-lg font-semibold mt-2">
+                      Cost Impact: ${Math.abs(stats.totalCost).toFixed(2)}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </TooltipProvider>
 
       {/* Transactions List */}
       <Card>

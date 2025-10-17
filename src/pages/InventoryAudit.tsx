@@ -195,7 +195,9 @@ export default function InventoryAudit() {
                 <CardContent className="pt-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      {getTransactionIcon(type.value)}
+                      <div className={`p-1.5 rounded ${getTransactionColor(type.value)}`}>
+                        {getTransactionIcon(type.value)}
+                      </div>
                       <span className="font-medium">{type.label}</span>
                     </div>
                     <Tooltip>

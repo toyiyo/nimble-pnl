@@ -412,22 +412,23 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                 autoPlay
                 aria-label={state.isPaused ? 'Camera paused' : 'Camera scanning for barcodes'}
               />
-              {/* Enhanced Scanning Reticle */}
+              {/* Minimal Scanning Reticle - Transparent for clear visibility */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="relative w-56 h-36">
-                  {/* Animated gradient border */}
-                  <div className="absolute inset-0 rounded-xl border-2 border-transparent bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 animate-pulse" 
-                       style={{ padding: '2px', backgroundClip: 'border-box' }}>
-                    <div className="w-full h-full bg-purple-500/10 rounded-lg backdrop-blur-sm" />
+                <div className="relative w-64 h-40">
+                  {/* Subtle dashed border outline only */}
+                  <div className="absolute inset-0 rounded-xl border-2 border-dashed border-white/70 shadow-lg" />
+                  
+                  {/* Corner markers with glow - no solid fill blocking view */}
+                  <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-xl shadow-lg shadow-white/50" />
+                  <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-xl shadow-lg shadow-white/50" />
+                  <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-xl shadow-lg shadow-white/50" />
+                  <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-xl shadow-lg shadow-white/50" />
+                  
+                  {/* Subtle center crosshair */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-1 h-8 bg-white/50 rounded-full shadow-sm" />
+                    <div className="absolute w-8 h-1 bg-white/50 rounded-full shadow-sm" />
                   </div>
-                  
-                  {/* Corner markers with pulse animation */}
-                  <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-purple-500 rounded-tl-lg animate-pulse" />
-                  <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-purple-500 rounded-tr-lg animate-pulse" style={{ animationDelay: '0.2s' }} />
-                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-purple-500 rounded-bl-lg animate-pulse" style={{ animationDelay: '0.4s' }} />
-                  <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-purple-500 rounded-br-lg animate-pulse" style={{ animationDelay: '0.6s' }} />
-                  
-                  <Target className="absolute inset-0 w-full h-full text-purple-500/20" />
                 </div>
               </div>
               

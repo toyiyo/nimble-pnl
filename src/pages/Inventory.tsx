@@ -35,6 +35,7 @@ import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
 import { ProductEnhancementService } from '@/services/productEnhancementService';
 import { ocrService } from '@/services/ocrService';
+import { cn } from '@/lib/utils';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
@@ -726,16 +727,17 @@ export const Inventory: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="bg-card border-b border-border p-4">
-        <div className="max-w-7xl mx-auto">
+      {/* Enhanced Header */}
+      <header className="relative overflow-hidden bg-gradient-to-br from-background via-primary/5 to-accent/5 border-b-2 border-transparent bg-clip-padding">
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent opacity-50" />
+        <div className="relative max-w-7xl mx-auto p-4">
           {/* Mobile-first layout */}
-          <div className="flex items-center justify-between mb-3 md:mb-0">
+          <div className="flex items-center justify-between mb-4 md:mb-0">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => navigate('/')}
-              className="p-2 md:px-3"
+              className="p-2 md:px-3 hover:bg-primary/10 transition-all duration-300"
             >
               <ArrowLeft className="h-4 w-4 md:mr-2" />
               <span className="hidden md:inline">Dashboard</span>
@@ -745,20 +747,29 @@ export const Inventory: React.FC = () => {
                 variant="outline" 
                 size="sm"
                 onClick={() => navigate('/receipt-import')}
-                className="p-2 md:px-3"
+                className="p-2 md:px-3 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-300"
               >
                 <Package className="h-4 w-4 md:mr-2" />
                 <span className="hidden md:inline">Upload Receipt</span>
               </Button>
-              <Button onClick={handleCreateManually} size="sm">
+              <Button 
+                onClick={handleCreateManually} 
+                size="sm"
+                className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/30 transition-all duration-300 hover:scale-[1.02]"
+              >
                 <Plus className="h-4 w-4 md:mr-2" />
                 <span className="hidden sm:inline">Add Product</span>
               </Button>
             </div>
           </div>
-          <div className="text-center md:text-left">
-            <h1 className="text-xl md:text-2xl font-bold">Inventory Management</h1>
-            <p className="text-sm text-muted-foreground">{selectedRestaurant?.restaurant?.name}</p>
+          <div className="text-center md:text-left space-y-1">
+            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-primary via-primary to-accent bg-clip-text text-transparent">
+              Inventory Management
+            </h1>
+            <p className="text-sm text-muted-foreground flex items-center justify-center md:justify-start gap-2">
+              <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              {selectedRestaurant?.restaurant?.name}
+            </p>
           </div>
         </div>
       </header>
@@ -795,29 +806,67 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="scanner" className="mt-4 md:mt-6">
             <div className="space-y-4 md:space-y-6">
-              {/* Scan Mode Toggle - Add vs Reconcile */}
-              <div className="flex justify-center">
-                <div className="bg-card border border-border p-1 rounded-lg w-full max-w-md">
-                  <div className="grid grid-cols-2 gap-1">
-                    <Button
-                      variant={scanMode === 'add' ? 'default' : 'ghost'}
-                      size="sm"
+              {/* Enhanced Scan Mode Toggle - Add vs Reconcile */}
+              <Card className="border-2 border-transparent bg-gradient-to-br from-background via-background to-primary/5 max-w-md mx-auto">
+                <CardContent className="pt-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
                       onClick={() => setScanMode('add')}
-                      className="flex-1"
+                      className={cn(
+                        'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
+                        'border-2 hover:scale-[1.02] hover:shadow-lg',
+                        scanMode === 'add'
+                          ? 'border-emerald-500 bg-gradient-to-br from-emerald-500/20 to-green-500/20 shadow-lg shadow-emerald-500/20'
+                          : 'border-border bg-card hover:border-emerald-500/50'
+                      )}
                     >
-                      ➕ Add Stock
-                    </Button>
-                    <Button
-                      variant={scanMode === 'reconcile' ? 'default' : 'ghost'}
-                      size="sm"
+                      <div className="flex flex-col items-center gap-2">
+                        <div className={cn(
+                          'rounded-lg p-2 transition-all duration-300',
+                          scanMode === 'add'
+                            ? 'bg-gradient-to-br from-emerald-500 to-green-500 shadow-lg shadow-emerald-500/30'
+                            : 'bg-muted group-hover:bg-gradient-to-br group-hover:from-emerald-500/20 group-hover:to-green-500/20'
+                        )}>
+                          <Plus className={cn('h-5 w-5 transition-colors', scanMode === 'add' ? 'text-white' : 'text-foreground')} />
+                        </div>
+                        <span className={cn(
+                          'text-sm font-medium transition-colors',
+                          scanMode === 'add' ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'
+                        )}>
+                          Add Stock
+                        </span>
+                      </div>
+                    </button>
+                    <button
                       onClick={() => setScanMode('reconcile')}
-                      className="flex-1"
+                      className={cn(
+                        'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
+                        'border-2 hover:scale-[1.02] hover:shadow-lg',
+                        scanMode === 'reconcile'
+                          ? 'border-blue-500 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 shadow-lg shadow-blue-500/20'
+                          : 'border-border bg-card hover:border-blue-500/50'
+                      )}
                     >
-                      ✓ Reconcile
-                    </Button>
+                      <div className="flex flex-col items-center gap-2">
+                        <div className={cn(
+                          'rounded-lg p-2 transition-all duration-300',
+                          scanMode === 'reconcile'
+                            ? 'bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg shadow-blue-500/30'
+                            : 'bg-muted group-hover:bg-gradient-to-br group-hover:from-blue-500/20 group-hover:to-cyan-500/20'
+                        )}>
+                          <Package className={cn('h-5 w-5 transition-colors', scanMode === 'reconcile' ? 'text-white' : 'text-foreground')} />
+                        </div>
+                        <span className={cn(
+                          'text-sm font-medium transition-colors',
+                          scanMode === 'reconcile' ? 'text-blue-700 dark:text-blue-300' : 'text-muted-foreground'
+                        )}>
+                          Reconcile
+                        </span>
+                      </div>
+                    </button>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
 
               {/* Scanner/Image Mode Toggle */}
               <div className="flex justify-center">
@@ -966,53 +1015,71 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="products" className="mt-6">
             <div className="space-y-6">
-              {/* Inventory Summary */}
+              {/* Inventory Summary Cards with Gradients */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
+                <Card className="border-2 border-transparent bg-gradient-to-br from-orange-500/10 via-background to-orange-600/5 hover:shadow-lg transition-all duration-300 hover:scale-[1.01]">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-lg">Total Inventory Cost</CardTitle>
-                    <CardDescription>Total value of all stock at cost price</CardDescription>
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg p-2.5 bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg shadow-orange-500/30">
+                        <Package className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg bg-gradient-to-r from-orange-600 to-orange-700 bg-clip-text text-transparent">
+                          Total Inventory Cost
+                        </CardTitle>
+                        <CardDescription>Total value of all stock at cost price</CardDescription>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-orange-600">
-                      {inventoryMetrics.loading ? (
-                        <div className="animate-pulse bg-muted h-8 w-24 rounded"></div>
-                      ) : (
-                        `$${inventoryMetrics.totalInventoryCost.toFixed(2)}`
-                      )}
-                    </div>
+                    {inventoryMetrics.loading ? (
+                      <div className="animate-pulse bg-gradient-to-r from-muted via-muted/50 to-muted h-10 w-32 rounded-lg" />
+                    ) : (
+                      <div className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-orange-700 bg-clip-text text-transparent">
+                        ${inventoryMetrics.totalInventoryCost.toFixed(2)}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-                <Card>
+                <Card className="border-2 border-transparent bg-gradient-to-br from-emerald-500/10 via-background to-green-600/5 hover:shadow-lg transition-all duration-300 hover:scale-[1.01]">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-lg">Total Inventory Value</CardTitle>
-                    <CardDescription>Potential revenue from all stock</CardDescription>
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg p-2.5 bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/30">
+                        <Package className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg bg-gradient-to-r from-emerald-600 to-green-700 bg-clip-text text-transparent">
+                          Total Inventory Value
+                        </CardTitle>
+                        <CardDescription>Potential revenue from all stock</CardDescription>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-green-600">
-                      {inventoryMetrics.loading ? (
-                        <div className="animate-pulse bg-muted h-8 w-24 rounded"></div>
-                      ) : (
-                        `$${inventoryMetrics.totalInventoryValue.toFixed(2)}`
-                      )}
-                    </div>
-                    {!inventoryMetrics.loading && (
-                      <div className="mt-3 space-y-1 text-sm text-muted-foreground">
-                        <div className="flex justify-between">
-                          <span>Recipe-based:</span>
-                          <span>{inventoryMetrics.calculationSummary.recipeBasedCount} products</span>
+                    {inventoryMetrics.loading ? (
+                      <div className="animate-pulse bg-gradient-to-r from-muted via-muted/50 to-muted h-10 w-32 rounded-lg" />
+                    ) : (
+                      <>
+                        <div className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-green-700 bg-clip-text text-transparent">
+                          ${inventoryMetrics.totalInventoryValue.toFixed(2)}
                         </div>
-                        <div className="flex justify-between">
-                          <span>Estimated:</span>
-                          <span>{inventoryMetrics.calculationSummary.estimatedCount} products</span>
-                        </div>
-                        {inventoryMetrics.calculationSummary.mixedCount > 0 && (
+                        <div className="mt-3 space-y-1 text-sm text-muted-foreground">
                           <div className="flex justify-between">
-                            <span>Mixed:</span>
-                            <span>{inventoryMetrics.calculationSummary.mixedCount} products</span>
+                            <span>Recipe-based:</span>
+                            <span className="font-medium">{inventoryMetrics.calculationSummary.recipeBasedCount} products</span>
                           </div>
-                        )}
-                      </div>
+                          <div className="flex justify-between">
+                            <span>Estimated:</span>
+                            <span className="font-medium">{inventoryMetrics.calculationSummary.estimatedCount} products</span>
+                          </div>
+                          {inventoryMetrics.calculationSummary.mixedCount > 0 && (
+                            <div className="flex justify-between">
+                              <span>Mixed:</span>
+                              <span className="font-medium">{inventoryMetrics.calculationSummary.mixedCount} products</span>
+                            </div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </CardContent>
                 </Card>
@@ -1214,18 +1281,36 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="low-stock" className="mt-6">
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-destructive" />
-                  <h2 className="text-xl font-semibold">Low Stock Alert</h2>
-                </div>
-                {lowStockProducts.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={exportLowStockCSV}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Export List
-                  </Button>
-                )}
-              </div>
+              <Card className="border-2 border-transparent bg-gradient-to-br from-red-500/10 via-background to-orange-500/5">
+                <CardContent className="py-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg p-2.5 bg-gradient-to-br from-red-500 to-orange-500 shadow-lg shadow-red-500/30 animate-pulse">
+                        <AlertTriangle className="h-6 w-6 text-white" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
+                          Low Stock Alert
+                        </h2>
+                        <p className="text-sm text-muted-foreground">
+                          {lowStockProducts.length} {lowStockProducts.length === 1 ? 'item needs' : 'items need'} attention
+                        </p>
+                      </div>
+                    </div>
+                    {lowStockProducts.length > 0 && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={exportLowStockCSV}
+                        className="border-red-500/30 text-red-600 hover:bg-red-500/10 hover:border-red-500 transition-all duration-300"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Export List
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
 
               {lowStockProducts.length === 0 ? (
                 <Card>

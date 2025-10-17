@@ -451,13 +451,18 @@ export default function POSSales() {
                               <span>Total Revenue: ${item.total_revenue.toFixed(2)}</span>
                             </div>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
-                          >
-                            Check Recipe Impact
-                          </Button>
+                          <div className="space-y-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
+                            >
+                              Check Recipe Impact
+                            </Button>
+                            <p className="text-xs text-muted-foreground">
+                              Note: Shows total impact - some sales may already be processed
+                            </p>
+                          </div>
                         </div>
                       ),
                     )}

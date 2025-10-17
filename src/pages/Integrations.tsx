@@ -1,17 +1,15 @@
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
-import { ExternalLink, Settings } from 'lucide-react';
+import { ExternalLink, Plug, CheckCircle2, TrendingUp } from 'lucide-react';
 
 const Integrations = () => {
-  const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { isConnected: squareConnected } = useSquareIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: cloverConnected } = useCloverIntegration(selectedRestaurant?.restaurant_id || null);
@@ -120,41 +118,82 @@ const Integrations = () => {
         </div>
       ) : (
         <div className="space-y-6 md:space-y-8">
-          <div className="text-center md:text-left">
-            <h2 className="text-2xl md:text-3xl font-bold mb-2">Connect Your Applications</h2>
-            <p className="text-sm md:text-base text-muted-foreground">
-              Automatically sync data from your existing tools to eliminate manual data entry
-            </p>
+          {/* Hero Section */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-8">
+            <div className="relative z-10">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Plug className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-2xl md:text-3xl font-bold">Connect Your Applications</h2>
+                  <p className="text-sm md:text-base text-muted-foreground mt-1">
+                    Automatically sync data from your existing tools to eliminate manual data entry
+                  </p>
+                </div>
+              </div>
+            </div>
+            {/* Decorative elements */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -z-0" />
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-accent/5 rounded-full blur-3xl -z-0" />
           </div>
 
-          {/* Connected Integrations Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                <Settings className="h-4 w-4 md:h-5 md:w-5" />
-                Connection Status
-              </CardTitle>
-              <CardDescription className="text-sm">
-                Overview of your connected applications
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4">
-                <div className="text-xl md:text-2xl font-bold">{connectedCount}</div>
-                <div className="text-sm text-muted-foreground">
-                  connected applications
+          {/* Dashboard Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="hover:shadow-md transition-shadow">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                    <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold">{connectedCount}</div>
+                    <div className="text-sm text-muted-foreground">Connected</div>
+                  </div>
                 </div>
-                <Badge variant="outline" className="ml-auto text-xs">
-                  {integrations.length} available
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+            
+            <Card className="hover:shadow-md transition-shadow">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                    <Plug className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold">{integrations.length}</div>
+                    <div className="text-sm text-muted-foreground">Available</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className="hover:shadow-md transition-shadow">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                    <TrendingUp className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold">
+                      {Math.round((connectedCount / integrations.length) * 100)}%
+                    </div>
+                    <div className="text-sm text-muted-foreground">Integration Rate</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Integration Categories */}
           {Object.entries(groupedIntegrations).map(([category, categoryIntegrations]) => (
             <div key={category} className="space-y-4">
-              <h3 className="text-lg md:text-xl font-semibold">{category}</h3>
+              <div className="flex items-center gap-3 pb-2 border-b">
+                <h3 className="text-lg md:text-xl font-semibold">{category}</h3>
+                <Badge variant="secondary" className="text-xs">
+                  {categoryIntegrations.length}
+                </Badge>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {categoryIntegrations.map((integration) => (
                   <IntegrationCard
@@ -168,7 +207,7 @@ const Integrations = () => {
           ))}
 
           {/* Help Section */}
-          <Card>
+          <Card className="bg-gradient-to-br from-muted/30 to-muted/10 border-muted">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base md:text-lg">
                 <ExternalLink className="h-4 w-4 md:h-5 md:w-5" />
@@ -183,7 +222,7 @@ const Integrations = () => {
                 We're constantly adding new integrations. Contact our support team to request 
                 a new integration or get help connecting your existing applications.
               </p>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" className="hover:bg-background transition-colors">
                 Contact Support
               </Button>
             </CardContent>

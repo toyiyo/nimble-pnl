@@ -7,10 +7,8 @@ interface IntegrationLogoProps {
 }
 
 const logoMap: Record<string, { icon: any; color: string }> = {
-  // Toast and Clover use emoji fallbacks (not available in simple-icons)
+  // Toast, Clover, 7shifts, When I Work use emoji fallbacks (not available in simple-icons)
   'square-pos': { icon: SimpleIcons.siSquare, color: '#000000' },
-  '7shifts': { icon: SimpleIcons.siCalendly, color: '#137CBD' },
-  'when-i-work': { icon: SimpleIcons.siClockify, color: '#FF6B6B' },
   'quickbooks': { icon: SimpleIcons.siQuickbooks, color: '#2CA01C' },
   'sysco': { icon: SimpleIcons.siWebmoney, color: '#0072CE' },
 };

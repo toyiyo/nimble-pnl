@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Download, TrendingDown, TrendingUp, Package, AlertTriangle, Info } from 'lucide-react';
+import { Download, TrendingDown, TrendingUp, Package, AlertTriangle, Info, X, ClipboardList, Calendar, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatDateInTimezone } from '@/lib/timezone';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
@@ -64,11 +64,21 @@ const getTransactionIcon = (type: string) => {
 
 const getTransactionColor = (type: string) => {
   switch (type) {
-    case 'purchase': return 'bg-green-100 text-green-800';
-    case 'usage': return 'bg-red-100 text-red-800';
-    case 'adjustment': return 'bg-blue-100 text-blue-800';
-    case 'waste': return 'bg-orange-100 text-orange-800';
-    default: return 'bg-gray-100 text-gray-800';
+    case 'purchase': return 'bg-emerald-100 text-emerald-700';
+    case 'usage': return 'bg-rose-100 text-rose-700';
+    case 'adjustment': return 'bg-blue-100 text-blue-700';
+    case 'waste': return 'bg-amber-100 text-amber-700';
+    default: return 'bg-gray-100 text-gray-700';
+  }
+};
+
+const getTransactionBorderColor = (type: string) => {
+  switch (type) {
+    case 'purchase': return 'border-l-emerald-500';
+    case 'usage': return 'border-l-rose-500';
+    case 'adjustment': return 'border-l-blue-500';
+    case 'waste': return 'border-l-amber-500';
+    default: return 'border-l-gray-500';
   }
 };
 
@@ -92,6 +102,15 @@ export default function InventoryAudit() {
     transaction.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     transaction.reference_id?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const activeFiltersCount = [typeFilter !== 'all', startDate, endDate, searchTerm].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setTypeFilter('all');
+    setStartDate('');
+    setEndDate('');
+  };
 
   if (!user) {
     return (
@@ -122,64 +141,101 @@ export default function InventoryAudit() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Inventory Audit Trail</h1>
-        <p className="text-muted-foreground">
-          Track all inventory changes including automatic deductions from POS sales, manual adjustments, and purchases.
-        </p>
-      </div>
+      {/* Header */}
+      <Card className="mb-6 bg-gradient-to-br from-background to-muted/20 border-none shadow-sm">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-lg bg-primary/10">
+              <ClipboardList className="h-8 w-8 text-primary" />
+            </div>
+            <div className="flex-1">
+              <h1 className="text-3xl font-bold mb-2 tracking-tight">Inventory Audit Trail</h1>
+              <p className="text-muted-foreground leading-relaxed">
+                Track all inventory changes including automatic deductions from POS sales, manual adjustments, and purchases.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Filters */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div>
+      <Card className="mb-6 shadow-sm">
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg font-semibold">Filters</CardTitle>
+            {activeFiltersCount > 0 && (
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={clearFilters}
+                className="h-8 gap-2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+                Clear {activeFiltersCount} {activeFiltersCount === 1 ? 'filter' : 'filters'}
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Search</label>
               <Input
-                placeholder="Search products, reasons..."
+                placeholder="Products, reasons..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full"
               />
             </div>
             
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Transaction Type" />
-              </SelectTrigger>
-              <SelectContent>
-                {TRANSACTION_TYPES.map(type => (
-                  <SelectItem key={type.value} value={type.value}>
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Type</label>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Transaction Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRANSACTION_TYPES.map(type => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-            <Input
-              type="date"
-              placeholder="Start Date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Start Date</label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
 
-            <Input
-              type="date"
-              placeholder="End Date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">End Date</label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
 
-            <Button onClick={exportToCSV} variant="outline" className="flex items-center gap-2">
-              <Download className="h-4 w-4" />
-              Export CSV
-            </Button>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Export</label>
+              <Button onClick={exportToCSV} variant="outline" className="w-full flex items-center gap-2">
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Summary Stats */}
       <TooltipProvider>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {TRANSACTION_TYPES.filter(t => t.value !== 'all').map(type => {
             const stats = summary[type.value as keyof typeof summary] || { count: 0, totalCost: 0 };
             const isActive = typeFilter === type.value;
@@ -187,35 +243,40 @@ export default function InventoryAudit() {
             return (
               <Card 
                 key={type.value}
-                className={`cursor-pointer transition-all hover:shadow-md ${
-                  isActive ? 'ring-2 ring-primary shadow-md' : ''
+                className={`cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-[1.02] ${
+                  isActive 
+                    ? 'ring-2 ring-primary shadow-lg bg-gradient-to-br from-primary/5 to-primary/10' 
+                    : 'hover:border-primary/50'
                 }`}
                 onClick={() => setTypeFilter(type.value)}
               >
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className={`p-1.5 rounded ${getTransactionColor(type.value)}`}>
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`p-2 rounded-lg shadow-sm ${getTransactionColor(type.value)}`}>
                         {getTransactionIcon(type.value)}
                       </div>
-                      <span className="font-medium">{type.label}</span>
+                      <span className="font-semibold text-sm">{type.label}</span>
                     </div>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Info className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                        <Info className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
-                        <p>{type.tooltip}</p>
+                        <p className="text-sm leading-relaxed">{type.tooltip}</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
-                  <div className="space-y-1">
-                    <div className="text-2xl font-bold">{stats.count} transactions</div>
-                    <div className="text-sm text-muted-foreground">
-                      {type.description}
+                  <div className="space-y-2">
+                    <div className="text-3xl font-bold tracking-tight leading-none">{stats.count}</div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
+                      {stats.count === 1 ? 'Transaction' : 'Transactions'}
                     </div>
-                    <div className="text-lg font-semibold mt-2">
-                      Cost Impact: ${Math.abs(stats.totalCost).toFixed(2)}
+                    <div className="flex items-center gap-1.5 pt-2 border-t mt-3">
+                      <DollarSign className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-lg font-bold">
+                        {Math.abs(stats.totalCost).toFixed(2)}
+                      </span>
                     </div>
                   </div>
                 </CardContent>
@@ -226,60 +287,87 @@ export default function InventoryAudit() {
       </TooltipProvider>
 
       {/* Transactions List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card className="shadow-sm">
+        <CardHeader className="border-b bg-muted/30">
+          <CardTitle className="flex items-center gap-2 text-lg">
             <Package className="h-5 w-5" />
-            Inventory Transactions ({filteredTransactions.length})
+            Inventory Transactions
+            <Badge variant="secondary" className="ml-2 font-normal">
+              {filteredTransactions.length}
+            </Badge>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {loading ? (
-            <div className="text-center py-8">Loading transactions...</div>
+            <div className="py-12">
+              <div className="flex flex-col items-center gap-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p className="text-sm text-muted-foreground">Loading transactions...</p>
+              </div>
+            </div>
           ) : filteredTransactions.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No transactions found for the selected filters.
+            <div className="text-center py-12 px-4">
+              <Package className="mx-auto h-12 w-12 text-muted-foreground/50 mb-3" />
+              <p className="text-muted-foreground font-medium">No transactions found</p>
+              <p className="text-sm text-muted-foreground mt-1">Try adjusting your filters</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {filteredTransactions.map((transaction) => (
-                <div key={transaction.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
+            <div className="divide-y">
+              {filteredTransactions.map((transaction, index) => (
+                <div 
+                  key={transaction.id} 
+                  className={`border-l-4 ${getTransactionBorderColor(transaction.transaction_type)} p-5 hover:bg-muted/30 transition-all duration-200 ${
+                    index % 2 === 0 ? 'bg-muted/10' : ''
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div className="flex-1 space-y-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <Badge 
                           variant="secondary" 
-                          className={`${getTransactionColor(transaction.transaction_type)} flex items-center gap-1`}
+                          className={`${getTransactionColor(transaction.transaction_type)} flex items-center gap-1.5 px-2.5 py-1 shadow-sm`}
                         >
                           {getTransactionIcon(transaction.transaction_type)}
-                          {transaction.transaction_type}
+                          <span className="font-medium capitalize">{transaction.transaction_type}</span>
                         </Badge>
-                        <h3 className="font-semibold">{transaction.product_name}</h3>
+                        <h3 className="font-semibold text-base leading-tight">{transaction.product_name}</h3>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">Quantity:</span>
-                          <div className={`font-medium ${transaction.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                            <Package className="h-3.5 w-3.5" />
+                            Quantity
+                          </div>
+                          <div className={`font-bold text-lg leading-none ${transaction.quantity > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                             {transaction.quantity > 0 ? '+' : ''}{transaction.quantity}
                           </div>
                         </div>
                         
-                        <div>
-                          <span className="text-muted-foreground">Unit Cost:</span>
-                          <div className="font-medium">${(transaction.unit_cost || 0).toFixed(2)}</div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                            <DollarSign className="h-3.5 w-3.5" />
+                            Unit Cost
+                          </div>
+                          <div className="font-bold text-lg leading-none">${(transaction.unit_cost || 0).toFixed(2)}</div>
                         </div>
                         
-                        <div>
-                          <span className="text-muted-foreground">Total Cost:</span>
-                          <div className={`font-medium ${(transaction.total_cost || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                            <DollarSign className="h-3.5 w-3.5" />
+                            Total Cost
+                          </div>
+                          <div className={`font-bold text-lg leading-none ${(transaction.total_cost || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                             ${Math.abs(transaction.total_cost || 0).toFixed(2)}
                           </div>
                         </div>
                         
-                        <div>
-                          <span className="text-muted-foreground">Date:</span>
-                          <div className="font-medium">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                            <Calendar className="h-3.5 w-3.5" />
+                            Date
+                          </div>
+                          <div className="font-semibold text-sm leading-tight">
                             {formatDateInTimezone(
                               transaction.created_at,
                               selectedRestaurant.restaurant.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -290,10 +378,10 @@ export default function InventoryAudit() {
                       </div>
 
                       {transaction.reason && (
-                        <div className="mt-2">
-                          <span className="text-muted-foreground text-sm">Reason:</span>
-                          <div className="flex items-start gap-2">
-                            <div className="text-sm flex-1">{transaction.reason}</div>
+                        <div className="pt-2 space-y-1.5">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Reason</div>
+                          <div className="flex flex-wrap items-start gap-2">
+                            <div className="text-sm leading-relaxed flex-1 min-w-0">{transaction.reason}</div>
                             {transaction.reason.includes('⚠️ FALLBACK') && (
                               <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1 shrink-0">
                                 <AlertTriangle className="h-3 w-3" />
@@ -306,7 +394,7 @@ export default function InventoryAudit() {
                               </Badge>
                             )}
                             {transaction.reason.includes('✓ WEIGHT') && (
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 shrink-0">
+                              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 shrink-0">
                                 Weight
                               </Badge>
                             )}
@@ -315,9 +403,11 @@ export default function InventoryAudit() {
                       )}
 
                       {transaction.reference_id && (
-                        <div className="mt-1">
-                          <span className="text-muted-foreground text-sm">Reference:</span>
-                          <div className="text-sm font-mono">{transaction.reference_id}</div>
+                        <div className="pt-2 space-y-1.5">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Reference ID</div>
+                          <div className="text-sm font-mono bg-muted/50 rounded px-2 py-1 inline-block">
+                            {transaction.reference_id}
+                          </div>
                         </div>
                       )}
                     </div>

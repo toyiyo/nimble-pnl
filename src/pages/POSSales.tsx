@@ -442,24 +442,25 @@ export default function POSSales() {
                         sale_count: number;
                         total_revenue: number;
                       }) => (
-                        <div key={item.item_name} className="flex items-center justify-between p-4 border rounded-lg">
-                          <div className="flex-1">
-                            <h3 className="font-medium">{item.item_name}</h3>
-                            <div className="flex gap-4 text-sm text-muted-foreground mt-1">
+                        <div key={item.item_name} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg gap-4">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-medium text-sm md:text-base mb-2">{item.item_name}</h3>
+                            <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
                               <span>Total Quantity: {item.total_quantity}</span>
                               <span>Sales Count: {item.sale_count}</span>
                               <span>Total Revenue: ${item.total_revenue.toFixed(2)}</span>
                             </div>
                           </div>
-                          <div className="space-y-2">
+                          <div className="flex flex-col gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
+                              className="w-full sm:w-auto text-xs whitespace-nowrap"
                             >
                               Check Recipe Impact
                             </Button>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-foreground text-center sm:text-right">
                               Note: Shows total impact - some sales may already be processed
                             </p>
                           </div>

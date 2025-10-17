@@ -33,41 +33,107 @@ export const EnhancedBarcodeScanner: React.FC<EnhancedBarcodeScannerProps> = ({
 
   return (
     <div className={cn("space-y-4", className)}>
-      {/* Mode Toggle */}
-      <div className="flex justify-center">
-        <div className="bg-muted p-1 rounded-lg w-full">
-          <div className="grid grid-cols-3 gap-1">
-            <Button
-              variant={scanMode === 'camera' ? 'default' : 'ghost'}
-              size="sm"
+      {/* Enhanced Mode Toggle */}
+      <Card className="border-2 border-transparent bg-gradient-to-br from-background via-background to-primary/5">
+        <CardContent className="pt-4">
+          <div className="grid grid-cols-3 gap-2">
+            <button
               onClick={() => setScanMode('camera')}
-              className="flex-1"
+              className={cn(
+                'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
+                'border-2 hover:scale-[1.02] hover:shadow-lg',
+                scanMode === 'camera'
+                  ? 'border-purple-500 bg-gradient-to-br from-purple-500/20 to-blue-500/20 shadow-lg shadow-purple-500/20'
+                  : 'border-border bg-card hover:border-purple-500/50'
+              )}
             >
-              <Camera className="h-4 w-4 mr-1" />
-              Camera
-            </Button>
-            <Button
-              variant={scanMode === 'keyboard' ? 'default' : 'ghost'}
-              size="sm"
+              <div className="flex flex-col items-center gap-2">
+                <div className={cn(
+                  'rounded-lg p-2 transition-all duration-300',
+                  scanMode === 'camera'
+                    ? 'bg-gradient-to-br from-purple-500 to-blue-500 shadow-lg shadow-purple-500/30'
+                    : 'bg-muted group-hover:bg-gradient-to-br group-hover:from-purple-500/20 group-hover:to-blue-500/20'
+                )}>
+                  <Camera className={cn(
+                    'h-5 w-5 transition-colors',
+                    scanMode === 'camera' ? 'text-white' : 'text-foreground'
+                  )} />
+                </div>
+                <span className={cn(
+                  'text-sm font-medium transition-colors',
+                  scanMode === 'camera' ? 'text-purple-700 dark:text-purple-300' : 'text-muted-foreground'
+                )}>
+                  Camera
+                </span>
+              </div>
+            </button>
+
+            <button
               onClick={() => setScanMode('keyboard')}
-              className="flex-1"
+              className={cn(
+                'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
+                'border-2 hover:scale-[1.02] hover:shadow-lg',
+                scanMode === 'keyboard'
+                  ? 'border-blue-500 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 shadow-lg shadow-blue-500/20'
+                  : 'border-border bg-card hover:border-blue-500/50'
+              )}
             >
-              <Keyboard className="h-4 w-4 mr-1" />
-              Keyboard
-            </Button>
-            <Button
-              variant={scanMode === 'bluetooth' ? 'default' : 'ghost'}
-              size="sm"
+              <div className="flex flex-col items-center gap-2">
+                <div className={cn(
+                  'rounded-lg p-2 transition-all duration-300',
+                  scanMode === 'keyboard'
+                    ? 'bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg shadow-blue-500/30'
+                    : 'bg-muted group-hover:bg-gradient-to-br group-hover:from-blue-500/20 group-hover:to-cyan-500/20'
+                )}>
+                  <Keyboard className={cn(
+                    'h-5 w-5 transition-colors',
+                    scanMode === 'keyboard' ? 'text-white' : 'text-foreground'
+                  )} />
+                </div>
+                <span className={cn(
+                  'text-sm font-medium transition-colors',
+                  scanMode === 'keyboard' ? 'text-blue-700 dark:text-blue-300' : 'text-muted-foreground'
+                )}>
+                  Keyboard
+                </span>
+              </div>
+            </button>
+
+            <button
               onClick={() => setScanMode('bluetooth')}
-              className="flex-1"
               disabled={!isBluetoothSupported}
+              className={cn(
+                'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
+                'border-2 hover:scale-[1.02] hover:shadow-lg',
+                !isBluetoothSupported && 'opacity-50 cursor-not-allowed',
+                scanMode === 'bluetooth'
+                  ? 'border-emerald-500 bg-gradient-to-br from-green-500/20 to-emerald-500/20 shadow-lg shadow-emerald-500/20'
+                  : 'border-border bg-card hover:border-emerald-500/50'
+              )}
             >
-              <Bluetooth className="h-4 w-4 mr-1" />
-              BLE
-            </Button>
+              <div className="flex flex-col items-center gap-2">
+                <div className={cn(
+                  'rounded-lg p-2 transition-all duration-300',
+                  scanMode === 'bluetooth'
+                    ? 'bg-gradient-to-br from-green-500 to-emerald-500 shadow-lg shadow-emerald-500/30'
+                    : 'bg-muted group-hover:bg-gradient-to-br group-hover:from-green-500/20 group-hover:to-emerald-500/20'
+                )}>
+                  <Bluetooth className={cn(
+                    'h-5 w-5 transition-colors',
+                    scanMode === 'bluetooth' ? 'text-white' : 'text-foreground'
+                  )} />
+                </div>
+                <span className={cn(
+                  'text-sm font-medium transition-colors',
+                  scanMode === 'bluetooth' ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'
+                )}>
+                  BLE
+                </span>
+              </div>
+            </button>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Scanner Component */}
       {scanMode === 'camera' ? (

@@ -3,7 +3,7 @@ import { BrowserMultiFormatReader } from '@zxing/browser';
 import { DecodeHintType, BarcodeFormat } from '@zxing/library';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Camera, Square, Loader2, Target, AlertCircle, Zap, X, Plus } from 'lucide-react';
+import { Camera, Square, Loader2, Target, AlertCircle, Zap, X, Plus, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from "@/integrations/supabase/client";
 
@@ -378,10 +378,22 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   }, [autoStart, startScanning]);
 
   return (
-    <Card className={cn('w-full max-w-md mx-auto', className)}>
+    <Card className={cn(
+      'w-full max-w-md mx-auto border-2 transition-all duration-300',
+      state.isScanning 
+        ? 'border-transparent bg-gradient-to-br from-purple-500/10 via-background to-blue-500/10 shadow-lg shadow-purple-500/10'
+        : 'border-border'
+    )}>
       <CardHeader className="text-center">
         <CardTitle className="flex items-center gap-2 justify-center">
-          <Camera className="h-5 w-5" />
+          <div className={cn(
+            'rounded-lg p-2 transition-all duration-300',
+            state.isScanning
+              ? 'bg-gradient-to-br from-purple-500 to-blue-500 shadow-lg shadow-purple-500/30'
+              : 'bg-muted'
+          )}>
+            <Camera className={cn('h-5 w-5', state.isScanning ? 'text-white' : 'text-foreground')} />
+          </div>
           Barcode Scanner
         </CardTitle>
         <CardDescription>
@@ -389,7 +401,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
+        <div className="relative aspect-video bg-muted rounded-xl overflow-hidden border-2 border-border">
           {state.isScanning ? (
             <>
               <video
@@ -398,42 +410,59 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                 playsInline
                 muted
                 autoPlay
+                aria-label={state.isPaused ? 'Camera paused' : 'Camera scanning for barcodes'}
               />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-48 h-32 border-2 border-primary border-dashed rounded-lg bg-primary/10">
-                  <Target className="w-full h-full text-primary/30" />
+              {/* Enhanced Scanning Reticle */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="relative w-56 h-36">
+                  {/* Animated gradient border */}
+                  <div className="absolute inset-0 rounded-xl border-2 border-transparent bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 animate-pulse" 
+                       style={{ padding: '2px', backgroundClip: 'border-box' }}>
+                    <div className="w-full h-full bg-purple-500/10 rounded-lg backdrop-blur-sm" />
+                  </div>
+                  
+                  {/* Corner markers with pulse animation */}
+                  <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-purple-500 rounded-tl-lg animate-pulse" />
+                  <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-purple-500 rounded-tr-lg animate-pulse" style={{ animationDelay: '0.2s' }} />
+                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-purple-500 rounded-bl-lg animate-pulse" style={{ animationDelay: '0.4s' }} />
+                  <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-purple-500 rounded-br-lg animate-pulse" style={{ animationDelay: '0.6s' }} />
+                  
+                  <Target className="absolute inset-0 w-full h-full text-purple-500/20" />
                 </div>
               </div>
+              
+              {/* Status badges */}
               {state.scanCooldown && (
-                <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-sm">
-                  Scanned! ✓
+                <div className="absolute top-3 left-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg shadow-emerald-500/30 animate-in zoom-in duration-300 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Scanned!
                 </div>
               )}
               {state.isPaused && !state.scanCooldown && (
-                <div className="absolute top-2 left-2 bg-orange-500 text-white px-2 py-1 rounded text-sm">
+                <div className="absolute top-3 left-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg shadow-amber-500/30">
                   Paused
                 </div>
               )}
               {state.isUsingAIMode && (
-                <div className="absolute top-2 right-2 bg-purple-500 text-white px-2 py-1 rounded text-sm flex items-center gap-1">
-                  <Zap className="h-3 w-3" />
+                <div className="absolute top-3 right-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg shadow-purple-500/30 flex items-center gap-1.5 animate-pulse">
+                  <Zap className="h-4 w-4" />
                   AI Mode
                 </div>
               )}
               {state.isProcessingAI && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                  <div className="bg-white rounded-lg p-4 flex flex-col items-center gap-2">
-                    <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
-                    <p className="text-sm font-medium">Processing with AI...</p>
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-300">
+                  <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl p-6 flex flex-col items-center gap-3 shadow-2xl border-2 border-purple-500/20">
+                    <Loader2 className="h-10 w-10 animate-spin text-purple-500" />
+                    <p className="text-sm font-semibold">Processing with AI...</p>
                   </div>
                 </div>
               )}
             </>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
-              <div className="text-center">
-                <Target className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">
+              <div className="text-center space-y-3">
+                <Target className="h-12 w-12 mx-auto text-muted-foreground opacity-50" />
+                <p className="text-sm font-medium text-muted-foreground">
                   {state.hasPermission === false 
                     ? 'Camera access denied'
                     : 'Click start to begin scanning'
@@ -448,7 +477,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           <Button 
             onClick={toggleScanning}
             variant={state.isScanning ? "destructive" : "default"}
-            className="flex-1"
+            className={cn(
+              "flex-1 transition-all duration-300 hover:scale-[1.02]",
+              !state.isScanning && "bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 shadow-lg shadow-purple-500/30"
+            )}
+            aria-label={state.isScanning ? "Stop scanning" : "Start scanning"}
           >
             {state.isScanning ? (
               <>
@@ -464,7 +497,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           </Button>
 
           {state.isPaused && !state.isUsingAIMode && (
-            <Button onClick={resumeScanning} variant="outline" className="flex-1 sm:flex-initial">
+            <Button 
+              onClick={resumeScanning} 
+              variant="outline" 
+              className="flex-1 sm:flex-initial border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 hover:border-emerald-500 transition-all duration-300"
+              aria-label="Resume scanning"
+            >
               Resume
             </Button>
           )}
@@ -474,11 +512,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
               onClick={toggleAIMode} 
               variant={state.isUsingAIMode ? "destructive" : "secondary"}
               className={cn(
-                "flex-1 sm:flex-initial whitespace-nowrap",
+                "flex-1 sm:flex-initial whitespace-nowrap transition-all duration-300 hover:scale-[1.02]",
                 state.isUsingAIMode ? 
-                  "bg-purple-500 hover:bg-purple-600 text-white" : 
-                  "bg-blue-500 hover:bg-blue-600 text-white"
+                  "bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg shadow-purple-500/30" : 
+                  "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg shadow-blue-500/30"
               )}
+              aria-label={state.isUsingAIMode ? "Exit AI mode" : "Enable AI mode"}
             >
               {state.isUsingAIMode ? (
                 <>
@@ -496,19 +535,20 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
             </Button>
           )}
 
-          {/* Capture Photo button when in AI mode */}
           {state.isUsingAIMode && !state.isProcessingAI && (
             <Button 
               onClick={capturePhotoForAI}
-              className="flex-1 bg-green-500 hover:bg-green-600 text-white whitespace-nowrap"
+              variant="default"
+              className="flex-1 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg shadow-purple-500/30 transition-all duration-300 hover:scale-[1.02]"
+              aria-label="Capture photo for AI processing"
             >
-              <Camera className="h-4 w-4 mr-2" />
-              <span className="hidden sm:inline">Capture Photo</span>
-              <span className="sm:hidden">Capture</span>
+              <Plus className="h-4 w-4 mr-2" />
+              Capture Photo
             </Button>
           )}
         </div>
 
+        {/* Help text and status */}
         {/* Show AI result if product found but no barcode */}
         {state.lastAIResult && state.isUsingAIMode && !state.isProcessingAI && (
           <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">

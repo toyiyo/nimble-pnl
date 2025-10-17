@@ -67,9 +67,9 @@ const updateSchema = z.object({
   cost_per_unit: z.coerce.number().min(0).optional(),
   supplier_name: z.string().optional(),
   supplier_sku: z.string().optional(),
-  par_level_min: z.coerce.number().int().min(0).optional(),
-  par_level_max: z.coerce.number().int().min(0).optional(),
-  reorder_point: z.coerce.number().int().min(0).optional(),
+  par_level_min: z.coerce.number().min(0).optional(),
+  par_level_max: z.coerce.number().min(0).optional(),
+  reorder_point: z.coerce.number().min(0).optional(),
   image_url: z.string().optional(),
 });
 
@@ -1019,6 +1019,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             {...field}
                             type="number"
                             min="0"
+                            step="0.1"
                             placeholder="0"
                             value={field.value ?? ''}
                             onChange={(e) => {
@@ -1043,6 +1044,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             {...field}
                             type="number"
                             min="0"
+                            step="0.1"
                             placeholder="0"
                             value={field.value ?? ''}
                             onChange={(e) => {
@@ -1067,6 +1069,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                             {...field}
                             type="number"
                             min="0"
+                            step="0.1"
                             placeholder="0"
                             value={field.value ?? ''}
                             onChange={(e) => {

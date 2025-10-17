@@ -133,69 +133,70 @@ export const AppHeader = () => {
   return (
     <>
       <nav className="border-b bg-gradient-to-r from-background via-background to-muted/20 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-        <div className="container px-4">
-          <div className="flex h-16 items-center justify-between gap-2">
-            {/* Left side: Logo + Restaurant Selector */}
-            <div className="flex items-center gap-2 md:gap-4 min-w-0 flex-shrink">
+        <div className="container px-4 max-w-screen-2xl mx-auto">
+          <div className="flex h-16 items-center justify-between gap-4">
+            {/* Left side: Logo */}
+            <div className="flex items-center gap-2 flex-shrink-0">
               {/* Enhanced Logo */}
               <button 
                 onClick={() => navigate('/')}
-                className="flex gap-2 items-center text-lg md:text-xl font-bold group transition-transform duration-200 hover:scale-105 flex-shrink-0"
+                className="flex gap-2 items-center text-lg md:text-xl font-bold group transition-transform duration-200 hover:scale-105"
               >
                 <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-2 group-hover:shadow-emerald-500/50 transition-shadow duration-200">
                   <CalendarCheck className="h-5 w-5 md:h-6 md:w-6 text-white" />
                 </div>
-                <span className="hidden lg:inline bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">EasyShiftHQ</span>
+                <span className="hidden xl:inline bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">EasyShiftHQ</span>
               </button>
-              
-              {/* Enhanced Restaurant Selector - Desktop */}
-              <div className="hidden md:flex items-center gap-2 min-w-0">
-                <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                <Select
-                  value={selectedRestaurant?.restaurant_id || ''}
-                  onValueChange={handleRestaurantChange}
-                >
-                  <SelectTrigger className="w-[180px] xl:w-[200px] hover:bg-accent/50 transition-all duration-200">
-                    <SelectValue placeholder="Select restaurant" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-background/95 backdrop-blur-xl border-border/50">
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                      Your Restaurants ({restaurants.length})
-                    </div>
-                    {restaurants.map((restaurant) => (
-                      <SelectItem 
-                        key={restaurant.restaurant_id} 
-                        value={restaurant.restaurant_id}
-                        className="hover:bg-gradient-to-r hover:from-accent/50 hover:to-accent/30 transition-all duration-200"
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                          {restaurant.restaurant.name}
-                        </div>
-                      </SelectItem>
-                    ))}
+            </div>
+
+            {/* Center: Restaurant Selector - Desktop only */}
+            <div className="hidden lg:flex items-center gap-2 flex-shrink-0 relative z-50">
+              <Building2 className="w-4 h-4 text-muted-foreground" />
+              <Select
+                value={selectedRestaurant?.restaurant_id || ''}
+                onValueChange={handleRestaurantChange}
+              >
+                <SelectTrigger className="w-[200px] hover:bg-accent/50 transition-all duration-200">
+                  <SelectValue placeholder="Select restaurant" />
+                </SelectTrigger>
+                <SelectContent className="bg-background/95 backdrop-blur-xl border-border/50 z-[100]">
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                    Your Restaurants ({restaurants.length})
+                  </div>
+                  {restaurants.map((restaurant) => (
                     <SelectItem 
-                      value="create-new"
-                      className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 hover:from-emerald-500/20 hover:to-emerald-600/20 font-medium mt-1"
+                      key={restaurant.restaurant_id} 
+                      value={restaurant.restaurant_id}
+                      className="hover:bg-gradient-to-r hover:from-accent/50 hover:to-accent/30 transition-all duration-200"
                     >
                       <div className="flex items-center gap-2">
-                        <Plus className="w-4 h-4" />
-                        Create new restaurant
+                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                        {restaurant.restaurant.name}
                       </div>
                     </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  ))}
+                  <SelectItem 
+                    value="create-new"
+                    className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 hover:from-emerald-500/20 hover:to-emerald-600/20 font-medium mt-1"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Plus className="w-4 h-4" />
+                      Create new restaurant
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             
+            
             {/* Right side: Navigation + User Profile */}
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
               {/* Desktop Navigation */}
-              <div className="hidden 2xl:flex items-center gap-1.5">
+              <div className="hidden xl:flex items-center gap-1">
                 {navigationGroups.map((group, groupIdx) => (
                   <React.Fragment key={group.label}>
                     {groupIdx > 0 && (
-                      <div className="h-6 w-px bg-border/50 mx-1.5" />
+                      <div className="h-6 w-px bg-border/50 mx-1" />
                     )}
                     {group.items.map((item) => {
                       const Icon = item.icon;
@@ -206,7 +207,7 @@ export const AppHeader = () => {
                           variant={isActive ? "default" : "ghost"}
                           size="sm"
                           onClick={() => navigate(item.path)}
-                          className={`text-xs whitespace-nowrap transition-all duration-200 ${
+                          className={`text-xs whitespace-nowrap transition-all duration-200 px-2.5 ${
                             isActive 
                               ? 'bg-gradient-to-r from-primary to-primary/90 shadow-md shadow-primary/20' 
                               : 'hover:bg-accent/50 hover:scale-105'
@@ -227,7 +228,7 @@ export const AppHeader = () => {
               {/* Mobile Menu Button */}
               <Sheet open={showMobileMenu} onOpenChange={setShowMobileMenu}>
                 <SheetTrigger asChild>
-                  <Button variant="outline" size="sm" className="2xl:hidden hover:bg-accent/50 transition-all duration-200 flex-shrink-0">
+                  <Button variant="outline" size="sm" className="xl:hidden hover:bg-accent/50 transition-all duration-200">
                     <Menu className="h-4 w-4" />
                   </Button>
                 </SheetTrigger>
@@ -295,7 +296,7 @@ export const AppHeader = () => {
           </div>
           
           {/* Mobile Restaurant Selector */}
-          <div className="md:hidden py-3 border-t bg-gradient-to-r from-muted/30 to-transparent">
+          <div className="lg:hidden py-3 border-t bg-gradient-to-r from-muted/30 to-transparent">
             <div className="flex items-center gap-2">
               <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
               <Select

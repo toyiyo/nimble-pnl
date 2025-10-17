@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSSO } from '@/hooks/useSSO';
 import { useToast } from '@/hooks/use-toast';
 import { SSOProviderButtons } from '@/components/SSOProviderButtons';
-import { Building, ArrowRight, Shield } from 'lucide-react';
+import { Building, ArrowRight, Shield, CalendarCheck } from 'lucide-react';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
@@ -137,7 +137,10 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Restaurant Operations</CardTitle>
+          <div className="flex justify-center items-center gap-2 mb-2">
+            <CalendarCheck className="h-8 w-8 text-emerald-600" />
+            <CardTitle className="text-2xl">EasyShiftHQ</CardTitle>
+          </div>
           <CardDescription>
             Manage your restaurant's costs and profitability
           </CardDescription>

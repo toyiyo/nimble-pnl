@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Download, Search, Calendar, RefreshCw, Upload as UploadIcon } from "lucide-react";
+import { Plus, Download, Search, Calendar, RefreshCw, Upload as UploadIcon, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,9 @@ import { RestaurantSelector } from "@/components/RestaurantSelector";
 import { POSSaleDialog } from "@/components/POSSaleDialog";
 import { POSSalesFileUpload } from "@/components/POSSalesFileUpload";
 import { POSSalesImportReview } from "@/components/POSSalesImportReview";
+import { POSSalesDashboard } from "@/components/POSSalesDashboard";
+import { POSSystemStatus } from "@/components/POSSystemStatus";
+import { IntegrationLogo } from "@/components/IntegrationLogo";
 import { format } from "date-fns";
 import { InventoryDeductionDialog } from "@/components/InventoryDeductionDialog";
 import { MapPOSItemDialog } from "@/components/MapPOSItemDialog";
@@ -183,68 +186,100 @@ export default function POSSales() {
     );
   }
 
+  // Calculate dashboard metrics
+  const dashboardMetrics = useMemo(() => {
+    const totalSales = filteredSales.length;
+    const totalRevenue = filteredSales.reduce((sum, sale) => sum + (sale.totalPrice || 0), 0);
+    const uniqueItems = new Set(filteredSales.map(sale => sale.itemName)).size;
+    
+    return {
+      totalSales,
+      totalRevenue,
+      uniqueItems,
+      unmappedCount: unmappedItems.length,
+    };
+  }, [filteredSales, unmappedItems]);
+
+  const activeFiltersCount = [searchTerm, startDate, endDate].filter(Boolean).length;
+
   return (
     <div className="space-y-6 md:space-y-8">
-      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-        <div className="text-center lg:text-left">
-          <h1 className="text-2xl md:text-3xl font-bold">POS Sales</h1>
-          <p className="text-sm md:text-base text-muted-foreground">
-            Unified sales data from all connected POS systems for {selectedRestaurant.restaurant.name}
-          </p>
-          <div className="flex flex-wrap gap-1 md:gap-2 mt-2 justify-center lg:justify-start">
-            {integrationStatuses.map((status) => (
-              <Badge key={status.system} variant={status.isConnected ? "default" : "secondary"} className="text-xs">
-                {status.system} {status.isConnected ? "✓" : "○"}
-              </Badge>
-            ))}
+      {/* Hero Section with Gradient */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-6 md:p-8 animate-fade-in">
+        <div className="relative z-10">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+            <div className="space-y-2">
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight">POS Sales</h1>
+              <p className="text-base md:text-lg text-muted-foreground">
+                Unified sales data from all connected POS systems
+              </p>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-background/50 backdrop-blur-sm border">
+                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-sm font-medium">{selectedRestaurant.restaurant.name}</span>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                onClick={() => {
+                  setActiveTab("manual");
+                  setEditingSale(null);
+                  setShowSaleDialog(true);
+                }}
+                className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 transition-all duration-300"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Record Manual Sale</span>
+                <span className="sm:hidden">Manual Sale</span>
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setActiveTab("import")}
+                className="flex items-center gap-2 hover:bg-background/80 transition-all duration-300"
+              >
+                <UploadIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">Upload File</span>
+                <span className="sm:hidden">Upload</span>
+              </Button>
+              {hasAnyConnectedSystem() && (
+                <Button
+                  variant="outline"
+                  onClick={handleSyncSales}
+                  disabled={isSyncing}
+                  className="flex items-center gap-2 hover:bg-background/80 transition-all duration-300"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+                  {isSyncing ? "Syncing..." : "Sync Sales"}
+                </Button>
+              )}
+              <Button 
+                variant="outline" 
+                className="flex items-center gap-2 hover:bg-background/80 transition-all duration-300"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Export Data</span>
+                <span className="sm:hidden">Export</span>
+              </Button>
+            </div>
           </div>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setActiveTab("manual");
-              setEditingSale(null);
-              setShowSaleDialog(true);
-            }}
-            className="flex items-center gap-2 w-full sm:w-auto"
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Record Manual Sale</span>
-            <span className="sm:hidden">Manual Sale</span>
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setActiveTab("import")}
-            className="flex items-center gap-2 w-full sm:w-auto"
-          >
-            <UploadIcon className="h-4 w-4" />
-            <span className="hidden sm:inline">Upload File</span>
-            <span className="sm:hidden">Upload</span>
-          </Button>
-          {hasAnyConnectedSystem() && (
-            <Button
-              variant="outline"
-              onClick={handleSyncSales}
-              disabled={isSyncing}
-              className="flex items-center gap-2 w-full sm:w-auto"
-            >
-              <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
-              {isSyncing ? "Syncing..." : "Sync Sales"}
-            </Button>
-          )}
-          <Button variant="outline" className="flex items-center gap-2 w-full sm:w-auto">
-            <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Export Data</span>
-            <span className="sm:hidden">Export</span>
-          </Button>
-          {unmappedItems.length > 0 && (
-            <Badge variant="secondary" className="w-full sm:w-auto text-xs justify-center">
-              {unmappedItems.length} items need recipes
-            </Badge>
-          )}
-        </div>
       </div>
+
+      {/* Dashboard Metrics */}
+      <POSSalesDashboard
+        totalSales={dashboardMetrics.totalSales}
+        totalRevenue={dashboardMetrics.totalRevenue}
+        uniqueItems={dashboardMetrics.uniqueItems}
+        unmappedCount={dashboardMetrics.unmappedCount}
+      />
+
+      {/* POS System Status Cards */}
+      {integrationStatuses.length > 0 && (
+        <POSSystemStatus
+          integrationStatuses={integrationStatuses}
+          onSync={handleSyncSales}
+          isSyncing={isSyncing}
+        />
+      )}
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "manual" | "import")} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
@@ -254,78 +289,112 @@ export default function POSSales() {
 
         <TabsContent value="manual" className="space-y-6">
           <div className="grid gap-4 md:gap-6">
-            <Card>
+            <Card className="border-none shadow-md">
               <CardHeader>
-                <CardTitle className="text-base md:text-lg">Filters & Search</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg md:text-xl">Filters & Search</CardTitle>
+                  {activeFiltersCount > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSearchTerm("");
+                        setStartDate("");
+                        setEndDate("");
+                      }}
+                      className="text-xs"
+                    >
+                      <X className="h-3 w-3 mr-1" />
+                      Clear {activeFiltersCount} filter{activeFiltersCount !== 1 ? 's' : ''}
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="w-full">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Search Items</label>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       placeholder="Search by item name..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 text-sm"
+                      className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="pl-10 text-sm"
-                      placeholder="Start date"
-                    />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Start Date</label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
                   </div>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="pl-10 text-sm"
-                      placeholder="End date"
-                    />
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">End Date</label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Button
-                    variant={selectedView === "sales" ? "default" : "outline"}
-                    onClick={() => setSelectedView("sales")}
-                    size="sm"
-                    className="w-full"
-                  >
-                    <span className="hidden sm:inline">Individual Sales</span>
-                    <span className="sm:hidden">Sales</span>
-                  </Button>
-                  <Button
-                    variant={selectedView === "grouped" ? "default" : "outline"}
-                    onClick={() => setSelectedView("grouped")}
-                    size="sm"
-                    className="w-full"
-                  >
-                    <span className="hidden sm:inline">Grouped by Item</span>
-                    <span className="sm:hidden">Grouped</span>
-                  </Button>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">View Mode</label>
+                  <div className="inline-flex rounded-lg border p-1 bg-muted/50">
+                    <Button
+                      variant={selectedView === "sales" ? "default" : "ghost"}
+                      onClick={() => setSelectedView("sales")}
+                      size="sm"
+                      className={`rounded-md transition-all duration-200 ${
+                        selectedView === "sales" 
+                          ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-sm" 
+                          : "hover:bg-background/80"
+                      }`}
+                    >
+                      Individual Sales
+                    </Button>
+                    <Button
+                      variant={selectedView === "grouped" ? "default" : "ghost"}
+                      onClick={() => setSelectedView("grouped")}
+                      size="sm"
+                      className={`rounded-md transition-all duration-200 ${
+                        selectedView === "grouped" 
+                          ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-sm" 
+                          : "hover:bg-background/80"
+                      }`}
+                    >
+                      Grouped by Item
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           </div>
 
           {loading ? (
-            <Card>
-              <CardContent className="py-8">
-                <div className="text-center text-muted-foreground">Loading sales data...</div>
+            <Card className="border-none shadow-md">
+              <CardContent className="py-12">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                  <div className="text-center text-muted-foreground">Loading sales data...</div>
+                </div>
               </CardContent>
             </Card>
           ) : selectedView === "sales" ? (
-            <Card>
+            <Card className="border-none shadow-md">
               <CardHeader>
                 <CardTitle>Sales Transactions</CardTitle>
               </CardHeader>
@@ -340,132 +409,199 @@ export default function POSSales() {
                     No sales found for the selected date range.
                   </div>
                 ) : (
-                  <div className="space-y-3 md:space-y-4">
-                    {dateFilteredSales.map((sale) => (
-                      <div
-                        key={sale.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between p-3 md:p-4 border rounded-lg hover:bg-muted/50 gap-3 sm:gap-2"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-1 md:gap-2 mb-2">
-                            <h3 className="font-medium text-sm md:text-base truncate">{sale.itemName}</h3>
-                            <Badge variant="secondary" className="text-xs">
-                              Qty: {sale.quantity}
-                            </Badge>
-                            {sale.totalPrice && (
+                  <div className="space-y-3">
+                    {dateFilteredSales.map((sale, index) => {
+                      const posSystemColors: Record<string, string> = {
+                        "Square": "border-l-blue-500",
+                        "Clover": "border-l-green-500",
+                        "Toast": "border-l-orange-500",
+                        "manual": "border-l-purple-500",
+                        "manual_upload": "border-l-purple-500",
+                      };
+                      
+                      return (
+                        <div
+                          key={sale.id}
+                          className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border-l-4 ${
+                            posSystemColors[sale.posSystem] || "border-l-gray-500"
+                          } rounded-lg bg-gradient-to-r from-background to-muted/30 hover:shadow-md hover:scale-[1.01] transition-all duration-300 gap-3 animate-fade-in`}
+                          style={{ 
+                            animationDelay: `${index * 50}ms`,
+                            backgroundColor: index % 2 === 0 ? undefined : 'hsl(var(--muted) / 0.3)'
+                          }}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                              <IntegrationLogo
+                                integrationId={sale.posSystem.toLowerCase().replace("_", "-") + "-pos"}
+                                size={20}
+                              />
+                              <h3 className="font-semibold text-base truncate">{sale.itemName}</h3>
+                              <Badge variant="secondary" className="text-xs font-medium">
+                                Qty: {sale.quantity}
+                              </Badge>
+                              {sale.totalPrice && (
+                                <Badge variant="outline" className="text-xs font-semibold bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
+                                  ${sale.totalPrice.toFixed(2)}
+                                </Badge>
+                              )}
                               <Badge variant="outline" className="text-xs">
-                                ${sale.totalPrice.toFixed(2)}
+                                {sale.posSystem}
                               </Badge>
-                            )}
-                            <Badge variant="outline" className="text-xs">
-                              {sale.posSystem}
-                            </Badge>
-                            {unmappedItems.includes(sale.itemName) && (
-                              <Badge
-                                variant="destructive"
-                                className="text-xs cursor-pointer hover:bg-destructive/80 transition-colors"
-                                onClick={() => handleMapPOSItem(sale.itemName)}
-                              >
-                                No Recipe
-                              </Badge>
-                            )}
+                              {unmappedItems.includes(sale.itemName) && (
+                                <Badge
+                                  variant="destructive"
+                                  className="text-xs cursor-pointer hover:scale-105 transition-transform animate-pulse"
+                                  onClick={() => handleMapPOSItem(sale.itemName)}
+                                >
+                                  No Recipe
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {(() => {
+                                const [year, month, day] = sale.saleDate.split("-").map(Number);
+                                const localDate = new Date(year, month - 1, day);
+                                return format(localDate, "MMM d, yyyy");
+                              })()}
+                              {sale.saleTime && ` at ${sale.saleTime}`}
+                              {sale.externalOrderId && (
+                                <>
+                                  <br className="sm:hidden" />
+                                  <span className="hidden sm:inline"> • </span>
+                                  <span className="font-mono text-xs">Order: {sale.externalOrderId}</span>
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-xs md:text-sm text-muted-foreground">
-                            {(() => {
-                              const [year, month, day] = sale.saleDate.split("-").map(Number);
-                              const localDate = new Date(year, month - 1, day);
-                              return format(localDate, "MMM d, yyyy");
-                            })()}
-                            {sale.saleTime && ` at ${sale.saleTime}`}
-                            {sale.externalOrderId && (
-                              <>
-                                <br className="sm:hidden" />
-                                <span className="hidden sm:inline"> • </span>
-                                Order: {sale.externalOrderId}
-                              </>
-                            )}
+                          <div className="flex items-center gap-2">
+                            {(sale.posSystem === "manual" || sale.posSystem === "manual_upload") &&
+                              selectedRestaurant &&
+                              (selectedRestaurant.role === "owner" || selectedRestaurant.role === "manager") && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleEditSale(sale)}
+                                    className="text-xs hover:bg-blue-500/10 hover:border-blue-500/50 transition-all duration-200"
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDeleteSale(sale.id)}
+                                    className="text-xs text-destructive hover:bg-destructive/10 hover:border-destructive/50 transition-all duration-200"
+                                  >
+                                    Delete
+                                  </Button>
+                                </>
+                              )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSimulateDeduction(sale.itemName, sale.quantity)}
+                              className="w-full sm:w-auto text-xs hover:bg-primary/10 hover:border-primary/50 transition-all duration-200"
+                            >
+                              <span className="hidden sm:inline">Simulate Impact</span>
+                              <span className="sm:hidden">Impact</span>
+                            </Button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {(sale.posSystem === "manual" || sale.posSystem === "manual_upload") &&
-                            selectedRestaurant &&
-                            (selectedRestaurant.role === "owner" || selectedRestaurant.role === "manager") && (
-                              <>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleEditSale(sale)}
-                                  className="text-xs"
-                                >
-                                  Edit
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDeleteSale(sale.id)}
-                                  className="text-xs text-destructive hover:text-destructive"
-                                >
-                                  Delete
-                                </Button>
-                              </>
-                            )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleSimulateDeduction(sale.itemName, sale.quantity)}
-                            className="w-full sm:w-auto text-xs"
-                          >
-                            <span className="hidden sm:inline">Simulate Impact</span>
-                            <span className="sm:hidden">Impact</span>
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
             </Card>
           ) : (
-            <Card>
+            <Card className="border-none shadow-md">
               <CardHeader>
-                <CardTitle>Sales Summary by Item</CardTitle>
+                <CardTitle className="text-lg md:text-xl">Sales Summary by Item</CardTitle>
               </CardHeader>
               <CardContent>
                 {groupedSales.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">No sales data available.</div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {groupedSales.map(
                       (item: {
                         item_name: string;
                         total_quantity: number;
                         sale_count: number;
                         total_revenue: number;
-                      }) => (
-                        <div key={item.item_name} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg gap-4">
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-medium text-sm md:text-base mb-2">{item.item_name}</h3>
-                            <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
-                              <span>Total Quantity: {item.total_quantity}</span>
-                              <span>Sales Count: {item.sale_count}</span>
-                              <span>Total Revenue: ${item.total_revenue.toFixed(2)}</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
-                              className="w-full sm:w-auto text-xs whitespace-nowrap"
-                            >
-                              Check Recipe Impact
-                            </Button>
-                            <p className="text-xs text-muted-foreground text-center sm:text-right">
-                              Note: Shows total impact - some sales may already be processed
-                            </p>
-                          </div>
-                        </div>
-                      ),
+                      }, index: number) => {
+                        const maxRevenue = Math.max(...groupedSales.map((g: any) => g.total_revenue));
+                        const revenuePercentage = (item.total_revenue / maxRevenue) * 100;
+                        
+                        return (
+                          <Card 
+                            key={item.item_name} 
+                            className="border-l-4 border-l-primary hover:shadow-lg transition-all duration-300 animate-fade-in"
+                            style={{ animationDelay: `${index * 50}ms` }}
+                          >
+                            <CardContent className="p-5 space-y-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1">
+                                  <h3 className="font-semibold text-base mb-1 line-clamp-2">{item.item_name}</h3>
+                                  {unmappedItems.includes(item.item_name) && (
+                                    <Badge
+                                      variant="destructive"
+                                      className="cursor-pointer hover:scale-105 transition-transform animate-pulse text-xs"
+                                      onClick={() => handleMapPOSItem(item.item_name)}
+                                    >
+                                      No Recipe
+                                    </Badge>
+                                  )}
+                                </div>
+                                <Badge 
+                                  variant="secondary"
+                                  className="text-lg font-bold px-3 py-1 bg-gradient-to-br from-blue-500/10 to-cyan-500/10"
+                                >
+                                  ${item.total_revenue.toFixed(2)}
+                                </Badge>
+                              </div>
+
+                              {/* Progress bar for revenue */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                  <span>Revenue contribution</span>
+                                  <span>{revenuePercentage.toFixed(0)}%</span>
+                                </div>
+                                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-500"
+                                    style={{ width: `${revenuePercentage}%` }}
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="text-center p-3 rounded-lg bg-muted/50">
+                                  <p className="text-2xl font-bold">{item.total_quantity}</p>
+                                  <p className="text-xs text-muted-foreground">Total Qty</p>
+                                </div>
+                                <div className="text-center p-3 rounded-lg bg-muted/50">
+                                  <p className="text-2xl font-bold">{item.sale_count}</p>
+                                  <p className="text-xs text-muted-foreground">Sales Count</p>
+                                </div>
+                              </div>
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
+                                className="w-full hover:bg-primary/10 hover:border-primary/50 transition-all duration-200"
+                              >
+                                Check Recipe Impact
+                              </Button>
+                              <p className="text-xs text-muted-foreground text-center">
+                                Shows total impact - some sales may already be processed
+                              </p>
+                            </CardContent>
+                          </Card>
+                        );
+                      },
                     )}
                   </div>
                 )}

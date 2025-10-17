@@ -166,6 +166,22 @@ export default function POSSales() {
     }
   };
 
+  // Calculate dashboard metrics - MUST be before conditional return to follow Rules of Hooks
+  const dashboardMetrics = useMemo(() => {
+    const totalSales = filteredSales.length;
+    const totalRevenue = filteredSales.reduce((sum, sale) => sum + (sale.totalPrice || 0), 0);
+    const uniqueItems = new Set(filteredSales.map(sale => sale.itemName)).size;
+    
+    return {
+      totalSales,
+      totalRevenue,
+      uniqueItems,
+      unmappedCount: unmappedItems.length,
+    };
+  }, [filteredSales, unmappedItems]);
+
+  const activeFiltersCount = [searchTerm, startDate, endDate].filter(Boolean).length;
+
   if (!selectedRestaurant) {
     return (
       <div className="space-y-6">
@@ -185,22 +201,6 @@ export default function POSSales() {
       </div>
     );
   }
-
-  // Calculate dashboard metrics
-  const dashboardMetrics = useMemo(() => {
-    const totalSales = filteredSales.length;
-    const totalRevenue = filteredSales.reduce((sum, sale) => sum + (sale.totalPrice || 0), 0);
-    const uniqueItems = new Set(filteredSales.map(sale => sale.itemName)).size;
-    
-    return {
-      totalSales,
-      totalRevenue,
-      uniqueItems,
-      unmappedCount: unmappedItems.length,
-    };
-  }, [filteredSales, unmappedItems]);
-
-  const activeFiltersCount = [searchTerm, startDate, endDate].filter(Boolean).length;
 
   return (
     <div className="space-y-6 md:space-y-8">

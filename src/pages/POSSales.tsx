@@ -454,7 +454,7 @@ export default function POSSales() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleSimulateDeduction(item.item_name, 1)}
+                            onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
                           >
                             Check Recipe Impact
                           </Button>

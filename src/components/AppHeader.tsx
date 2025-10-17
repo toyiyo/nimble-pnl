@@ -134,28 +134,28 @@ export const AppHeader = () => {
     <>
       <nav className="border-b bg-gradient-to-r from-background via-background to-muted/20 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
         <div className="container px-4">
-          <div className="flex h-16 items-center justify-between">
+          <div className="flex h-16 items-center justify-between gap-2">
             {/* Left side: Logo + Restaurant Selector */}
-            <div className="flex items-center gap-3 md:gap-6 min-w-0">
+            <div className="flex items-center gap-2 md:gap-4 min-w-0 flex-shrink">
               {/* Enhanced Logo */}
               <button 
                 onClick={() => navigate('/')}
-                className="flex gap-2 items-center text-lg md:text-xl font-bold group transition-transform duration-200 hover:scale-105"
+                className="flex gap-2 items-center text-lg md:text-xl font-bold group transition-transform duration-200 hover:scale-105 flex-shrink-0"
               >
                 <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-2 group-hover:shadow-emerald-500/50 transition-shadow duration-200">
                   <CalendarCheck className="h-5 w-5 md:h-6 md:w-6 text-white" />
                 </div>
-                <span className="hidden sm:inline bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">EasyShiftHQ</span>
+                <span className="hidden lg:inline bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">EasyShiftHQ</span>
               </button>
               
               {/* Enhanced Restaurant Selector - Desktop */}
-              <div className="hidden sm:flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-muted-foreground" />
+              <div className="hidden md:flex items-center gap-2 min-w-0">
+                <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <Select
                   value={selectedRestaurant?.restaurant_id || ''}
                   onValueChange={handleRestaurantChange}
                 >
-                  <SelectTrigger className="w-[240px] hover:bg-accent/50 transition-all duration-200">
+                  <SelectTrigger className="w-[180px] xl:w-[200px] hover:bg-accent/50 transition-all duration-200">
                     <SelectValue placeholder="Select restaurant" />
                   </SelectTrigger>
                   <SelectContent className="bg-background/95 backdrop-blur-xl border-border/50">
@@ -189,13 +189,13 @@ export const AppHeader = () => {
             </div>
             
             {/* Right side: Navigation + User Profile */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {/* Desktop Navigation */}
-              <div className="hidden xl:flex items-center gap-1">
+              <div className="hidden 2xl:flex items-center gap-1.5">
                 {navigationGroups.map((group, groupIdx) => (
                   <React.Fragment key={group.label}>
                     {groupIdx > 0 && (
-                      <div className="h-6 w-px bg-border/50 mx-1" />
+                      <div className="h-6 w-px bg-border/50 mx-1.5" />
                     )}
                     {group.items.map((item) => {
                       const Icon = item.icon;
@@ -227,7 +227,7 @@ export const AppHeader = () => {
               {/* Mobile Menu Button */}
               <Sheet open={showMobileMenu} onOpenChange={setShowMobileMenu}>
                 <SheetTrigger asChild>
-                  <Button variant="outline" size="sm" className="xl:hidden hover:bg-accent/50 transition-all duration-200">
+                  <Button variant="outline" size="sm" className="2xl:hidden hover:bg-accent/50 transition-all duration-200 flex-shrink-0">
                     <Menu className="h-4 w-4" />
                   </Button>
                 </SheetTrigger>
@@ -295,7 +295,7 @@ export const AppHeader = () => {
           </div>
           
           {/* Mobile Restaurant Selector */}
-          <div className="sm:hidden py-3 border-t bg-gradient-to-r from-muted/30 to-transparent">
+          <div className="md:hidden py-3 border-t bg-gradient-to-r from-muted/30 to-transparent">
             <div className="flex items-center gap-2">
               <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
               <Select

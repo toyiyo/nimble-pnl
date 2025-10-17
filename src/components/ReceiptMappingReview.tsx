@@ -253,6 +253,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const mappedCount = lineItems.filter(item => item.mapping_status === 'mapped').length;
   const newItemsCount = lineItems.filter(item => item.mapping_status === 'new_item').length;
   const pendingCount = lineItems.filter(item => item.mapping_status === 'pending').length;
+  const isImported = receiptDetails?.status === 'imported';
 
   const filteredItems = lineItems.filter(item => {
     if (activeFilter === 'all') return true;
@@ -394,11 +395,26 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Review & Map Receipt Items
+            {isImported ? 'Receipt Details' : 'Review & Map Receipt Items'}
           </CardTitle>
           <CardDescription>
-            Review the extracted items and map them to your existing inventory or create new items
+            {isImported 
+              ? 'View the imported receipt items and details' 
+              : 'Review the extracted items and map them to your existing inventory or create new items'
+            }
           </CardDescription>
+          
+          {isImported && (
+            <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+              <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                <CheckCircle className="w-4 h-4" />
+                <span className="font-medium">Receipt imported successfully</span>
+              </div>
+              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                All items have been added to your inventory
+              </p>
+            </div>
+          )}
           
           {/* Vendor Information */}
           {receiptDetails?.vendor_name && (
@@ -407,17 +423,23 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-muted-foreground">Vendor:</span>
                 </div>
-                <SearchableSupplierSelector
-                  value={selectedSupplierId || undefined}
-                  onValueChange={handleSupplierChange}
-                  suppliers={suppliers}
-                  placeholder="Select or create supplier..."
-                  showNewIndicator={isNewSupplier}
-                />
-                {isNewSupplier && receiptDetails.vendor_name && (
-                  <p className="text-xs text-muted-foreground">
-                    New supplier "{receiptDetails.vendor_name}" will be created when you import
-                  </p>
+                {isImported ? (
+                  <div className="text-sm font-medium">{receiptDetails.vendor_name}</div>
+                ) : (
+                  <>
+                    <SearchableSupplierSelector
+                      value={selectedSupplierId || undefined}
+                      onValueChange={handleSupplierChange}
+                      suppliers={suppliers}
+                      placeholder="Select or create supplier..."
+                      showNewIndicator={isNewSupplier}
+                    />
+                    {isNewSupplier && receiptDetails.vendor_name && (
+                      <p className="text-xs text-muted-foreground">
+                        New supplier "{receiptDetails.vendor_name}" will be created when you import
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -513,6 +535,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                     defaultValue={item.parsed_name || ''}
                     onChange={(e) => handleNameChange(item.id, e.target.value)}
                     placeholder="Enter item name"
+                    disabled={isImported}
                   />
                 </div>
                 
@@ -526,14 +549,16 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                       defaultValue={item.parsed_quantity || ''}
                       onChange={(e) => handleQuantityChange(item.id, parseFloat(e.target.value) || 0)}
                       placeholder="0"
+                      disabled={isImported}
                     />
                   </div>
                   <div>
                     <Label htmlFor={`unit-${item.id}`}>Unit</Label>
-                    <Select
-                      value={item.parsed_unit || ''}
-                      onValueChange={(value) => handleUnitChange(item.id, value)}
-                    >
+                  <Select
+                    value={item.parsed_unit || ''}
+                    onValueChange={(value) => handleUnitChange(item.id, value)}
+                    disabled={isImported}
+                  >
                       <SelectTrigger>
                         <SelectValue placeholder="Select unit" />
                       </SelectTrigger>
@@ -563,6 +588,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                     defaultValue={item.parsed_price || ''}
                     onChange={(e) => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
                     placeholder="0.00"
+                    disabled={isImported}
                   />
                   {item.parsed_quantity && item.parsed_quantity > 0 && item.parsed_price && (
                     <Badge variant="secondary" className="mt-2">
@@ -576,18 +602,32 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
               {/* Right column: Mapping */}
               <div className="space-y-3">
                 <div>
-                  <Label htmlFor={`mapping-${item.id}`}>Map to Inventory</Label>
-                  <SearchableProductSelector
-                    value={
-                      item.mapping_status === 'new_item' ? 'new_item' :
-                      item.mapping_status === 'skipped' ? 'skip' :
-                      item.matched_product_id
-                    }
-                    onValueChange={(value) => handleMappingChange(item.id, value)}
-                    products={products}
-                    searchTerm={item.parsed_name || item.raw_text}
-                    placeholder="Search existing products or create new..."
-                  />
+                  <Label htmlFor={`mapping-${item.id}`}>
+                    {isImported ? 'Mapped To' : 'Map to Inventory'}
+                  </Label>
+                  {isImported ? (
+                    <div className="p-2 bg-muted rounded-md text-sm">
+                      {item.mapping_status === 'new_item' ? (
+                        <span className="text-blue-600 dark:text-blue-400">Created as new product</span>
+                      ) : item.mapping_status === 'mapped' && item.matched_product_id ? (
+                        <span>{products.find(p => p.id === item.matched_product_id)?.name || 'Mapped Product'}</span>
+                      ) : (
+                        <span className="text-muted-foreground">Skipped</span>
+                      )}
+                    </div>
+                  ) : (
+                    <SearchableProductSelector
+                      value={
+                        item.mapping_status === 'new_item' ? 'new_item' :
+                        item.mapping_status === 'skipped' ? 'skip' :
+                        item.matched_product_id
+                      }
+                      onValueChange={(value) => handleMappingChange(item.id, value)}
+                      products={products}
+                      searchTerm={item.parsed_name || item.raw_text}
+                      placeholder="Search existing products or create new..."
+                    />
+                  )}
                 </div>
 
 
@@ -610,28 +650,32 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
           ))
         )}
 
-        {/* Import button */}
-        <div className="flex justify-end pt-4">
-          <Button
-            onClick={handleBulkImport}
-            disabled={importing || pendingCount > 0}
-            className="flex items-center gap-2"
-            size="lg"
-          >
-            <ShoppingCart className="w-4 h-4" />
-            {importing ? 'Importing...' : `Import ${mappedCount + newItemsCount} Items`}
-          </Button>
-        </div>
-
-        {pendingCount > 0 && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded border border-yellow-200 dark:border-yellow-800">
-            <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
-              <AlertCircle className="w-4 h-4" />
-              <span className="font-medium">
-                {pendingCount} items need review before importing
-              </span>
+        {/* Import button - only show if not already imported */}
+        {!isImported && (
+          <>
+            <div className="flex justify-end pt-4">
+              <Button
+                onClick={handleBulkImport}
+                disabled={importing || pendingCount > 0}
+                className="flex items-center gap-2"
+                size="lg"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                {importing ? 'Importing...' : `Import ${mappedCount + newItemsCount} Items`}
+              </Button>
             </div>
-          </div>
+
+            {pendingCount > 0 && (
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded border border-yellow-200 dark:border-yellow-800">
+                <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="font-medium">
+                    {pendingCount} items need review before importing
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
         )}
         </CardContent>
       </Card>

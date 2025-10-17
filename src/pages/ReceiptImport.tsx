@@ -103,11 +103,17 @@ export const ReceiptImport = () => {
                 ) : (
                   <div className="space-y-4">
                     {receipts.map((receipt) => (
-                      <div key={receipt.id} className="border rounded-lg p-4 flex items-center justify-between">
+                      <div 
+                        key={receipt.id} 
+                        className="border rounded-lg p-4 flex items-center justify-between hover:bg-accent/50 transition-colors cursor-pointer group"
+                        onClick={() => setActiveReceiptId(receipt.id)}
+                      >
                         <div className="flex items-center gap-4">
-                          <FileText className="w-8 h-8 text-muted-foreground" />
+                          <FileText className="w-8 h-8 text-muted-foreground group-hover:text-primary transition-colors" />
                           <div>
-                            <div className="font-medium">{receipt.vendor_name || receipt.file_name || 'Unknown Receipt'}</div>
+                            <div className="font-medium group-hover:text-primary transition-colors">
+                              {receipt.vendor_name || receipt.file_name || 'Unknown Receipt'}
+                            </div>
                             <div className="text-sm text-muted-foreground">
                               Uploaded {format(new Date(receipt.created_at), 'PPp')}
                             </div>
@@ -118,9 +124,16 @@ export const ReceiptImport = () => {
                         </div>
                         <div className="flex items-center gap-2">
                           {getStatusBadge(receipt.status)}
-                          {receipt.status === 'processed' && (
-                            <Button size="sm" onClick={() => setActiveReceiptId(receipt.id)}>Review Items</Button>
-                          )}
+                          <Button 
+                            size="sm" 
+                            variant={receipt.status === 'processed' ? 'default' : 'outline'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveReceiptId(receipt.id);
+                            }}
+                          >
+                            {receipt.status === 'processed' ? 'Review Items' : 'View Details'}
+                          </Button>
                         </div>
                       </div>
                     ))}

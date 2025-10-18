@@ -415,12 +415,14 @@ interface RecipeTableProps {
 }
 
 function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings, onCreate }: RecipeTableProps) {
-  // Pre-calculate conversion validation for all recipes
-  const recipeValidations = useMemo(() => {
-    return recipes.map(recipe => {
+  // Pre-calculate conversion validation for all recipes (keyed by recipe ID)
+  const recipeValidationsById = useMemo(() => {
+    const validationMap = new Map();
+    recipes.forEach(recipe => {
       const ingredients = recipe.ingredients || [];
-      return validateRecipeConversions(ingredients, products);
+      validationMap.set(recipe.id, validateRecipeConversions(ingredients, products));
     });
+    return validationMap;
   }, [recipes, products]);
 
   // Sort and filter recipes
@@ -429,7 +431,7 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
 
     // Filter by warnings if enabled
     if (showOnlyWarnings) {
-      result = result.filter((_, idx) => recipeValidations[idx]?.hasIssues);
+      result = result.filter((recipe) => recipeValidationsById.get(recipe.id)?.hasIssues);
     }
 
     // Sort recipes
@@ -458,7 +460,7 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
     });
 
     return result;
-  }, [recipes, recipeValidations, sortBy, sortDirection, showOnlyWarnings]);
+  }, [recipes, recipeValidationsById, sortBy, sortDirection, showOnlyWarnings]);
   if (loading) {
     return (
       <Card className="border-border/50 shadow-sm">
@@ -519,9 +521,8 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
       <CardContent className="p-0">
         {/* Mobile-friendly cards for small screens */}
         <div className="block md:hidden">
-          {processedRecipes.map((recipe) => {
-            const originalIdx = recipes.findIndex(r => r.id === recipe.id);
-            const validation = recipeValidations[originalIdx];
+        {processedRecipes.map((recipe) => {
+            const validation = recipeValidationsById.get(recipe.id);
             
             return (
               <div key={recipe.id} className="p-4 border-b last:border-b-0 hover:bg-accent/50 transition-colors">
@@ -598,8 +599,7 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
             </TableHeader>
             <TableBody>
               {processedRecipes.map((recipe) => {
-                const originalIdx = recipes.findIndex(r => r.id === recipe.id);
-                const validation = recipeValidations[originalIdx];
+                const validation = recipeValidationsById.get(recipe.id);
                 
                 return (
                   <TableRow key={recipe.id}>

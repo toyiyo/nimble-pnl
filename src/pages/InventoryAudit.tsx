@@ -376,7 +376,7 @@ export default function InventoryAudit() {
                             Quantity
                           </div>
                           <div className={`font-bold text-lg leading-none ${transaction.quantity > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                            {transaction.quantity > 0 ? '+' : ''}{transaction.quantity}
+                            {transaction.quantity > 0 ? '+' : ''}{Number(transaction.quantity).toFixed(2)}
                           </div>
                         </div>
                         
@@ -441,7 +441,7 @@ export default function InventoryAudit() {
                       {transaction.reference_id && (
                         <div className="pt-2 space-y-1.5">
                           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Reference ID</div>
-                          <div className="text-sm font-mono bg-muted/50 rounded px-2 py-1 inline-block">
+                          <div className="text-sm font-mono bg-muted/50 rounded px-2 py-1 break-all max-w-full">
                             {transaction.reference_id}
                           </div>
                         </div>

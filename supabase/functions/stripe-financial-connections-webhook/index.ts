@@ -94,8 +94,21 @@ serve(async (req) => {
 
         console.log("[FC-WEBHOOK] Bank stored with ID:", bankData.id);
 
+        // Fetch account details with balance from Stripe (since webhook may not include it)
+        let balanceData = account.balance;
+        if (!balanceData) {
+          console.log("[FC-WEBHOOK] No balance in event, fetching from Stripe...");
+          try {
+            const fullAccount = await stripe.financialConnections.accounts.retrieve(account.id);
+            balanceData = fullAccount.balance;
+            console.log("[FC-WEBHOOK] Fetched balance:", balanceData);
+          } catch (fetchError) {
+            console.error("[FC-WEBHOOK] Error fetching account details:", fetchError);
+          }
+        }
+
         // Store account balance info
-        if (account.balance) {
+        if (balanceData && (balanceData.current || balanceData.available)) {
           const { error: balanceError } = await supabaseClient
             .from("bank_account_balances")
             .insert({
@@ -103,8 +116,8 @@ serve(async (req) => {
               account_name: account.display_name || account.institution_name,
               account_type: account.subcategory,
               account_mask: account.last4,
-              current_balance: account.balance.current?.usd || 0,
-              available_balance: account.balance.available?.usd,
+              current_balance: balanceData.current?.usd || 0,
+              available_balance: balanceData.available?.usd,
               currency: "USD",
               is_active: true,
               as_of_date: new Date().toISOString(),
@@ -115,6 +128,8 @@ serve(async (req) => {
           } else {
             console.log("[FC-WEBHOOK] Balance stored successfully");
           }
+        } else {
+          console.log("[FC-WEBHOOK] No balance data available yet");
         }
 
         console.log("[FC-WEBHOOK] Bank account created successfully");

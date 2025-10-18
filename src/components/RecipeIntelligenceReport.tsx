@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -135,7 +136,11 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                     <p className="text-sm text-muted-foreground">{insight.description}</p>
                     <div className="flex flex-wrap gap-2 text-xs">
                       {insight.affected_recipes.slice(0, 3).map(recipe => (
-                        <Badge key={recipe} variant="secondary">{recipe}</Badge>
+                        <Link key={recipe} to="/recipes">
+                          <Badge variant="secondary" className="hover:bg-accent cursor-pointer transition-colors">
+                            {recipe}
+                          </Badge>
+                        </Link>
                       ))}
                       {insight.affected_recipes.length > 3 && (
                         <Badge variant="outline">+{insight.affected_recipes.length - 3} more</Badge>
@@ -274,7 +279,9 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
               <Card key={recipe.id}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
-                    <CardTitle className="text-base">{recipe.name}</CardTitle>
+                    <Link to="/recipes" className="hover:text-primary transition-colors">
+                      <CardTitle className="text-base hover:underline cursor-pointer">{recipe.name}</CardTitle>
+                    </Link>
                     {getTrendIcon(recipe.trend)}
                   </div>
                 </CardHeader>
@@ -367,7 +374,9 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                 {data.performance.slice(0, 10).map(recipe => (
                   <div key={recipe.id} className="space-y-1">
                     <div className="flex justify-between text-sm">
-                      <span className="font-medium">{recipe.name}</span>
+                      <Link to="/recipes" className="font-medium hover:text-primary hover:underline transition-colors cursor-pointer">
+                        {recipe.name}
+                      </Link>
                       <span className={`font-bold ${recipe.margin >= 60 ? 'text-green-600' : recipe.margin >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
                         {recipe.margin.toFixed(1)}%
                       </span>
@@ -445,7 +454,9 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                       <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">
                         {index + 1}
                       </Badge>
-                      <span className="text-sm flex-1 truncate">{recipe.name}</span>
+                      <Link to="/recipes" className="text-sm flex-1 truncate hover:text-primary hover:underline transition-colors cursor-pointer">
+                        {recipe.name}
+                      </Link>
                       <span className="text-sm font-bold text-green-600">{recipe.efficiency_score.toFixed(0)}</span>
                     </div>
                   ))}
@@ -467,7 +478,9 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                         <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">
                           {index + 1}
                         </Badge>
-                        <span className="text-sm flex-1 truncate">{recipe.name}</span>
+                        <Link to="/recipes" className="text-sm flex-1 truncate hover:text-primary hover:underline transition-colors cursor-pointer">
+                          {recipe.name}
+                        </Link>
                         <span className="text-sm font-bold">{recipe.velocity.toFixed(1)}/day</span>
                       </div>
                     ))}
@@ -489,7 +502,9 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                         <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">
                           {index + 1}
                         </Badge>
-                        <span className="text-sm flex-1 truncate">{recipe.name}</span>
+                        <Link to="/recipes" className="text-sm flex-1 truncate hover:text-primary hover:underline transition-colors cursor-pointer">
+                          {recipe.name}
+                        </Link>
                         <span className="text-sm font-bold">${recipe.total_sales.toFixed(0)}</span>
                       </div>
                     ))}
@@ -545,7 +560,11 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                   <p className="text-sm font-medium mb-2">Predicted Top Sellers:</p>
                   <div className="flex flex-wrap gap-2">
                     {data.predictions.top_recipes.map(recipe => (
-                      <Badge key={recipe} variant="secondary">{recipe}</Badge>
+                      <Link key={recipe} to="/recipes">
+                        <Badge variant="secondary" className="hover:bg-accent cursor-pointer transition-colors">
+                          {recipe}
+                        </Badge>
+                      </Link>
                     ))}
                   </div>
                 </div>

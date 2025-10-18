@@ -93,6 +93,20 @@ export const Inventory: React.FC = () => {
   const [reconciliationView, setReconciliationView] = useState<'history' | 'session' | 'summary'>('history');
   const { activeSession, startReconciliation } = useReconciliation(selectedRestaurant?.restaurant_id || null);
 
+  // Check if user has permission to delete products
+  const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
+
+  // Memoize filtered products for performance
+  const filteredProducts = useMemo(() => 
+    products.filter(product =>
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.category?.toLowerCase().includes(searchTerm.toLowerCase())
+    ),
+    [products, searchTerm]
+  );
+
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
   };
@@ -693,20 +707,6 @@ export const Inventory: React.FC = () => {
       setProductToDelete(null);
     }
   };
-
-  // Check if user has permission to delete products
-  const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
-
-  // Memoize filtered products for performance
-  const filteredProducts = useMemo(() => 
-    products.filter(product =>
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.category?.toLowerCase().includes(searchTerm.toLowerCase())
-    ),
-    [products, searchTerm]
-  );
 
   if (!user) {
     return (

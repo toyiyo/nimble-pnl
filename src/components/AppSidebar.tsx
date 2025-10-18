@@ -93,84 +93,108 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r">
       <SidebarHeader className="border-b p-3">
-        <div className="flex items-center justify-between gap-2">
-          <button 
-            onClick={() => navigate('/')}
-            className="flex items-center gap-2 group transition-all duration-200 hover:scale-105"
-          >
-            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-1.5 group-hover:shadow-emerald-500/50 transition-all duration-200 flex-shrink-0">
-              <CalendarCheck className="h-4 w-4 text-white" />
+        <button 
+          onClick={() => navigate('/')}
+          className="flex items-center gap-2 group transition-all duration-200 hover:scale-105 w-full"
+        >
+          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-1.5 group-hover:shadow-emerald-500/50 transition-all duration-200 flex-shrink-0">
+            <CalendarCheck className="h-4 w-4 text-white" />
+          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0 text-left">
+              <div className="font-bold text-sm truncate">EasyShiftHQ</div>
+              {selectedRestaurant && (
+                <div className="text-xs text-muted-foreground truncate">
+                  {selectedRestaurant.restaurant.name}
+                </div>
+              )}
             </div>
-            {!collapsed && (
-              <div className="flex-1 min-w-0 text-left">
-                <div className="font-bold text-sm truncate">EasyShiftHQ</div>
-                {selectedRestaurant && (
-                  <div className="text-xs text-muted-foreground truncate">
-                    {selectedRestaurant.restaurant.name}
-                  </div>
-                )}
-              </div>
-            )}
-          </button>
-          {!collapsed && <SidebarTrigger className="-mr-1" />}
-        </div>
+          )}
+        </button>
       </SidebarHeader>
 
       <SidebarContent>
-        {navigationGroups.map((group, groupIndex) => {
-          const groupIsActive = isGroupActive(group.items);
-          
-          return (
-            <Collapsible
-              key={group.label}
-              defaultOpen={groupIsActive}
-              className="group/collapsible"
-            >
-              <SidebarGroup>
-                <CollapsibleTrigger asChild>
-                  <SidebarGroupLabel className="cursor-pointer hover:bg-accent/50 transition-colors duration-200">
-                    {!collapsed && (
-                      <>
+        {collapsed ? (
+          // Collapsed view: Show all items as flat icon list
+          <SidebarMenu>
+            {navigationGroups.map((group, groupIndex) => (
+              <div key={group.label}>
+                {groupIndex > 0 && <div className="h-px bg-border/50 my-2 mx-2" />}
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = isActivePath(item.path);
+                  return (
+                    <SidebarMenuItem key={item.path}>
+                      <SidebarMenuButton
+                        onClick={() => navigate(item.path)}
+                        isActive={isActive}
+                        tooltip={item.label}
+                        className={
+                          isActive
+                            ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-600 shadow-md shadow-emerald-500/20 transition-all duration-200'
+                            : 'hover:bg-accent/50 transition-all duration-200'
+                        }
+                      >
+                        <Icon className="h-5 w-5" />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </div>
+            ))}
+          </SidebarMenu>
+        ) : (
+          // Expanded view: Show collapsible groups
+          <>
+            {navigationGroups.map((group) => {
+              const groupIsActive = isGroupActive(group.items);
+              
+              return (
+                <Collapsible
+                  key={group.label}
+                  defaultOpen={groupIsActive}
+                  className="group/collapsible"
+                >
+                  <SidebarGroup>
+                    <CollapsibleTrigger asChild>
+                      <SidebarGroupLabel className="cursor-pointer hover:bg-accent/50 transition-colors duration-200">
                         {group.label}
                         <ChevronDown className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
-                      </>
-                    )}
-                    {collapsed && groupIndex > 0 && (
-                      <div className="w-full h-px bg-border/50 my-1" />
-                    )}
-                  </SidebarGroupLabel>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {group.items.map((item) => {
-                        const Icon = item.icon;
-                        const isActive = isActivePath(item.path);
-                        return (
-                          <SidebarMenuItem key={item.path}>
-                            <SidebarMenuButton
-                              onClick={() => navigate(item.path)}
-                              isActive={isActive}
-                              tooltip={collapsed ? item.label : undefined}
-                              className={
-                                isActive
-                                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-600 shadow-md shadow-emerald-500/20 transition-all duration-200'
-                                  : 'hover:bg-accent/50 hover:translate-x-0.5 transition-all duration-200'
-                              }
-                            >
-                              <Icon className={collapsed ? "h-5 w-5" : "h-4 w-4"} />
-                              <span>{item.label}</span>
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        );
-                      })}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </CollapsibleContent>
-              </SidebarGroup>
-            </Collapsible>
-          );
-        })}
+                      </SidebarGroupLabel>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarGroupContent>
+                        <SidebarMenu>
+                          {group.items.map((item) => {
+                            const Icon = item.icon;
+                            const isActive = isActivePath(item.path);
+                            return (
+                              <SidebarMenuItem key={item.path}>
+                                <SidebarMenuButton
+                                  onClick={() => navigate(item.path)}
+                                  isActive={isActive}
+                                  className={
+                                    isActive
+                                      ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-600 shadow-md shadow-emerald-500/20 transition-all duration-200'
+                                      : 'hover:bg-accent/50 hover:translate-x-0.5 transition-all duration-200'
+                                  }
+                                >
+                                  <Icon className="h-4 w-4" />
+                                  <span>{item.label}</span>
+                                </SidebarMenuButton>
+                              </SidebarMenuItem>
+                            );
+                          })}
+                        </SidebarMenu>
+                      </SidebarGroupContent>
+                    </CollapsibleContent>
+                  </SidebarGroup>
+                </Collapsible>
+              );
+            })}
+          </>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t p-3 mt-auto">

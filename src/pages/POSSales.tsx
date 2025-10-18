@@ -565,8 +565,8 @@ export default function POSSales() {
                               {/* Progress bar for revenue */}
                               <div className="space-y-1">
                                 <div className="flex justify-between text-xs text-muted-foreground">
-                                  <span>Revenue contribution</span>
-                                  <span>{revenuePercentage.toFixed(0)}%</span>
+                                  <span>vs Top Seller (${maxRevenue.toFixed(2)})</span>
+                                  <span className="font-medium">{revenuePercentage.toFixed(0)}%</span>
                                 </div>
                                 <div className="h-2 bg-muted rounded-full overflow-hidden">
                                   <div 

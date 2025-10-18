@@ -423,14 +423,14 @@ const Index = () => {
                         {recentData.slice(0, 7).map((day, index) => (
                           <div 
                             key={day.date} 
-                            className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-accent/50 transition-all cursor-pointer group/day"
+                            className="flex items-center justify-between py-2.5 px-3 rounded-lg"
                             style={{ animationDelay: `${index * 50}ms` }}
                           >
                             <div className="flex items-center gap-3">
-                              <div className={`w-2.5 h-2.5 rounded-full transition-all ${
+                              <div className={`w-2.5 h-2.5 rounded-full ${
                                 index === 0 
                                   ? 'bg-primary shadow-lg shadow-primary/50 animate-pulse scale-110' 
-                                  : 'bg-muted group-hover/day:bg-primary/50'
+                                  : 'bg-muted'
                               }`} />
                               <span className="text-xs font-medium">
                                 {new Date(day.date + 'T12:00:00Z').toLocaleDateString('en-US', {
@@ -441,7 +441,7 @@ const Index = () => {
                               </span>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className="text-xs font-semibold text-muted-foreground group-hover/day:text-foreground transition-colors">
+                              <span className="text-xs font-semibold text-muted-foreground">
                                 ${day.net_revenue.toFixed(0)}
                               </span>
                               <Badge 

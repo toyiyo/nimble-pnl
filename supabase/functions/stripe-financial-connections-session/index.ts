@@ -15,7 +15,7 @@ serve(async (req) => {
   try {
     console.log("[FC-SESSION] Starting Financial Connections session creation");
 
-    // Initialize Supabase client
+    // Initialize Supabase client for auth
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
@@ -46,20 +46,34 @@ serve(async (req) => {
 
     console.log("[FC-SESSION] Creating session for restaurant:", restaurantId);
 
+    // Use service role to verify access (bypass RLS)
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
     // Verify user has access to restaurant
-    const { data: userRestaurant, error: accessError } = await supabaseClient
+    const { data: userRestaurant, error: accessError } = await supabaseAdmin
       .from("user_restaurants")
       .select("role")
       .eq("restaurant_id", restaurantId)
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
-    if (accessError || !userRestaurant) {
-      throw new Error("User does not have access to this restaurant");
+    console.log("[FC-SESSION] Access check result:", { userRestaurant, accessError });
+
+    if (accessError) {
+      console.error("[FC-SESSION] Database error checking access:", accessError);
+      throw new Error(`Database error: ${accessError.message}`);
+    }
+
+    if (!userRestaurant) {
+      console.error("[FC-SESSION] No user_restaurant record found for user:", user.id, "restaurant:", restaurantId);
+      throw new Error("User does not have access to this restaurant. Please make sure you are the owner or manager.");
     }
 
     if (!["owner", "manager"].includes(userRestaurant.role)) {
-      throw new Error("User does not have permission to connect bank accounts");
+      throw new Error(`Insufficient permissions. Your role is '${userRestaurant.role}', but 'owner' or 'manager' is required.`);
     }
 
     // Initialize Stripe

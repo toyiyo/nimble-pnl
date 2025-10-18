@@ -123,20 +123,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       
-      // Get current session for debugging
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('Sign out - current session exists:', !!session);
-      
-      // Sign out from Supabase with local scope (current device only)
-      const { error } = await supabase.auth.signOut({ scope: 'local' });
-      
-      if (error) {
-        console.error('Sign out error from Supabase:', error);
-      }
-      
-      // Clear local state
+      // Clear local state first
       setSession(null);
       setUser(null);
+      
+      // Manually clear all Supabase localStorage keys
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('sb-')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
+      // Try to sign out from Supabase (may fail with 403 but that's ok)
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch (e) {
+        console.log('Supabase signOut failed (continuing anyway):', e);
+      }
       
       // Navigate to auth page
       window.location.href = '/auth';

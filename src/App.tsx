@@ -8,6 +8,8 @@ import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { RestaurantProvider } from "@/contexts/RestaurantContext";
 import { AppHeader } from "@/components/AppHeader";
+import { AppSidebar } from "@/components/AppSidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { InstallBanner } from "@/components/InstallBanner";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -53,12 +55,17 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <RestaurantProvider>
-      <div className="min-h-screen bg-background">
-        <AppHeader />
-        <main className="container px-4 py-4 md:py-6">
-          {children}
-        </main>
-      </div>
+      <SidebarProvider defaultOpen={true}>
+        <div className="min-h-screen flex w-full bg-background">
+          <AppSidebar />
+          <div className="flex-1 flex flex-col">
+            <AppHeader />
+            <main className="flex-1 container px-4 py-4 md:py-6">
+              {children}
+            </main>
+          </div>
+        </div>
+      </SidebarProvider>
     </RestaurantProvider>
   );
 };

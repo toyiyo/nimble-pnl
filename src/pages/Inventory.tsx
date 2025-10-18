@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MetricIcon } from '@/components/MetricIcon';
 import { EnhancedBarcodeScanner } from '@/components/EnhancedBarcodeScanner';
 import { ImageCapture } from '@/components/ImageCapture';
 import { ProductDialog } from '@/components/ProductDialog';
@@ -694,11 +696,15 @@ export const Inventory: React.FC = () => {
   // Check if user has permission to delete products
   const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.category?.toLowerCase().includes(searchTerm.toLowerCase())
+  // Memoize filtered products for performance
+  const filteredProducts = useMemo(() => 
+    products.filter(product =>
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.category?.toLowerCase().includes(searchTerm.toLowerCase())
+    ),
+    [products, searchTerm]
   );
 
   if (!user) {
@@ -738,6 +744,7 @@ export const Inventory: React.FC = () => {
               size="sm"
               onClick={() => navigate('/')}
               className="p-2 md:px-3 hover:bg-primary/10 transition-all duration-300"
+              aria-label="Return to dashboard"
             >
               <ArrowLeft className="h-4 w-4 md:mr-2" />
               <span className="hidden md:inline">Dashboard</span>
@@ -748,6 +755,7 @@ export const Inventory: React.FC = () => {
                 size="sm"
                 onClick={() => navigate('/receipt-import')}
                 className="p-2 md:px-3 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-300"
+                aria-label="Upload receipt for inventory"
               >
                 <Package className="h-4 w-4 md:mr-2" />
                 <span className="hidden md:inline">Upload Receipt</span>
@@ -756,36 +764,40 @@ export const Inventory: React.FC = () => {
                 onClick={handleCreateManually} 
                 size="sm"
                 className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/30 transition-all duration-300 hover:scale-[1.02]"
+                aria-label="Add new product manually"
               >
                 <Plus className="h-4 w-4 md:mr-2" />
                 <span className="hidden sm:inline">Add Product</span>
               </Button>
             </div>
           </div>
-          <div className="text-center md:text-left space-y-1">
-            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-primary via-primary to-accent bg-clip-text text-transparent">
-              Inventory Management
-            </h1>
-            <p className="text-sm text-muted-foreground flex items-center justify-center md:justify-start gap-2">
-              <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              {selectedRestaurant?.restaurant?.name}
-            </p>
+          <div className="flex items-center gap-4 text-center md:text-left">
+            <MetricIcon icon={Package} variant="emerald" />
+            <div className="space-y-1">
+              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-primary via-primary to-accent bg-clip-text text-transparent">
+                Inventory Management
+              </h1>
+              <p className="text-sm text-muted-foreground flex items-center justify-center md:justify-start gap-2">
+                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
+                {selectedRestaurant?.restaurant?.name}
+              </p>
+            </div>
           </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto p-4 md:p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto">
-            <TabsTrigger value="scanner" className="flex-col py-2 px-1">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto" role="tablist">
+            <TabsTrigger value="scanner" className="flex-col py-2 px-1" aria-label="Scanner tab">
               <span className="text-xs md:text-sm">Scanner</span>
-              <span className="text-lg">{currentMode === 'scanner' ? '📱' : '📸'}</span>
+              <span className="text-lg" aria-hidden="true">{currentMode === 'scanner' ? '📱' : '📸'}</span>
             </TabsTrigger>
-            <TabsTrigger value="products" className="flex-col py-2 px-1">
+            <TabsTrigger value="products" className="flex-col py-2 px-1" aria-label={`Products tab, ${products.length} items`}>
               <span className="text-xs md:text-sm">Products</span>
               <span className="text-xs">({products.length})</span>
             </TabsTrigger>
-            <TabsTrigger value="low-stock" className="flex-col py-2 px-1">
+            <TabsTrigger value="low-stock" className="flex-col py-2 px-1" aria-label={`Low stock tab${lowStockProducts.length > 0 ? `, ${lowStockProducts.length} alerts` : ''}`}>
               <span className="text-xs md:text-sm">Low Stock</span>
               {lowStockProducts.length > 0 && (
                 <Badge variant="destructive" className="text-xs h-4 px-1">
@@ -793,13 +805,13 @@ export const Inventory: React.FC = () => {
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="reconciliation" className="flex-col py-2 px-1">
+            <TabsTrigger value="reconciliation" className="flex-col py-2 px-1" aria-label={`Reconciliation tab${activeSession ? ', session active' : ''}`}>
               <span className="text-xs md:text-sm">Reconcile</span>
               {activeSession && (
                 <Badge className="text-xs h-4 px-1 bg-blue-500">Active</Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="categories" className="flex-col py-2 px-1">
+            <TabsTrigger value="categories" className="flex-col py-2 px-1" aria-label="Settings tab">
               <span className="text-xs md:text-sm">Settings</span>
             </TabsTrigger>
           </TabsList>
@@ -877,6 +889,8 @@ export const Inventory: React.FC = () => {
                       size="sm"
                       onClick={() => setCurrentMode('scanner')}
                       className="flex-1"
+                      aria-label="Switch to scanner mode"
+                      aria-pressed={currentMode === 'scanner'}
                     >
                       📱 Scanner
                     </Button>
@@ -885,6 +899,8 @@ export const Inventory: React.FC = () => {
                       size="sm"
                       onClick={() => setCurrentMode('image')}
                       className="flex-1"
+                      aria-label="Switch to image mode"
+                      aria-pressed={currentMode === 'image'}
                     >
                       📸 Image
                     </Button>
@@ -993,8 +1009,11 @@ export const Inventory: React.FC = () => {
                 <div className="flex justify-center">
                   <Card className="w-full max-w-md">
                     <CardContent className="py-8 text-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                      <p className="text-muted-foreground">Looking up product...</p>
+                      <div className="space-y-3" role="status" aria-live="polite">
+                        <Skeleton className="h-8 w-8 rounded-full mx-auto" />
+                        <Skeleton className="h-4 w-48 mx-auto" />
+                      </div>
+                      <p className="text-muted-foreground mt-4">Looking up product...</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -1004,8 +1023,11 @@ export const Inventory: React.FC = () => {
                 <div className="flex justify-center">
                   <Card className="w-full max-w-md">
                     <CardContent className="py-8 text-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                      <p className="text-muted-foreground">Analyzing image...</p>
+                      <div className="space-y-3" role="status" aria-live="polite">
+                        <Skeleton className="h-8 w-8 rounded-full mx-auto" />
+                        <Skeleton className="h-4 w-48 mx-auto" />
+                      </div>
+                      <p className="text-muted-foreground mt-4">Analyzing image...</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -1020,9 +1042,7 @@ export const Inventory: React.FC = () => {
                 <Card className="border-2 border-transparent bg-gradient-to-br from-orange-500/10 via-background to-orange-600/5 hover:shadow-lg transition-all duration-300 hover:scale-[1.01]">
                   <CardHeader className="pb-3">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-lg p-2.5 bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg shadow-orange-500/30">
-                        <Package className="h-5 w-5 text-white" />
-                      </div>
+                      <MetricIcon icon={Package} variant="amber" />
                       <div>
                         <CardTitle className="text-lg bg-gradient-to-r from-orange-600 to-orange-700 bg-clip-text text-transparent">
                           Total Inventory Cost
@@ -1033,7 +1053,9 @@ export const Inventory: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                     {inventoryMetrics.loading ? (
-                      <div className="animate-pulse bg-gradient-to-r from-muted via-muted/50 to-muted h-10 w-32 rounded-lg" />
+                      <div className="space-y-2">
+                        <Skeleton className="h-10 w-32" />
+                      </div>
                     ) : (
                       <div className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-orange-700 bg-clip-text text-transparent">
                         ${inventoryMetrics.totalInventoryCost.toFixed(2)}
@@ -1044,9 +1066,7 @@ export const Inventory: React.FC = () => {
                 <Card className="border-2 border-transparent bg-gradient-to-br from-emerald-500/10 via-background to-green-600/5 hover:shadow-lg transition-all duration-300 hover:scale-[1.01]">
                   <CardHeader className="pb-3">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-lg p-2.5 bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/30">
-                        <Package className="h-5 w-5 text-white" />
-                      </div>
+                      <MetricIcon icon={Package} variant="emerald" />
                       <div>
                         <CardTitle className="text-lg bg-gradient-to-r from-emerald-600 to-green-700 bg-clip-text text-transparent">
                           Total Inventory Value
@@ -1057,7 +1077,11 @@ export const Inventory: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                     {inventoryMetrics.loading ? (
-                      <div className="animate-pulse bg-gradient-to-r from-muted via-muted/50 to-muted h-10 w-32 rounded-lg" />
+                      <div className="space-y-2">
+                        <Skeleton className="h-10 w-32" />
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-4 w-48" />
+                      </div>
                     ) : (
                       <>
                         <div className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-green-700 bg-clip-text text-transparent">
@@ -1093,14 +1117,25 @@ export const Inventory: React.FC = () => {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
+                    aria-label="Search products by name, SKU, brand, or category"
                   />
                 </div>
               </div>
 
               {loading ? (
-                <div className="text-center py-8">
-                  <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">Loading products...</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" role="status" aria-live="polite">
+                  {[...Array(6)].map((_, i) => (
+                    <Card key={i}>
+                      <CardHeader>
+                        <Skeleton className="h-6 w-3/4 mb-2" />
+                        <Skeleton className="h-4 w-1/2" />
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-2/3" />
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               ) : filteredProducts.length === 0 ? (
                 <div className="text-center py-8">
@@ -1281,18 +1316,16 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="low-stock" className="mt-6">
             <div className="space-y-6">
-              <Card className="border-2 border-transparent bg-gradient-to-br from-red-500/10 via-background to-orange-500/5">
+                <Card className="border-2 border-transparent bg-gradient-to-br from-red-500/10 via-background to-orange-500/5">
                 <CardContent className="py-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-lg p-2.5 bg-gradient-to-br from-red-500 to-orange-500 shadow-lg shadow-red-500/30 animate-pulse">
-                        <AlertTriangle className="h-6 w-6 text-white" />
-                      </div>
+                      <MetricIcon icon={AlertTriangle} variant="red" className="animate-pulse" />
                       <div>
                         <h2 className="text-xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
                           Low Stock Alert
                         </h2>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
                           {lowStockProducts.length} {lowStockProducts.length === 1 ? 'item needs' : 'items need'} attention
                         </p>
                       </div>
@@ -1303,6 +1336,7 @@ export const Inventory: React.FC = () => {
                         size="sm" 
                         onClick={exportLowStockCSV}
                         className="border-red-500/30 text-red-600 hover:bg-red-500/10 hover:border-red-500 transition-all duration-300"
+                        aria-label="Export low stock list to CSV"
                       >
                         <Download className="h-4 w-4 mr-2" />
                         Export List

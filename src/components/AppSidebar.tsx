@@ -92,29 +92,32 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r">
-      <SidebarHeader className="border-b p-4">
-        <button 
-          onClick={() => navigate('/')}
-          className="flex items-center gap-2 w-full group transition-transform duration-200 hover:scale-105"
-        >
-          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-1.5 group-hover:shadow-emerald-500/50 transition-shadow duration-200 flex-shrink-0">
-            <CalendarCheck className="h-4 w-4 text-white" />
-          </div>
-          {!collapsed && (
-            <div className="flex-1 min-w-0 text-left">
-              <div className="font-bold text-sm truncate">EasyShiftHQ</div>
-              {selectedRestaurant && (
-                <div className="text-xs text-muted-foreground truncate">
-                  {selectedRestaurant.restaurant.name}
-                </div>
-              )}
+      <SidebarHeader className="border-b p-3">
+        <div className="flex items-center justify-between gap-2">
+          <button 
+            onClick={() => navigate('/')}
+            className="flex items-center gap-2 group transition-all duration-200 hover:scale-105"
+          >
+            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-1.5 group-hover:shadow-emerald-500/50 transition-all duration-200 flex-shrink-0">
+              <CalendarCheck className="h-4 w-4 text-white" />
             </div>
-          )}
-        </button>
+            {!collapsed && (
+              <div className="flex-1 min-w-0 text-left">
+                <div className="font-bold text-sm truncate">EasyShiftHQ</div>
+                {selectedRestaurant && (
+                  <div className="text-xs text-muted-foreground truncate">
+                    {selectedRestaurant.restaurant.name}
+                  </div>
+                )}
+              </div>
+            )}
+          </button>
+          {!collapsed && <SidebarTrigger className="-mr-1" />}
+        </div>
       </SidebarHeader>
 
       <SidebarContent>
-        {navigationGroups.map((group) => {
+        {navigationGroups.map((group, groupIndex) => {
           const groupIsActive = isGroupActive(group.items);
           
           return (
@@ -125,15 +128,15 @@ export function AppSidebar() {
             >
               <SidebarGroup>
                 <CollapsibleTrigger asChild>
-                  <SidebarGroupLabel className="cursor-pointer hover:bg-accent/50 transition-colors">
+                  <SidebarGroupLabel className="cursor-pointer hover:bg-accent/50 transition-colors duration-200">
                     {!collapsed && (
                       <>
                         {group.label}
-                        <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
+                        <ChevronDown className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
                       </>
                     )}
-                    {collapsed && (
-                      <div className="w-full h-px bg-border my-2" />
+                    {collapsed && groupIndex > 0 && (
+                      <div className="w-full h-px bg-border/50 my-1" />
                     )}
                   </SidebarGroupLabel>
                 </CollapsibleTrigger>
@@ -151,11 +154,11 @@ export function AppSidebar() {
                               tooltip={collapsed ? item.label : undefined}
                               className={
                                 isActive
-                                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-600 shadow-md shadow-emerald-500/20'
-                                  : 'hover:bg-accent/50'
+                                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-600 shadow-md shadow-emerald-500/20 transition-all duration-200'
+                                  : 'hover:bg-accent/50 hover:translate-x-0.5 transition-all duration-200'
                               }
                             >
-                              <Icon className="h-4 w-4" />
+                              <Icon className={collapsed ? "h-5 w-5" : "h-4 w-4"} />
                               <span>{item.label}</span>
                             </SidebarMenuButton>
                           </SidebarMenuItem>
@@ -170,31 +173,33 @@ export function AppSidebar() {
         })}
       </SidebarContent>
 
-      <SidebarFooter className="border-t p-4">
-        {!collapsed && user && (
-          <div className="space-y-2">
-            <div className="text-xs text-muted-foreground truncate">
-              {user.email}
+      <SidebarFooter className="border-t p-3 mt-auto">
+        {!collapsed ? (
+          <div className="space-y-2 animate-fade-in">
+            <div className="px-2 py-1.5 rounded-md bg-muted/30 border border-border/50">
+              <div className="text-xs text-muted-foreground truncate">
+                {user?.email}
+              </div>
             </div>
             <Button
               variant="outline"
               size="sm"
               onClick={signOut}
-              className="w-full justify-start text-destructive hover:bg-destructive/10"
+              className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive transition-all duration-200"
             >
               <LogOut className="h-4 w-4 mr-2" />
               Sign Out
             </Button>
           </div>
-        )}
-        {collapsed && (
+        ) : (
           <Button
             variant="ghost"
             size="icon"
             onClick={signOut}
-            className="w-full text-destructive hover:bg-destructive/10"
+            className="w-full h-10 text-destructive hover:bg-destructive/10 transition-all duration-200"
+            title="Sign Out"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-5 w-5" />
           </Button>
         )}
       </SidebarFooter>

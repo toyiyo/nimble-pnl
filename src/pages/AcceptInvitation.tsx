@@ -158,7 +158,7 @@ export const AcceptInvitation = () => {
   const handleGoogleAuth = async () => {
     setAuthLoading2(true);
     try {
-      const redirectUrl = `${window.location.origin}/accept-invitation?token=${token}`;
+      const redirectUrl = `${window.location.origin}/accept-invitation?token=${encodeURIComponent(token)}`;
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',

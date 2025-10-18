@@ -117,6 +117,7 @@ const Team = () => {
           <TabsList className="grid w-full grid-cols-2 h-auto">
             <TabsTrigger 
               value="members" 
+              id="members-tab"
               className="flex-col py-2 px-1 text-center transition-all duration-200 data-[state=active]:shadow-sm"
               aria-label="View team members"
             >
@@ -125,6 +126,7 @@ const Team = () => {
             </TabsTrigger>
             <TabsTrigger 
               value="invitations" 
+              id="invitations-tab"
               className="flex-col py-2 px-1 text-center transition-all duration-200 data-[state=active]:shadow-sm"
               aria-label="View pending invitations"
             >

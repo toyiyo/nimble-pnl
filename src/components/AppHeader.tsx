@@ -41,7 +41,8 @@ import {
   ClipboardCheck,
   FileText,
   Users,
-  Settings
+  Settings,
+  LogOut
 } from 'lucide-react';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 import { UserProfileDropdown } from '@/components/UserProfileDropdown';
@@ -286,7 +287,7 @@ export const AppHeader = () => {
                         }}
                         className="w-full justify-start text-destructive hover:bg-destructive/10 transition-colors duration-200"
                       >
-                        <Settings className="h-4 w-4 mr-2" />
+                        <LogOut className="h-4 w-4 mr-2" />
                         Sign Out
                       </Button>
                     </div>

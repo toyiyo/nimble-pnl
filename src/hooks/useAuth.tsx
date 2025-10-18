@@ -123,17 +123,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       
-      // Sign out from Supabase FIRST (needs the session token)
-      await supabase.auth.signOut();
+      // Get current session for debugging
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Sign out - current session exists:', !!session);
       
-      // Then clear local state
+      // Sign out from Supabase with local scope (current device only)
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      
+      if (error) {
+        console.error('Sign out error from Supabase:', error);
+      }
+      
+      // Clear local state
       setSession(null);
       setUser(null);
       
       // Navigate to auth page
       window.location.href = '/auth';
     } catch (error: any) {
-      console.error('Sign out error:', error);
+      console.error('Sign out exception:', error);
       // Even on error, clear state and redirect
       setSession(null);
       setUser(null);

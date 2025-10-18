@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MetricIcon } from '@/components/MetricIcon';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   TrendingUp, 
@@ -129,9 +131,24 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
 
   if (loading) {
     return (
-      <div className="text-center py-12">
-        <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground mb-4 animate-pulse" />
-        <p className="text-muted-foreground">Analyzing P&L data...</p>
+      <div className="space-y-6" role="status" aria-live="polite">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-12 w-12 rounded-lg" />
+              <div className="space-y-2 flex-1">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-4 w-64" />
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </div>
       </div>
     );
   }
@@ -157,25 +174,32 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold">P&L Intelligence Dashboard</h2>
-          <p className="text-muted-foreground">Predictive insights and performance analytics</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Tabs value={timeframe.toString()} onValueChange={(v) => setTimeframe(Number(v) as 30 | 60 | 90)}>
-            <TabsList>
-              <TabsTrigger value="30" className="text-xs">30 Days</TabsTrigger>
-              <TabsTrigger value="60" className="text-xs">60 Days</TabsTrigger>
-              <TabsTrigger value="90" className="text-xs">90 Days</TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <Button onClick={exportToCSV} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <MetricIcon icon={DollarSign} variant="emerald" />
+              <div>
+                <h2 className="text-2xl font-bold">P&L Intelligence Dashboard</h2>
+                <p className="text-muted-foreground">Predictive insights and performance analytics</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Tabs value={timeframe.toString()} onValueChange={(v) => setTimeframe(Number(v) as 30 | 60 | 90)}>
+                <TabsList role="tablist">
+                  <TabsTrigger value="30" className="text-xs" aria-label="View 30 day data">30 Days</TabsTrigger>
+                  <TabsTrigger value="60" className="text-xs" aria-label="View 60 day data">60 Days</TabsTrigger>
+                  <TabsTrigger value="90" className="text-xs" aria-label="View 90 day data">90 Days</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <Button onClick={exportToCSV} variant="outline" size="sm" aria-label="Export P&L data to CSV">
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
 
       {/* Key Insights */}
       {data.insights.length > 0 && (
@@ -207,17 +231,17 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
+              <MetricIcon icon={DollarSign} variant="emerald" className="p-2" />
               Revenue
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">${data.comparison.current_period.revenue.toFixed(0)}</p>
-            <div className="flex items-center gap-1 text-xs mt-1">
+            <div className="flex items-center gap-1 text-xs mt-1" role="status">
               {data.comparison.change.revenue_pct >= 0 ? (
-                <TrendingUp className="h-3 w-3 text-green-500" />
+                <TrendingUp className="h-3 w-3 text-green-500" aria-hidden="true" />
               ) : (
-                <TrendingDown className="h-3 w-3 text-red-500" />
+                <TrendingDown className="h-3 w-3 text-red-500" aria-hidden="true" />
               )}
               <span className={data.comparison.change.revenue_pct >= 0 ? 'text-green-600' : 'text-red-600'}>
                 {data.comparison.change.revenue_pct.toFixed(1)}% vs prev period
@@ -229,7 +253,7 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Target className="h-4 w-4" />
+              <MetricIcon icon={Target} variant="blue" className="p-2" />
               Prime Cost
             </CardTitle>
           </CardHeader>
@@ -244,7 +268,7 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Zap className="h-4 w-4" />
+              <MetricIcon icon={Zap} variant="amber" className="p-2" />
               Efficiency Score
             </CardTitle>
           </CardHeader>
@@ -259,7 +283,7 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Award className="h-4 w-4" />
+              <MetricIcon icon={Award} variant="purple" className="p-2" />
               Labor ROI
             </CardTitle>
           </CardHeader>
@@ -271,12 +295,12 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
       </div>
 
       <Tabs defaultValue="trends" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="comparison">Comparison</TabsTrigger>
-          <TabsTrigger value="patterns">Patterns</TabsTrigger>
-          <TabsTrigger value="forecast">Forecast</TabsTrigger>
-          <TabsTrigger value="benchmarks">Benchmarks</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-5" role="tablist">
+          <TabsTrigger value="trends" aria-label="P&L trends analysis">Trends</TabsTrigger>
+          <TabsTrigger value="comparison" aria-label="Period comparison">Comparison</TabsTrigger>
+          <TabsTrigger value="patterns" aria-label="Cost patterns">Patterns</TabsTrigger>
+          <TabsTrigger value="forecast" aria-label="Financial forecast">Forecast</TabsTrigger>
+          <TabsTrigger value="benchmarks" aria-label="Industry benchmarks">Benchmarks</TabsTrigger>
         </TabsList>
 
         {/* Trends Tab */}

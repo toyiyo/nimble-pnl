@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MetricIcon } from '@/components/MetricIcon';
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -12,7 +14,8 @@ import {
   Info,
   Minus,
   Download,
-  Calendar
+  Calendar,
+  BarChart3
 } from 'lucide-react';
 import { usePnLAnalytics } from '@/hooks/usePnLAnalytics';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -281,10 +284,14 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
     return (
       <Card>
         <CardContent className="py-12">
-          <div className="text-center">
-            <div className="animate-pulse space-y-4">
-              <div className="h-8 bg-muted rounded w-1/4 mx-auto" />
-              <div className="h-4 bg-muted rounded w-1/2 mx-auto" />
+          <div className="space-y-4" role="status" aria-live="polite">
+            <Skeleton className="h-8 w-1/4 mx-auto" />
+            <Skeleton className="h-4 w-1/2 mx-auto" />
+            <div className="space-y-2 mt-6">
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
             </div>
           </div>
         </CardContent>
@@ -306,16 +313,18 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Detailed P&L Breakdown
-            </CardTitle>
-            <CardDescription>
-              Last {days} days • Inline insights & benchmarks
-            </CardDescription>
+          <div className="flex items-center gap-3">
+            <MetricIcon icon={BarChart3} variant="blue" />
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                Detailed P&L Breakdown
+              </CardTitle>
+              <CardDescription>
+                Last {days} days • Inline insights & benchmarks
+              </CardDescription>
+            </div>
           </div>
-          <Button onClick={exportToExcel} variant="outline" size="sm">
+          <Button onClick={exportToExcel} variant="outline" size="sm" aria-label="Export P&L breakdown to CSV">
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>

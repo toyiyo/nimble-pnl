@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { MetricIcon } from '@/components/MetricIcon';
 import { useSupplierPriceAnalytics } from '@/hooks/useSupplierPriceAnalytics';
 import { TrendingUp, TrendingDown, AlertCircle, DollarSign, Package, Activity } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -40,9 +41,23 @@ export function SupplierPriceAnalysisReport({ restaurantId }: SupplierPriceAnaly
   if (loading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-96 w-full" />
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-12 w-12 rounded-lg" />
+              <div className="space-y-2 flex-1">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-4 w-64" />
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </div>
       </div>
     );
   }
@@ -62,16 +77,29 @@ export function SupplierPriceAnalysisReport({ restaurantId }: SupplierPriceAnaly
 
   return (
     <div className="space-y-6">
+      {/* Header */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <MetricIcon icon={DollarSign} variant="emerald" />
+            <div>
+              <CardTitle className="text-2xl">Supplier Price Analysis</CardTitle>
+              <CardDescription>Track pricing trends and identify cost savings</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
       {/* Overview Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg Price Change (30d)</CardTitle>
-            {insights.avgPriceChange >= 0 ? (
-              <TrendingUp className="h-4 w-4 text-red-500" />
-            ) : (
-              <TrendingDown className="h-4 w-4 text-green-500" />
-            )}
+            <MetricIcon 
+              icon={insights.avgPriceChange >= 0 ? TrendingUp : TrendingDown} 
+              variant={insights.avgPriceChange >= 0 ? "red" : "emerald"}
+              className="p-2"
+            />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -87,7 +115,7 @@ export function SupplierPriceAnalysisReport({ restaurantId }: SupplierPriceAnaly
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Potential Savings</CardTitle>
-            <DollarSign className="h-4 w-4 text-green-500" />
+            <MetricIcon icon={DollarSign} variant="emerald" className="p-2" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -102,7 +130,7 @@ export function SupplierPriceAnalysisReport({ restaurantId }: SupplierPriceAnaly
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">High Volatility Items</CardTitle>
-            <Activity className="h-4 w-4 text-orange-500" />
+            <MetricIcon icon={Activity} variant="amber" className="p-2" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{insights.highVolatilityProducts}</div>
@@ -115,7 +143,7 @@ export function SupplierPriceAnalysisReport({ restaurantId }: SupplierPriceAnaly
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Suppliers</CardTitle>
-            <Package className="h-4 w-4 text-primary" />
+            <MetricIcon icon={Package} variant="blue" className="p-2" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{supplierMetrics.length}</div>

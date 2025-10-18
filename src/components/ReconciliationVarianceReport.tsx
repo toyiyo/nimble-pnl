@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MetricIcon } from '@/components/MetricIcon';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   TrendingDown, 
@@ -70,9 +72,24 @@ export function ReconciliationVarianceReport({ restaurantId }: ReconciliationVar
 
   if (loading) {
     return (
-      <div className="text-center py-12">
-        <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4 animate-pulse" />
-        <p className="text-muted-foreground">Analyzing variance patterns...</p>
+      <div className="space-y-6" role="status" aria-live="polite">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-12 w-12 rounded-lg" />
+              <div className="space-y-2 flex-1">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-4 w-64" />
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </div>
       </div>
     );
   }
@@ -104,16 +121,23 @@ export function ReconciliationVarianceReport({ restaurantId }: ReconciliationVar
   return (
     <div className="space-y-6">
       {/* Header with Export */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold">Variance Intelligence Report</h2>
-          <p className="text-muted-foreground">Advanced reconciliation analysis with actionable insights</p>
-        </div>
-        <Button onClick={exportToCSV} variant="outline" className="w-full sm:w-auto">
-          <Download className="h-4 w-4 mr-2" />
-          Export Report
-        </Button>
-      </div>
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <MetricIcon icon={BarChart3} variant="purple" />
+              <div>
+                <h2 className="text-2xl font-bold">Variance Intelligence Report</h2>
+                <p className="text-muted-foreground">Advanced reconciliation analysis with actionable insights</p>
+              </div>
+            </div>
+            <Button onClick={exportToCSV} variant="outline" className="w-full sm:w-auto" aria-label="Export variance report">
+              <Download className="h-4 w-4 mr-2" />
+              Export Report
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
 
       {/* Key Insights */}
       {data.insights.length > 0 && (
@@ -154,7 +178,7 @@ export function ReconciliationVarianceReport({ restaurantId }: ReconciliationVar
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
+              <MetricIcon icon={Calendar} variant="blue" className="p-2" />
               Total Counts
             </CardTitle>
           </CardHeader>
@@ -167,7 +191,7 @@ export function ReconciliationVarianceReport({ restaurantId }: ReconciliationVar
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
+              <MetricIcon icon={DollarSign} variant="red" className="p-2" />
               Total Shrinkage
             </CardTitle>
           </CardHeader>
@@ -184,7 +208,7 @@ export function ReconciliationVarianceReport({ restaurantId }: ReconciliationVar
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Target className="h-4 w-4" />
+              <MetricIcon icon={Target} variant="amber" className="p-2" />
               Problem Category
             </CardTitle>
           </CardHeader>
@@ -197,7 +221,7 @@ export function ReconciliationVarianceReport({ restaurantId }: ReconciliationVar
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <TrendingDown className="h-4 w-4" />
+              <MetricIcon icon={TrendingDown} variant="emerald" className="p-2" />
               Improvement Rate
             </CardTitle>
           </CardHeader>
@@ -211,11 +235,11 @@ export function ReconciliationVarianceReport({ restaurantId }: ReconciliationVar
       </div>
 
       <Tabs defaultValue="trends" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
-          <TabsTrigger value="products">Products</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4" role="tablist">
+          <TabsTrigger value="trends" aria-label="Variance trends over time">Trends</TabsTrigger>
+          <TabsTrigger value="categories" aria-label="Variance by category">Categories</TabsTrigger>
+          <TabsTrigger value="products" aria-label="Product-level variance">Products</TabsTrigger>
+          <TabsTrigger value="timeline" aria-label="Historical timeline">Timeline</TabsTrigger>
         </TabsList>
 
         {/* Trends Tab */}

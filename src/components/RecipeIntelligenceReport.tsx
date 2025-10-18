@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MetricIcon } from '@/components/MetricIcon';
 import { useRecipeIntelligence } from '@/hooks/useRecipeIntelligence';
 import { 
   TrendingUp, TrendingDown, Minus, Download, AlertCircle, 
@@ -56,7 +58,16 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
     return (
       <Card>
         <CardContent className="py-8">
-          <div className="text-center text-muted-foreground">Loading recipe intelligence...</div>
+          <div className="space-y-4" role="status" aria-live="polite">
+            <Skeleton className="h-12 w-3/4 mx-auto" />
+            <Skeleton className="h-8 w-1/2 mx-auto" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+            </div>
+          </div>
         </CardContent>
       </Card>
     );
@@ -102,16 +113,18 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <CardTitle className="text-2xl flex items-center gap-2">
-                <Award className="h-6 w-6" />
-                Recipe Intelligence Report
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                AI-powered insights for recipe optimization
-              </p>
+            <div className="flex items-center gap-3">
+              <MetricIcon icon={Award} variant="purple" />
+              <div>
+                <CardTitle className="text-2xl">
+                  Recipe Intelligence Report
+                </CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  AI-powered insights for recipe optimization
+                </p>
+              </div>
             </div>
-            <Button onClick={exportToCSV} variant="outline" size="sm">
+            <Button onClick={exportToCSV} variant="outline" size="sm" aria-label="Export recipe data to CSV">
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
@@ -173,7 +186,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Target className="h-4 w-4" />
+              <MetricIcon icon={Target} variant="blue" className="p-2" />
               Active Recipes
             </CardTitle>
           </CardHeader>
@@ -188,7 +201,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
+              <MetricIcon icon={DollarSign} variant="emerald" className="p-2" />
               Avg Margin
             </CardTitle>
           </CardHeader>
@@ -205,7 +218,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Zap className="h-4 w-4" />
+              <MetricIcon icon={Zap} variant="amber" className="p-2" />
               Efficiency Score
             </CardTitle>
           </CardHeader>
@@ -222,7 +235,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Award className="h-4 w-4" />
+              <MetricIcon icon={Award} variant="purple" className="p-2" />
               Top Performers
             </CardTitle>
           </CardHeader>
@@ -239,13 +252,13 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
 
       {/* Detailed Analysis Tabs */}
       <Tabs defaultValue="performance" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="profitability">Profitability</TabsTrigger>
-          <TabsTrigger value="efficiency">Efficiency</TabsTrigger>
-          <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="benchmarks">Benchmarks</TabsTrigger>
-          <TabsTrigger value="ingredients">Ingredients</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6" role="tablist">
+          <TabsTrigger value="performance" aria-label="Recipe performance metrics">Performance</TabsTrigger>
+          <TabsTrigger value="profitability" aria-label="Profitability analysis">Profitability</TabsTrigger>
+          <TabsTrigger value="efficiency" aria-label="Efficiency scores">Efficiency</TabsTrigger>
+          <TabsTrigger value="trends" aria-label="Trend analysis">Trends</TabsTrigger>
+          <TabsTrigger value="benchmarks" aria-label="Industry benchmarks">Benchmarks</TabsTrigger>
+          <TabsTrigger value="ingredients" aria-label="Ingredient analysis">Ingredients</TabsTrigger>
         </TabsList>
 
         {/* Performance Tab */}

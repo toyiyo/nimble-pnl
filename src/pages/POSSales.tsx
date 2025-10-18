@@ -469,7 +469,7 @@ export default function POSSales() {
                                 <>
                                   <br className="sm:hidden" />
                                   <span className="hidden sm:inline"> • </span>
-                                  <span className="font-mono text-xs">Order: {sale.externalOrderId}</span>
+                                  <span className="font-mono text-xs break-all max-w-full">Order: {sale.externalOrderId}</span>
                                 </>
                               )}
                             </div>

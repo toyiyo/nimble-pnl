@@ -106,7 +106,7 @@ const Team = () => {
                   Team Management
                 </h2>
                 <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
-                  Manage your restaurant team, send invitations, and configure enterprise settings
+                  Manage your restaurant team, send invitations, and configure team settings
                 </p>
               </div>
             </div>

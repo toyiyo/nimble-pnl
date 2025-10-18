@@ -68,11 +68,11 @@ export function InventoryDeductionDialog({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Calculator className="w-5 h-5" />
+          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Calculator className="w-4 h-4 sm:w-5 sm:h-5" />
             Inventory Deduction Calculator
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-sm">
             {hasProcessed 
               ? `Successfully processed inventory deduction for ${quantitySold}x ${posItemName}`
               : `Preview and process inventory deduction for ${quantitySold}x ${posItemName}`
@@ -82,13 +82,13 @@ export function InventoryDeductionDialog({
 
         <div className="space-y-6">
           {!simulationResult && (
-            <div className="text-center py-8">
-              <ChefHat className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Calculate Recipe Impact</h3>
-              <p className="text-muted-foreground mb-4">
+            <div className="text-center py-6 sm:py-8">
+              <ChefHat className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground mx-auto mb-3 sm:mb-4" />
+              <h3 className="text-base sm:text-lg font-semibold mb-2">Calculate Recipe Impact</h3>
+              <p className="text-sm text-muted-foreground mb-4 px-4">
                 See how this sale will affect your inventory levels
               </p>
-              <Button onClick={handleSimulate} disabled={loading}>
+              <Button onClick={handleSimulate} disabled={loading} className="w-full sm:w-auto">
                 {loading ? 'Calculating...' : 'Simulate Deduction'}
               </Button>
             </div>
@@ -96,13 +96,13 @@ export function InventoryDeductionDialog({
 
           {simulationResult?.already_processed && (
             <Card className="border-orange-200 bg-orange-50">
-              <CardContent className="text-center py-8">
-                <ChefHat className="w-12 h-12 text-orange-500 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2 text-orange-700">Sale Already Processed</h3>
-                <p className="text-orange-600 mb-4">
+              <CardContent className="text-center py-6 sm:py-8 px-4">
+                <ChefHat className="w-10 h-10 sm:w-12 sm:h-12 text-orange-500 mx-auto mb-3 sm:mb-4" />
+                <h3 className="text-base sm:text-lg font-semibold mb-2 text-orange-700">Sale Already Processed</h3>
+                <p className="text-sm text-orange-600 mb-4">
                   This sale has already been deducted from inventory on {new Date().toLocaleDateString()}
                 </p>
-                <div className="text-sm text-orange-500">
+                <div className="text-xs sm:text-sm text-orange-500">
                   Duplicate processing is prevented to maintain inventory accuracy
                 </div>
               </CardContent>
@@ -139,24 +139,24 @@ export function InventoryDeductionDialog({
               {/* Summary Card */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Package className="w-5 h-5" />
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                    <Package className="w-4 h-4 sm:w-5 sm:h-5" />
                     Deduction Summary
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     <div>
-                      <div className="text-sm text-muted-foreground">Recipe</div>
-                      <div className="font-medium">{simulationResult.recipe_name || 'No recipe found'}</div>
+                      <div className="text-xs sm:text-sm text-muted-foreground">Recipe</div>
+                      <div className="text-sm sm:text-base font-medium break-words">{simulationResult.recipe_name || 'No recipe found'}</div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Quantity Sold</div>
-                      <div className="font-medium">{quantitySold}x {posItemName}</div>
+                      <div className="text-xs sm:text-sm text-muted-foreground">Quantity Sold</div>
+                      <div className="text-sm sm:text-base font-medium break-words">{quantitySold}x {posItemName}</div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Total Cost</div>
-                      <div className="font-medium text-green-600">
+                      <div className="text-xs sm:text-sm text-muted-foreground">Total Cost</div>
+                      <div className="text-sm sm:text-base font-medium text-green-600">
                         ${(simulationResult.total_cost || 0).toFixed(2)}
                       </div>
                     </div>
@@ -168,52 +168,52 @@ export function InventoryDeductionDialog({
               {simulationResult.ingredients_deducted.length > 0 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingDown className="w-5 h-5" />
+                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                      <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5" />
                       Ingredient Deductions
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="overflow-x-auto">
+                  <CardContent className="overflow-x-auto -mx-2 sm:mx-0">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="min-w-[120px]">Ingredient</TableHead>
-                          <TableHead className="min-w-[100px]">Recipe Usage</TableHead>
-                          <TableHead className="min-w-[120px]">Purchase Deduction</TableHead>
-                          <TableHead className="min-w-[150px] hidden sm:table-cell">Conversion</TableHead>
-                          <TableHead className="min-w-[120px]">Remaining Stock</TableHead>
+                          <TableHead className="min-w-[100px] text-xs sm:text-sm">Ingredient</TableHead>
+                          <TableHead className="min-w-[90px] text-xs sm:text-sm">Recipe</TableHead>
+                          <TableHead className="min-w-[100px] text-xs sm:text-sm">Deduction</TableHead>
+                          <TableHead className="min-w-[130px] hidden lg:table-cell text-xs sm:text-sm">Conversion</TableHead>
+                          <TableHead className="min-w-[100px] text-xs sm:text-sm">Remaining</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {simulationResult.ingredients_deducted.map((ingredient, index) => (
                           <TableRow key={index}>
-                            <TableCell className="font-medium">
-                              {ingredient.product_name}
+                            <TableCell className="font-medium text-xs sm:text-sm">
+                              <div className="max-w-[120px] truncate">{ingredient.product_name}</div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="secondary">
+                              <Badge variant="secondary" className="text-xs whitespace-nowrap">
                                 {ingredient.quantity_recipe_units} {ingredient.recipe_unit}
                               </Badge>
                             </TableCell>
                           <TableCell>
-                            <Badge variant="outline">
+                            <Badge variant="outline" className="text-xs whitespace-nowrap">
                               {(ingredient.quantity_purchase_units || 0).toFixed(3)} {ingredient.purchase_unit}
                             </Badge>
                           </TableCell>
-                          <TableCell className="hidden sm:table-cell">
+                          <TableCell className="hidden lg:table-cell">
                             <div className="flex items-center gap-2">
-                              <div className="text-sm">
+                              <div className="text-xs sm:text-sm whitespace-nowrap">
                                 {ingredient.quantity_recipe_units} {ingredient.recipe_unit} → {(ingredient.quantity_purchase_units || 0).toFixed(3)} {ingredient.purchase_unit}
                               </div>
                               {ingredient.conversion_method === 'fallback_1:1' && (
-                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
                                   ⚠️ 1:1
                                 </Badge>
                               )}
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className={`font-medium ${
+                            <div className={`font-medium text-xs sm:text-sm ${
                               (ingredient.remaining_stock_purchase_units || 0) < 1 ? 'text-red-600' : 'text-green-600'
                             }`}>
                               {(ingredient.remaining_stock_purchase_units || 0).toFixed(2)} {ingredient.purchase_unit}
@@ -232,10 +232,10 @@ export function InventoryDeductionDialog({
 
               {simulationResult.ingredients_deducted.length === 0 && (
                 <Card>
-                  <CardContent className="text-center py-8">
-                    <ChefHat className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No Recipe Found</h3>
-                    <p className="text-muted-foreground">
+                  <CardContent className="text-center py-6 sm:py-8 px-4">
+                    <ChefHat className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground mx-auto mb-3 sm:mb-4" />
+                    <h3 className="text-base sm:text-lg font-semibold mb-2">No Recipe Found</h3>
+                    <p className="text-sm text-muted-foreground">
                       No recipe is mapped to "{posItemName}". Create a recipe to enable inventory deduction.
                     </p>
                   </CardContent>

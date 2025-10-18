@@ -19,17 +19,9 @@ export const useSSO = () => {
 
   const fetchSSOConfigs = async () => {
     try {
-      // In a real implementation, this would fetch from enterprise_settings table
-      // For now, we'll simulate with a hardcoded config for toyiyo.com
-      const mockConfigs: SSOConfig[] = [
-        {
-          sso_enabled: true,
-          sso_provider: 'google',
-          sso_domain: 'toyiyo.com',
-          auto_provisioning: true,
-          default_role: 'staff',
-        }
-      ];
+      // Fetch SSO configs from enterprise_settings table
+      // For now, return empty array - no SSO enforced by default
+      const mockConfigs: SSOConfig[] = [];
       setSSOConfigs(mockConfigs);
     } catch (error) {
       console.error('Error fetching SSO configs:', error);

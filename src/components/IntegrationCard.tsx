@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,7 +7,9 @@ import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { SquareSync } from '@/components/SquareSync';
 import { CloverSync } from '@/components/CloverSync';
-import { Plug, Settings, CheckCircle } from 'lucide-react';
+import { IntegrationLogo } from '@/components/IntegrationLogo';
+import { Plug, Settings, CheckCircle, Clock } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface Integration {
   id: string;
@@ -101,34 +103,57 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   };
 
   return (
-    <Card className="h-full">
-      <CardHeader>
+    <Card className={cn(
+      "h-full transition-all duration-300 hover:shadow-lg relative overflow-hidden group",
+      actuallyConnected && "border-2 border-emerald-500/20"
+    )}>
+      {/* Gradient overlay for connected state */}
+      {actuallyConnected && (
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none" />
+      )}
+      
+      <CardHeader className="relative">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="text-2xl">{integration.logo}</div>
+            {/* Logo with background */}
+            <div className={cn(
+              "w-12 h-12 rounded-lg flex items-center justify-center transition-transform duration-300 group-hover:scale-110",
+              actuallyConnected ? "bg-emerald-500/10" : "bg-muted"
+            )}>
+              <IntegrationLogo integrationId={integration.id} size={28} />
+            </div>
             <div>
-              <CardTitle className="text-lg">{integration.name}</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                {integration.name}
+                {actuallyConnected && (
+                  <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Connected
+                  </Badge>
+                )}
+              </CardTitle>
               <Badge variant="secondary" className="text-xs mt-1">
                 {integration.category}
               </Badge>
             </div>
           </div>
-          {actuallyConnected && (
-            <CheckCircle className="h-5 w-5 text-green-500" />
-          )}
         </div>
-        <CardDescription className="text-sm">
+        <CardDescription className="text-sm mt-2">
           {integration.description}
         </CardDescription>
       </CardHeader>
       
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 relative">
         {/* Features */}
-        <div>
-          <p className="text-sm font-medium mb-2">Features:</p>
-          <div className="flex flex-wrap gap-1">
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-muted-foreground">Key Features</p>
+          <div className="flex flex-wrap gap-2">
             {integration.features.map((feature) => (
-              <Badge key={feature} variant="outline" className="text-xs">
+              <Badge 
+                key={feature} 
+                variant="outline" 
+                className="text-xs bg-background/50 hover:bg-muted/50 transition-colors"
+              >
                 {feature}
               </Badge>
             ))}
@@ -136,12 +161,12 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
         </div>
 
         {/* Action Buttons */}
-        <div className="space-y-2">
+        <div className="space-y-2 pt-2">
           {actuallyConnected ? (
             <>
               <Button 
                 variant="outline" 
-                className="w-full" 
+                className="w-full hover:bg-muted transition-colors" 
                 onClick={handleConfigure}
               >
                 <Settings className="h-4 w-4 mr-2" />
@@ -158,7 +183,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             </>
           ) : (
             <Button 
-              className="w-full" 
+              className="w-full bg-primary hover:bg-primary/90 transition-all hover:shadow-md" 
               onClick={handleConnect}
               disabled={actuallyConnecting}
             >
@@ -169,8 +194,9 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
         </div>
 
         {actuallyConnected && (
-          <div className="space-y-4">
-            <div className="text-xs text-muted-foreground">
+          <div className="space-y-4 pt-4 border-t">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
+              <Clock className="h-3 w-3" />
               {isSquareIntegration && squareIntegration.connection ? 
                 `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}` :
               isCloverIntegration && cloverIntegration.connection ?

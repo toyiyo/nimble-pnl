@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MetricIcon } from '@/components/MetricIcon';
+import { PageHeader } from '@/components/PageHeader';
 import { EnhancedBarcodeScanner } from '@/components/EnhancedBarcodeScanner';
 import { ImageCapture } from '@/components/ImageCapture';
 import { ProductDialog } from '@/components/ProductDialog';
@@ -35,6 +38,7 @@ import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
 import { ProductEnhancementService } from '@/services/productEnhancementService';
 import { ocrService } from '@/services/ocrService';
+import { cn } from '@/lib/utils';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
@@ -88,6 +92,20 @@ export const Inventory: React.FC = () => {
   };
   const [reconciliationView, setReconciliationView] = useState<'history' | 'session' | 'summary'>('history');
   const { activeSession, startReconciliation } = useReconciliation(selectedRestaurant?.restaurant_id || null);
+
+  // Check if user has permission to delete products
+  const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
+
+  // Memoize filtered products for performance
+  const filteredProducts = useMemo(() => 
+    products.filter(product =>
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.category?.toLowerCase().includes(searchTerm.toLowerCase())
+    ),
+    [products, searchTerm]
+  );
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -537,10 +555,10 @@ export const Inventory: React.FC = () => {
       if (newProduct) {
         // Audit log is already created by createProduct hook via logPurchase
         // No need for duplicate logging here
-        toast({
-          title: "Product created",
-          description: `${newProduct.name} added to inventory${quantityToAdd > 0 ? ` with ${quantityToAdd} units` : ''}`,
-        });
+      toast({
+        title: "Product created",
+        description: `${newProduct.name} added to inventory${quantityToAdd > 0 ? ` with ${quantityToAdd.toFixed(2)} units` : ''}`,
+      });
         setShowUpdateDialog(false);
         setSelectedProduct(null);
       }
@@ -597,7 +615,7 @@ export const Inventory: React.FC = () => {
         if (quantityDifference !== 0) {
           toast({
             title: "Inventory updated",
-            description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference} units. New total: ${Math.round(finalStock * 100) / 100}`,
+            description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference.toFixed(2)} units. New total: ${finalStock.toFixed(2)}`,
             duration: 800,
           });
         } else {
@@ -668,8 +686,8 @@ export const Inventory: React.FC = () => {
       toast({
         title: "Inventory updated",
         description: scanMode === 'add' 
-          ? `Added ${quantity} to ${quickInventoryProduct.name}`
-          : `Set ${quickInventoryProduct.name} to ${quantity}`,
+          ? `Added ${quantity.toFixed(2)} to ${quickInventoryProduct.name}`
+          : `Set ${quickInventoryProduct.name} to ${quantity.toFixed(2)}`,
         duration: 800,
       });
     }
@@ -689,16 +707,6 @@ export const Inventory: React.FC = () => {
       setProductToDelete(null);
     }
   };
-
-  // Check if user has permission to delete products
-  const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
-
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.category?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   if (!user) {
     return (
@@ -726,55 +734,62 @@ export const Inventory: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="bg-card border-b border-border p-4">
-        <div className="max-w-7xl mx-auto">
-          {/* Mobile-first layout */}
-          <div className="flex items-center justify-between mb-3 md:mb-0">
-            <Button
-              variant="ghost"
+      {/* Enhanced Header */}
+      <div className="max-w-7xl mx-auto p-4">
+        <div className="flex items-center justify-between mb-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/')}
+            className="p-2 md:px-3 hover:bg-primary/10 transition-all duration-300"
+            aria-label="Return to dashboard"
+          >
+            <ArrowLeft className="h-4 w-4 md:mr-2" />
+            <span className="hidden md:inline">Dashboard</span>
+          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
               size="sm"
-              onClick={() => navigate('/')}
-              className="p-2 md:px-3"
+              onClick={() => navigate('/receipt-import')}
+              className="p-2 md:px-3 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-300"
+              aria-label="Upload receipt for inventory"
             >
-              <ArrowLeft className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Dashboard</span>
+              <Package className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Upload Receipt</span>
             </Button>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => navigate('/receipt-import')}
-                className="p-2 md:px-3"
-              >
-                <Package className="h-4 w-4 md:mr-2" />
-                <span className="hidden md:inline">Upload Receipt</span>
-              </Button>
-              <Button onClick={handleCreateManually} size="sm">
-                <Plus className="h-4 w-4 md:mr-2" />
-                <span className="hidden sm:inline">Add Product</span>
-              </Button>
-            </div>
-          </div>
-          <div className="text-center md:text-left">
-            <h1 className="text-xl md:text-2xl font-bold">Inventory Management</h1>
-            <p className="text-sm text-muted-foreground">{selectedRestaurant?.restaurant?.name}</p>
+            <Button 
+              onClick={handleCreateManually} 
+              size="sm"
+              className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/30 transition-all duration-300 hover:scale-[1.02]"
+              aria-label="Add new product manually"
+            >
+              <Plus className="h-4 w-4 md:mr-2" />
+              <span className="hidden sm:inline">Add Product</span>
+            </Button>
           </div>
         </div>
-      </header>
+        
+        <PageHeader
+          icon={Package}
+          iconVariant="emerald"
+          title="Inventory Management"
+          restaurantName={selectedRestaurant?.restaurant?.name}
+        />
+      </div>
 
       <div className="max-w-7xl mx-auto p-4 md:p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto">
-            <TabsTrigger value="scanner" className="flex-col py-2 px-1">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto" role="tablist">
+            <TabsTrigger value="scanner" className="flex-col py-2 px-1" aria-label="Scanner tab">
               <span className="text-xs md:text-sm">Scanner</span>
-              <span className="text-lg">{currentMode === 'scanner' ? '📱' : '📸'}</span>
+              <span className="text-lg" aria-hidden="true">{currentMode === 'scanner' ? '📱' : '📸'}</span>
             </TabsTrigger>
-            <TabsTrigger value="products" className="flex-col py-2 px-1">
+            <TabsTrigger value="products" className="flex-col py-2 px-1" aria-label={`Products tab, ${products.length} items`}>
               <span className="text-xs md:text-sm">Products</span>
               <span className="text-xs">({products.length})</span>
             </TabsTrigger>
-            <TabsTrigger value="low-stock" className="flex-col py-2 px-1">
+            <TabsTrigger value="low-stock" className="flex-col py-2 px-1" aria-label={`Low stock tab${lowStockProducts.length > 0 ? `, ${lowStockProducts.length} alerts` : ''}`}>
               <span className="text-xs md:text-sm">Low Stock</span>
               {lowStockProducts.length > 0 && (
                 <Badge variant="destructive" className="text-xs h-4 px-1">
@@ -782,42 +797,80 @@ export const Inventory: React.FC = () => {
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="reconciliation" className="flex-col py-2 px-1">
+            <TabsTrigger value="reconciliation" className="flex-col py-2 px-1" aria-label={`Reconciliation tab${activeSession ? ', session active' : ''}`}>
               <span className="text-xs md:text-sm">Reconcile</span>
               {activeSession && (
                 <Badge className="text-xs h-4 px-1 bg-blue-500">Active</Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="categories" className="flex-col py-2 px-1">
+            <TabsTrigger value="categories" className="flex-col py-2 px-1" aria-label="Settings tab">
               <span className="text-xs md:text-sm">Settings</span>
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="scanner" className="mt-4 md:mt-6">
             <div className="space-y-4 md:space-y-6">
-              {/* Scan Mode Toggle - Add vs Reconcile */}
-              <div className="flex justify-center">
-                <div className="bg-card border border-border p-1 rounded-lg w-full max-w-md">
-                  <div className="grid grid-cols-2 gap-1">
-                    <Button
-                      variant={scanMode === 'add' ? 'default' : 'ghost'}
-                      size="sm"
+              {/* Enhanced Scan Mode Toggle - Add vs Reconcile */}
+              <Card className="border-2 border-transparent bg-gradient-to-br from-background via-background to-primary/5 max-w-md mx-auto">
+                <CardContent className="pt-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
                       onClick={() => setScanMode('add')}
-                      className="flex-1"
+                      className={cn(
+                        'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
+                        'border-2 hover:scale-[1.02] hover:shadow-lg',
+                        scanMode === 'add'
+                          ? 'border-emerald-500 bg-gradient-to-br from-emerald-500/20 to-green-500/20 shadow-lg shadow-emerald-500/20'
+                          : 'border-border bg-card hover:border-emerald-500/50'
+                      )}
                     >
-                      ➕ Add Stock
-                    </Button>
-                    <Button
-                      variant={scanMode === 'reconcile' ? 'default' : 'ghost'}
-                      size="sm"
+                      <div className="flex flex-col items-center gap-2">
+                        <div className={cn(
+                          'rounded-lg p-2 transition-all duration-300',
+                          scanMode === 'add'
+                            ? 'bg-gradient-to-br from-emerald-500 to-green-500 shadow-lg shadow-emerald-500/30'
+                            : 'bg-muted group-hover:bg-gradient-to-br group-hover:from-emerald-500/20 group-hover:to-green-500/20'
+                        )}>
+                          <Plus className={cn('h-5 w-5 transition-colors', scanMode === 'add' ? 'text-white' : 'text-foreground')} />
+                        </div>
+                        <span className={cn(
+                          'text-sm font-medium transition-colors',
+                          scanMode === 'add' ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'
+                        )}>
+                          Add Stock
+                        </span>
+                      </div>
+                    </button>
+                    <button
                       onClick={() => setScanMode('reconcile')}
-                      className="flex-1"
+                      className={cn(
+                        'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
+                        'border-2 hover:scale-[1.02] hover:shadow-lg',
+                        scanMode === 'reconcile'
+                          ? 'border-blue-500 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 shadow-lg shadow-blue-500/20'
+                          : 'border-border bg-card hover:border-blue-500/50'
+                      )}
                     >
-                      ✓ Reconcile
-                    </Button>
+                      <div className="flex flex-col items-center gap-2">
+                        <div className={cn(
+                          'rounded-lg p-2 transition-all duration-300',
+                          scanMode === 'reconcile'
+                            ? 'bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg shadow-blue-500/30'
+                            : 'bg-muted group-hover:bg-gradient-to-br group-hover:from-blue-500/20 group-hover:to-cyan-500/20'
+                        )}>
+                          <Package className={cn('h-5 w-5 transition-colors', scanMode === 'reconcile' ? 'text-white' : 'text-foreground')} />
+                        </div>
+                        <span className={cn(
+                          'text-sm font-medium transition-colors',
+                          scanMode === 'reconcile' ? 'text-blue-700 dark:text-blue-300' : 'text-muted-foreground'
+                        )}>
+                          Reconcile
+                        </span>
+                      </div>
+                    </button>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
 
               {/* Scanner/Image Mode Toggle */}
               <div className="flex justify-center">
@@ -828,6 +881,8 @@ export const Inventory: React.FC = () => {
                       size="sm"
                       onClick={() => setCurrentMode('scanner')}
                       className="flex-1"
+                      aria-label="Switch to scanner mode"
+                      aria-pressed={currentMode === 'scanner'}
                     >
                       📱 Scanner
                     </Button>
@@ -836,6 +891,8 @@ export const Inventory: React.FC = () => {
                       size="sm"
                       onClick={() => setCurrentMode('image')}
                       className="flex-1"
+                      aria-label="Switch to image mode"
+                      aria-pressed={currentMode === 'image'}
                     >
                       📸 Image
                     </Button>
@@ -944,8 +1001,11 @@ export const Inventory: React.FC = () => {
                 <div className="flex justify-center">
                   <Card className="w-full max-w-md">
                     <CardContent className="py-8 text-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                      <p className="text-muted-foreground">Looking up product...</p>
+                      <div className="space-y-3" role="status" aria-live="polite">
+                        <Skeleton className="h-8 w-8 rounded-full mx-auto" />
+                        <Skeleton className="h-4 w-48 mx-auto" />
+                      </div>
+                      <p className="text-muted-foreground mt-4">Looking up product...</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -955,8 +1015,11 @@ export const Inventory: React.FC = () => {
                 <div className="flex justify-center">
                   <Card className="w-full max-w-md">
                     <CardContent className="py-8 text-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                      <p className="text-muted-foreground">Analyzing image...</p>
+                      <div className="space-y-3" role="status" aria-live="polite">
+                        <Skeleton className="h-8 w-8 rounded-full mx-auto" />
+                        <Skeleton className="h-4 w-48 mx-auto" />
+                      </div>
+                      <p className="text-muted-foreground mt-4">Analyzing image...</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -966,53 +1029,73 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="products" className="mt-6">
             <div className="space-y-6">
-              {/* Inventory Summary */}
+              {/* Inventory Summary Cards with Gradients */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
+                <Card className="border-2 border-transparent bg-gradient-to-br from-orange-500/10 via-background to-orange-600/5 hover:shadow-lg transition-all duration-300 hover:scale-[1.01]">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-lg">Total Inventory Cost</CardTitle>
-                    <CardDescription>Total value of all stock at cost price</CardDescription>
+                    <div className="flex items-center gap-3">
+                      <MetricIcon icon={Package} variant="amber" />
+                      <div>
+                        <CardTitle className="text-lg bg-gradient-to-r from-orange-600 to-orange-700 bg-clip-text text-transparent">
+                          Total Inventory Cost
+                        </CardTitle>
+                        <CardDescription>Total value of all stock at cost price</CardDescription>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-orange-600">
-                      {inventoryMetrics.loading ? (
-                        <div className="animate-pulse bg-muted h-8 w-24 rounded"></div>
-                      ) : (
-                        `$${inventoryMetrics.totalInventoryCost.toFixed(2)}`
-                      )}
-                    </div>
+                    {inventoryMetrics.loading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-10 w-32" />
+                      </div>
+                    ) : (
+                      <div className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-orange-700 bg-clip-text text-transparent">
+                        ${inventoryMetrics.totalInventoryCost.toFixed(2)}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-                <Card>
+                <Card className="border-2 border-transparent bg-gradient-to-br from-emerald-500/10 via-background to-green-600/5 hover:shadow-lg transition-all duration-300 hover:scale-[1.01]">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-lg">Total Inventory Value</CardTitle>
-                    <CardDescription>Potential revenue from all stock</CardDescription>
+                    <div className="flex items-center gap-3">
+                      <MetricIcon icon={Package} variant="emerald" />
+                      <div>
+                        <CardTitle className="text-lg bg-gradient-to-r from-emerald-600 to-green-700 bg-clip-text text-transparent">
+                          Total Inventory Value
+                        </CardTitle>
+                        <CardDescription>Potential revenue from all stock</CardDescription>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-green-600">
-                      {inventoryMetrics.loading ? (
-                        <div className="animate-pulse bg-muted h-8 w-24 rounded"></div>
-                      ) : (
-                        `$${inventoryMetrics.totalInventoryValue.toFixed(2)}`
-                      )}
-                    </div>
-                    {!inventoryMetrics.loading && (
-                      <div className="mt-3 space-y-1 text-sm text-muted-foreground">
-                        <div className="flex justify-between">
-                          <span>Recipe-based:</span>
-                          <span>{inventoryMetrics.calculationSummary.recipeBasedCount} products</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Estimated:</span>
-                          <span>{inventoryMetrics.calculationSummary.estimatedCount} products</span>
-                        </div>
-                        {inventoryMetrics.calculationSummary.mixedCount > 0 && (
-                          <div className="flex justify-between">
-                            <span>Mixed:</span>
-                            <span>{inventoryMetrics.calculationSummary.mixedCount} products</span>
-                          </div>
-                        )}
+                    {inventoryMetrics.loading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-10 w-32" />
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-4 w-48" />
                       </div>
+                    ) : (
+                      <>
+                        <div className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-green-700 bg-clip-text text-transparent">
+                          ${inventoryMetrics.totalInventoryValue.toFixed(2)}
+                        </div>
+                        <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                          <div className="flex justify-between">
+                            <span>Recipe-based:</span>
+                            <span className="font-medium">{inventoryMetrics.calculationSummary.recipeBasedCount} products</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Estimated:</span>
+                            <span className="font-medium">{inventoryMetrics.calculationSummary.estimatedCount} products</span>
+                          </div>
+                          {inventoryMetrics.calculationSummary.mixedCount > 0 && (
+                            <div className="flex justify-between">
+                              <span>Mixed:</span>
+                              <span className="font-medium">{inventoryMetrics.calculationSummary.mixedCount} products</span>
+                            </div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </CardContent>
                 </Card>
@@ -1026,14 +1109,25 @@ export const Inventory: React.FC = () => {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
+                    aria-label="Search products by name, SKU, brand, or category"
                   />
                 </div>
               </div>
 
               {loading ? (
-                <div className="text-center py-8">
-                  <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">Loading products...</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" role="status" aria-live="polite">
+                  {[...Array(6)].map((_, i) => (
+                    <Card key={i}>
+                      <CardHeader>
+                        <Skeleton className="h-6 w-3/4 mb-2" />
+                        <Skeleton className="h-4 w-1/2" />
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-2/3" />
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               ) : filteredProducts.length === 0 ? (
                 <div className="text-center py-8">
@@ -1164,13 +1258,13 @@ export const Inventory: React.FC = () => {
                                    ? 'text-destructive' 
                                    : 'text-foreground'
                                }`}>
-                                 <span>{product.current_stock || 0} {product.uom_purchase || 'units'}</span>
+                                 <span>{Number(product.current_stock || 0).toFixed(2)} {product.uom_purchase || 'units'}</span>
                                </div>
                              </div>
                            {product.cost_per_unit && (
                              <div className="flex justify-between items-center">
                                <span className="text-sm">Unit Cost:</span>
-                               <span className="font-medium">${product.cost_per_unit}</span>
+                               <span className="font-medium">${Number(product.cost_per_unit).toFixed(2)}</span>
                              </div>
                            )}
                            {inventoryMetrics.productMetrics[product.id] && (
@@ -1214,18 +1308,35 @@ export const Inventory: React.FC = () => {
 
           <TabsContent value="low-stock" className="mt-6">
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-destructive" />
-                  <h2 className="text-xl font-semibold">Low Stock Alert</h2>
-                </div>
-                {lowStockProducts.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={exportLowStockCSV}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Export List
-                  </Button>
-                )}
-              </div>
+                <Card className="border-2 border-transparent bg-gradient-to-br from-red-500/10 via-background to-orange-500/5">
+                <CardContent className="py-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <MetricIcon icon={AlertTriangle} variant="red" className="animate-pulse" />
+                      <div>
+                        <h2 className="text-xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
+                          Low Stock Alert
+                        </h2>
+                        <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+                          {lowStockProducts.length} {lowStockProducts.length === 1 ? 'item needs' : 'items need'} attention
+                        </p>
+                      </div>
+                    </div>
+                    {lowStockProducts.length > 0 && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={exportLowStockCSV}
+                        className="border-red-500/30 text-red-600 hover:bg-red-500/10 hover:border-red-500 transition-all duration-300"
+                        aria-label="Export low stock list to CSV"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Export List
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
 
               {lowStockProducts.length === 0 ? (
                 <Card>
@@ -1262,24 +1373,24 @@ export const Inventory: React.FC = () => {
                        </CardHeader>
                        <CardContent>
                          <div className="space-y-2">
-                             <div className="flex justify-between items-center">
-                               <span className="text-sm">Current Stock:</span>
-                               <div className="font-medium text-destructive text-right">
-                                 <span>{product.current_stock || 0} {product.uom_purchase || 'units'}</span>
-                               </div>
-                             </div>
-                           <div className="flex justify-between items-center">
-                             <span className="text-sm">Reorder Point:</span>
-                             <span className="font-medium">
-                               {product.reorder_point || 0} {product.size_unit || 'units'}
-                             </span>
-                           </div>
-                           {product.cost_per_unit && (
-                             <div className="flex justify-between items-center">
-                               <span className="text-sm">Unit Cost:</span>
-                               <span className="font-medium">${product.cost_per_unit}</span>
-                             </div>
-                           )}
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm">Current Stock:</span>
+                                <div className="font-medium text-destructive text-right">
+                                  <span>{Number(product.current_stock || 0).toFixed(2)} {product.uom_purchase || 'units'}</span>
+                                </div>
+                              </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm">Reorder Point:</span>
+                              <span className="font-medium">
+                                {Number(product.reorder_point || 0).toFixed(2)} {product.size_unit || 'units'}
+                              </span>
+                            </div>
+                            {product.cost_per_unit && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm">Unit Cost:</span>
+                                <span className="font-medium">${Number(product.cost_per_unit).toFixed(2)}</span>
+                              </div>
+                            )}
                            {inventoryMetrics.productMetrics[product.id] && (
                              <>
                                <div className="flex justify-between items-center">

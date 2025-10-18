@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MetricIcon } from '@/components/MetricIcon';
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -12,7 +14,8 @@ import {
   Info,
   Minus,
   Download,
-  Calendar
+  Calendar,
+  BarChart3
 } from 'lucide-react';
 import { usePnLAnalytics } from '@/hooks/usePnLAnalytics';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -281,10 +284,14 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
     return (
       <Card>
         <CardContent className="py-12">
-          <div className="text-center">
-            <div className="animate-pulse space-y-4">
-              <div className="h-8 bg-muted rounded w-1/4 mx-auto" />
-              <div className="h-4 bg-muted rounded w-1/2 mx-auto" />
+          <div className="space-y-4" role="status" aria-live="polite">
+            <Skeleton className="h-8 w-1/4 mx-auto" />
+            <Skeleton className="h-4 w-1/2 mx-auto" />
+            <div className="space-y-2 mt-6">
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
             </div>
           </div>
         </CardContent>
@@ -305,107 +312,243 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Detailed P&L Breakdown
-            </CardTitle>
-            <CardDescription>
-              Last {days} days • Inline insights & benchmarks
-            </CardDescription>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <MetricIcon icon={BarChart3} variant="blue" />
+            <div>
+              <CardTitle className="text-lg md:text-xl">
+                Detailed P&L Breakdown
+              </CardTitle>
+              <CardDescription className="text-sm">
+                Last {days} days • Inline insights & benchmarks
+              </CardDescription>
+            </div>
           </div>
-          <Button onClick={exportToExcel} variant="outline" size="sm">
+          <Button onClick={exportToExcel} variant="outline" size="sm" aria-label="Export P&L breakdown to CSV" className="w-full sm:w-auto">
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-1">
-          {/* Header Row */}
-          <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs font-medium text-muted-foreground border-b">
-            <div className="col-span-4">Category</div>
-            <div className="col-span-2 text-right">Amount</div>
-            <div className="col-span-1 text-right">% Sales</div>
-            <div className="col-span-1 text-center">vs Prev</div>
-            <div className="col-span-1 text-center">Target</div>
-            <div className="col-span-2 text-center">Trend</div>
-            <div className="col-span-1 text-center">Status</div>
+        <div className="space-y-3">
+          {/* Desktop Table View - Hidden on Mobile */}
+          <div className="hidden lg:block">
+            <div className="space-y-1">
+              {/* Header Row */}
+              <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs font-medium text-muted-foreground border-b">
+                <div className="col-span-4">Category</div>
+                <div className="col-span-2 text-right">Amount</div>
+                <div className="col-span-1 text-right">%</div>
+                <div className="col-span-1 text-center">vs Prev</div>
+                <div className="col-span-1 text-center">Target</div>
+                <div className="col-span-2 text-center">Trend</div>
+                <div className="col-span-1 text-center">Status</div>
+              </div>
+
+              {/* Data Rows */}
+              <TooltipProvider>
+                {pnlStructure.map((row) => (
+                  <div
+                    key={row.id}
+                    className={cn(
+                      "grid grid-cols-12 gap-2 px-4 py-3 rounded-lg transition-colors hover:bg-muted/50",
+                      row.type === 'header' && "bg-muted/30 font-semibold",
+                      row.type === 'total' && "bg-primary/5 font-bold border-t-2 border-b-2",
+                      row.type === 'subtotal' && "font-medium bg-muted/10"
+                    )}
+                  >
+                    <div 
+                      className="col-span-4 flex items-center gap-2"
+                      style={{ paddingLeft: `${row.level * 16}px` }}
+                    >
+                      {row.children && row.children.length > 0 && (
+                        <button
+                          onClick={() => toggleSection(row.id)}
+                          className="p-0.5 hover:bg-muted rounded"
+                          aria-label={`Toggle ${row.label} section`}
+                        >
+                          {expandedSections.has(row.id) ? (
+                            <ChevronDown className="h-3 w-3" />
+                          ) : (
+                            <ChevronRight className="h-3 w-3" />
+                          )}
+                        </button>
+                      )}
+                      <span className="text-sm">{row.label}</span>
+                    </div>
+
+                    <div className="col-span-2 text-right text-sm font-mono">
+                      ${row.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+
+                    <div className="col-span-1 text-right text-sm font-mono">
+                      {row.percentage.toFixed(1)}%
+                    </div>
+
+                    <div className="col-span-1 flex items-center justify-center gap-1">
+                      {row.previousValue && (
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <div className="flex items-center gap-1">
+                              {getTrendIcon(row.value, row.previousValue)}
+                              <span className={cn(
+                                "text-xs font-medium",
+                                row.value > row.previousValue ? "text-green-600" : "text-red-600"
+                              )}>
+                                {Math.abs(((row.value - row.previousValue) / row.previousValue) * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <div className="text-xs">
+                              <div>Previous: ${row.previousValue.toFixed(2)}</div>
+                              <div>Change: ${(row.value - row.previousValue).toFixed(2)}</div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+
+                    <div className="col-span-1 text-center">
+                      {row.benchmark && (
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Badge 
+                              variant={
+                                row.status === 'good' ? 'default' : 
+                                row.status === 'warning' ? 'secondary' : 
+                                row.status === 'critical' ? 'destructive' : 
+                                'outline'
+                              }
+                              className="text-xs"
+                            >
+                              {row.benchmark.toFixed(0)}%
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <div className="text-xs">
+                              <div>Industry Target: {row.benchmark.toFixed(1)}%</div>
+                              <div>Your: {row.percentage.toFixed(1)}%</div>
+                              <div className={cn(
+                                "font-medium",
+                                row.percentage < row.benchmark ? "text-green-500" : "text-red-500"
+                              )}>
+                                {row.percentage < row.benchmark ? '✓ Below target' : '✗ Above target'}
+                              </div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+
+                    <div className="col-span-2 flex items-center justify-center">
+                      {row.trend && row.trend.length > 0 && (
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <MiniSparkline data={row.trend} />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <div className="text-xs">7-day trend</div>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+
+                    <div className="col-span-1 flex items-center justify-center">
+                      <Tooltip>
+                        <TooltipTrigger>
+                          {getStatusIcon(row.status)}
+                        </TooltipTrigger>
+                        {row.insight && (
+                          <TooltipContent className="max-w-xs">
+                            <p className="text-xs">{row.insight}</p>
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </div>
+                  </div>
+                ))}
+              </TooltipProvider>
+            </div>
           </div>
 
-          {/* Data Rows */}
-          <TooltipProvider>
+          {/* Mobile Card View - Hidden on Desktop */}
+          <div className="lg:hidden space-y-3">
             {pnlStructure.map((row) => (
-              <div
-                key={row.id}
+              <Card 
+                key={row.id} 
                 className={cn(
-                  "grid grid-cols-12 gap-2 px-4 py-3 rounded-lg transition-colors hover:bg-muted/50",
-                  row.type === 'header' && "bg-muted/30 font-semibold",
-                  row.type === 'total' && "bg-primary/5 font-bold border-t-2 border-b-2",
-                  row.type === 'subtotal' && "font-medium bg-muted/10"
+                  "transition-all duration-200",
+                  row.type === 'header' && "border-l-4 border-l-blue-500",
+                  row.type === 'total' && "border-l-4 border-l-primary bg-primary/5",
+                  row.type === 'subtotal' && "border-l-4 border-l-muted-foreground/50"
                 )}
               >
-                {/* Category Name */}
-                <div 
-                  className="col-span-4 flex items-center gap-2"
-                  style={{ paddingLeft: `${row.level * 16}px` }}
-                >
-                  {row.children && row.children.length > 0 && (
-                    <button
-                      onClick={() => toggleSection(row.id)}
-                      className="p-0.5 hover:bg-muted rounded"
-                    >
-                      {expandedSections.has(row.id) ? (
-                        <ChevronDown className="h-3 w-3" />
-                      ) : (
-                        <ChevronRight className="h-3 w-3" />
+                <CardContent className="p-4 space-y-3">
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      {row.children && row.children.length > 0 && (
+                        <button
+                          onClick={() => toggleSection(row.id)}
+                          className="p-1 hover:bg-muted rounded flex-shrink-0"
+                          aria-label={`Toggle ${row.label} section`}
+                        >
+                          {expandedSections.has(row.id) ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
                       )}
-                    </button>
-                  )}
-                  <span className="text-sm">{row.label}</span>
-                </div>
+                      <h3 className={cn(
+                        "text-sm",
+                        row.type === 'header' && "font-semibold",
+                        row.type === 'total' && "font-bold"
+                      )}>
+                        {row.label}
+                      </h3>
+                    </div>
+                    {getStatusIcon(row.status)}
+                  </div>
 
-                {/* Amount */}
-                <div className="col-span-2 text-right text-sm font-mono">
-                  ${row.value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </div>
+                  {/* Main Metrics */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Amount</p>
+                      <p className="text-lg font-bold font-mono">
+                        ${row.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">% of Sales</p>
+                      <p className="text-lg font-bold font-mono">
+                        {row.percentage.toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
 
-                {/* Percentage */}
-                <div className="col-span-1 text-right text-sm font-mono">
-                  {row.percentage.toFixed(1)}%
-                </div>
+                  {/* Secondary Metrics Row */}
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    {/* vs Previous */}
+                    {row.previousValue && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">vs Prev:</span>
+                        {getTrendIcon(row.value, row.previousValue)}
+                        <span className={cn(
+                          "text-xs font-medium",
+                          row.value > row.previousValue ? "text-green-600" : "text-red-600"
+                        )}>
+                          {Math.abs(((row.value - row.previousValue) / row.previousValue) * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    )}
 
-                {/* vs Previous */}
-                <div className="col-span-1 flex items-center justify-center gap-1">
-                  {row.previousValue && (
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <div className="flex items-center gap-1">
-                          {getTrendIcon(row.value, row.previousValue)}
-                          <span className={cn(
-                            "text-xs font-medium",
-                            row.value > row.previousValue ? "text-green-600" : "text-red-600"
-                          )}>
-                            {Math.abs(((row.value - row.previousValue) / row.previousValue) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <div className="text-xs">
-                          <div>Previous: ${row.previousValue.toFixed(0)}</div>
-                          <div>Change: ${(row.value - row.previousValue).toFixed(0)}</div>
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-
-                {/* Benchmark/Target */}
-                <div className="col-span-1 text-center">
-                  {row.benchmark && (
-                    <Tooltip>
-                      <TooltipTrigger>
+                    {/* Benchmark */}
+                    {row.benchmark && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">Target:</span>
                         <Badge 
                           variant={
                             row.status === 'good' ? 'default' : 
@@ -417,75 +560,53 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
                         >
                           {row.benchmark.toFixed(0)}%
                         </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <div className="text-xs">
-                          <div>Industry Target: {row.benchmark.toFixed(1)}%</div>
-                          <div>Your: {row.percentage.toFixed(1)}%</div>
-                          <div className={cn(
-                            "font-medium",
-                            row.percentage < row.benchmark ? "text-green-500" : "text-red-500"
-                          )}>
-                            {row.percentage < row.benchmark ? '✓ Below target' : '✗ Above target'}
-                          </div>
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
+                      </div>
+                    )}
 
-                {/* Mini Trend Sparkline */}
-                <div className="col-span-2 flex items-center justify-center">
-                  {row.trend && row.trend.length > 0 && (
-                    <Tooltip>
-                      <TooltipTrigger>
+                    {/* Trend Sparkline */}
+                    {row.trend && row.trend.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Trend:</span>
                         <MiniSparkline data={row.trend} />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <div className="text-xs">
-                          7-day trend
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
+                      </div>
+                    )}
+                  </div>
 
-                {/* Status Icon with Insight */}
-                <div className="col-span-1 flex items-center justify-center">
+                  {/* Insight */}
                   {row.insight && (
-                    <Tooltip>
-                      <TooltipTrigger>
-                        {getStatusIcon(row.status)}
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        <p className="text-xs font-medium">{row.insight}</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    <div className="pt-2 border-t">
+                      <div className="flex gap-2">
+                        <Info className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {row.insight}
+                        </p>
+                      </div>
+                    </div>
                   )}
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             ))}
-          </TooltipProvider>
-        </div>
+          </div>
 
-        {/* Legend */}
-        <div className="mt-6 pt-4 border-t">
-          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <CheckCircle className="h-3 w-3 text-green-500" />
-              <span>On target or better</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <AlertCircle className="h-3 w-3 text-orange-500" />
-              <span>Needs attention</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <AlertCircle className="h-3 w-3 text-red-500" />
-              <span>Critical - immediate action</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Info className="h-3 w-3 text-blue-500" />
-              <span>Hover for detailed insights</span>
+          {/* Legend */}
+          <div className="mt-6 pt-4 border-t">
+            <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <CheckCircle className="h-3 w-3 text-green-500" />
+                <span>On target or better</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 text-orange-500" />
+                <span>Needs attention</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 text-red-500" />
+                <span>Critical - immediate action</span>
+              </div>
+              <div className="flex items-center gap-1 hidden lg:flex">
+                <Info className="h-3 w-3 text-blue-500" />
+                <span>Hover for detailed insights</span>
+              </div>
             </div>
           </div>
         </div>

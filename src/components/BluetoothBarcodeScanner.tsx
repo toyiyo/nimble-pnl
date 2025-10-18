@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Bluetooth, BluetoothConnected, BluetoothSearching, Battery, Loader2, AlertCircle, Settings, Zap, X } from 'lucide-react';
+import { Bluetooth, BluetoothConnected, BluetoothSearching, Battery, Loader2, AlertCircle, Settings, Zap, X, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 import { useNativeBluetooth } from '@/hooks/useNativeBluetooth';
@@ -280,35 +280,55 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
   }
 
   return (
-    <Card className={cn("w-full", className)}>
+    <Card className={cn(
+      "w-full border-2 transition-all duration-300",
+      (state.isConnected || nativeBluetooth.isConnected)
+        ? "border-transparent bg-gradient-to-br from-emerald-500/10 via-background to-green-500/10 shadow-lg shadow-emerald-500/10"
+        : "border-border"
+    )}>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {(state.isConnected || nativeBluetooth.isConnected) ? (
-              <BluetoothConnected className="h-5 w-5 text-blue-500" />
-            ) : (state.isConnecting || nativeBluetooth.isScanning) ? (
-              <BluetoothSearching className="h-5 w-5 text-blue-500 animate-pulse" />
-            ) : (
-              <Bluetooth className="h-5 w-5 text-gray-500" />
-            )}
-            Bluetooth Scanner
+            <div className={cn(
+              'rounded-lg p-2 transition-all duration-300',
+              (state.isConnected || nativeBluetooth.isConnected)
+                ? 'bg-gradient-to-br from-green-500 to-emerald-500 shadow-lg shadow-emerald-500/30'
+                : (state.isConnecting || nativeBluetooth.isScanning)
+                ? 'bg-gradient-to-br from-blue-500/20 to-blue-600/20 animate-pulse'
+                : 'bg-muted'
+            )}>
+              {(state.isConnected || nativeBluetooth.isConnected) ? (
+                <BluetoothConnected className="h-5 w-5 text-white" />
+              ) : (state.isConnecting || nativeBluetooth.isScanning) ? (
+                <BluetoothSearching className="h-5 w-5 text-blue-500" />
+              ) : (
+                <Bluetooth className="h-5 w-5 text-foreground" />
+              )}
+            </div>
+            <span>Bluetooth Scanner</span>
             {isNativePlatform && <Badge variant="secondary" className="text-xs">Native</Badge>}
           </div>
           <div className="flex items-center gap-2">
             {state.batteryLevel !== null && (
-              <Badge variant="outline" className="flex items-center gap-1">
+              <Badge variant="outline" className="flex items-center gap-1 bg-gradient-to-r from-emerald-500/10 to-green-500/10 border-emerald-500/30">
                 <Battery className="h-3 w-3" />
-                {state.batteryLevel}%
+                <span className="font-semibold">{state.batteryLevel}%</span>
               </Badge>
             )}
             {(state.isConnected || nativeBluetooth.isConnected) && (
-              <Badge variant="default" className="bg-green-500">
+              <Badge className="bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/30 animate-pulse">
                 Connected
               </Badge>
             )}
           </div>
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="flex items-center gap-2">
+          {(state.isConnected || nativeBluetooth.isConnected) && (
+            <span className="flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+          )}
           {state.debugInfo}
         </CardDescription>
       </CardHeader>
@@ -362,43 +382,62 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
           </div>
         )}
         
-        {/* Connection area */}
-        <div className="min-h-[200px] border-2 border-dashed rounded-lg flex items-center justify-center relative">
+        {/* Enhanced Connection area */}
+        <div className={cn(
+          "min-h-[200px] border-2 rounded-xl flex items-center justify-center relative overflow-hidden transition-all duration-500",
+          (state.isConnected || nativeBluetooth.isConnected)
+            ? "border-emerald-500 bg-gradient-to-br from-emerald-500/5 to-green-500/5"
+            : "border-dashed border-border"
+        )}>
           {(state.isConnected || nativeBluetooth.isConnected) ? (
-            <div className="text-center space-y-4">
-              <div className="text-6xl">📱</div>
-              <div className="text-lg font-medium text-green-600">
-                Scanner Ready
+            <div className="text-center space-y-4 animate-in fade-in duration-500">
+              <div className="relative">
+                <div className="text-6xl animate-bounce">📱</div>
+                <div className="absolute -top-1 -right-1">
+                  <div className="h-3 w-3 bg-emerald-500 rounded-full animate-ping" />
+                  <div className="absolute top-0 right-0 h-3 w-3 bg-emerald-500 rounded-full" />
+                </div>
               </div>
-              <div className="text-sm text-muted-foreground">
-                Use your scanner to scan barcodes
+              <div className="space-y-2">
+                <div className="text-lg font-semibold bg-gradient-to-r from-emerald-600 to-green-600 bg-clip-text text-transparent">
+                  Scanner Ready
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Use your scanner to scan barcodes
+                </div>
               </div>
               {state.scanCooldown && (
-                <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-sm">
-                  Scanned! ✓
+                <div className="absolute top-3 left-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg shadow-emerald-500/30 animate-in zoom-in duration-300 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Scanned!
                 </div>
               )}
             </div>
           ) : (
             <div className="text-center space-y-4">
-              <div className="text-6xl opacity-50">🔍</div>
-              <div className="text-lg font-medium text-muted-foreground">
-                {state.isConnecting ? 'Connecting...' : 'Not Connected'}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Click connect to pair with your Bluetooth scanner
+              <div className="text-6xl opacity-50 grayscale">🔍</div>
+              <div className="space-y-2">
+                <div className="text-lg font-medium text-muted-foreground">
+                  {state.isConnecting ? 'Connecting...' : 'Not Connected'}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Click connect to pair with your Bluetooth scanner
+                </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Control buttons */}
+        {/* Enhanced Control buttons */}
         <div className="flex gap-2">
           {!(state.isConnected || nativeBluetooth.isConnected) ? (
             <Button
               onClick={connectToScanner}
               disabled={state.isConnecting}
-              className="flex-1"
+              className={cn(
+                "flex-1 transition-all duration-300 hover:scale-[1.02]",
+                !state.isConnecting && "bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 shadow-lg shadow-emerald-500/30"
+              )}
             >
               {state.isConnecting ? (
                 <>
@@ -416,7 +455,7 @@ export const BluetoothBarcodeScanner: React.FC<BluetoothBarcodeScannerProps> = (
             <Button
               onClick={disconnectScanner}
               variant="outline"
-              className="flex-1"
+              className="flex-1 border-red-500/50 text-red-600 hover:bg-red-500/10 hover:border-red-500 transition-all duration-300"
             >
               <X className="h-4 w-4 mr-2" />
               Disconnect

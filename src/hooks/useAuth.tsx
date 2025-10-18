@@ -9,6 +9,8 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ error: any }>;
+  updatePassword: (newPassword: string) => Promise<{ error: any }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -120,17 +122,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     try {
       setLoading(true);
-      // Try to sign out from Supabase
-      await supabase.auth.signOut();
-    } catch (error: any) {
-      // If session doesn't exist (user was deleted), that's fine
-      // We still want to clear the local state
-      console.log('Sign out error (clearing local state anyway):', error?.message);
-    } finally {
-      // Always clear local auth state regardless of server response
+      
+      // Clear local state first
       setSession(null);
       setUser(null);
-      setLoading(false);
+      
+      // Manually clear all Supabase localStorage keys
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('sb-')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
+      // Try to sign out from Supabase (may fail with 403 but that's ok)
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch (e) {
+        console.log('Supabase signOut failed (continuing anyway):', e);
+      }
+      
+      // Navigate to auth page
+      window.location.href = '/auth';
+    } catch (error: any) {
+      console.error('Sign out exception:', error);
+      // Even on error, clear state and redirect
+      setSession(null);
+      setUser(null);
+      window.location.href = '/auth';
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      const redirectUrl = `${window.location.origin}/reset-password`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectUrl,
+      });
+      return { error };
+    } catch (error) {
+      console.error('Password reset error:', error);
+      return { error };
+    }
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      return { error };
+    } catch (error) {
+      console.error('Password update error:', error);
+      return { error };
     }
   };
 
@@ -141,6 +187,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn,
     signUp,
     signOut,
+    resetPassword,
+    updatePassword,
   };
 
   // Show loading state until auth is properly initialized

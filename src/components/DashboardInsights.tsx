@@ -66,11 +66,28 @@ export function DashboardInsights({ insights }: DashboardInsightsProps) {
     return null;
   }
 
+  const getGradientBorder = (type: Insight['type']) => {
+    switch (type) {
+      case 'critical':
+        return 'border-l-red-500 dark:border-l-red-400';
+      case 'warning':
+        return 'border-l-yellow-500 dark:border-l-yellow-400';
+      case 'success':
+        return 'border-l-green-500 dark:border-l-green-400';
+      case 'tip':
+        return 'border-l-blue-500 dark:border-l-blue-400';
+      default:
+        return 'border-l-primary';
+    }
+  };
+
   return (
-    <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-background">
+    <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-accent/5 animate-fade-in">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Lightbulb className="h-5 w-5 text-primary" />
+          <div className="rounded-lg p-2 bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/30">
+            <Lightbulb className="h-5 w-5 text-white" />
+          </div>
           AI-Powered Insights
         </CardTitle>
         <CardDescription>
@@ -79,19 +96,24 @@ export function DashboardInsights({ insights }: DashboardInsightsProps) {
       </CardHeader>
       <CardContent className="space-y-3">
         {insights.map((insight, index) => (
-          <Alert key={index} variant={getInsightVariant(insight.type)} className="border-l-4">
+          <Alert 
+            key={index} 
+            variant={getInsightVariant(insight.type)} 
+            className={`border-l-4 transition-all duration-300 hover:shadow-md animate-fade-in ${getGradientBorder(insight.type)}`}
+            style={{ animationDelay: `${index * 100}ms` }}
+          >
             <div className="flex items-start gap-3">
-              <div className={getInsightColor(insight.type)}>
+              <div className={`p-2 rounded-lg bg-gradient-to-br from-background to-muted/50 ${getInsightColor(insight.type)}`}>
                 {getInsightIcon(insight.type)}
               </div>
               <div className="flex-1 space-y-1">
                 <div className="font-semibold text-sm flex items-center gap-2">
                   {insight.title}
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="outline" className="text-xs font-medium">
                     {insight.type.toUpperCase()}
                   </Badge>
                 </div>
-                <AlertDescription className="text-xs">
+                <AlertDescription className="text-xs leading-relaxed">
                   {insight.description}
                 </AlertDescription>
               </div>

@@ -6,6 +6,21 @@ A modern web application for managing restaurant profit and loss calculations wi
 
 Nimble PnL is a comprehensive solution that helps restaurants track and analyze their profit and loss data. It integrates with Square for real-time data synchronization and provides AI-powered insights for better business decisions.
 
+## 📚 Documentation
+
+- **[Architecture & Technical Guidelines](ARCHITECTURE.md)** - Detailed technical documentation, design patterns, and best practices
+- **[GitHub Copilot Instructions](.github/copilot-instructions.md)** - Guidelines for AI coding assistants
+
+### Key Technical Principles
+
+**Data Freshness First**: This is a real-time system where stale data causes operational issues. We use React Query with short cache times (30-60s) and NO manual caching (localStorage, etc.).
+
+**Design System**: All styling uses semantic tokens from `index.css` - no direct colors like `bg-white` or `text-black`. Components follow consistent gradient patterns and animations.
+
+**Accessibility**: WCAG 2.1 AA compliance with keyboard navigation, ARIA labels, focus management, and screen reader support throughout.
+
+**Security**: Row Level Security (RLS) enforced at the database level. Client-side checks are for UX only, never for authorization.
+
 ## Architecture
 
 ### Frontend

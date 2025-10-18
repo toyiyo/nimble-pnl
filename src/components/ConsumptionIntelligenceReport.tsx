@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MetricIcon } from '@/components/MetricIcon';
 import { useConsumptionIntelligence } from '@/hooks/useConsumptionIntelligence';
 import {
   TrendingUp, TrendingDown, Minus, Download, AlertCircle,
@@ -55,7 +57,15 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
     return (
       <Card>
         <CardContent className="py-8">
-          <div className="text-center text-muted-foreground">Loading consumption intelligence...</div>
+          <div className="space-y-4" role="status" aria-live="polite">
+            <Skeleton className="h-12 w-3/4 mx-auto" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+            </div>
+          </div>
         </CardContent>
       </Card>
     );
@@ -101,16 +111,18 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <CardTitle className="text-2xl flex items-center gap-2">
-                <Activity className="h-6 w-6" />
-                Consumption Intelligence Report
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                Advanced analytics for ingredient usage optimization
-              </p>
+            <div className="flex items-center gap-3">
+              <MetricIcon icon={Activity} variant="blue" />
+              <div>
+                <CardTitle className="text-2xl">
+                  Consumption Intelligence Report
+                </CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Advanced analytics for ingredient usage optimization
+                </p>
+              </div>
             </div>
-            <Button onClick={exportToCSV} variant="outline" size="sm">
+            <Button onClick={exportToCSV} variant="outline" size="sm" aria-label="Export consumption data to CSV">
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
@@ -163,7 +175,7 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Target className="h-4 w-4" />
+              <MetricIcon icon={Target} variant="blue" className="p-2" />
               Total Cost (30d)
             </CardTitle>
           </CardHeader>
@@ -178,7 +190,7 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" />
+              <MetricIcon icon={AlertTriangle} variant="red" className="p-2" />
               Waste Level
             </CardTitle>
           </CardHeader>
@@ -195,7 +207,7 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Zap className="h-4 w-4" />
+              <MetricIcon icon={Zap} variant="amber" className="p-2" />
               Efficiency Score
             </CardTitle>
           </CardHeader>
@@ -212,7 +224,7 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Award className="h-4 w-4" />
+              <MetricIcon icon={Award} variant="purple" className="p-2" />
               Items Tracked
             </CardTitle>
           </CardHeader>
@@ -227,13 +239,13 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
 
       {/* Detailed Analysis Tabs */}
       <Tabs defaultValue="trends" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
-          <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="patterns">Patterns</TabsTrigger>
-          <TabsTrigger value="efficiency">Efficiency</TabsTrigger>
-          <TabsTrigger value="seasonal">Seasonal</TabsTrigger>
-          <TabsTrigger value="benchmarks">Benchmarks</TabsTrigger>
-          <TabsTrigger value="forecast">Forecast</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6" role="tablist">
+          <TabsTrigger value="trends" aria-label="Consumption trends">Trends</TabsTrigger>
+          <TabsTrigger value="patterns" aria-label="Usage patterns">Patterns</TabsTrigger>
+          <TabsTrigger value="efficiency" aria-label="Efficiency scores">Efficiency</TabsTrigger>
+          <TabsTrigger value="seasonal" aria-label="Seasonal analysis">Seasonal</TabsTrigger>
+          <TabsTrigger value="benchmarks" aria-label="Industry benchmarks">Benchmarks</TabsTrigger>
+          <TabsTrigger value="forecast" aria-label="Usage forecast">Forecast</TabsTrigger>
         </TabsList>
 
         {/* Trends Tab */}

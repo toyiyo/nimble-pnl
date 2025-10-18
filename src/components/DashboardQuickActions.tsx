@@ -70,26 +70,34 @@ export function DashboardQuickActions({ restaurantId }: DashboardQuickActionsPro
   ];
 
   return (
-    <Card>
+    <Card className="bg-gradient-to-br from-card via-background to-muted/20">
       <CardHeader>
-        <CardTitle>Quick Actions</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <div className="h-1 w-8 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
+          Quick Actions
+        </CardTitle>
         <CardDescription>Common tasks and shortcuts</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {actions.map((action) => (
-            <Button
+          {actions.map((action, index) => (
+            <button
               key={action.title}
-              variant="outline"
-              className="h-auto flex-col items-start gap-2 p-4 hover:bg-accent"
               onClick={action.onClick}
+              className="group relative h-auto flex flex-col items-start gap-3 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-300 hover:shadow-lg hover:scale-105 hover:-translate-y-1 text-left overflow-hidden"
+              style={{ animationDelay: `${index * 50}ms` }}
             >
-              <action.icon className={`h-5 w-5 ${action.color}`} />
-              <div className="text-left">
-                <div className="font-semibold text-sm">{action.title}</div>
-                <div className="text-xs text-muted-foreground">{action.description}</div>
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative z-10 flex items-center justify-between w-full">
+                <div className="rounded-lg p-2 bg-gradient-to-br from-background to-muted/50 shadow-sm group-hover:shadow-md transition-shadow">
+                  <action.icon className={`h-5 w-5 ${action.color}`} />
+                </div>
               </div>
-            </Button>
+              <div className="relative z-10 space-y-1">
+                <div className="font-semibold text-sm">{action.title}</div>
+                <div className="text-xs text-muted-foreground line-clamp-2">{action.description}</div>
+              </div>
+            </button>
           ))}
         </div>
       </CardContent>

@@ -95,10 +95,12 @@ export function AutoDeductionSettings() {
   };
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="border-border/50 bg-gradient-to-br from-background via-accent/5 to-background shadow-sm">
+      <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50">
         <CardTitle className="flex items-center gap-2">
-          <Settings className="w-5 h-5" />
+          <div className="p-2 rounded-lg bg-gradient-to-br from-primary/10 to-transparent">
+            <Settings className="w-5 h-5 text-primary" />
+          </div>
           Automatic Inventory Deduction
         </CardTitle>
         <CardDescription>
@@ -107,9 +109,14 @@ export function AutoDeductionSettings() {
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Auto Deduction Toggle */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between p-4 bg-gradient-to-br from-accent/10 to-transparent rounded-lg border border-border/50">
           <div className="space-y-1">
-            <div className="font-medium">Enable Auto Deduction</div>
+            <div className="font-medium flex items-center gap-2">
+              Enable Auto Deduction
+              {autoDeductionEnabled && (
+                <Badge variant="default" className="text-xs">Active</Badge>
+              )}
+            </div>
             <div className="text-sm text-muted-foreground">
               Automatically deduct inventory when new POS sales are synced
             </div>
@@ -123,8 +130,10 @@ export function AutoDeductionSettings() {
 
         {/* Status Indicators */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="flex items-center gap-3 p-3 border rounded-lg">
-            <Zap className="w-4 h-4 text-green-500" />
+          <div className="flex items-center gap-3 p-3 border rounded-lg hover:border-primary/50 transition-all bg-gradient-to-br from-green-500/5 to-transparent">
+            <div className="p-2 rounded-lg bg-green-500/10">
+              <Zap className="w-4 h-4 text-green-600" />
+            </div>
             <div>
               <div className="font-medium text-sm">Real-time Processing</div>
               <Badge variant={autoDeductionEnabled ? "default" : "secondary"} className="text-xs">
@@ -133,16 +142,20 @@ export function AutoDeductionSettings() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 p-3 border rounded-lg">
-            <Clock className="w-4 h-4 text-blue-500" />
+          <div className="flex items-center gap-3 p-3 border rounded-lg hover:border-primary/50 transition-all bg-gradient-to-br from-blue-500/5 to-transparent">
+            <div className="p-2 rounded-lg bg-blue-500/10">
+              <Clock className="w-4 h-4 text-blue-600" />
+            </div>
             <div>
               <div className="font-medium text-sm">Batch Processing</div>
               <Badge variant="outline" className="text-xs">Available</Badge>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 p-3 border rounded-lg">
-            <CheckCircle className="w-4 h-4 text-purple-500" />
+          <div className="flex items-center gap-3 p-3 border rounded-lg hover:border-primary/50 transition-all bg-gradient-to-br from-purple-500/5 to-transparent">
+            <div className="p-2 rounded-lg bg-purple-500/10">
+              <CheckCircle className="w-4 h-4 text-purple-600" />
+            </div>
             <div>
               <div className="font-medium text-sm">Duplicate Prevention</div>
               <Badge variant="outline" className="text-xs">Protected</Badge>
@@ -171,8 +184,11 @@ export function AutoDeductionSettings() {
         </div>
 
         {/* Configuration Info */}
-        <div className="p-4 bg-muted rounded-lg">
-          <div className="font-medium text-sm mb-2">How it works:</div>
+        <div className="p-4 bg-gradient-to-br from-muted via-accent/5 to-muted rounded-lg border border-border/50">
+          <div className="font-medium text-sm mb-2 flex items-center gap-2">
+            <span>How it works:</span>
+            <Badge variant="outline" className="text-xs">Info</Badge>
+          </div>
           <ul className="text-sm text-muted-foreground space-y-1">
             <li>• New POS sales automatically trigger inventory deductions</li>
             <li>• Recipe ingredients are deducted based on conversion factors</li>

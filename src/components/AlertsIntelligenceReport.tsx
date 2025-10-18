@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MetricIcon } from '@/components/MetricIcon';
 import { useAlertsIntelligence } from '@/hooks/useAlertsIntelligence';
 import {
   AlertTriangle, Download, AlertCircle, CheckCircle, Info,
@@ -55,7 +57,15 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
     return (
       <Card>
         <CardContent className="py-8">
-          <div className="text-center text-muted-foreground">Loading alerts intelligence...</div>
+          <div className="space-y-4" role="status" aria-live="polite">
+            <Skeleton className="h-12 w-3/4 mx-auto" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+            </div>
+          </div>
         </CardContent>
       </Card>
     );
@@ -112,16 +122,18 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <CardTitle className="text-2xl flex items-center gap-2">
-                <AlertTriangle className="h-6 w-6" />
-                Alerts Intelligence Report
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                Predictive inventory alerts and restocking optimization
-              </p>
+            <div className="flex items-center gap-3">
+              <MetricIcon icon={AlertTriangle} variant="red" />
+              <div>
+                <CardTitle className="text-2xl">
+                  Alerts Intelligence Report
+                </CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Predictive inventory alerts and restocking optimization
+                </p>
+              </div>
             </div>
-            <Button onClick={exportToCSV} variant="outline" size="sm">
+            <Button onClick={exportToCSV} variant="outline" size="sm" aria-label="Export alerts data to CSV">
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
@@ -174,7 +186,7 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" />
+              <MetricIcon icon={AlertTriangle} variant="red" className="p-2" />
               Total Alerts
             </CardTitle>
           </CardHeader>
@@ -189,7 +201,7 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Package className="h-4 w-4" />
+              <MetricIcon icon={Package} variant="amber" className="p-2" />
               Stockouts
             </CardTitle>
           </CardHeader>
@@ -206,7 +218,7 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Clock className="h-4 w-4" />
+              <MetricIcon icon={Clock} variant="blue" className="p-2" />
               Avg Runway
             </CardTitle>
           </CardHeader>
@@ -223,7 +235,7 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
+              <MetricIcon icon={TrendingUp} variant="emerald" className="p-2" />
               Par Efficiency
             </CardTitle>
           </CardHeader>
@@ -240,13 +252,13 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
 
       {/* Detailed Analysis Tabs */}
       <Tabs defaultValue="critical" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
-          <TabsTrigger value="critical">Critical</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="benchmarks">Benchmarks</TabsTrigger>
-          <TabsTrigger value="forecast">Forecast</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6" role="tablist">
+          <TabsTrigger value="critical" aria-label="Critical items requiring attention">Critical</TabsTrigger>
+          <TabsTrigger value="timeline" aria-label="Stockout timeline projection">Timeline</TabsTrigger>
+          <TabsTrigger value="suppliers" aria-label="Supplier analysis">Suppliers</TabsTrigger>
+          <TabsTrigger value="history" aria-label="Alert history">History</TabsTrigger>
+          <TabsTrigger value="benchmarks" aria-label="Industry benchmarks">Benchmarks</TabsTrigger>
+          <TabsTrigger value="forecast" aria-label="Consumption forecast">Forecast</TabsTrigger>
         </TabsList>
 
         {/* Critical Items Tab */}

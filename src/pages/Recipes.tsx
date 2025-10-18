@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
@@ -27,7 +28,10 @@ import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDed
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { RecipeConversionStatusBadge } from '@/components/RecipeConversionStatusBadge';
 import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
-import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings } from 'lucide-react';
+import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings, ArrowUpDown, AlertTriangle, Sparkles, TrendingUp, CheckCircle2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MetricIcon } from '@/components/MetricIcon';
+import { PageHeader } from '@/components/PageHeader';
 
 export default function Recipes() {
   const { user } = useAuth();
@@ -44,6 +48,9 @@ export default function Recipes() {
   const [showAutoSettings, setShowAutoSettings] = useState(false);
   const [initialPosItemName, setInitialPosItemName] = useState<string | undefined>();
   const [newProductId, setNewProductId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'name' | 'cost' | 'salePrice' | 'margin' | 'created'>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showOnlyWarnings, setShowOnlyWarnings] = useState(false);
 
   const { setupAutoDeduction } = useAutomaticInventoryDeduction();
 
@@ -128,9 +135,10 @@ export default function Recipes() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="w-96">
-          <CardHeader>
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <Card className="w-full max-w-md bg-gradient-to-br from-destructive/5 via-destructive/10 to-transparent border-destructive/20">
+          <CardHeader className="text-center">
+            <MetricIcon icon={AlertTriangle} variant="red" className="mx-auto mb-4" />
             <CardTitle>Access Denied</CardTitle>
             <CardDescription>Please log in to access recipes.</CardDescription>
           </CardHeader>
@@ -139,55 +147,86 @@ export default function Recipes() {
     );
   }
 
+  if (restaurantsLoading) {
+    return (
+      <div className="space-y-6 p-4">
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-96 w-full" />
+        <p className="sr-only">Loading recipe management...</p>
+      </div>
+    );
+  }
+
   if (!selectedRestaurant) {
     return (
-      <div className="space-y-6">
-        <div className="text-center">
+      <div className="space-y-6 p-4">
+        <div className="text-center p-8 rounded-lg bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50">
+          <MetricIcon icon={ChefHat} variant="emerald" className="mx-auto mb-4" />
           <h1 className="text-3xl font-bold mb-2">Recipes</h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground mb-6">
             Create and manage recipes for your menu items
           </p>
+          <RestaurantSelector
+            restaurants={restaurants}
+            selectedRestaurant={selectedRestaurant}
+            onSelectRestaurant={handleRestaurantSelect}
+            loading={restaurantsLoading}
+            createRestaurant={createRestaurant}
+          />
         </div>
-        <RestaurantSelector
-          restaurants={restaurants}
-          selectedRestaurant={selectedRestaurant}
-          onSelectRestaurant={handleRestaurantSelect}
-          loading={restaurantsLoading}
-          createRestaurant={createRestaurant}
-        />
       </div>
     );
   }
 
   return (
     <div className="space-y-6 md:space-y-8">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="text-center lg:text-left">
-          <h1 className="text-2xl md:text-3xl font-bold mb-2">Recipes</h1>
-          <p className="text-sm md:text-base text-muted-foreground">
-            Create and manage recipes for {selectedRestaurant.restaurant?.name}
-          </p>
-        </div>
-        <div className="flex flex-col sm:flex-row justify-center lg:justify-start gap-2 w-full sm:w-auto">
-          <BulkInventoryDeductionDialog />
-          <Button 
-            variant="outline" 
-            onClick={() => setShowAutoSettings(!showAutoSettings)}
-            size="sm"
-            className="w-full sm:w-auto"
-          >
-            <Settings className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Auto Deduction</span>
-            <span className="sm:hidden">Auto</span>
-          </Button>
-          <Button onClick={() => setIsCreateDialogOpen(true)} className="w-full sm:w-auto">
-            <Plus className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Create Recipe</span>
-            <span className="sm:hidden">New Recipe</span>
-          </Button>
-        </div>
-      </div>
+      {/* Enhanced Header */}
+      <PageHeader
+        icon={ChefHat}
+        iconVariant="emerald"
+        title="Recipe Management"
+        restaurantName={selectedRestaurant.restaurant?.name}
+        subtitle={
+          <div className="flex items-center gap-2 flex-wrap">
+            <span aria-label={`${recipes.length} total recipes`}>{recipes.length} total recipes</span>
+            {mappedRecipes.length > 0 && (
+              <>
+                <span className="hidden sm:inline" aria-hidden="true">•</span>
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-green-600" aria-hidden="true" />
+                  <span aria-label={`${mappedRecipes.length} recipes mapped to POS`}>{mappedRecipes.length} mapped to POS</span>
+                </span>
+              </>
+            )}
+          </div>
+        }
+        actions={
+          <>
+            <BulkInventoryDeductionDialog />
+            <Button 
+              variant="outline" 
+              onClick={() => setShowAutoSettings(!showAutoSettings)}
+              size="sm"
+              className="w-full sm:w-auto group hover:border-primary/50 transition-all duration-200"
+              aria-label={showAutoSettings ? "Hide auto deduction settings" : "Show auto deduction settings"}
+              aria-expanded={showAutoSettings}
+            >
+              <Settings className="w-4 h-4 mr-2 group-hover:text-primary transition-colors" aria-hidden="true" />
+              <span className="hidden sm:inline">Auto Deduction</span>
+              <span className="sm:hidden">Auto</span>
+            </Button>
+            <Button 
+              onClick={() => setIsCreateDialogOpen(true)} 
+              className="w-full sm:w-auto gap-2 group bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-200"
+              aria-label="Create new recipe"
+            >
+              <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" aria-hidden="true" />
+              <span className="hidden sm:inline">Create Recipe</span>
+              <span className="sm:hidden">New Recipe</span>
+            </Button>
+          </>
+        }
+      />
 
       {/* Auto Deduction Settings */}
       {showAutoSettings && (
@@ -203,34 +242,87 @@ export default function Recipes() {
         />
       )}
       
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-        <Input
-          placeholder="Search recipes..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
-      </div>
+      {/* Search and Filters */}
+      <Card className="p-4 bg-gradient-to-br from-background via-accent/5 to-background border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" aria-hidden="true" />
+            <Input
+              placeholder="Search recipes by name or POS item..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 border-border/50 focus:border-primary/50 transition-all duration-200 focus:ring-2 focus:ring-primary/20"
+              aria-label="Search recipes by name or POS item"
+            />
+          </div>
+          <div className="flex gap-2" role="group" aria-label="Sort and filter options">
+            <Select value={sortBy} onValueChange={(value: 'name' | 'cost' | 'salePrice' | 'margin' | 'created') => setSortBy(value)}>
+              <SelectTrigger className="w-[160px] border-border/50 hover:border-primary/50 transition-colors" aria-label="Sort recipes by">
+                <ArrowUpDown className="w-4 h-4 mr-2" aria-hidden="true" />
+                <SelectValue placeholder="Sort by..." />
+              </SelectTrigger>
+              <SelectContent className="z-50 bg-background">
+                <SelectItem value="name">📝 Name</SelectItem>
+                <SelectItem value="cost">💰 Cost</SelectItem>
+                <SelectItem value="salePrice">💵 Sale Price</SelectItem>
+                <SelectItem value="margin">📊 Margin %</SelectItem>
+                <SelectItem value="created">📅 Date Created</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button 
+              variant={sortDirection === 'asc' ? 'default' : 'outline'} 
+              size="icon"
+              onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+              className="transition-all hover:scale-105 duration-200"
+              title={sortDirection === 'asc' ? 'Ascending order' : 'Descending order'}
+              aria-label={`Sort direction: ${sortDirection === 'asc' ? 'Ascending' : 'Descending'}`}
+              aria-pressed={sortDirection === 'asc'}
+            >
+              <ArrowUpDown className={`w-4 h-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
+            </Button>
+            <Button 
+              variant={showOnlyWarnings ? 'destructive' : 'outline'}
+              onClick={() => setShowOnlyWarnings(!showOnlyWarnings)}
+              className={`gap-2 transition-all ${showOnlyWarnings ? 'animate-pulse' : ''}`}
+              aria-label={showOnlyWarnings ? 'Showing only recipes with warnings' : 'Show all recipes'}
+              aria-pressed={showOnlyWarnings}
+            >
+              <AlertTriangle className="w-4 h-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Warnings</span>
+            </Button>
+          </div>
+        </div>
+      </Card>
 
       {/* Tabs */}
       <Tabs defaultValue="all" className="space-y-4 md:space-y-6">
         <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 h-auto md:h-10">
-          <TabsTrigger value="all" className="flex flex-col md:flex-row items-center gap-1">
+          <TabsTrigger 
+            value="all" 
+            className="flex flex-col md:flex-row items-center gap-1 transition-all duration-200 data-[state=active]:shadow-sm"
+            aria-label={`View all ${filteredRecipes.length} recipes`}
+          >
             <span className="text-xs md:text-sm">All Recipes</span>
             <span className="text-xs">({filteredRecipes.length})</span>
           </TabsTrigger>
-          <TabsTrigger value="mapped" className="flex flex-col md:flex-row items-center gap-1">
+          <TabsTrigger 
+            value="mapped" 
+            className="flex flex-col md:flex-row items-center gap-1 transition-all duration-200 data-[state=active]:shadow-sm"
+            aria-label={`View ${mappedRecipes.length} recipes mapped to POS`}
+          >
             <span className="text-xs md:text-sm">Mapped to POS</span>
             <span className="text-xs">({mappedRecipes.length})</span>
           </TabsTrigger>
-          <TabsTrigger value="unmapped" className="flex flex-col md:flex-row items-center gap-1">
+          <TabsTrigger 
+            value="unmapped" 
+            className="flex flex-col md:flex-row items-center gap-1 transition-all duration-200 data-[state=active]:shadow-sm"
+            aria-label={`View ${unmappedRecipes.length} unmapped recipes`}
+          >
             <span className="text-xs md:text-sm">Unmapped</span>
             <div className="flex items-center gap-1">
               <span className="text-xs">({unmappedRecipes.length})</span>
               {unmappedRecipes.length > 0 && (
-                <Badge variant="secondary" className="text-xs h-4 px-1 ml-1">
+                <Badge variant="secondary" className="text-xs h-4 px-1 ml-1" aria-label={`${unmappedRecipes.length} unmapped`}>
                   {unmappedRecipes.length}
                 </Badge>
               )}
@@ -245,6 +337,10 @@ export default function Recipes() {
             loading={loading}
             onEdit={setEditingRecipe}
             onDelete={setDeletingRecipe}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+            showOnlyWarnings={showOnlyWarnings}
+            onCreate={() => setIsCreateDialogOpen(true)}
           />
         </TabsContent>
 
@@ -255,6 +351,10 @@ export default function Recipes() {
             loading={loading}
             onEdit={setEditingRecipe}
             onDelete={setDeletingRecipe}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+            showOnlyWarnings={showOnlyWarnings}
+            onCreate={() => setIsCreateDialogOpen(true)}
           />
         </TabsContent>
 
@@ -265,6 +365,10 @@ export default function Recipes() {
             loading={loading}
             onEdit={setEditingRecipe}
             onDelete={setDeletingRecipe}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+            showOnlyWarnings={showOnlyWarnings}
+            onCreate={() => setIsCreateDialogOpen(true)}
           />
         </TabsContent>
       </Tabs>
@@ -304,38 +408,108 @@ interface RecipeTableProps {
   loading: boolean;
   onEdit: (recipe: any) => void;
   onDelete: (recipe: any) => void;
+  sortBy: 'name' | 'cost' | 'salePrice' | 'margin' | 'created';
+  sortDirection: 'asc' | 'desc';
+  showOnlyWarnings: boolean;
+  onCreate?: () => void;
 }
 
-function RecipeTable({ recipes, products, loading, onEdit, onDelete }: RecipeTableProps) {
-  // Pre-calculate conversion validation for all recipes
-  const recipeValidations = useMemo(() => {
-    return recipes.map(recipe => {
+function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings, onCreate }: RecipeTableProps) {
+  // Pre-calculate conversion validation for all recipes (keyed by recipe ID)
+  const recipeValidationsById = useMemo(() => {
+    const validationMap = new Map();
+    recipes.forEach(recipe => {
       const ingredients = recipe.ingredients || [];
-      return validateRecipeConversions(ingredients, products);
+      validationMap.set(recipe.id, validateRecipeConversions(ingredients, products));
     });
+    return validationMap;
   }, [recipes, products]);
+
+  // Sort and filter recipes
+  const processedRecipes = useMemo(() => {
+    let result = [...recipes];
+
+    // Filter by warnings if enabled
+    if (showOnlyWarnings) {
+      result = result.filter((recipe) => recipeValidationsById.get(recipe.id)?.hasIssues);
+    }
+
+    // Sort recipes
+    result.sort((a, b) => {
+      let compareValue = 0;
+      
+      switch (sortBy) {
+        case 'name':
+          compareValue = a.name.localeCompare(b.name);
+          break;
+        case 'cost':
+          compareValue = (a.estimated_cost || 0) - (b.estimated_cost || 0);
+          break;
+        case 'salePrice':
+          compareValue = (a.avg_sale_price || 0) - (b.avg_sale_price || 0);
+          break;
+        case 'margin':
+          compareValue = (a.profit_margin || 0) - (b.profit_margin || 0);
+          break;
+        case 'created':
+          compareValue = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+      }
+
+      return sortDirection === 'asc' ? compareValue : -compareValue;
+    });
+
+    return result;
+  }, [recipes, recipeValidationsById, sortBy, sortDirection, showOnlyWarnings]);
   if (loading) {
     return (
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <Card className="border-border/50 shadow-sm">
+        <CardContent className="p-12">
+          <div className="flex flex-col items-center justify-center gap-4" role="status" aria-live="polite">
+            <div className="space-y-4 w-full max-w-md">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+            <p className="text-sm text-muted-foreground sr-only">Loading recipes...</p>
           </div>
         </CardContent>
       </Card>
     );
   }
 
-  if (recipes.length === 0) {
+  if (processedRecipes.length === 0) {
     return (
-      <Card>
-        <CardContent className="p-6">
-          <div className="text-center">
-            <ChefHat className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No recipes found</h3>
-            <p className="text-muted-foreground">
-              Create your first recipe to get started.
-            </p>
+      <Card className="border-border/50 bg-gradient-to-br from-background via-accent/5 to-background shadow-sm">
+        <CardContent className="p-12">
+          <div className="text-center space-y-4" role="status" aria-live="polite">
+            {showOnlyWarnings ? (
+              <>
+                <MetricIcon icon={CheckCircle2} variant="emerald" className="mx-auto" />
+                <div>
+                  <h3 className="text-xl font-semibold mb-2">No recipes with warnings</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">
+                    All recipes have valid conversions. Your recipe setup is looking great!
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <MetricIcon icon={ChefHat} variant="purple" className="mx-auto" />
+                <div>
+                  <h3 className="text-xl font-semibold mb-2">No recipes found</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto mb-4">
+                    Create your first recipe to start tracking ingredient costs and profitability.
+                  </p>
+                  {onCreate && (
+                    <Button onClick={onCreate} className="gap-2" aria-label="Create your first recipe">
+                      <Plus className="w-4 h-4" aria-hidden="true" />
+                      Create Your First Recipe
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -343,15 +517,15 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete }: RecipeTab
   }
 
   return (
-    <Card>
+    <Card className="border-border/50 overflow-hidden">
       <CardContent className="p-0">
         {/* Mobile-friendly cards for small screens */}
         <div className="block md:hidden">
-          {recipes.map((recipe, idx) => {
-            const validation = recipeValidations[idx];
+        {processedRecipes.map((recipe) => {
+            const validation = recipeValidationsById.get(recipe.id);
             
             return (
-              <div key={recipe.id} className="p-4 border-b last:border-b-0">
+              <div key={recipe.id} className="p-4 border-b last:border-b-0 hover:bg-accent/50 transition-colors">
                 <div className="space-y-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
@@ -424,8 +598,8 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete }: RecipeTab
               </TableRow>
             </TableHeader>
             <TableBody>
-              {recipes.map((recipe, idx) => {
-                const validation = recipeValidations[idx];
+              {processedRecipes.map((recipe) => {
+                const validation = recipeValidationsById.get(recipe.id);
                 
                 return (
                   <TableRow key={recipe.id}>

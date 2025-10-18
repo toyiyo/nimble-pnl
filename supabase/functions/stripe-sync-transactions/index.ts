@@ -96,10 +96,12 @@ serve(async (req) => {
       console.log("[SYNC-TRANSACTIONS] Subscribing to transactions for first time");
       
       try {
-        await stripe.financialConnections.accounts.subscribe({
-          account: bank.stripe_financial_account_id,
-          features: ['transactions'],
-        });
+        await stripe.financialConnections.accounts.subscribe(
+          bank.stripe_financial_account_id,
+          {
+            features: ['transactions'],
+          }
+        );
         console.log("[SYNC-TRANSACTIONS] Successfully subscribed - initial sync will take a few minutes");
         
         return new Response(
@@ -125,10 +127,12 @@ serve(async (req) => {
 
     // Refresh to get latest transactions
     try {
-      const refreshResult = await stripe.financialConnections.accounts.refresh({
-        account: bank.stripe_financial_account_id,
-        features: ['transactions'],
-      });
+      const refreshResult = await stripe.financialConnections.accounts.refresh(
+        bank.stripe_financial_account_id,
+        {
+          features: ['transactions'],
+        }
+      );
       console.log("[SYNC-TRANSACTIONS] Refresh status:", refreshResult.transaction_refresh?.status);
     } catch (refreshError: any) {
       console.log("[SYNC-TRANSACTIONS] Refresh error (may be normal):", refreshError.message);

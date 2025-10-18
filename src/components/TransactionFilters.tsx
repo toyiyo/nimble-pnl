@@ -19,6 +19,9 @@ import {
 } from '@/components/ui/select';
 import { Filter, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { CategorySelector } from '@/components/CategorySelector';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface TransactionFilters {
   dateFrom?: string;
@@ -27,16 +30,35 @@ export interface TransactionFilters {
   maxAmount?: number;
   status?: string;
   transactionType?: string;
+  categoryId?: string;
+  bankAccountId?: string;
 }
 
 interface TransactionFiltersProps {
+  restaurantId: string;
   filters: TransactionFilters;
   onFiltersChange: (filters: TransactionFilters) => void;
 }
 
-export const TransactionFiltersSheet = ({ filters, onFiltersChange }: TransactionFiltersProps) => {
+export const TransactionFiltersSheet = ({ restaurantId, filters, onFiltersChange }: TransactionFiltersProps) => {
   const [localFilters, setLocalFilters] = useState<TransactionFilters>(filters);
   const [open, setOpen] = useState(false);
+
+  // Fetch bank accounts for filter
+  const { data: bankAccounts } = useQuery({
+    queryKey: ['bank-accounts', restaurantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('connected_banks')
+        .select('id, institution_name, bank_account_balances(id, account_name, account_mask)')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'connected');
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!restaurantId && open,
+  });
 
   const handleApply = () => {
     onFiltersChange(localFilters);
@@ -152,6 +174,48 @@ export const TransactionFiltersSheet = ({ filters, onFiltersChange }: Transactio
                 <SelectItem value="all">All types</SelectItem>
                 <SelectItem value="debit">Debits (Expenses)</SelectItem>
                 <SelectItem value="credit">Credits (Income)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Category Filter */}
+          <div className="space-y-2">
+            <Label>Category</Label>
+            <CategorySelector
+              restaurantId={restaurantId}
+              value={localFilters.categoryId}
+              onSelect={(categoryId) => setLocalFilters({ ...localFilters, categoryId })}
+            />
+            {localFilters.categoryId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setLocalFilters({ ...localFilters, categoryId: undefined })}
+              >
+                Clear category
+              </Button>
+            )}
+          </div>
+
+          {/* Bank Account Filter */}
+          <div className="space-y-2">
+            <Label>Bank Account</Label>
+            <Select
+              value={localFilters.bankAccountId || 'all'}
+              onValueChange={(value) => setLocalFilters({ ...localFilters, bankAccountId: value === 'all' ? undefined : value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All accounts" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All accounts</SelectItem>
+                {bankAccounts?.map((bank) => 
+                  bank.bank_account_balances?.map((account: any) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {bank.institution_name} {account.account_mask ? `••••${account.account_mask}` : ''}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>

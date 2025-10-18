@@ -20,6 +20,7 @@ import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { TransactionFiltersSheet, type TransactionFilters } from '@/components/TransactionFilters';
 import { useToast } from '@/hooks/use-toast';
+import { CategorySelector } from '@/components/CategorySelector';
 
 const Transactions = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -74,6 +75,33 @@ const Transactions = () => {
     });
   };
 
+  const handleCategorize = async (transactionId: string, categoryId: string) => {
+    try {
+      const { error } = await supabase
+        .from('bank_transactions')
+        .update({ 
+          category_id: categoryId,
+          is_categorized: true,
+        })
+        .eq('id', transactionId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Transaction categorized",
+        description: "The transaction has been successfully categorized.",
+      });
+
+      refetch();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   const filteredTransactions = transactions?.filter(txn => {
     // Search filter
     const matchesSearch = !searchTerm || 
@@ -96,8 +124,16 @@ const Transactions = () => {
       (filters.transactionType === 'debit' && txn.amount < 0) ||
       (filters.transactionType === 'credit' && txn.amount > 0);
     
+    // Category filter
+    const matchesCategory = !filters.categoryId || txn.category_id === filters.categoryId;
+    
+    // Bank account filter
+    const matchesBankAccount = !filters.bankAccountId || 
+      txn.connected_bank?.bank_account_balances?.some((acc: any) => acc.id === filters.bankAccountId);
+    
     return matchesSearch && matchesDateFrom && matchesDateTo && 
-           matchesMinAmount && matchesMaxAmount && matchesStatus && matchesType;
+           matchesMinAmount && matchesMaxAmount && matchesStatus && matchesType &&
+           matchesCategory && matchesBankAccount;
   }) || [];
 
   const totalDebits = filteredTransactions
@@ -184,8 +220,12 @@ const Transactions = () => {
               />
             </div>
             <div className="flex gap-2 w-full md:w-auto">
-              <TransactionFiltersSheet filters={filters} onFiltersChange={setFilters} />
-              <Button 
+              <TransactionFiltersSheet 
+                restaurantId={selectedRestaurant.restaurant_id}
+                filters={filters} 
+                onFiltersChange={setFilters} 
+              />
+              <Button
                 variant="outline" 
                 className="gap-2"
                 onClick={() => {
@@ -299,13 +339,13 @@ const Transactions = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {txn.chart_account ? (
-                          <Badge variant="outline">
-                            {txn.chart_account.account_name}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">Uncategorized</Badge>
-                        )}
+                        <div className="min-w-[200px]">
+                          <CategorySelector
+                            restaurantId={selectedRestaurant.restaurant_id}
+                            value={txn.category_id}
+                            onSelect={(categoryId) => handleCategorize(txn.id, categoryId)}
+                          />
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <span className={cn(

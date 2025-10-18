@@ -82,6 +82,21 @@ serve(async (req) => {
       apiVersion: "2025-08-27.basil" as any
     });
 
+    console.log("[SYNC-TRANSACTIONS] Refreshing transactions for account");
+
+    // First, refresh the account to fetch latest transactions
+    try {
+      const refreshedAccount = await stripe.financialConnections.accounts.refresh({
+        account: bank.stripe_financial_account_id,
+        features: ['transactions'],
+      });
+      
+      console.log("[SYNC-TRANSACTIONS] Refresh initiated, status:", refreshedAccount.balance_refresh?.status);
+    } catch (refreshError: any) {
+      console.log("[SYNC-TRANSACTIONS] Refresh error:", refreshError.message);
+      // Continue anyway - account might already have transactions subscribed
+    }
+
     console.log("[SYNC-TRANSACTIONS] Fetching transactions from Stripe");
 
     // Fetch transactions from Stripe Financial Connections

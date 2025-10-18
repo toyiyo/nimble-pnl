@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import googleLogo from '@/assets/google-logo.png';
 import { useTheme } from 'next-themes';
+import { useState, useEffect } from 'react';
 
 interface GoogleSignInButtonProps {
   onClick: () => void;
@@ -13,7 +14,12 @@ export const GoogleSignInButton = ({
   disabled, 
   text = 'continue' 
 }: GoogleSignInButtonProps) => {
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   const buttonText = {
     signin: 'Sign in with Google',
@@ -22,7 +28,47 @@ export const GoogleSignInButton = ({
   }[text];
 
   // Google's branding guidelines colors
-  const isDark = theme === 'dark';
+  const isDark = mounted && resolvedTheme === 'dark';
+  
+  // Prevent hydration mismatch by not rendering theme-dependent styles until mounted
+  if (!mounted) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onClick}
+        disabled={disabled}
+        className="w-full h-10 relative overflow-hidden"
+      >
+        <div className="flex items-center justify-center w-full">
+          <div 
+            className="flex items-center justify-center"
+            style={{ 
+              paddingLeft: '12px',
+              paddingRight: '10px',
+              height: '100%'
+            }}
+          >
+            <img 
+              src={googleLogo} 
+              alt="Google logo" 
+              className="w-[18px] h-[18px]"
+              style={{ display: 'block' }}
+            />
+          </div>
+          
+          <span 
+            style={{ 
+              paddingRight: '12px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {disabled ? 'Redirecting...' : buttonText}
+          </span>
+        </div>
+      </Button>
+    );
+  }
   
   return (
     <Button

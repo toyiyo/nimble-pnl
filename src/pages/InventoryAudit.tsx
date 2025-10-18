@@ -285,7 +285,7 @@ export default function InventoryAudit() {
                     </div>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <button aria-label={`Information about ${type.label}`}>
+                        <button type="button" aria-label={`Information about ${type.label}`}>
                           <Info className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
                         </button>
                       </TooltipTrigger>

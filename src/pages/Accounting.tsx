@@ -33,8 +33,8 @@ const Accounting = () => {
       const sessionData = await createFinancialConnectionsSession();
       
       if (sessionData?.clientSecret) {
-        // Load Stripe.js
-        const stripe = await loadStripe('pk_test_51QQH7oDqmb7UvxAQ2qvKjAFOmvPOdOlXs2G5EjNhGtXCpwH7f4Fvlg2wjAuXWLvZDR5jLJZ7k0Z9OQVtJ7nFYDx00wMz7xmGE');
+        // Load Stripe.js with your live publishable key
+        const stripe = await loadStripe('pk_live_51SFateD9w6YUNUOUMLCT8LY9rmy9LtNevR4nhGYdSZdVqsdH2wjtbrMrrAAUZKAWzZq74RflwZQYHYOHu2CheQSn00Ug36fXVY');
         
         if (!stripe) {
           throw new Error('Failed to load Stripe');

@@ -233,8 +233,8 @@ export const AppHeader = () => {
                     <Menu className="h-4 w-4" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="right" className="w-[280px] bg-background/95 backdrop-blur-xl">
-                  <SheetHeader className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 -mx-6 -mt-6 px-6 py-4 mb-6">
+                <SheetContent side="right" className="w-[280px] bg-background/95 backdrop-blur-xl flex flex-col">
+                  <SheetHeader className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 -mx-6 -mt-6 px-6 py-4 mb-6 flex-shrink-0">
                     <SheetTitle className="text-left">Navigation</SheetTitle>
                     {selectedRestaurant && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
@@ -244,7 +244,7 @@ export const AppHeader = () => {
                     )}
                   </SheetHeader>
                   
-                  <div className="flex flex-col gap-6">
+                  <div className="flex flex-col gap-6 overflow-y-auto flex-1 pr-2">
                     {navigationGroups.map((group) => (
                       <div key={group.label}>
                         <div className="text-xs font-semibold text-muted-foreground mb-2 px-2">

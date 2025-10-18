@@ -27,7 +27,8 @@ import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDed
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { RecipeConversionStatusBadge } from '@/components/RecipeConversionStatusBadge';
 import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
-import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings } from 'lucide-react';
+import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings, ArrowUpDown, AlertTriangle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function Recipes() {
   const { user } = useAuth();
@@ -44,6 +45,9 @@ export default function Recipes() {
   const [showAutoSettings, setShowAutoSettings] = useState(false);
   const [initialPosItemName, setInitialPosItemName] = useState<string | undefined>();
   const [newProductId, setNewProductId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'name' | 'cost' | 'salePrice' | 'margin' | 'created'>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showOnlyWarnings, setShowOnlyWarnings] = useState(false);
 
   const { setupAutoDeduction } = useAutomaticInventoryDeduction();
 
@@ -203,15 +207,47 @@ export default function Recipes() {
         />
       )}
       
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-        <Input
-          placeholder="Search recipes..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
+      {/* Search and Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <Input
+            placeholder="Search recipes..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+            <SelectTrigger className="w-[160px]">
+              <ArrowUpDown className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="Sort by..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">Name</SelectItem>
+              <SelectItem value="cost">Cost</SelectItem>
+              <SelectItem value="salePrice">Sale Price</SelectItem>
+              <SelectItem value="margin">Margin %</SelectItem>
+              <SelectItem value="created">Date Created</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button 
+            variant={sortDirection === 'asc' ? 'default' : 'outline'} 
+            size="icon"
+            onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+          >
+            <ArrowUpDown className="w-4 h-4" />
+          </Button>
+          <Button 
+            variant={showOnlyWarnings ? 'destructive' : 'outline'}
+            onClick={() => setShowOnlyWarnings(!showOnlyWarnings)}
+            className="gap-2"
+          >
+            <AlertTriangle className="w-4 h-4" />
+            <span className="hidden sm:inline">Warnings</span>
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -245,6 +281,9 @@ export default function Recipes() {
             loading={loading}
             onEdit={setEditingRecipe}
             onDelete={setDeletingRecipe}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+            showOnlyWarnings={showOnlyWarnings}
           />
         </TabsContent>
 
@@ -255,6 +294,9 @@ export default function Recipes() {
             loading={loading}
             onEdit={setEditingRecipe}
             onDelete={setDeletingRecipe}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+            showOnlyWarnings={showOnlyWarnings}
           />
         </TabsContent>
 
@@ -265,6 +307,9 @@ export default function Recipes() {
             loading={loading}
             onEdit={setEditingRecipe}
             onDelete={setDeletingRecipe}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+            showOnlyWarnings={showOnlyWarnings}
           />
         </TabsContent>
       </Tabs>
@@ -304,9 +349,12 @@ interface RecipeTableProps {
   loading: boolean;
   onEdit: (recipe: any) => void;
   onDelete: (recipe: any) => void;
+  sortBy: 'name' | 'cost' | 'salePrice' | 'margin' | 'created';
+  sortDirection: 'asc' | 'desc';
+  showOnlyWarnings: boolean;
 }
 
-function RecipeTable({ recipes, products, loading, onEdit, onDelete }: RecipeTableProps) {
+function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings }: RecipeTableProps) {
   // Pre-calculate conversion validation for all recipes
   const recipeValidations = useMemo(() => {
     return recipes.map(recipe => {
@@ -314,6 +362,43 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete }: RecipeTab
       return validateRecipeConversions(ingredients, products);
     });
   }, [recipes, products]);
+
+  // Sort and filter recipes
+  const processedRecipes = useMemo(() => {
+    let result = [...recipes];
+
+    // Filter by warnings if enabled
+    if (showOnlyWarnings) {
+      result = result.filter((_, idx) => recipeValidations[idx]?.hasIssues);
+    }
+
+    // Sort recipes
+    result.sort((a, b) => {
+      let compareValue = 0;
+      
+      switch (sortBy) {
+        case 'name':
+          compareValue = a.name.localeCompare(b.name);
+          break;
+        case 'cost':
+          compareValue = (a.estimated_cost || 0) - (b.estimated_cost || 0);
+          break;
+        case 'salePrice':
+          compareValue = (a.avg_sale_price || 0) - (b.avg_sale_price || 0);
+          break;
+        case 'margin':
+          compareValue = (a.profit_margin || 0) - (b.profit_margin || 0);
+          break;
+        case 'created':
+          compareValue = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+      }
+
+      return sortDirection === 'asc' ? compareValue : -compareValue;
+    });
+
+    return result;
+  }, [recipes, recipeValidations, sortBy, sortDirection, showOnlyWarnings]);
   if (loading) {
     return (
       <Card>
@@ -326,16 +411,28 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete }: RecipeTab
     );
   }
 
-  if (recipes.length === 0) {
+  if (processedRecipes.length === 0) {
     return (
       <Card>
         <CardContent className="p-6">
           <div className="text-center">
-            <ChefHat className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No recipes found</h3>
-            <p className="text-muted-foreground">
-              Create your first recipe to get started.
-            </p>
+            {showOnlyWarnings ? (
+              <>
+                <AlertTriangle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No recipes with warnings</h3>
+                <p className="text-muted-foreground">
+                  All recipes have valid conversions.
+                </p>
+              </>
+            ) : (
+              <>
+                <ChefHat className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No recipes found</h3>
+                <p className="text-muted-foreground">
+                  Create your first recipe to get started.
+                </p>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -347,8 +444,9 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete }: RecipeTab
       <CardContent className="p-0">
         {/* Mobile-friendly cards for small screens */}
         <div className="block md:hidden">
-          {recipes.map((recipe, idx) => {
-            const validation = recipeValidations[idx];
+          {processedRecipes.map((recipe) => {
+            const originalIdx = recipes.findIndex(r => r.id === recipe.id);
+            const validation = recipeValidations[originalIdx];
             
             return (
               <div key={recipe.id} className="p-4 border-b last:border-b-0">
@@ -424,8 +522,9 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete }: RecipeTab
               </TableRow>
             </TableHeader>
             <TableBody>
-              {recipes.map((recipe, idx) => {
-                const validation = recipeValidations[idx];
+              {processedRecipes.map((recipe) => {
+                const originalIdx = recipes.findIndex(r => r.id === recipe.id);
+                const validation = recipeValidations[originalIdx];
                 
                 return (
                   <TableRow key={recipe.id}>

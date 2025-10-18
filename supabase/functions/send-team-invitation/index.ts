@@ -137,36 +137,67 @@ const handler = async (req: Request): Promise<Response> => {
         to: [email],
         subject: `You're invited to join ${restaurant.name}`,
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #333; margin-bottom: 20px;">You're invited to join ${restaurant.name}</h1>
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+            <!-- Header with Logo -->
+            <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 32px 24px; text-align: center; border-radius: 8px 8px 0 0;">
+              <div style="display: inline-flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.95); border-radius: 12px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
+                <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 8px; padding: 8px; display: inline-block; margin-right: 12px;">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 11l3 3L22 4"></path>
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                  </svg>
+                </div>
+                <span style="font-size: 20px; font-weight: 700; color: #1f2937; letter-spacing: -0.5px;">EasyShiftHQ</span>
+              </div>
+            </div>
             
-            <p style="color: #666; line-height: 1.6;">
-              You've been invited to join <strong>${restaurant.name}</strong> as a <strong>${role}</strong>.
-            </p>
-            
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              <p style="margin: 0; color: #333;">
-                <strong>Restaurant:</strong> ${restaurant.name}<br>
-                <strong>Role:</strong> ${role}<br>
-                <strong>Expires:</strong> ${new Date(invitation.expires_at).toLocaleDateString()}
+            <!-- Content -->
+            <div style="padding: 40px 32px; background: #ffffff;">
+              <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">You're invited to join ${restaurant.name}</h1>
+              
+              <p style="color: #6b7280; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
+                You've been invited to join <strong style="color: #1f2937;">${restaurant.name}</strong> as a <strong style="color: #1f2937;">${role}</strong> on EasyShiftHQ.
+              </p>
+              
+              <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 24px; border-radius: 12px; margin: 24px 0; border-left: 4px solid #10b981;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 6px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Restaurant:</td>
+                    <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${restaurant.name}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Role:</td>
+                    <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${role}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Expires:</td>
+                    <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${new Date(invitation.expires_at).toLocaleDateString()}</td>
+                  </tr>
+                </table>
+              </div>
+              
+              <div style="text-align: center; margin: 32px 0;">
+                <a href="${invitationUrl}" 
+                   style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); transition: all 0.2s;">
+                  Accept Invitation
+                </a>
+              </div>
+              
+              <p style="color: #9ca3af; font-size: 14px; margin: 32px 0 0 0; line-height: 1.6;">
+                This invitation will expire in 7 days. If you didn't expect this invitation, you can safely ignore this email.
               </p>
             </div>
             
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${invitationUrl}" 
-                 style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                Accept Invitation
-              </a>
+            <!-- Footer -->
+            <div style="background: #f9fafb; padding: 24px 32px; border-radius: 0 0 8px 8px; border-top: 1px solid #e5e7eb;">
+              <p style="color: #9ca3af; font-size: 13px; text-align: center; margin: 0; line-height: 1.5;">
+                <strong style="color: #6b7280;">EasyShiftHQ</strong><br>
+                Restaurant Operations Management System
+              </p>
+              <p style="color: #d1d5db; font-size: 12px; text-align: center; margin: 12px 0 0 0;">
+                © ${new Date().getFullYear()} EasyShiftHQ. All rights reserved.
+              </p>
             </div>
-            
-            <p style="color: #999; font-size: 14px; margin-top: 30px;">
-              This invitation will expire in 7 days. If you didn't expect this invitation, you can safely ignore this email.
-            </p>
-            
-            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-            <p style="color: #999; font-size: 12px; text-align: center;">
-              Restaurant Operations Management System
-            </p>
           </div>
         `,
       });

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,25 +20,42 @@ const ResetPassword = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const { updatePassword } = useAuth();
+  const { updatePassword, user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    // Check if we have a password reset token
-    const accessToken = searchParams.get('access_token');
-    const type = searchParams.get('type');
+    // Parse tokens from URL hash/fragment (Supabase sends tokens in hash, not query params)
+    const parseHashParams = () => {
+      const hash = window.location.hash.substring(1); // Remove the '#'
+      const params = new URLSearchParams(hash);
+      return {
+        access_token: params.get('access_token'),
+        refresh_token: params.get('refresh_token'),
+        type: params.get('type'),
+      };
+    };
+
+    const hashParams = parseHashParams();
     
-    if (!accessToken || type !== 'recovery') {
-      toast({
-        title: "Invalid Reset Link",
-        description: "This password reset link is invalid or has expired. Please request a new one.",
-        variant: "destructive",
-      });
-      navigate('/auth');
+    // Check if we have a password reset token in the hash
+    if (!hashParams.access_token || hashParams.type !== 'recovery') {
+      // If no hash params, check if user is already authenticated (session might already be established)
+      if (!user) {
+        toast({
+          title: "Invalid Reset Link",
+          description: "This password reset link is invalid or has expired. Please request a new one.",
+          variant: "destructive",
+        });
+        navigate('/auth');
+      }
     }
-  }, [searchParams, navigate, toast]);
+    
+    // Clean up the hash from URL after reading it
+    if (hashParams.access_token) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, [user, navigate, toast]);
 
   const validatePassword = (pwd: string): string | null => {
     try {

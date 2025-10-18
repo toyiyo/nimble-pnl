@@ -74,6 +74,7 @@ const navigationGroups = [
       { path: '/accounting', label: 'Banks', icon: Wallet },
       { path: '/transactions', label: 'Transactions', icon: Receipt },
       { path: '/chart-of-accounts', label: 'Accounts', icon: FileText },
+      { path: '/financial-statements', label: 'Statements', icon: FileText },
     ]
   },
   {

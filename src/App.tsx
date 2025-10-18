@@ -29,6 +29,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Accounting from "./pages/Accounting";
 import Transactions from "./pages/Transactions";
 import ChartOfAccounts from "./pages/ChartOfAccounts";
+import FinancialStatements from "./pages/FinancialStatements";
 
 const queryClient = new QueryClient();
 
@@ -90,6 +91,7 @@ const App = () => (
           <Route path="/accounting/banks" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
           <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
           <Route path="/chart-of-accounts" element={<ProtectedRoute><ChartOfAccounts /></ProtectedRoute>} />
+          <Route path="/financial-statements" element={<ProtectedRoute><FinancialStatements /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/clover/callback" element={<CloverCallback />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />

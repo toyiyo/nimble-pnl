@@ -92,10 +92,12 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r">
-      <SidebarHeader className="border-b p-3">
+      <SidebarHeader className="border-b">
         <button 
           onClick={() => navigate('/')}
-          className="flex items-center gap-2 group transition-all duration-200 hover:scale-105 w-full"
+          className={`flex items-center gap-2 group transition-all duration-200 hover:scale-105 w-full ${
+            collapsed ? 'justify-center p-3' : 'p-3'
+          }`}
         >
           <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-1.5 group-hover:shadow-emerald-500/50 transition-all duration-200 flex-shrink-0">
             <CalendarCheck className="h-4 w-4 text-white" />
@@ -113,13 +115,13 @@ export function AppSidebar() {
         </button>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className={collapsed ? 'px-0' : ''}>
         {collapsed ? (
           // Collapsed view: Show all items as flat icon list
-          <SidebarMenu>
+          <SidebarMenu className="px-2">
             {navigationGroups.map((group, groupIndex) => (
               <div key={group.label}>
-                {groupIndex > 0 && <div className="h-px bg-border/50 my-2 mx-2" />}
+                {groupIndex > 0 && <div className="h-px bg-border/50 my-2" />}
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const isActive = isActivePath(item.path);
@@ -129,11 +131,11 @@ export function AppSidebar() {
                         onClick={() => navigate(item.path)}
                         isActive={isActive}
                         tooltip={item.label}
-                        className={
+                        className={`justify-center ${
                           isActive
                             ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-600 shadow-md shadow-emerald-500/20 transition-all duration-200'
                             : 'hover:bg-accent/50 transition-all duration-200'
-                        }
+                        }`}
                       >
                         <Icon className="h-5 w-5" />
                         <span>{item.label}</span>

@@ -22,9 +22,9 @@ export function RecipeConversionStatusBadge({
           <TooltipTrigger asChild>
             <Badge 
               variant="outline" 
-              className="bg-green-50 border-green-300 text-green-700 gap-1"
+              className="bg-gradient-to-br from-green-50 to-green-100/50 border-green-300 text-green-700 gap-1 hover:shadow-md transition-all"
             >
-              <CheckCircle2 className={size === 'sm' ? 'w-3 h-3' : 'w-4 h-4'} />
+              <CheckCircle2 className={`${size === 'sm' ? 'w-3 h-3' : 'w-4 h-4'}`} />
               {showText && <span>Conversions OK</span>}
             </Badge>
           </TooltipTrigger>
@@ -42,9 +42,9 @@ export function RecipeConversionStatusBadge({
         <TooltipTrigger asChild>
           <Badge 
             variant="outline" 
-            className="bg-amber-50 border-amber-300 text-amber-700 gap-1"
+            className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-300 text-amber-700 gap-1 hover:shadow-md transition-all animate-pulse"
           >
-            <AlertTriangle className={size === 'sm' ? 'w-3 h-3' : 'w-4 h-4'} />
+            <AlertTriangle className={`${size === 'sm' ? 'w-3 h-3' : 'w-4 h-4'}`} />
             {showText && (
               <span>
                 {issueCount} Conversion {issueCount === 1 ? 'Issue' : 'Issues'}

@@ -151,14 +151,16 @@ export const RecipeSuggestions: React.FC<RecipeSuggestionsProps> = ({
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <Card className="border-primary/20 bg-primary/5">
+      <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-accent/5 to-transparent shadow-sm">
         <CollapsibleTrigger className="w-full">
-          <CardHeader className="cursor-pointer hover:bg-accent/50 transition-colors">
+          <CardHeader className="cursor-pointer hover:bg-accent/50 transition-colors rounded-t-lg">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                <Lightbulb className="h-4 w-4 md:h-5 md:w-5 text-primary" />
-                Recipe Suggestions
-                <Badge variant="secondary" className="ml-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-primary/10 to-transparent">
+                  <Lightbulb className="h-4 w-4 md:h-5 md:w-5 text-primary animate-pulse" />
+                </div>
+                <span>AI Recipe Suggestions</span>
+                <Badge variant="secondary" className="ml-2 bg-primary/10 hover:bg-primary/20">
                   {unmappedItems.length}
                 </Badge>
               </CardTitle>
@@ -182,7 +184,7 @@ export const RecipeSuggestions: React.FC<RecipeSuggestionsProps> = ({
               const suggestion = suggestions[itemName];
               
               return (
-                <div key={itemName} className="border rounded-lg p-3 md:p-4 bg-background">
+                <div key={itemName} className="border rounded-lg p-3 md:p-4 bg-gradient-to-br from-background via-accent/5 to-background hover:border-primary/50 transition-all shadow-sm hover:shadow-md">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                     <h4 className="font-medium text-sm md:text-base truncate">{itemName}</h4>
                     {!suggestion && (
@@ -191,7 +193,7 @@ export const RecipeSuggestions: React.FC<RecipeSuggestionsProps> = ({
                         size="sm"
                         onClick={() => handleGenerateSuggestion(itemName)}
                         disabled={isLoading}
-                        className="shrink-0 w-full sm:w-auto"
+                        className="shrink-0 w-full sm:w-auto hover:bg-primary/10 hover:border-primary/50 transition-all"
                       >
                         {isLoading ? (
                           <>

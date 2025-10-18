@@ -27,8 +27,9 @@ import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDed
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { RecipeConversionStatusBadge } from '@/components/RecipeConversionStatusBadge';
 import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
-import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings, ArrowUpDown, AlertTriangle } from 'lucide-react';
+import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings, ArrowUpDown, AlertTriangle, Sparkles, TrendingUp, CheckCircle2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MetricIcon } from '@/components/MetricIcon';
 
 export default function Recipes() {
   const { user } = useAuth();
@@ -165,31 +166,54 @@ export default function Recipes() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="text-center lg:text-left">
-          <h1 className="text-2xl md:text-3xl font-bold mb-2">Recipes</h1>
-          <p className="text-sm md:text-base text-muted-foreground">
-            Create and manage recipes for {selectedRestaurant.restaurant?.name}
-          </p>
-        </div>
-        <div className="flex flex-col sm:flex-row justify-center lg:justify-start gap-2 w-full sm:w-auto">
-          <BulkInventoryDeductionDialog />
-          <Button 
-            variant="outline" 
-            onClick={() => setShowAutoSettings(!showAutoSettings)}
-            size="sm"
-            className="w-full sm:w-auto"
-          >
-            <Settings className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Auto Deduction</span>
-            <span className="sm:hidden">Auto</span>
-          </Button>
-          <Button onClick={() => setIsCreateDialogOpen(true)} className="w-full sm:w-auto">
-            <Plus className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Create Recipe</span>
-            <span className="sm:hidden">New Recipe</span>
-          </Button>
+      {/* Enhanced Header */}
+      <div className="flex flex-col gap-6 p-6 rounded-2xl bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50 animate-fade-in">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="hidden sm:flex p-3 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20">
+              <ChefHat className="w-8 h-8 text-primary" />
+            </div>
+            <div className="text-center lg:text-left">
+              <h1 className="text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
+                Recipe Management
+              </h1>
+              <p className="text-sm md:text-base text-muted-foreground flex items-center gap-2 justify-center lg:justify-start flex-wrap">
+                <span className="font-medium text-foreground">{selectedRestaurant.restaurant?.name}</span>
+                <span className="hidden sm:inline">•</span>
+                <span>{recipes.length} total recipes</span>
+                {mappedRecipes.length > 0 && (
+                  <>
+                    <span className="hidden sm:inline">•</span>
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                      {mappedRecipes.length} mapped to POS
+                    </span>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row justify-center lg:justify-start gap-2 w-full lg:w-auto">
+            <BulkInventoryDeductionDialog />
+            <Button 
+              variant="outline" 
+              onClick={() => setShowAutoSettings(!showAutoSettings)}
+              size="sm"
+              className="w-full sm:w-auto group hover:border-primary/50 transition-all"
+            >
+              <Settings className="w-4 h-4 mr-2 group-hover:text-primary transition-colors" />
+              <span className="hidden sm:inline">Auto Deduction</span>
+              <span className="sm:hidden">Auto</span>
+            </Button>
+            <Button 
+              onClick={() => setIsCreateDialogOpen(true)} 
+              className="w-full sm:w-auto gap-2 group bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary"
+            >
+              <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+              <span className="hidden sm:inline">Create Recipe</span>
+              <span className="sm:hidden">New Recipe</span>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -208,47 +232,51 @@ export default function Recipes() {
       )}
       
       {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input
-            placeholder="Search recipes..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+      <Card className="p-4 bg-gradient-to-br from-background via-accent/5 to-background border-border/50">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+            <Input
+              placeholder="Search recipes by name or POS item..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 border-border/50 focus:border-primary/50 transition-colors"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+              <SelectTrigger className="w-[160px] border-border/50 hover:border-primary/50 transition-colors">
+                <ArrowUpDown className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Sort by..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">📝 Name</SelectItem>
+                <SelectItem value="cost">💰 Cost</SelectItem>
+                <SelectItem value="salePrice">💵 Sale Price</SelectItem>
+                <SelectItem value="margin">📊 Margin %</SelectItem>
+                <SelectItem value="created">📅 Date Created</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button 
+              variant={sortDirection === 'asc' ? 'default' : 'outline'} 
+              size="icon"
+              onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+              className="transition-all hover:scale-105"
+              title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+            >
+              <ArrowUpDown className={`w-4 h-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
+            </Button>
+            <Button 
+              variant={showOnlyWarnings ? 'destructive' : 'outline'}
+              onClick={() => setShowOnlyWarnings(!showOnlyWarnings)}
+              className={`gap-2 transition-all ${showOnlyWarnings ? 'animate-pulse' : ''}`}
+            >
+              <AlertTriangle className="w-4 h-4" />
+              <span className="hidden sm:inline">Warnings</span>
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
-            <SelectTrigger className="w-[160px]">
-              <ArrowUpDown className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Sort by..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="name">Name</SelectItem>
-              <SelectItem value="cost">Cost</SelectItem>
-              <SelectItem value="salePrice">Sale Price</SelectItem>
-              <SelectItem value="margin">Margin %</SelectItem>
-              <SelectItem value="created">Date Created</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button 
-            variant={sortDirection === 'asc' ? 'default' : 'outline'} 
-            size="icon"
-            onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
-          >
-            <ArrowUpDown className="w-4 h-4" />
-          </Button>
-          <Button 
-            variant={showOnlyWarnings ? 'destructive' : 'outline'}
-            onClick={() => setShowOnlyWarnings(!showOnlyWarnings)}
-            className="gap-2"
-          >
-            <AlertTriangle className="w-4 h-4" />
-            <span className="hidden sm:inline">Warnings</span>
-          </Button>
-        </div>
-      </div>
+      </Card>
 
       {/* Tabs */}
       <Tabs defaultValue="all" className="space-y-4 md:space-y-6">
@@ -284,6 +312,7 @@ export default function Recipes() {
             sortBy={sortBy}
             sortDirection={sortDirection}
             showOnlyWarnings={showOnlyWarnings}
+            onCreate={() => setIsCreateDialogOpen(true)}
           />
         </TabsContent>
 
@@ -297,6 +326,7 @@ export default function Recipes() {
             sortBy={sortBy}
             sortDirection={sortDirection}
             showOnlyWarnings={showOnlyWarnings}
+            onCreate={() => setIsCreateDialogOpen(true)}
           />
         </TabsContent>
 
@@ -310,6 +340,7 @@ export default function Recipes() {
             sortBy={sortBy}
             sortDirection={sortDirection}
             showOnlyWarnings={showOnlyWarnings}
+            onCreate={() => setIsCreateDialogOpen(true)}
           />
         </TabsContent>
       </Tabs>
@@ -352,9 +383,10 @@ interface RecipeTableProps {
   sortBy: 'name' | 'cost' | 'salePrice' | 'margin' | 'created';
   sortDirection: 'asc' | 'desc';
   showOnlyWarnings: boolean;
+  onCreate?: () => void;
 }
 
-function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings }: RecipeTableProps) {
+function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings, onCreate }: RecipeTableProps) {
   // Pre-calculate conversion validation for all recipes
   const recipeValidations = useMemo(() => {
     return recipes.map(recipe => {
@@ -401,10 +433,14 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
   }, [recipes, recipeValidations, sortBy, sortDirection, showOnlyWarnings]);
   if (loading) {
     return (
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <Card className="border-border/50">
+        <CardContent className="p-12">
+          <div className="flex flex-col items-center justify-center gap-4">
+            <div className="relative">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary/20 border-t-primary"></div>
+              <ChefHat className="w-6 h-6 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+            </div>
+            <p className="text-sm text-muted-foreground animate-pulse">Loading recipes...</p>
           </div>
         </CardContent>
       </Card>
@@ -413,24 +449,38 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
 
   if (processedRecipes.length === 0) {
     return (
-      <Card>
-        <CardContent className="p-6">
-          <div className="text-center">
+      <Card className="border-border/50 bg-gradient-to-br from-background via-accent/5 to-background">
+        <CardContent className="p-12">
+          <div className="text-center space-y-4">
             {showOnlyWarnings ? (
               <>
-                <AlertTriangle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No recipes with warnings</h3>
-                <p className="text-muted-foreground">
-                  All recipes have valid conversions.
-                </p>
+                <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-green-500/10 to-transparent">
+                  <CheckCircle2 className="w-12 h-12 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold mb-2">No recipes with warnings</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">
+                    All recipes have valid conversions. Your recipe setup is looking great!
+                  </p>
+                </div>
               </>
             ) : (
               <>
-                <ChefHat className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No recipes found</h3>
-                <p className="text-muted-foreground">
-                  Create your first recipe to get started.
-                </p>
+                <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-primary/10 to-transparent">
+                  <ChefHat className="w-12 h-12 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold mb-2">No recipes found</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto mb-4">
+                    Create your first recipe to start tracking ingredient costs and profitability.
+                  </p>
+                  {onCreate && (
+                    <Button onClick={onCreate} className="gap-2">
+                      <Plus className="w-4 h-4" />
+                      Create Your First Recipe
+                    </Button>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -440,7 +490,7 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
   }
 
   return (
-    <Card>
+    <Card className="border-border/50 overflow-hidden">
       <CardContent className="p-0">
         {/* Mobile-friendly cards for small screens */}
         <div className="block md:hidden">
@@ -449,7 +499,7 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
             const validation = recipeValidations[originalIdx];
             
             return (
-              <div key={recipe.id} className="p-4 border-b last:border-b-0">
+              <div key={recipe.id} className="p-4 border-b last:border-b-0 hover:bg-accent/50 transition-colors">
                 <div className="space-y-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">

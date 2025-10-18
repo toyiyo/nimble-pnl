@@ -169,19 +169,27 @@ const Integrations = () => {
               </CardContent>
             </Card>
             
-            <Card className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-4">
-                  <MetricIcon icon={TrendingUp} variant="purple" />
-                  <div>
-                    <div className="text-3xl font-bold" aria-label={`${Math.round((connectedCount / integrations.length) * 100)}% integration rate`}>
-                      {Math.round((connectedCount / integrations.length) * 100)}%
+            {(() => {
+              const integrationRate = integrations.length 
+                ? Math.round((connectedCount / integrations.length) * 100) 
+                : 0;
+              
+              return (
+                <Card className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <MetricIcon icon={TrendingUp} variant="purple" />
+                      <div>
+                        <div className="text-3xl font-bold" aria-label={`${integrationRate}% integration rate`}>
+                          {integrationRate}%
+                        </div>
+                        <div className="text-sm text-muted-foreground">Integration Rate</div>
+                      </div>
                     </div>
-                    <div className="text-sm text-muted-foreground">Integration Rate</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              );
+            })()}
           </div>
 
           {/* Integration Categories */}

@@ -9,6 +9,7 @@ import { TestBankConnectionDialog } from '@/components/TestBankConnectionDialog'
 import { MetricIcon } from '@/components/MetricIcon';
 import { Building2, Plus, Wallet, TrendingUp, FlaskConical } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { loadStripe } from '@stripe/stripe-js';
 
 const Accounting = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -32,14 +33,32 @@ const Accounting = () => {
       const sessionData = await createFinancialConnectionsSession();
       
       if (sessionData?.clientSecret) {
-        // Open Stripe Financial Connections in a new window
-        const stripeUrl = `https://connect.stripe.com/setup/e/${sessionData.clientSecret}`;
-        window.open(stripeUrl, '_blank', 'width=600,height=800');
+        // Load Stripe.js
+        const stripe = await loadStripe('pk_test_51QQH7oDqmb7UvxAQ2qvKjAFOmvPOdOlXs2G5EjNhGtXCpwH7f4Fvlg2wjAuXWLvZDR5jLJZ7k0Z9OQVtJ7nFYDx00wMz7xmGE');
         
-        toast({
-          title: "Bank Connection Started",
-          description: "Complete the bank connection process in the popup window.",
+        if (!stripe) {
+          throw new Error('Failed to load Stripe');
+        }
+
+        // Use Stripe Financial Connections to collect the account
+        const { financialConnectionsSession } = await stripe.collectFinancialConnectionsAccounts({
+          clientSecret: sessionData.clientSecret,
         });
+
+        if (financialConnectionsSession.accounts && financialConnectionsSession.accounts.length > 0) {
+          toast({
+            title: "Bank Connected Successfully",
+            description: `Connected ${financialConnectionsSession.accounts.length} account(s)`,
+          });
+          
+          // Refresh the banks list
+          window.location.reload();
+        } else {
+          toast({
+            title: "Connection Cancelled",
+            description: "No accounts were connected",
+          });
+        }
       }
     } catch (error) {
       toast({

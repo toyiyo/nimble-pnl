@@ -116,8 +116,8 @@ serve(async (req) => {
         const { error: updateError } = await supabaseAdmin
           .from("bank_account_balances")
           .update({
-            current_balance: account.balance.current?.usd || 0,
-            available_balance: account.balance.available?.usd,
+            current_balance: (account.balance.current?.usd || 0) / 100,
+            available_balance: account.balance.available?.usd ? account.balance.available.usd / 100 : null,
             as_of_date: new Date().toISOString(),
           })
           .eq("id", existingBalance.id);
@@ -134,8 +134,8 @@ serve(async (req) => {
             account_name: account.display_name || account.institution_name,
             account_type: account.subcategory,
             account_mask: account.last4,
-            current_balance: account.balance.current?.usd || 0,
-            available_balance: account.balance.available?.usd,
+            current_balance: (account.balance.current?.usd || 0) / 100,
+            available_balance: account.balance.available?.usd ? account.balance.available.usd / 100 : null,
             currency: "USD",
             is_active: true,
             as_of_date: new Date().toISOString(),
@@ -159,8 +159,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true,
         balance: {
-          current: account.balance?.current?.usd || 0,
-          available: account.balance?.available?.usd
+          current: (account.balance?.current?.usd || 0) / 100,
+          available: account.balance?.available?.usd ? account.balance.available.usd / 100 : undefined
         }
       }),
       {

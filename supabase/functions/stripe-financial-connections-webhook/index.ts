@@ -116,8 +116,8 @@ serve(async (req) => {
               account_name: account.display_name || account.institution_name,
               account_type: account.subcategory,
               account_mask: account.last4,
-              current_balance: balanceData.current?.usd || 0,
-              available_balance: balanceData.available?.usd,
+              current_balance: (balanceData.current?.usd || 0) / 100,
+              available_balance: balanceData.available?.usd ? balanceData.available.usd / 100 : null,
               currency: "USD",
               is_active: true,
               as_of_date: new Date().toISOString(),
@@ -174,8 +174,8 @@ serve(async (req) => {
           const { error: balanceError } = await supabaseClient
             .from("bank_account_balances")
             .update({
-              current_balance: account.balance.current?.usd || 0,
-              available_balance: account.balance.available?.usd,
+              current_balance: (account.balance.current?.usd || 0) / 100,
+              available_balance: account.balance.available?.usd ? account.balance.available.usd / 100 : null,
               as_of_date: new Date().toISOString(),
             })
             .eq("connected_bank_id", bank.id);

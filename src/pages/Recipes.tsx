@@ -256,7 +256,7 @@ export default function Recipes() {
             />
           </div>
           <div className="flex gap-2" role="group" aria-label="Sort and filter options">
-            <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+            <Select value={sortBy} onValueChange={(value: 'name' | 'cost' | 'salePrice' | 'margin' | 'created') => setSortBy(value)}>
               <SelectTrigger className="w-[160px] border-border/50 hover:border-primary/50 transition-colors" aria-label="Sort recipes by">
                 <ArrowUpDown className="w-4 h-4 mr-2" aria-hidden="true" />
                 <SelectValue placeholder="Sort by..." />
@@ -276,6 +276,7 @@ export default function Recipes() {
               className="transition-all hover:scale-105 duration-200"
               title={sortDirection === 'asc' ? 'Ascending order' : 'Descending order'}
               aria-label={`Sort direction: ${sortDirection === 'asc' ? 'Ascending' : 'Descending'}`}
+              aria-pressed={sortDirection === 'asc'}
             >
               <ArrowUpDown className={`w-4 h-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
             </Button>

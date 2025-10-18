@@ -267,6 +267,7 @@ export type Database = {
           id: string
           is_active: boolean
           is_system_account: boolean
+          location_code: string | null
           normal_balance: string
           parent_account_id: string | null
           restaurant_id: string
@@ -283,6 +284,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_system_account?: boolean
+          location_code?: string | null
           normal_balance: string
           parent_account_id?: string | null
           restaurant_id: string
@@ -299,6 +301,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_system_account?: boolean
+          location_code?: string | null
           normal_balance?: string
           parent_account_id?: string | null
           restaurant_id?: string
@@ -3082,12 +3085,33 @@ export type Database = {
         | "payroll"
         | "tax_expense"
         | "other_expenses"
+        | "prepaid_expenses"
+        | "accumulated_depreciation"
+        | "payroll_liabilities"
+        | "deferred_revenue"
+        | "other_liabilities"
+        | "distributions"
+        | "food_sales"
+        | "beverage_sales"
+        | "alcohol_sales"
+        | "catering_income"
+        | "food_cost"
+        | "beverage_cost"
+        | "packaging_cost"
+        | "labor"
+        | "rent"
+        | "utilities"
+        | "marketing"
+        | "insurance"
+        | "repairs_maintenance"
+        | "professional_fees"
       account_type_enum:
         | "asset"
         | "liability"
         | "equity"
         | "revenue"
         | "expense"
+        | "cogs"
       bank_connection_status_enum:
         | "connected"
         | "disconnected"
@@ -3274,8 +3298,35 @@ export const Constants = {
         "payroll",
         "tax_expense",
         "other_expenses",
+        "prepaid_expenses",
+        "accumulated_depreciation",
+        "payroll_liabilities",
+        "deferred_revenue",
+        "other_liabilities",
+        "distributions",
+        "food_sales",
+        "beverage_sales",
+        "alcohol_sales",
+        "catering_income",
+        "food_cost",
+        "beverage_cost",
+        "packaging_cost",
+        "labor",
+        "rent",
+        "utilities",
+        "marketing",
+        "insurance",
+        "repairs_maintenance",
+        "professional_fees",
       ],
-      account_type_enum: ["asset", "liability", "equity", "revenue", "expense"],
+      account_type_enum: [
+        "asset",
+        "liability",
+        "equity",
+        "revenue",
+        "expense",
+        "cogs",
+      ],
       bank_connection_status_enum: [
         "connected",
         "disconnected",

@@ -14,14 +14,18 @@ import { Badge } from '@/components/ui/badge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { MetricIcon } from '@/components/MetricIcon';
-import { Receipt, Search, Filter, Download, Building2 } from 'lucide-react';
+import { Receipt, Search, Download, Building2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { TransactionFiltersSheet, type TransactionFilters } from '@/components/TransactionFilters';
+import { useToast } from '@/hooks/use-toast';
 
 const Transactions = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState<TransactionFilters>({});
+  const { toast } = useToast();
 
   // Fetch transactions
   const { data: transactions, isLoading, refetch } = useQuery({
@@ -70,10 +74,31 @@ const Transactions = () => {
     });
   };
 
-  const filteredTransactions = transactions?.filter(txn =>
-    txn.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    txn.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
+  const filteredTransactions = transactions?.filter(txn => {
+    // Search filter
+    const matchesSearch = !searchTerm || 
+      txn.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      txn.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Date filters
+    const matchesDateFrom = !filters.dateFrom || new Date(txn.transaction_date) >= new Date(filters.dateFrom);
+    const matchesDateTo = !filters.dateTo || new Date(txn.transaction_date) <= new Date(filters.dateTo);
+    
+    // Amount filters
+    const matchesMinAmount = filters.minAmount === undefined || Math.abs(txn.amount) >= filters.minAmount;
+    const matchesMaxAmount = filters.maxAmount === undefined || Math.abs(txn.amount) <= filters.maxAmount;
+    
+    // Status filter
+    const matchesStatus = !filters.status || txn.status === filters.status;
+    
+    // Transaction type filter
+    const matchesType = !filters.transactionType || 
+      (filters.transactionType === 'debit' && txn.amount < 0) ||
+      (filters.transactionType === 'credit' && txn.amount > 0);
+    
+    return matchesSearch && matchesDateFrom && matchesDateTo && 
+           matchesMinAmount && matchesMaxAmount && matchesStatus && matchesType;
+  }) || [];
 
   const totalDebits = filteredTransactions
     .filter(t => t.amount < 0)
@@ -159,11 +184,54 @@ const Transactions = () => {
               />
             </div>
             <div className="flex gap-2 w-full md:w-auto">
-              <Button variant="outline" className="gap-2">
-                <Filter className="h-4 w-4" />
-                Filter
-              </Button>
-              <Button variant="outline" className="gap-2">
+              <TransactionFiltersSheet filters={filters} onFiltersChange={setFilters} />
+              <Button 
+                variant="outline" 
+                className="gap-2"
+                onClick={() => {
+                  if (filteredTransactions.length === 0) {
+                    toast({
+                      title: "No transactions to export",
+                      description: "There are no transactions matching your filters.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  
+                  // Create CSV content
+                  const headers = ['Date', 'Description', 'Merchant', 'Bank', 'Amount', 'Status', 'Category'];
+                  const rows = filteredTransactions.map(txn => [
+                    formatDate(txn.transaction_date),
+                    txn.description || '',
+                    txn.merchant_name || '',
+                    txn.connected_bank?.institution_name || '',
+                    txn.amount.toString(),
+                    txn.status,
+                    txn.chart_account?.account_name || 'Uncategorized'
+                  ]);
+                  
+                  const csv = [
+                    headers.join(','),
+                    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+                  ].join('\n');
+                  
+                  // Download CSV
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `transactions-${new Date().toISOString().split('T')[0]}.csv`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  window.URL.revokeObjectURL(url);
+                  
+                  toast({
+                    title: "Export successful",
+                    description: `Exported ${filteredTransactions.length} transactions to CSV.`,
+                  });
+                }}
+              >
                 <Download className="h-4 w-4" />
                 Export
               </Button>

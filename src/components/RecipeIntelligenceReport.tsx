@@ -135,13 +135,18 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                     <h4 className="font-semibold">{insight.title}</h4>
                     <p className="text-sm text-muted-foreground">{insight.description}</p>
                     <div className="flex flex-wrap gap-2 text-xs">
-                      {insight.affected_recipes.slice(0, 3).map(recipe => (
-                        <Link key={recipe} to="/recipes">
-                          <Badge variant="secondary" className="hover:bg-accent cursor-pointer transition-colors">
-                            {recipe}
-                          </Badge>
-                        </Link>
-                      ))}
+                      {insight.affected_recipes.slice(0, 3).map((recipeName) => {
+                        const recipe = data?.performance.find(r => r.name === recipeName);
+                        return recipe ? (
+                          <Link key={recipeName} to={`/recipes?recipeId=${recipe.id}`}>
+                            <Badge variant="secondary" className="hover:bg-accent cursor-pointer transition-colors">
+                              {recipeName}
+                            </Badge>
+                          </Link>
+                        ) : (
+                          <Badge key={recipeName} variant="secondary">{recipeName}</Badge>
+                        );
+                      })}
                       {insight.affected_recipes.length > 3 && (
                         <Badge variant="outline">+{insight.affected_recipes.length - 3} more</Badge>
                       )}
@@ -279,7 +284,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
               <Card key={recipe.id}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
-                    <Link to="/recipes" className="hover:text-primary transition-colors">
+                    <Link to={`/recipes?recipeId=${recipe.id}`} className="hover:text-primary transition-colors">
                       <CardTitle className="text-base hover:underline cursor-pointer">{recipe.name}</CardTitle>
                     </Link>
                     {getTrendIcon(recipe.trend)}
@@ -374,7 +379,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                 {data.performance.slice(0, 10).map(recipe => (
                   <div key={recipe.id} className="space-y-1">
                     <div className="flex justify-between text-sm">
-                      <Link to="/recipes" className="font-medium hover:text-primary hover:underline transition-colors cursor-pointer">
+                      <Link to={`/recipes?recipeId=${recipe.id}`} className="font-medium hover:text-primary hover:underline transition-colors cursor-pointer">
                         {recipe.name}
                       </Link>
                       <span className={`font-bold ${recipe.margin >= 60 ? 'text-green-600' : recipe.margin >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
@@ -454,7 +459,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                       <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">
                         {index + 1}
                       </Badge>
-                      <Link to="/recipes" className="text-sm flex-1 truncate hover:text-primary hover:underline transition-colors cursor-pointer">
+                      <Link to={`/recipes?recipeId=${recipe.id}`} className="text-sm flex-1 truncate hover:text-primary hover:underline transition-colors cursor-pointer">
                         {recipe.name}
                       </Link>
                       <span className="text-sm font-bold text-green-600">{recipe.efficiency_score.toFixed(0)}</span>
@@ -478,7 +483,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                         <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">
                           {index + 1}
                         </Badge>
-                        <Link to="/recipes" className="text-sm flex-1 truncate hover:text-primary hover:underline transition-colors cursor-pointer">
+                        <Link to={`/recipes?recipeId=${recipe.id}`} className="text-sm flex-1 truncate hover:text-primary hover:underline transition-colors cursor-pointer">
                           {recipe.name}
                         </Link>
                         <span className="text-sm font-bold">{recipe.velocity.toFixed(1)}/day</span>
@@ -502,7 +507,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                         <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">
                           {index + 1}
                         </Badge>
-                        <Link to="/recipes" className="text-sm flex-1 truncate hover:text-primary hover:underline transition-colors cursor-pointer">
+                        <Link to={`/recipes?recipeId=${recipe.id}`} className="text-sm flex-1 truncate hover:text-primary hover:underline transition-colors cursor-pointer">
                           {recipe.name}
                         </Link>
                         <span className="text-sm font-bold">${recipe.total_sales.toFixed(0)}</span>
@@ -559,13 +564,18 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                 <div>
                   <p className="text-sm font-medium mb-2">Predicted Top Sellers:</p>
                   <div className="flex flex-wrap gap-2">
-                    {data.predictions.top_recipes.map(recipe => (
-                      <Link key={recipe} to="/recipes">
-                        <Badge variant="secondary" className="hover:bg-accent cursor-pointer transition-colors">
-                          {recipe}
-                        </Badge>
-                      </Link>
-                    ))}
+                    {data.predictions.top_recipes.map((recipeName) => {
+                      const recipe = data?.performance.find(r => r.name === recipeName);
+                      return recipe ? (
+                        <Link key={recipeName} to={`/recipes?recipeId=${recipe.id}`}>
+                          <Badge variant="secondary" className="hover:bg-accent cursor-pointer transition-colors">
+                            {recipeName}
+                          </Badge>
+                        </Link>
+                      ) : (
+                        <Badge key={recipeName} variant="secondary">{recipeName}</Badge>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

@@ -25,7 +25,7 @@ import {
   Settings,
   Wallet,
   Receipt,
-  Building2,
+  CalendarCheck,
   LogOut,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -97,8 +97,8 @@ export function AppSidebar() {
           onClick={() => navigate('/')}
           className="flex items-center gap-2 w-full group transition-transform duration-200 hover:scale-105"
         >
-          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-2 group-hover:shadow-emerald-500/50 transition-shadow duration-200 flex-shrink-0">
-            <Building2 className="h-5 w-5 text-white" />
+          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-1.5 group-hover:shadow-emerald-500/50 transition-shadow duration-200 flex-shrink-0">
+            <CalendarCheck className="h-4 w-4 text-white" />
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0 text-left">

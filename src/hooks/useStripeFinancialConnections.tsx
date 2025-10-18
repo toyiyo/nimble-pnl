@@ -232,8 +232,8 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
       if (error) throw error;
 
       toast({
-        title: "Transactions Synced",
-        description: `Synced ${data.synced} new transactions`,
+        title: data.message ? "Transaction Sync Started" : "Transactions Synced",
+        description: data.message || `Synced ${data.synced} new transactions`,
       });
 
       return data;

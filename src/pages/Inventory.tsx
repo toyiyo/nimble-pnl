@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricIcon } from '@/components/MetricIcon';
+import { PageHeader } from '@/components/PageHeader';
 import { EnhancedBarcodeScanner } from '@/components/EnhancedBarcodeScanner';
 import { ImageCapture } from '@/components/ImageCapture';
 import { ProductDialog } from '@/components/ProductDialog';
@@ -734,57 +735,48 @@ export const Inventory: React.FC = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Enhanced Header */}
-      <header className="relative overflow-hidden bg-gradient-to-br from-background via-primary/5 to-accent/5 border-b-2 border-transparent bg-clip-padding">
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent opacity-50" />
-        <div className="relative max-w-7xl mx-auto p-4">
-          {/* Mobile-first layout */}
-          <div className="flex items-center justify-between mb-4 md:mb-0">
-            <Button
-              variant="ghost"
+      <div className="max-w-7xl mx-auto p-4">
+        <div className="flex items-center justify-between mb-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/')}
+            className="p-2 md:px-3 hover:bg-primary/10 transition-all duration-300"
+            aria-label="Return to dashboard"
+          >
+            <ArrowLeft className="h-4 w-4 md:mr-2" />
+            <span className="hidden md:inline">Dashboard</span>
+          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
               size="sm"
-              onClick={() => navigate('/')}
-              className="p-2 md:px-3 hover:bg-primary/10 transition-all duration-300"
-              aria-label="Return to dashboard"
+              onClick={() => navigate('/receipt-import')}
+              className="p-2 md:px-3 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-300"
+              aria-label="Upload receipt for inventory"
             >
-              <ArrowLeft className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Dashboard</span>
+              <Package className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Upload Receipt</span>
             </Button>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => navigate('/receipt-import')}
-                className="p-2 md:px-3 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-300"
-                aria-label="Upload receipt for inventory"
-              >
-                <Package className="h-4 w-4 md:mr-2" />
-                <span className="hidden md:inline">Upload Receipt</span>
-              </Button>
-              <Button 
-                onClick={handleCreateManually} 
-                size="sm"
-                className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/30 transition-all duration-300 hover:scale-[1.02]"
-                aria-label="Add new product manually"
-              >
-                <Plus className="h-4 w-4 md:mr-2" />
-                <span className="hidden sm:inline">Add Product</span>
-              </Button>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 text-center md:text-left">
-            <MetricIcon icon={Package} variant="emerald" />
-            <div className="space-y-1">
-              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-primary via-primary to-accent bg-clip-text text-transparent">
-                Inventory Management
-              </h1>
-              <p className="text-sm text-muted-foreground flex items-center justify-center md:justify-start gap-2">
-                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
-                {selectedRestaurant?.restaurant?.name}
-              </p>
-            </div>
+            <Button 
+              onClick={handleCreateManually} 
+              size="sm"
+              className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/30 transition-all duration-300 hover:scale-[1.02]"
+              aria-label="Add new product manually"
+            >
+              <Plus className="h-4 w-4 md:mr-2" />
+              <span className="hidden sm:inline">Add Product</span>
+            </Button>
           </div>
         </div>
-      </header>
+        
+        <PageHeader
+          icon={Package}
+          iconVariant="emerald"
+          title="Inventory Management"
+          restaurantName={selectedRestaurant?.restaurant?.name}
+        />
+      </div>
 
       <div className="max-w-7xl mx-auto p-4 md:p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

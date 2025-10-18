@@ -31,6 +31,7 @@ import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
 import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings, ArrowUpDown, AlertTriangle, Sparkles, TrendingUp, CheckCircle2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MetricIcon } from '@/components/MetricIcon';
+import { PageHeader } from '@/components/PageHeader';
 
 export default function Recipes() {
   const { user } = useAuth();
@@ -180,58 +181,52 @@ export default function Recipes() {
   return (
     <div className="space-y-6 md:space-y-8">
       {/* Enhanced Header */}
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-        <CardContent className="pt-6">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <MetricIcon icon={ChefHat} variant="emerald" />
-              <div>
-                <h1 className="text-3xl md:text-4xl font-bold mb-2 tracking-tight bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Recipe Management
-                </h1>
-                <p className="text-sm md:text-base text-muted-foreground flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-foreground">{selectedRestaurant.restaurant?.name}</span>
-                  <span className="hidden sm:inline" aria-hidden="true">•</span>
-                  <span aria-label={`${recipes.length} total recipes`}>{recipes.length} total recipes</span>
-                  {mappedRecipes.length > 0 && (
-                    <>
-                      <span className="hidden sm:inline" aria-hidden="true">•</span>
-                      <span className="flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-green-600" aria-hidden="true" />
-                        <span aria-label={`${mappedRecipes.length} recipes mapped to POS`}>{mappedRecipes.length} mapped to POS</span>
-                      </span>
-                    </>
-                  )}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-              <BulkInventoryDeductionDialog />
-              <Button 
-                variant="outline" 
-                onClick={() => setShowAutoSettings(!showAutoSettings)}
-                size="sm"
-                className="w-full sm:w-auto group hover:border-primary/50 transition-all duration-200"
-                aria-label={showAutoSettings ? "Hide auto deduction settings" : "Show auto deduction settings"}
-                aria-expanded={showAutoSettings}
-              >
-                <Settings className="w-4 h-4 mr-2 group-hover:text-primary transition-colors" aria-hidden="true" />
-                <span className="hidden sm:inline">Auto Deduction</span>
-                <span className="sm:hidden">Auto</span>
-              </Button>
-              <Button 
-                onClick={() => setIsCreateDialogOpen(true)} 
-                className="w-full sm:w-auto gap-2 group bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-200"
-                aria-label="Create new recipe"
-              >
-                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" aria-hidden="true" />
-                <span className="hidden sm:inline">Create Recipe</span>
-                <span className="sm:hidden">New Recipe</span>
-              </Button>
-            </div>
+      <PageHeader
+        icon={ChefHat}
+        iconVariant="emerald"
+        title="Recipe Management"
+        restaurantName={selectedRestaurant.restaurant?.name}
+        subtitle={
+          <div className="flex items-center gap-2 flex-wrap">
+            <span aria-label={`${recipes.length} total recipes`}>{recipes.length} total recipes</span>
+            {mappedRecipes.length > 0 && (
+              <>
+                <span className="hidden sm:inline" aria-hidden="true">•</span>
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-green-600" aria-hidden="true" />
+                  <span aria-label={`${mappedRecipes.length} recipes mapped to POS`}>{mappedRecipes.length} mapped to POS</span>
+                </span>
+              </>
+            )}
           </div>
-        </CardContent>
-      </Card>
+        }
+        actions={
+          <>
+            <BulkInventoryDeductionDialog />
+            <Button 
+              variant="outline" 
+              onClick={() => setShowAutoSettings(!showAutoSettings)}
+              size="sm"
+              className="w-full sm:w-auto group hover:border-primary/50 transition-all duration-200"
+              aria-label={showAutoSettings ? "Hide auto deduction settings" : "Show auto deduction settings"}
+              aria-expanded={showAutoSettings}
+            >
+              <Settings className="w-4 h-4 mr-2 group-hover:text-primary transition-colors" aria-hidden="true" />
+              <span className="hidden sm:inline">Auto Deduction</span>
+              <span className="sm:hidden">Auto</span>
+            </Button>
+            <Button 
+              onClick={() => setIsCreateDialogOpen(true)} 
+              className="w-full sm:w-auto gap-2 group bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-200"
+              aria-label="Create new recipe"
+            >
+              <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" aria-hidden="true" />
+              <span className="hidden sm:inline">Create Recipe</span>
+              <span className="sm:hidden">New Recipe</span>
+            </Button>
+          </>
+        }
+      />
 
       {/* Auto Deduction Settings */}
       {showAutoSettings && (

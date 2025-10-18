@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MetricIcon } from '@/components/MetricIcon';
+import { PageHeader } from '@/components/PageHeader';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeIntelligenceReport } from '@/components/RecipeIntelligenceReport';
@@ -55,21 +56,12 @@ export default function Reports() {
   return (
     <div className="space-y-6">
       {/* Enhanced Header */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-background via-primary/5 to-accent/5 border-2 border-transparent bg-clip-padding rounded-lg p-6">
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent opacity-50" />
-        <div className="relative flex items-center gap-4">
-          <MetricIcon icon={BarChart3} variant="blue" />
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-primary via-primary to-accent bg-clip-text text-transparent">
-              Reports & Analytics
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse mr-2" aria-hidden="true" />
-              {selectedRestaurant?.restaurant?.name}
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        icon={BarChart3}
+        iconVariant="blue"
+        title="Reports & Analytics"
+        restaurantName={selectedRestaurant?.restaurant?.name}
+      />
 
       <Tabs defaultValue="pnl-trends" className="space-y-4 md:space-y-6">
         <TabsList className="grid w-full grid-cols-3 md:grid-cols-7 h-auto md:h-10" role="tablist">

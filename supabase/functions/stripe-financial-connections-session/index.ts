@@ -91,8 +91,8 @@ serve(async (req) => {
     
     const session = await stripe.financialConnections.sessions.create({
       account_holder: {
-        type: "account",
-        account: restaurantId, // Use restaurant ID as account reference
+        type: "customer",
+        customer: restaurantId, // Use restaurant ID as customer reference
       },
       permissions: ["payment_method", "balances", "transactions"],
       filters: {

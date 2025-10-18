@@ -540,10 +540,10 @@ export const Inventory: React.FC = () => {
       if (newProduct) {
         // Audit log is already created by createProduct hook via logPurchase
         // No need for duplicate logging here
-        toast({
-          title: "Product created",
-          description: `${newProduct.name} added to inventory${quantityToAdd > 0 ? ` with ${quantityToAdd} units` : ''}`,
-        });
+      toast({
+        title: "Product created",
+        description: `${newProduct.name} added to inventory${quantityToAdd > 0 ? ` with ${quantityToAdd.toFixed(2)} units` : ''}`,
+      });
         setShowUpdateDialog(false);
         setSelectedProduct(null);
       }
@@ -600,7 +600,7 @@ export const Inventory: React.FC = () => {
         if (quantityDifference !== 0) {
           toast({
             title: "Inventory updated",
-            description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference} units. New total: ${Math.round(finalStock * 100) / 100}`,
+            description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference.toFixed(2)} units. New total: ${finalStock.toFixed(2)}`,
             duration: 800,
           });
         } else {
@@ -671,8 +671,8 @@ export const Inventory: React.FC = () => {
       toast({
         title: "Inventory updated",
         description: scanMode === 'add' 
-          ? `Added ${quantity} to ${quickInventoryProduct.name}`
-          : `Set ${quickInventoryProduct.name} to ${quantity}`,
+          ? `Added ${quantity.toFixed(2)} to ${quickInventoryProduct.name}`
+          : `Set ${quickInventoryProduct.name} to ${quantity.toFixed(2)}`,
         duration: 800,
       });
     }
@@ -1266,13 +1266,13 @@ export const Inventory: React.FC = () => {
                                    ? 'text-destructive' 
                                    : 'text-foreground'
                                }`}>
-                                 <span>{product.current_stock || 0} {product.uom_purchase || 'units'}</span>
+                                 <span>{Number(product.current_stock || 0).toFixed(2)} {product.uom_purchase || 'units'}</span>
                                </div>
                              </div>
                            {product.cost_per_unit && (
                              <div className="flex justify-between items-center">
                                <span className="text-sm">Unit Cost:</span>
-                               <span className="font-medium">${product.cost_per_unit}</span>
+                               <span className="font-medium">${Number(product.cost_per_unit).toFixed(2)}</span>
                              </div>
                            )}
                            {inventoryMetrics.productMetrics[product.id] && (
@@ -1381,24 +1381,24 @@ export const Inventory: React.FC = () => {
                        </CardHeader>
                        <CardContent>
                          <div className="space-y-2">
-                             <div className="flex justify-between items-center">
-                               <span className="text-sm">Current Stock:</span>
-                               <div className="font-medium text-destructive text-right">
-                                 <span>{product.current_stock || 0} {product.uom_purchase || 'units'}</span>
-                               </div>
-                             </div>
-                           <div className="flex justify-between items-center">
-                             <span className="text-sm">Reorder Point:</span>
-                             <span className="font-medium">
-                               {product.reorder_point || 0} {product.size_unit || 'units'}
-                             </span>
-                           </div>
-                           {product.cost_per_unit && (
-                             <div className="flex justify-between items-center">
-                               <span className="text-sm">Unit Cost:</span>
-                               <span className="font-medium">${product.cost_per_unit}</span>
-                             </div>
-                           )}
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm">Current Stock:</span>
+                                <div className="font-medium text-destructive text-right">
+                                  <span>{Number(product.current_stock || 0).toFixed(2)} {product.uom_purchase || 'units'}</span>
+                                </div>
+                              </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm">Reorder Point:</span>
+                              <span className="font-medium">
+                                {Number(product.reorder_point || 0).toFixed(2)} {product.size_unit || 'units'}
+                              </span>
+                            </div>
+                            {product.cost_per_unit && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm">Unit Cost:</span>
+                                <span className="font-medium">${Number(product.cost_per_unit).toFixed(2)}</span>
+                              </div>
+                            )}
                            {inventoryMetrics.productMetrics[product.id] && (
                              <>
                                <div className="flex justify-between items-center">

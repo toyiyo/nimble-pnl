@@ -92,11 +92,11 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r">
-      <SidebarHeader className={`border-b ${collapsed ? 'h-14' : 'h-14'}`}>
+      <SidebarHeader className="border-b h-14 p-0">
         <button 
           onClick={() => navigate('/')}
-          className={`flex items-center gap-2 group transition-all duration-200 hover:scale-105 w-full h-full ${
-            collapsed ? 'justify-center px-3' : 'px-3'
+          className={`flex items-center gap-3 group transition-all duration-200 hover:scale-105 w-full h-full ${
+            collapsed ? 'justify-center px-3' : 'px-4'
           }`}
         >
           <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-1.5 group-hover:shadow-emerald-500/50 transition-all duration-200 flex-shrink-0">

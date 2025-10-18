@@ -82,19 +82,31 @@ serve(async (req) => {
       apiVersion: "2025-08-27.basil" as any
     });
 
-    console.log("[SYNC-TRANSACTIONS] Refreshing transactions for account");
+    console.log("[SYNC-TRANSACTIONS] Subscribing to transactions for account");
 
-    // First, refresh the account to fetch latest transactions
+    // First, subscribe to transactions if not already subscribed
     try {
-      const refreshedAccount = await stripe.financialConnections.accounts.refresh({
+      await stripe.financialConnections.accounts.subscribe({
         account: bank.stripe_financial_account_id,
         features: ['transactions'],
       });
-      
-      console.log("[SYNC-TRANSACTIONS] Refresh initiated, status:", refreshedAccount.balance_refresh?.status);
+      console.log("[SYNC-TRANSACTIONS] Successfully subscribed to transactions");
+    } catch (subscribeError: any) {
+      // If already subscribed, this will error - that's okay
+      console.log("[SYNC-TRANSACTIONS] Subscribe result:", subscribeError.message);
+    }
+
+    console.log("[SYNC-TRANSACTIONS] Refreshing transactions data");
+
+    // Then refresh to get latest data
+    try {
+      await stripe.financialConnections.accounts.refresh({
+        account: bank.stripe_financial_account_id,
+        features: ['transactions'],
+      });
+      console.log("[SYNC-TRANSACTIONS] Refresh completed");
     } catch (refreshError: any) {
       console.log("[SYNC-TRANSACTIONS] Refresh error:", refreshError.message);
-      // Continue anyway - account might already have transactions subscribed
     }
 
     console.log("[SYNC-TRANSACTIONS] Fetching transactions from Stripe");

@@ -17,7 +17,9 @@ const Accounting = () => {
     connectedBanks, 
     loading, 
     createFinancialConnectionsSession,
-    isCreatingSession 
+    isCreatingSession,
+    refreshBalance,
+    syncTransactions
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
   const [showTestDialog, setShowTestDialog] = useState(false);
@@ -203,6 +205,8 @@ const Accounting = () => {
                     key={bank.id}
                     bank={bank}
                     restaurantId={selectedRestaurant.restaurant_id}
+                    onRefreshBalance={refreshBalance}
+                    onSyncTransactions={syncTransactions}
                   />
                 ))}
               </div>

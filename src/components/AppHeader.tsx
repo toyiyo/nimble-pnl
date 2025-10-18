@@ -43,7 +43,8 @@ import {
   Users,
   Settings,
   LogOut,
-  Wallet
+  Wallet,
+  Receipt
 } from 'lucide-react';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 import { UserProfileDropdown } from '@/components/UserProfileDropdown';
@@ -70,7 +71,8 @@ const navigationGroups = [
   {
     label: 'Financial',
     items: [
-      { path: '/accounting/banks', label: 'Banks', icon: Wallet },
+      { path: '/accounting', label: 'Banks', icon: Wallet },
+      { path: '/transactions', label: 'Transactions', icon: Receipt },
     ]
   },
   {

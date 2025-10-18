@@ -188,6 +188,65 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     };
   }, [restaurantId]);
 
+  // Refresh balance for a specific bank
+  const refreshBalance = async (bankId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'stripe-refresh-balance',
+        {
+          body: { bankId }
+        }
+      );
+
+      if (error) throw error;
+
+      toast({
+        title: "Balance Refreshed",
+        description: "Your account balance has been updated",
+      });
+
+      // Refresh the banks list
+      await fetchConnectedBanks();
+
+      return data;
+    } catch (error) {
+      console.error('Error refreshing balance:', error);
+      toast({
+        title: "Failed to Refresh Balance",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Sync transactions for a specific bank
+  const syncTransactions = async (bankId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'stripe-sync-transactions',
+        {
+          body: { bankId }
+        }
+      );
+
+      if (error) throw error;
+
+      toast({
+        title: "Transactions Synced",
+        description: `Synced ${data.synced} new transactions`,
+      });
+
+      return data;
+    } catch (error) {
+      console.error('Error syncing transactions:', error);
+      toast({
+        title: "Failed to Sync Transactions",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
+  };
+
   return {
     connectedBanks,
     loading,
@@ -195,5 +254,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     createFinancialConnectionsSession,
     disconnectBank,
     refreshBanks: fetchConnectedBanks,
+    refreshBalance,
+    syncTransactions,
   };
 };

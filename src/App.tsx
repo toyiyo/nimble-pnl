@@ -27,6 +27,7 @@ import { ReceiptImport } from "@/pages/ReceiptImport";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Accounting from "./pages/Accounting";
+import Transactions from "./pages/Transactions";
 
 const queryClient = new QueryClient();
 
@@ -84,7 +85,9 @@ const App = () => (
             <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
             <Route path="/inventory-audit" element={<ProtectedRoute><InventoryAudit /></ProtectedRoute>} />
             <Route path="/receipt-import" element={<ProtectedRoute><ReceiptImport /></ProtectedRoute>} />
+            <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
             <Route path="/accounting/banks" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
+            <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/clover/callback" element={<CloverCallback />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />

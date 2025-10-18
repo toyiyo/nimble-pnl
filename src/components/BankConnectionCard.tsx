@@ -30,9 +30,11 @@ interface BankConnectionCardProps {
     balances: BankBalance[];
   };
   restaurantId: string;
+  onRefreshBalance?: (bankId: string) => Promise<void>;
+  onSyncTransactions?: (bankId: string) => Promise<void>;
 }
 
-export const BankConnectionCard = ({ bank }: BankConnectionCardProps) => {
+export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions }: BankConnectionCardProps) => {
   const totalBalance = bank.balances.reduce((sum, balance) => sum + balance.current_balance, 0);
   const activeAccounts = bank.balances.filter(b => b.is_active).length;
 
@@ -160,9 +162,22 @@ export const BankConnectionCard = ({ bank }: BankConnectionCardProps) => {
         )}
 
         {/* Actions */}
-        <div className="pt-2">
-          <Button variant="outline" size="sm" className="w-full">
+        <div className="pt-2 space-y-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full"
+            onClick={() => onRefreshBalance?.(bank.id)}
+          >
             Refresh Balance
+          </Button>
+          <Button 
+            variant="default" 
+            size="sm" 
+            className="w-full"
+            onClick={() => onSyncTransactions?.(bank.id)}
+          >
+            Sync Transactions
           </Button>
         </div>
       </CardContent>

@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 import { MetricIcon } from '@/components/MetricIcon';
+import { SecuritySettings } from '@/components/SecuritySettings';
 import { useToast } from '@/hooks/use-toast';
 import { Settings, Save, RotateCcw, AlertCircle } from 'lucide-react';
 
@@ -306,6 +307,9 @@ export default function RestaurantSettings() {
           )}
         </CardContent>
       </Card>
+
+      {/* Security Settings */}
+      <SecuritySettings />
     </div>
   );
 }

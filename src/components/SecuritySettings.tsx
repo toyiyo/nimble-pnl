@@ -1,298 +1,156 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Shield, AlertTriangle, CheckCircle, ExternalLink } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { Lock, Shield } from 'lucide-react';
+import { z } from 'zod';
+
+const passwordSchema = z.string()
+  .min(8, 'Password must be at least 8 characters')
+  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+  .regex(/[0-9]/, 'Password must contain at least one number');
 
 export const SecuritySettings = () => {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { updatePassword, user } = useAuth();
   const { toast } = useToast();
-  const [isChecking, setIsChecking] = useState(false);
 
-  const securityChecklist = [
-    {
-      id: 'encryption',
-      title: 'Token Encryption',
-      description: 'Square OAuth tokens are encrypted at rest using AES-256-GCM',
-      status: 'completed',
-      severity: 'high'
-    },
-    {
-      id: 'audit_logging',
-      title: 'Security Audit Logging',
-      description: 'All security events are logged for monitoring',
-      status: 'completed',
-      severity: 'medium'
-    },
-    {
-      id: 'rls_policies',
-      title: 'Row Level Security',
-      description: 'Database access properly restricted by user roles and authentication',
-      status: 'completed',
-      severity: 'high'
-    },
-    {
-      id: 'data_access_control',
-      title: 'Data Access Control',
-      description: 'Unit conversions and sensitive data now require authentication',
-      status: 'completed',
-      severity: 'high'
-    },
-    {
-      id: 'function_security',
-      title: 'Database Function Security',
-      description: 'All database functions hardened with proper search paths',
-      status: 'completed',
-      severity: 'medium'
-    },
-    {
-      id: 'email_exposure_fix',
-      title: 'Email Privacy Protection',
-      description: 'Fixed critical vulnerability where invitation emails could be exposed to unauthorized users',
-      status: 'completed',
-      severity: 'high'
-    },
-    {
-      id: 'extensions_schema',
-      title: 'Database Extensions Security',
-      description: 'Moved pg_net extension from public schema to dedicated extensions schema',
-      status: 'completed',
-      severity: 'low'
-    },
-    {
-      id: 'enhanced_security_logging',
-      title: 'Enhanced Security Event Logging',
-      description: 'Implemented comprehensive security event tracking and rate limiting',
-      status: 'completed',
-      severity: 'medium'
-    },
-    {
-      id: 'leaked_passwords',
-      title: 'Leaked Password Protection',
-      description: 'Enable protection against compromised passwords in Supabase Auth settings',
-      status: 'pending',
-      severity: 'medium',
-      action: 'Enable in Supabase Dashboard → Auth → Settings',
-      link: 'https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection'
-    }
-  ];
+  // Check if user is using email/password authentication
+  const isEmailPasswordUser = user?.app_metadata?.provider === 'email';
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-5 w-5 text-green-600" />;
-      case 'pending':
-        return <AlertTriangle className="h-5 w-5 text-yellow-600" />;
-      default:
-        return <Shield className="h-5 w-5 text-gray-400" />;
+  const validatePassword = (pwd: string): string | null => {
+    try {
+      passwordSchema.parse(pwd);
+      return null;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return error.errors[0].message;
+      }
+      return 'Invalid password';
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <Badge variant="default" className="bg-green-100 text-green-800">Secured</Badge>;
-      case 'pending':
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Action Required</Badge>;
-      default:
-        return <Badge variant="outline">Unknown</Badge>;
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate password
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) {
+      toast({
+        title: "Invalid Password",
+        description: passwordError,
+        variant: "destructive",
+      });
+      return;
     }
+
+    // Check if passwords match
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: "Passwords Don't Match",
+        description: "Please make sure both passwords are the same.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    const { error } = await updatePassword(newPassword);
+
+    if (error) {
+      toast({
+        title: "Error Updating Password",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Password Updated",
+        description: "Your password has been successfully changed.",
+      });
+      setNewPassword('');
+      setConfirmPassword('');
+    }
+
+    setLoading(false);
   };
 
-  const getSeverityBadge = (severity: string) => {
-    switch (severity) {
-      case 'high':
-        return <Badge variant="destructive">High Priority</Badge>;
-      case 'medium':
-        return <Badge variant="secondary">Medium Priority</Badge>;
-      case 'low':
-        return <Badge variant="outline">Low Priority</Badge>;
-      default:
-        return null;
-    }
-  };
-
-  const pendingItems = securityChecklist.filter(item => item.status === 'pending');
-  const completedItems = securityChecklist.filter(item => item.status === 'completed');
+  if (!isEmailPasswordUser) {
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-emerald-600" />
+            <CardTitle>Security Settings</CardTitle>
+          </div>
+          <CardDescription>
+            Manage your account security
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="bg-muted rounded-lg p-4">
+            <p className="text-sm text-muted-foreground">
+              You're signed in with Google OAuth. Password management is not available for OAuth accounts.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Shield className="h-6 w-6 text-primary" />
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Security Settings</h2>
-          <p className="text-muted-foreground">
-            Monitor and manage your application security
-          </p>
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Shield className="h-5 w-5 text-emerald-600" />
+          <CardTitle>Security Settings</CardTitle>
         </div>
-      </div>
+        <CardDescription>
+          Update your password to keep your account secure
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleUpdatePassword} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="new-password">New Password</Label>
+            <Input
+              id="new-password"
+              type="password"
+              placeholder="Enter new password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Must be at least 8 characters with uppercase, lowercase, and numbers
+            </p>
+          </div>
 
-      {pendingItems.length > 0 && (
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            {pendingItems.length} security configuration{pendingItems.length > 1 ? 's' : ''} require attention.
-          </AlertDescription>
-        </Alert>
-      )}
+          <div className="space-y-2">
+            <Label htmlFor="confirm-password">Confirm New Password</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              placeholder="Confirm new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+          </div>
 
-      <div className="grid gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              Security Checklist
-              <Badge variant="outline">
-                {completedItems.length}/{securityChecklist.length} Complete
-              </Badge>
-            </CardTitle>
-            <CardDescription>
-              Review the security status of your application components
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {securityChecklist.map((item) => (
-                <div key={item.id} className="flex items-start justify-between p-4 rounded-lg border">
-                  <div className="flex items-start gap-3">
-                    {getStatusIcon(item.status)}
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-medium">{item.title}</h4>
-                        {getSeverityBadge(item.severity)}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {item.description}
-                      </p>
-                      {item.action && (
-                        <p className="text-sm font-medium text-orange-700">
-                          Required: {item.action}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {getStatusBadge(item.status)}
-                    {item.link && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.open(item.link, '_blank')}
-                      >
-                        <ExternalLink className="h-4 w-4 mr-1" />
-                        Guide
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Security Enhancements Implemented</CardTitle>
-            <CardDescription>
-              Recent security improvements to your application
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="font-medium text-green-900">Square OAuth Token Encryption</p>
-                  <p className="text-sm text-green-700">
-                    All payment integration tokens are now encrypted using AES-256-GCM
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="font-medium text-green-900">Security Audit Logging</p>
-                  <p className="text-sm text-green-700">
-                    All security events are now tracked and logged for monitoring
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="font-medium text-green-900">Row Level Security</p>
-                  <p className="text-sm text-green-700">
-                    Database access is properly restricted based on user roles and restaurant associations
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="font-medium text-green-900">Data Access Control Fixed</p>
-                  <p className="text-sm text-green-700">
-                    Unit conversions table now requires authentication, preventing unauthorized access to recipe data
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="font-medium text-green-900">Database Function Security</p>
-                  <p className="text-sm text-green-700">
-                    All database functions hardened with proper search paths to prevent SQL injection
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="font-medium text-green-900">Critical Email Exposure Fixed</p>
-                  <p className="text-sm text-green-700">
-                    Updated invitation RLS policies to prevent unauthorized access to email addresses
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="font-medium text-green-900">Extension Security Hardening</p>
-                  <p className="text-sm text-green-700">
-                    Moved database extensions from public schema to dedicated extensions schema
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="font-medium text-green-900">Enhanced Security Monitoring</p>
-                  <p className="text-sm text-green-700">
-                    Added comprehensive security event logging and rate limiting infrastructure
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Alert>
-          <Shield className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Security Status:</strong> Critical vulnerabilities have been resolved! 
-            <br />
-            <strong>Remaining Action:</strong> Enable leaked password protection in your Supabase Dashboard → Authentication → Settings to complete the security hardening.
-            <br />
-            All other security issues have been automatically resolved.
-          </AlertDescription>
-        </Alert>
-      </div>
-    </div>
+          <Button type="submit" disabled={loading}>
+            <Lock className="mr-2 h-4 w-4" />
+            {loading ? "Updating..." : "Update Password"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 };

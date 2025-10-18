@@ -123,17 +123,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       
-      // Clear state first to prevent any re-renders
+      // Sign out from Supabase FIRST (needs the session token)
+      await supabase.auth.signOut();
+      
+      // Then clear local state
       setSession(null);
       setUser(null);
       
-      // Sign out from Supabase - this clears localStorage
-      await supabase.auth.signOut();
-      
-      // Small delay to ensure storage is cleared
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Navigate to auth page using window.location for a clean slate
+      // Navigate to auth page
       window.location.href = '/auth';
     } catch (error: any) {
       console.error('Sign out error:', error);

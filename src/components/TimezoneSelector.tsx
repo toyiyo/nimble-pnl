@@ -3,6 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 interface TimezoneSelectorProps {
   value: string;
   onValueChange: (value: string) => void;
+  disabled?: boolean;
 }
 
 const COMMON_TIMEZONES = [
@@ -15,10 +16,10 @@ const COMMON_TIMEZONES = [
   { value: 'Pacific/Honolulu', label: 'Hawaii Time (HT)' },
 ];
 
-export function TimezoneSelector({ value, onValueChange }: TimezoneSelectorProps) {
+export function TimezoneSelector({ value, onValueChange, disabled = false }: TimezoneSelectorProps) {
   return (
-    <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger>
+    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+      <SelectTrigger aria-label="Select timezone">
         <SelectValue placeholder="Select timezone" />
       </SelectTrigger>
       <SelectContent className="z-50 bg-background">

@@ -4,7 +4,7 @@ import { useTheme } from 'next-themes';
 import { useState, useEffect } from 'react';
 
 interface GoogleSignInButtonProps {
-  onClick: () => void;
+  onClick: (() => void) | (() => Promise<void>);
   disabled?: boolean;
   text?: 'signin' | 'signup' | 'continue';
 }
@@ -21,6 +21,12 @@ export const GoogleSignInButton = ({
     setMounted(true);
   }, []);
   
+  // Wrap the onClick handler to properly handle async functions
+  const handleClick: React.MouseEventHandler<HTMLButtonElement> = (e) => {
+    e.preventDefault();
+    void Promise.resolve(onClick());
+  };
+  
   const buttonText = {
     signin: 'Sign in with Google',
     signup: 'Sign up with Google',
@@ -36,7 +42,7 @@ export const GoogleSignInButton = ({
       <Button
         type="button"
         variant="outline"
-        onClick={onClick}
+        onClick={handleClick}
         disabled={disabled}
         className="w-full h-10 relative overflow-hidden"
       >
@@ -74,7 +80,7 @@ export const GoogleSignInButton = ({
     <Button
       type="button"
       variant="outline"
-      onClick={onClick}
+      onClick={handleClick}
       disabled={disabled}
       className="w-full h-10 relative overflow-hidden group"
       style={{

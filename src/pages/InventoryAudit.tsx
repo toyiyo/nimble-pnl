@@ -103,8 +103,8 @@ export default function InventoryAudit() {
   const filteredTransactions = useMemo(() => {
     return transactions.filter(transaction =>
       transaction.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.reference_id?.toLowerCase().includes(searchTerm.toLowerCase())
+      (transaction.reason || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (transaction.reference_id || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [transactions, searchTerm]);
 

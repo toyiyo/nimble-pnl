@@ -206,6 +206,67 @@ export function convertUnits(
           conversionPath: [productType, `reverse_${reverseKey}`]
         };
       }
+      
+      // Try multi-step product-specific conversion through intermediate units
+      // For example: cup -> g -> lb for flour
+      if (VOLUME_UNITS.includes(from) && WEIGHT_UNITS.includes(to)) {
+        // Try volume -> g -> weight
+        const volumeToG = conversions[`${from}_to_g`];
+        const gToWeight = STANDARD_CONVERSIONS['g']?.[to];
+        
+        if (volumeToG && gToWeight) {
+          return {
+            value: value * volumeToG * gToWeight,
+            fromUnit: from,
+            toUnit: to,
+            productSpecific: true,
+            conversionPath: [from, 'g', to, `product:${productType}`]
+          };
+        }
+        
+        // Try volume -> oz -> weight
+        const volumeToOz = conversions[`${from}_to_oz`];
+        const ozToWeight = STANDARD_CONVERSIONS['oz']?.[to];
+        
+        if (volumeToOz && ozToWeight) {
+          return {
+            value: value * volumeToOz * ozToWeight,
+            fromUnit: from,
+            toUnit: to,
+            productSpecific: true,
+            conversionPath: [from, 'oz', to, `product:${productType}`]
+          };
+        }
+      }
+      
+      // Reverse: weight -> g -> volume for product-specific items
+      if (WEIGHT_UNITS.includes(from) && VOLUME_UNITS.includes(to)) {
+        const weightToG = STANDARD_CONVERSIONS[from]?.['g'];
+        const gToVolume = conversions[`g_to_${to}`];
+        
+        if (weightToG && gToVolume) {
+          return {
+            value: value * weightToG * gToVolume,
+            fromUnit: from,
+            toUnit: to,
+            productSpecific: true,
+            conversionPath: [from, 'g', to, `product:${productType}`]
+          };
+        }
+        
+        const weightToOz = STANDARD_CONVERSIONS[from]?.['oz'];
+        const ozToVolume = conversions[`oz_to_${to}`];
+        
+        if (weightToOz && ozToVolume) {
+          return {
+            value: value * weightToOz * ozToVolume,
+            fromUnit: from,
+            toUnit: to,
+            productSpecific: true,
+            conversionPath: [from, 'oz', to, `product:${productType}`]
+          };
+        }
+      }
     }
   }
 

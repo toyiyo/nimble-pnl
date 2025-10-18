@@ -86,13 +86,46 @@ serve(async (req) => {
       apiVersion: "2025-08-27.basil" as any
     });
 
+    // Get or create Stripe customer for this restaurant
+    console.log("[FC-SESSION] Getting or creating Stripe customer for restaurant");
+    
+    let stripeCustomerId: string;
+    
+    // Check if restaurant already has a Stripe customer ID stored
+    const { data: restaurant } = await supabaseAdmin
+      .from("restaurants")
+      .select("stripe_customer_id")
+      .eq("id", restaurantId)
+      .single();
+    
+    if (restaurant?.stripe_customer_id) {
+      stripeCustomerId = restaurant.stripe_customer_id;
+      console.log("[FC-SESSION] Using existing Stripe customer:", stripeCustomerId);
+    } else {
+      // Create new Stripe customer
+      const customer = await stripe.customers.create({
+        metadata: {
+          restaurant_id: restaurantId,
+        },
+      });
+      
+      stripeCustomerId = customer.id;
+      console.log("[FC-SESSION] Created new Stripe customer:", stripeCustomerId);
+      
+      // Store the Stripe customer ID in the restaurant record
+      await supabaseAdmin
+        .from("restaurants")
+        .update({ stripe_customer_id: stripeCustomerId })
+        .eq("id", restaurantId);
+    }
+
     // Create Financial Connections session
     const origin = req.headers.get("origin") || "http://localhost:3000";
     
     const session = await stripe.financialConnections.sessions.create({
       account_holder: {
         type: "customer",
-        customer: restaurantId, // Use restaurant ID as customer reference
+        customer: stripeCustomerId,
       },
       permissions: ["payment_method", "balances", "transactions"],
       filters: {

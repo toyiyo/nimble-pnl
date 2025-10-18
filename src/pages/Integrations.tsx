@@ -2,11 +2,13 @@ import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
+import { MetricIcon } from '@/components/MetricIcon';
 import { ExternalLink, Plug, CheckCircle2, TrendingUp } from 'lucide-react';
 
 const Integrations = () => {
@@ -102,7 +104,8 @@ const Integrations = () => {
     <>
       {!selectedRestaurant ? (
         <div className="space-y-6">
-          <div className="text-center">
+          <div className="text-center p-8 rounded-lg bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50">
+            <MetricIcon icon={Plug} variant="purple" className="mx-auto mb-4" />
             <h2 className="text-2xl md:text-3xl font-bold mb-2">Connect Your Applications</h2>
             <p className="text-sm md:text-base text-muted-foreground">
               Please select a restaurant to manage integrations
@@ -121,12 +124,10 @@ const Integrations = () => {
           {/* Hero Section */}
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-8">
             <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Plug className="h-6 w-6 text-primary" />
-                </div>
+              <div className="flex items-center gap-4">
+                <MetricIcon icon={Plug} variant="purple" />
                 <div>
-                  <h2 className="text-2xl md:text-3xl font-bold">Connect Your Applications</h2>
+                  <h1 className="text-2xl md:text-3xl font-bold">Connect Your Applications</h1>
                   <p className="text-sm md:text-base text-muted-foreground mt-1">
                     Automatically sync data from your existing tools to eliminate manual data entry
                   </p>
@@ -139,43 +140,41 @@ const Integrations = () => {
           </div>
 
           {/* Dashboard Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="hover:shadow-md transition-shadow">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4" role="region" aria-label="Integration statistics">
+            <Card className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                    <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
-                  </div>
+                  <MetricIcon icon={CheckCircle2} variant="emerald" />
                   <div>
-                    <div className="text-3xl font-bold">{connectedCount}</div>
+                    <div className="text-3xl font-bold" aria-label={`${connectedCount} integrations connected`}>
+                      {connectedCount}
+                    </div>
                     <div className="text-sm text-muted-foreground">Connected</div>
                   </div>
                 </div>
               </CardContent>
             </Card>
             
-            <Card className="hover:shadow-md transition-shadow">
+            <Card className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                    <Plug className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                  </div>
+                  <MetricIcon icon={Plug} variant="blue" />
                   <div>
-                    <div className="text-3xl font-bold">{integrations.length}</div>
+                    <div className="text-3xl font-bold" aria-label={`${integrations.length} integrations available`}>
+                      {integrations.length}
+                    </div>
                     <div className="text-sm text-muted-foreground">Available</div>
                   </div>
                 </div>
               </CardContent>
             </Card>
             
-            <Card className="hover:shadow-md transition-shadow">
+            <Card className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center">
-                    <TrendingUp className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-                  </div>
+                  <MetricIcon icon={TrendingUp} variant="purple" />
                   <div>
-                    <div className="text-3xl font-bold">
+                    <div className="text-3xl font-bold" aria-label={`${Math.round((connectedCount / integrations.length) * 100)}% integration rate`}>
                       {Math.round((connectedCount / integrations.length) * 100)}%
                     </div>
                     <div className="text-sm text-muted-foreground">Integration Rate</div>
@@ -187,14 +186,14 @@ const Integrations = () => {
 
           {/* Integration Categories */}
           {Object.entries(groupedIntegrations).map(([category, categoryIntegrations]) => (
-            <div key={category} className="space-y-4">
+            <div key={category} className="space-y-4" role="region" aria-labelledby={`${category}-heading`}>
               <div className="flex items-center gap-3 pb-2 border-b">
-                <h3 className="text-lg md:text-xl font-semibold">{category}</h3>
-                <Badge variant="secondary" className="text-xs">
+                <h2 id={`${category}-heading`} className="text-lg md:text-xl font-semibold">{category}</h2>
+                <Badge variant="secondary" className="text-xs" aria-label={`${categoryIntegrations.length} integrations available`}>
                   {categoryIntegrations.length}
                 </Badge>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" role="list" aria-label={`${category} integrations`}>
                 {categoryIntegrations.map((integration) => (
                   <IntegrationCard
                     key={integration.id}
@@ -207,10 +206,10 @@ const Integrations = () => {
           ))}
 
           {/* Help Section */}
-          <Card className="bg-gradient-to-br from-muted/30 to-muted/10 border-muted">
+          <Card className="bg-gradient-to-br from-muted/30 to-muted/10 border-muted hover:shadow-md transition-all duration-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                <ExternalLink className="h-4 w-4 md:h-5 md:w-5" />
+                <ExternalLink className="h-4 w-4 md:h-5 md:w-5" aria-hidden="true" />
                 Need Help?
               </CardTitle>
               <CardDescription className="text-sm">
@@ -222,7 +221,12 @@ const Integrations = () => {
                 We're constantly adding new integrations. Contact our support team to request 
                 a new integration or get help connecting your existing applications.
               </p>
-              <Button variant="outline" size="sm" className="hover:bg-background transition-colors">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="hover:bg-background transition-all duration-200"
+                aria-label="Contact support for integration assistance"
+              >
                 Contact Support
               </Button>
             </CardContent>

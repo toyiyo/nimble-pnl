@@ -34,7 +34,8 @@ const Transactions = () => {
         .select(`
           *,
           connected_bank:connected_banks(
-            institution_name
+            institution_name,
+            bank_account_balances(account_mask)
           ),
           chart_account:chart_of_accounts(
             account_name
@@ -219,7 +220,14 @@ const Transactions = () => {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Building2 className="h-4 w-4 text-muted-foreground" />
-                          <span>{txn.connected_bank?.institution_name}</span>
+                          <div>
+                            <div>{txn.connected_bank?.institution_name}</div>
+                            {txn.connected_bank?.bank_account_balances?.[0]?.account_mask && (
+                              <div className="text-xs text-muted-foreground">
+                                ••••{txn.connected_bank.bank_account_balances[0].account_mask}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>

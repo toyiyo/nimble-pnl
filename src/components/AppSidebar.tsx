@@ -93,12 +93,15 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r">
       <SidebarHeader className="border-b p-4">
-        <div className="flex items-center gap-2">
-          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-2 flex-shrink-0">
+        <button 
+          onClick={() => navigate('/')}
+          className="flex items-center gap-2 w-full group transition-transform duration-200 hover:scale-105"
+        >
+          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-2 group-hover:shadow-emerald-500/50 transition-shadow duration-200 flex-shrink-0">
             <Building2 className="h-5 w-5 text-white" />
           </div>
           {!collapsed && (
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 text-left">
               <div className="font-bold text-sm truncate">EasyShiftHQ</div>
               {selectedRestaurant && (
                 <div className="text-xs text-muted-foreground truncate">
@@ -107,7 +110,7 @@ export function AppSidebar() {
               )}
             </div>
           )}
-        </div>
+        </button>
       </SidebarHeader>
 
       <SidebarContent>
@@ -148,8 +151,8 @@ export function AppSidebar() {
                               tooltip={collapsed ? item.label : undefined}
                               className={
                                 isActive
-                                  ? 'bg-gradient-to-r from-primary to-primary/90 text-primary-foreground hover:from-primary hover:to-primary/90'
-                                  : ''
+                                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-600 shadow-md shadow-emerald-500/20'
+                                  : 'hover:bg-accent/50'
                               }
                             >
                               <Icon className="h-4 w-4" />

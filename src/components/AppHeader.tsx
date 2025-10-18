@@ -81,18 +81,9 @@ export const AppHeader = () => {
       <header className="border-b bg-gradient-to-r from-background via-background to-muted/20 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
         <div className="container px-4 max-w-screen-2xl mx-auto">
           <div className="flex h-14 items-center justify-between gap-4">
-            {/* Left: Sidebar toggle + Logo */}
-            <div className="flex items-center gap-3">
+            {/* Left: Sidebar toggle */}
+            <div className="flex items-center">
               <SidebarTrigger className="-ml-1" />
-              <button 
-                onClick={() => navigate('/')}
-                className="flex gap-2 items-center text-lg font-bold group transition-transform duration-200 hover:scale-105"
-              >
-                <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-1.5 group-hover:shadow-emerald-500/50 transition-shadow duration-200">
-                  <CalendarCheck className="h-4 w-4 text-white" />
-                </div>
-                <span className="hidden lg:inline bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">EasyShiftHQ</span>
-              </button>
             </div>
 
             {/* Center: Restaurant Selector */}

@@ -8,6 +8,8 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { CheckCircle, XCircle, Clock, Users, Building, ArrowLeft } from 'lucide-react';
+import { GoogleSignInButton } from '@/components/GoogleSignInButton';
+import { Separator } from '@/components/ui/separator';
 
 export const AcceptInvitation = () => {
   const [searchParams] = useSearchParams();
@@ -149,6 +151,33 @@ export const AcceptInvitation = () => {
         variant: "destructive",
       });
     } finally {
+      setAuthLoading2(false);
+    }
+  };
+
+  const handleGoogleAuth = async () => {
+    setAuthLoading2(true);
+    try {
+      const redirectUrl = `${window.location.origin}/accept-invitation?token=${token}`;
+      
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          }
+        }
+      });
+
+      if (error) throw error;
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to sign in with Google",
+        variant: "destructive",
+      });
       setAuthLoading2(false);
     }
   };
@@ -367,6 +396,24 @@ export const AcceptInvitation = () => {
                   <h4 className="font-medium mb-2">Create Your Account</h4>
                   <p className="text-sm text-muted-foreground">Join the team instantly - no email verification needed!</p>
                 </div>
+
+                {/* Google Sign-In Option */}
+                <GoogleSignInButton 
+                  onClick={handleGoogleAuth}
+                  disabled={authLoading2}
+                  text="continue"
+                />
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <Separator />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Or continue with email
+                    </span>
+                  </div>
+                </div>
                 
                 <form onSubmit={handleSignUp} className="space-y-4">
                   <div className="space-y-2">
@@ -434,6 +481,24 @@ export const AcceptInvitation = () => {
                   <div>
                     <h4 className="font-medium">Sign In</h4>
                     <p className="text-sm text-muted-foreground">Use your existing account</p>
+                  </div>
+                </div>
+
+                {/* Google Sign-In Option */}
+                <GoogleSignInButton 
+                  onClick={handleGoogleAuth}
+                  disabled={authLoading2}
+                  text="signin"
+                />
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <Separator />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Or sign in with email
+                    </span>
                   </div>
                 </div>
                 

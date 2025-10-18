@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useInventoryTransactions } from '@/hooks/useInventoryTransactions';
@@ -7,11 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Download, TrendingDown, TrendingUp, Package, AlertTriangle, Info, X, ClipboardList, Calendar, DollarSign } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Download, TrendingDown, TrendingUp, Package, AlertTriangle, Info, X, ClipboardList, Calendar, DollarSign, Activity } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatDateInTimezone } from '@/lib/timezone';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { MetricIcon } from '@/components/MetricIcon';
 
 const TRANSACTION_TYPES = [
   { 
@@ -97,11 +99,14 @@ export default function InventoryAudit() {
     endDate
   });
 
-  const filteredTransactions = transactions.filter(transaction =>
-    transaction.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    transaction.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    transaction.reference_id?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ✅ SAFE MEMOIZATION: Only recalculate when dependencies change
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(transaction =>
+      transaction.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      transaction.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      transaction.reference_id?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [transactions, searchTerm]);
 
   const activeFiltersCount = [typeFilter !== 'all', startDate, endDate, searchTerm].filter(Boolean).length;
 
@@ -123,18 +128,24 @@ export default function InventoryAudit() {
   if (!selectedRestaurant) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="text-center space-y-4">
-          <Package className="mx-auto h-16 w-16 text-muted-foreground" />
-          <h2 className="text-2xl font-semibold">Select a Restaurant</h2>
-          <p className="text-muted-foreground">Choose a restaurant to view inventory audit trail.</p>
-          <RestaurantSelector
-            restaurants={restaurants}
-            selectedRestaurant={selectedRestaurant}
-            onSelectRestaurant={setSelectedRestaurant}
-            loading={restaurantLoading}
-            createRestaurant={createRestaurant}
-          />
-        </div>
+        <Card className="bg-gradient-to-br from-muted/50 to-transparent">
+          <CardContent className="py-12">
+            <div className="text-center space-y-4">
+              <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center">
+                <Package className="h-8 w-8 text-primary" />
+              </div>
+              <h2 className="text-2xl font-semibold">Select a Restaurant</h2>
+              <p className="text-muted-foreground">Choose a restaurant to view inventory audit trail.</p>
+              <RestaurantSelector
+                restaurants={restaurants}
+                selectedRestaurant={selectedRestaurant}
+                onSelectRestaurant={setSelectedRestaurant}
+                loading={restaurantLoading}
+                createRestaurant={createRestaurant}
+              />
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -142,14 +153,17 @@ export default function InventoryAudit() {
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
-      <Card className="mb-6 bg-gradient-to-br from-background to-muted/20 border-none shadow-sm">
+      <Card className="mb-6 bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
         <CardContent className="pt-6">
           <div className="flex items-start gap-4">
-            <div className="p-3 rounded-lg bg-primary/10">
-              <ClipboardList className="h-8 w-8 text-primary" />
-            </div>
+            <MetricIcon 
+              icon={Activity} 
+              className="text-primary transition-transform duration-300 group-hover:scale-110" 
+            />
             <div className="flex-1">
-              <h1 className="text-3xl font-bold mb-2 tracking-tight">Inventory Audit Trail</h1>
+              <h1 className="text-3xl font-bold mb-2 tracking-tight bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                Inventory Audit Trail
+              </h1>
               <p className="text-muted-foreground leading-relaxed">
                 Track all inventory changes including automatic deductions from POS sales, manual adjustments, and purchases.
               </p>
@@ -179,19 +193,21 @@ export default function InventoryAudit() {
         <CardContent className="pt-0">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Search</label>
+              <label htmlFor="search-input" className="text-sm font-medium text-muted-foreground">Search</label>
               <Input
+                id="search-input"
                 placeholder="Products, reasons..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full"
+                aria-label="Search transactions by product, reason, or reference"
               />
             </div>
             
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Type</label>
+              <label htmlFor="type-filter" className="text-sm font-medium text-muted-foreground">Type</label>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger>
+                <SelectTrigger id="type-filter" aria-label="Filter by transaction type">
                   <SelectValue placeholder="Transaction Type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -205,20 +221,24 @@ export default function InventoryAudit() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Start Date</label>
+              <label htmlFor="start-date" className="text-sm font-medium text-muted-foreground">Start Date</label>
               <Input
+                id="start-date"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
+                aria-label="Filter transactions from date"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">End Date</label>
+              <label htmlFor="end-date" className="text-sm font-medium text-muted-foreground">End Date</label>
               <Input
+                id="end-date"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
+                aria-label="Filter transactions to date"
               />
             </div>
 
@@ -243,24 +263,31 @@ export default function InventoryAudit() {
             return (
               <Card 
                 key={type.value}
-                className={`cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-[1.02] ${
+                className={`cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-[1.02] group ${
                   isActive 
-                    ? 'ring-2 ring-primary shadow-lg bg-gradient-to-br from-primary/5 to-primary/10' 
-                    : 'hover:border-primary/50'
+                    ? 'ring-2 ring-primary shadow-lg bg-gradient-to-br from-primary/5 to-accent/5' 
+                    : 'hover:border-primary/30'
                 }`}
                 onClick={() => setTypeFilter(type.value)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && setTypeFilter(type.value)}
+                aria-pressed={isActive}
+                aria-label={`Filter by ${type.label}`}
               >
                 <CardContent className="pt-5 pb-5">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2.5">
-                      <div className={`p-2 rounded-lg shadow-sm ${getTransactionColor(type.value)}`}>
+                      <div className={`p-2 rounded-lg shadow-sm transition-transform duration-300 group-hover:scale-110 ${getTransactionColor(type.value)}`}>
                         {getTransactionIcon(type.value)}
                       </div>
                       <span className="font-semibold text-sm">{type.label}</span>
                     </div>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Info className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors cursor-help" />
+                        <button aria-label={`Information about ${type.label}`}>
+                          <Info className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                        </button>
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
                         <p className="text-sm leading-relaxed">{type.tooltip}</p>
@@ -299,26 +326,35 @@ export default function InventoryAudit() {
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="py-12">
-              <div className="flex flex-col items-center gap-4">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                <p className="text-sm text-muted-foreground">Loading transactions...</p>
+            <div className="p-6 space-y-4" role="status" aria-live="polite">
+              <div className="space-y-3">
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
               </div>
+              <p className="text-sm text-center text-muted-foreground sr-only">Loading transactions...</p>
             </div>
           ) : filteredTransactions.length === 0 ? (
             <div className="text-center py-12 px-4">
-              <Package className="mx-auto h-12 w-12 text-muted-foreground/50 mb-3" />
+              <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center mb-4">
+                <Package className="h-8 w-8 text-muted-foreground" />
+              </div>
               <p className="text-muted-foreground font-medium">No transactions found</p>
               <p className="text-sm text-muted-foreground mt-1">Try adjusting your filters</p>
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y" role="list" aria-label="Inventory transactions">
+              <div className="sr-only" role="status" aria-live="polite">
+                Showing {filteredTransactions.length} transaction{filteredTransactions.length !== 1 ? 's' : ''}
+              </div>
               {filteredTransactions.map((transaction, index) => (
                 <div 
                   key={transaction.id} 
-                  className={`border-l-4 ${getTransactionBorderColor(transaction.transaction_type)} p-5 hover:bg-muted/30 transition-all duration-200 ${
+                  className={`border-l-4 ${getTransactionBorderColor(transaction.transaction_type)} p-5 hover:bg-accent/50 transition-all duration-200 ${
                     index % 2 === 0 ? 'bg-muted/10' : ''
                   }`}
+                  role="listitem"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="flex-1 space-y-3">

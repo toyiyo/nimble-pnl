@@ -197,26 +197,22 @@ const Auth = () => {
               )}
               
               <div className="space-y-4">
-                {!ssoRequired && (
-                  <>
-                    <GoogleSignInButton
-                      onClick={handleGoogleAuth}
-                      disabled={loading}
-                      text="continue"
-                    />
+                <GoogleSignInButton
+                  onClick={handleGoogleAuth}
+                  disabled={loading}
+                  text="continue"
+                />
 
-                    <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-background px-2 text-muted-foreground">
-                          Or continue with email
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                )}
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Or continue with email
+                    </span>
+                  </div>
+                </div>
 
                 <form onSubmit={handleSignIn} className="space-y-4">
                   <div className="space-y-2">
@@ -231,41 +227,29 @@ const Auth = () => {
                     />
                   </div>
                   
-                  {ssoRequired ? (
-                    <div className="space-y-4">
-                      <SSOProviderButtons onSuccess={() => console.log('SSO login successful')} />
-                      
-                      <div className="text-center text-sm text-muted-foreground">
-                        SSO is required for @{ssoRequired.sso_domain} emails
-                      </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="signin-password">Password</Label>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/forgot-password')}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Forgot password?
+                      </button>
                     </div>
-                  ) : (
-                    <>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="signin-password">Password</Label>
-                          <button
-                            type="button"
-                            onClick={() => navigate('/forgot-password')}
-                            className="text-xs text-primary hover:underline"
-                          >
-                            Forgot password?
-                          </button>
-                        </div>
-                        <Input
-                          id="signin-password"
-                          type="password"
-                          placeholder="Enter your password"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <Button type="submit" className="w-full" disabled={loading}>
-                        {loading ? "Signing in..." : "Sign In"}
-                      </Button>
-                    </>
-                  )}
+                    <Input
+                      id="signin-password"
+                      type="password"
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? "Signing in..." : "Sign In"}
+                  </Button>
                 </form>
               </div>
             </TabsContent>
@@ -311,43 +295,31 @@ const Auth = () => {
                     />
                   </div>
                   
-                  {ssoRequired ? (
-                    <div className="space-y-4">
-                      <SSOProviderButtons onSuccess={() => console.log('SSO signup successful')} />
-                      
-                      <div className="text-center text-sm text-muted-foreground">
-                        SSO is required for @{ssoRequired.sso_domain} emails
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="space-y-2">
-                        <Label htmlFor="signup-name">Full Name</Label>
-                        <Input
-                          id="signup-name"
-                          type="text"
-                          placeholder="Enter your full name"
-                          value={fullName}
-                          onChange={(e) => setFullName(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="signup-password">Password</Label>
-                        <Input
-                          id="signup-password"
-                          type="password"
-                          placeholder="Create a password"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <Button type="submit" className="w-full" disabled={loading}>
-                        {loading ? "Creating account..." : "Sign Up"}
-                      </Button>
-                    </>
-                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-name">Full Name</Label>
+                    <Input
+                      id="signup-name"
+                      type="text"
+                      placeholder="Enter your full name"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-password">Password</Label>
+                    <Input
+                      id="signup-password"
+                      type="password"
+                      placeholder="Create a password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? "Creating account..." : "Sign Up"}
+                  </Button>
                 </form>
               </div>
             </TabsContent>

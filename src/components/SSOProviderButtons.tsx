@@ -61,36 +61,6 @@ export const SSOProviderButtons = ({ onSuccess }: SSOProviderButtonsProps) => {
       >
         {loading === 'google' ? 'Redirecting...' : 'Continue with Google'}
       </Button>
-
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full"
-        onClick={() => handleOAuthSignIn('github')}
-        disabled={loading === 'github'}
-      >
-        {loading === 'github' ? 'Redirecting...' : 'Continue with GitHub'}
-      </Button>
-
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full"
-        onClick={() => handleOAuthSignIn('azure')}
-        disabled={loading === 'azure'}
-      >
-        {loading === 'azure' ? 'Redirecting...' : 'Continue with Microsoft'}
-      </Button>
-
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full"
-        onClick={() => handleOAuthSignIn('linkedin_oidc')}
-        disabled={loading === 'linkedin_oidc'}
-      >
-        {loading === 'linkedin_oidc' ? 'Redirecting...' : 'Continue with LinkedIn'}
-      </Button>
     </div>
   );
 };

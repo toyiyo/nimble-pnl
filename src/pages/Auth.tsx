@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSSO } from '@/hooks/useSSO';
 import { useToast } from '@/hooks/use-toast';
 import { SSOProviderButtons } from '@/components/SSOProviderButtons';
+import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { Building, ArrowRight, Shield, CalendarCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -196,15 +197,11 @@ const Auth = () => {
               )}
               
               <div className="space-y-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
+                <GoogleSignInButton
                   onClick={handleGoogleAuth}
                   disabled={loading}
-                >
-                  {loading ? 'Redirecting...' : 'Continue with Google'}
-                </Button>
+                  text="continue"
+                />
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
@@ -271,15 +268,11 @@ const Auth = () => {
               )}
               
               <div className="space-y-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
+                <GoogleSignInButton
                   onClick={handleGoogleAuth}
                   disabled={loading}
-                >
-                  {loading ? 'Redirecting...' : 'Continue with Google'}
-                </Button>
+                  text="continue"
+                />
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">

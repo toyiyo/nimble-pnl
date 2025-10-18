@@ -131,14 +131,13 @@ export function AppSidebar() {
                         onClick={() => navigate(item.path)}
                         isActive={isActive}
                         tooltip={item.label}
-                        className={`justify-center ${
+                        className={`flex items-center justify-center !px-0 ${
                           isActive
                             ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-600 shadow-md shadow-emerald-500/20 transition-all duration-200'
                             : 'hover:bg-accent/50 transition-all duration-200'
                         }`}
                       >
                         <Icon className="h-5 w-5" />
-                        <span>{item.label}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );

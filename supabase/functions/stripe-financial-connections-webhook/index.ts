@@ -53,36 +53,53 @@ serve(async (req) => {
         const account = event.data.object as Stripe.FinancialConnections.Account;
         console.log("[FC-WEBHOOK] Account connected:", account.id);
 
-        // Extract restaurant ID from account holder reference
-        const restaurantId = account.account_holder?.account;
+        // Get customer ID from account holder
+        const customerId = account.account_holder?.customer;
         
-        if (!restaurantId) {
-          console.error("[FC-WEBHOOK] No restaurant ID in account holder");
+        if (!customerId) {
+          console.error("[FC-WEBHOOK] No customer ID in account holder");
           break;
         }
 
+        // Fetch customer to get restaurant ID from metadata
+        const customer = await stripe.customers.retrieve(customerId);
+        const restaurantId = (customer as any).metadata?.restaurant_id;
+        
+        if (!restaurantId) {
+          console.error("[FC-WEBHOOK] No restaurant ID in customer metadata");
+          break;
+        }
+
+        console.log("[FC-WEBHOOK] Restaurant ID from customer metadata:", restaurantId);
+
         // Store connected bank info
-        const { error: bankError } = await supabaseClient
+        const { data: bankData, error: bankError } = await supabaseClient
           .from("connected_banks")
           .insert({
             restaurant_id: restaurantId,
             stripe_financial_account_id: account.id,
             institution_name: account.institution_name,
+            institution_logo_url: null,
             status: "connected",
             connected_at: new Date().toISOString(),
-          });
+            last_sync_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
 
         if (bankError) {
           console.error("[FC-WEBHOOK] Error storing bank:", bankError);
           throw bankError;
         }
 
+        console.log("[FC-WEBHOOK] Bank stored with ID:", bankData.id);
+
         // Store account balance info
         if (account.balance) {
           const { error: balanceError } = await supabaseClient
             .from("bank_account_balances")
             .insert({
-              connected_bank_id: account.id,
+              connected_bank_id: bankData.id,
               account_name: account.display_name || account.institution_name,
               account_type: account.subcategory,
               account_mask: account.last4,
@@ -95,6 +112,8 @@ serve(async (req) => {
 
           if (balanceError) {
             console.error("[FC-WEBHOOK] Error storing balance:", balanceError);
+          } else {
+            console.log("[FC-WEBHOOK] Balance stored successfully");
           }
         }
 

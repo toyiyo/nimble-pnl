@@ -42,7 +42,8 @@ import {
   FileText,
   Users,
   Settings,
-  LogOut
+  LogOut,
+  Wallet
 } from 'lucide-react';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 import { UserProfileDropdown } from '@/components/UserProfileDropdown';
@@ -64,6 +65,12 @@ const navigationGroups = [
       { path: '/inventory', label: 'Inventory', icon: Package },
       { path: '/inventory-audit', label: 'Audit', icon: ClipboardCheck },
       { path: '/reports', label: 'Reports', icon: FileText },
+    ]
+  },
+  {
+    label: 'Financial',
+    items: [
+      { path: '/accounting/banks', label: 'Banks', icon: Wallet },
     ]
   },
   {

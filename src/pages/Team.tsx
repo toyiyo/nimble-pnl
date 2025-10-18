@@ -9,9 +9,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { TeamInvitations } from '@/components/TeamInvitations';
 import { TeamMembers } from '@/components/TeamMembers';
-import { EnterpriseSettings } from '@/components/EnterpriseSettings';
 import { MetricIcon } from '@/components/MetricIcon';
-import { UserPlus, Building, Settings, ArrowLeft, Users } from 'lucide-react';
+import { UserPlus, Building, ArrowLeft, Users } from 'lucide-react';
 
 const Team = () => {
   const { user, loading } = useAuth();
@@ -115,7 +114,7 @@ const Team = () => {
         </Card>
 
         <Tabs defaultValue="members" className="space-y-4 md:space-y-6">
-          <TabsList className="grid w-full grid-cols-3 h-auto">
+          <TabsList className="grid w-full grid-cols-2 h-auto">
             <TabsTrigger 
               value="members" 
               className="flex-col py-2 px-1 text-center transition-all duration-200 data-[state=active]:shadow-sm"
@@ -132,15 +131,6 @@ const Team = () => {
               <Building className="h-4 w-4 mb-1" aria-hidden="true" />
               <span className="text-xs md:text-sm">Invitations</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="enterprise" 
-              className="flex-col py-2 px-1 text-center transition-all duration-200 data-[state=active]:shadow-sm" 
-              disabled={!isOwner}
-              aria-label={isOwner ? "View enterprise settings" : "Enterprise settings (owner only)"}
-            >
-              <Settings className="h-4 w-4 mb-1" aria-hidden="true" />
-              <span className="text-xs md:text-sm">Enterprise</span>
-            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="members" role="tabpanel" aria-labelledby="members-tab">
@@ -155,23 +145,6 @@ const Team = () => {
               restaurantId={selectedRestaurant.restaurant_id}
               userRole={selectedRestaurant.role}
             />
-          </TabsContent>
-
-          <TabsContent value="enterprise" role="tabpanel" aria-labelledby="enterprise-tab">
-            {isOwner ? (
-              <EnterpriseSettings 
-                restaurantId={selectedRestaurant.restaurant_id}
-              />
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Access Restricted</CardTitle>
-                  <CardDescription>
-                    Only restaurant owners can access enterprise settings.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            )}
           </TabsContent>
         </Tabs>
       </main>

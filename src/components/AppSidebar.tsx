@@ -58,7 +58,7 @@ const navigationGroups = [
     items: [
       { path: '/accounting', label: 'Banks', icon: Wallet },
       { path: '/transactions', label: 'Transactions', icon: Receipt },
-      { path: '/chart-of-accounts', label: 'Accounts', icon: FileText },
+      { path: '/chart-of-accounts', label: 'Chart of Accounts', icon: FileText },
       { path: '/financial-statements', label: 'Statements', icon: FileText },
     ],
   },

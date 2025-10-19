@@ -5,8 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useChartOfAccounts } from '@/hooks/useChartOfAccounts';
-import { useAutoOpeningBalance } from '@/hooks/useAutoOpeningBalance';
-import { Plus, Wallet, TrendingDown, TrendingUp, DollarSign, ShoppingCart, Users, FolderPlus, Calculator, Sparkles } from 'lucide-react';
+import { Plus, Wallet, TrendingDown, TrendingUp, DollarSign, ShoppingCart, Users, FolderPlus, Calculator } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AccountDialog } from '@/components/AccountDialog';
 import { OpeningBalanceDialog } from '@/components/OpeningBalanceDialog';
@@ -32,7 +31,6 @@ const accountTypeColors = {
 export default function ChartOfAccounts() {
   const { selectedRestaurant } = useRestaurantContext();
   const { accounts, loading, createDefaultAccounts, fetchAccounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
-  const { mutate: calculateOpeningBalance, isPending: isCalculating } = useAutoOpeningBalance();
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [openingBalanceDialogOpen, setOpeningBalanceDialogOpen] = useState(false);
   const [selectedParentAccount, setSelectedParentAccount] = useState<{ id: string; name: string; type: string; code: string } | undefined>();
@@ -111,35 +109,18 @@ export default function ChartOfAccounts() {
           icon={Wallet}
           iconVariant="emerald"
           title="Chart of Accounts" 
-          subtitle="Your accounting categories and current balances"
+          subtitle="Manage your accounting categories and subcategories"
         />
-        <div className="flex gap-2 w-full md:w-auto">
-          <Button 
-            onClick={() => {
-              if (selectedRestaurant?.restaurant_id) {
-                calculateOpeningBalance(selectedRestaurant.restaurant_id);
-              }
-            }}
-            variant="outline"
-            size="lg"
-            disabled={isCalculating}
-            className="flex-1 md:flex-initial"
-          >
-            <Sparkles className="mr-2 h-5 w-5" />
-            Auto-Calculate Opening Balance
-          </Button>
-          <Button 
-            onClick={() => {
-              setSelectedParentAccount(undefined);
-              setAccountDialogOpen(true);
-            }}
-            size="lg"
-            className="flex-1 md:flex-initial"
-          >
-            <Plus className="mr-2 h-5 w-5" />
-            Add Account
-          </Button>
-        </div>
+        <Button 
+          onClick={() => {
+            setSelectedParentAccount(undefined);
+            setAccountDialogOpen(true);
+          }}
+          size="lg"
+        >
+          <Plus className="mr-2 h-5 w-5" />
+          Add Account
+        </Button>
       </div>
 
       <div className="mt-8 space-y-6">

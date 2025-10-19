@@ -214,8 +214,7 @@ serve(async (req) => {
         .from('journal_entries')
         .update({
           total_debit: absAmount,
-          total_credit: absAmount,
-          is_balanced: true
+          total_credit: absAmount
         })
         .eq('id', journalEntry.id);
 

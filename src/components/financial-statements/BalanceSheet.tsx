@@ -48,9 +48,13 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
     }).format(amount);
   };
 
+  // For balance sheet display: 
+  // - Assets (debit normal) show as-is
+  // - Liabilities (credit normal) show absolute value 
+  // - Equity (credit normal) show absolute value
   const totalAssets = balanceData?.assets.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
-  const totalLiabilities = balanceData?.liabilities.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
-  const totalEquity = balanceData?.equity.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
+  const totalLiabilities = balanceData?.liabilities.reduce((sum, acc) => sum + Math.abs(acc.current_balance), 0) || 0;
+  const totalEquity = balanceData?.equity.reduce((sum, acc) => sum + Math.abs(acc.current_balance), 0) || 0;
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
 
   const handleExport = () => {
@@ -145,7 +149,7 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
                     <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
                     <span>{account.account_name}</span>
                   </div>
-                  <span className="font-medium">{formatCurrency(account.current_balance)}</span>
+                  <span className="font-medium">{formatCurrency(Math.abs(account.current_balance))}</span>
                 </div>
               ))}
               <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
@@ -165,7 +169,7 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
                     <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
                     <span>{account.account_name}</span>
                   </div>
-                  <span className="font-medium">{formatCurrency(account.current_balance)}</span>
+                  <span className="font-medium">{formatCurrency(Math.abs(account.current_balance))}</span>
                 </div>
               ))}
               <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">

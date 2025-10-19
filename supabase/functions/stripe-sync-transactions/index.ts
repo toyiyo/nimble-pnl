@@ -260,12 +260,56 @@ serve(async (req) => {
 
     console.log("[SYNC-TRANSACTIONS] Sync complete:", syncedCount, "new,", skippedCount, "skipped");
 
+    // Auto-categorize newly synced transactions to create journal entries
+    if (syncedCount > 0) {
+      console.log("[SYNC-TRANSACTIONS] Auto-categorizing", syncedCount, "new transactions");
+      
+      // Get all uncategorized transactions for this bank
+      const { data: uncategorizedTxns } = await supabaseAdmin
+        .from("bank_transactions")
+        .select("id, amount")
+        .eq("connected_bank_id", bankId)
+        .eq("restaurant_id", bank.restaurant_id)
+        .is("category_id", null);
+
+      let categorizedCount = 0;
+      
+      for (const txn of uncategorizedTxns || []) {
+        const categoryId = txn.amount >= 0 ? uncategorizedIncomeId : uncategorizedExpenseId;
+        
+        try {
+          await supabaseAdmin.rpc('categorize_bank_transaction', {
+            p_transaction_id: txn.id,
+            p_category_id: categoryId,
+            p_restaurant_id: bank.restaurant_id
+          });
+          categorizedCount++;
+        } catch (error: any) {
+          console.error("[SYNC-TRANSACTIONS] Error categorizing transaction:", error.message);
+        }
+      }
+      
+      console.log("[SYNC-TRANSACTIONS] Auto-categorized", categorizedCount, "transactions");
+      
+      // Rebuild account balances so financial statements reflect new transactions
+      try {
+        console.log("[SYNC-TRANSACTIONS] Rebuilding account balances");
+        await supabaseAdmin.rpc('rebuild_account_balances', {
+          p_restaurant_id: bank.restaurant_id
+        });
+        console.log("[SYNC-TRANSACTIONS] Account balances rebuilt successfully");
+      } catch (error: any) {
+        console.error("[SYNC-TRANSACTIONS] Error rebuilding balances:", error.message);
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true,
         synced: syncedCount,
         skipped: skippedCount,
-        total: allTransactions.length
+        total: allTransactions.length,
+        message: syncedCount > 0 ? `Imported and categorized ${syncedCount} new transactions` : undefined
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

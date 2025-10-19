@@ -239,7 +239,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
 
       toast({
         title: data.message ? "Transaction Sync Started" : "Transactions Synced",
-        description: data.message || `Successfully imported ${data.synced} new transactions (${data.skipped} already existed)`,
+        description: data.message || `Successfully imported and categorized ${data.synced} new transactions (${data.skipped} already existed). Your financial statements are now up to date.`,
       });
 
       return data;

@@ -152,6 +152,7 @@ export type Database = {
           id: string
           inventory_transaction_id: string | null
           is_categorized: boolean
+          is_reconciled: boolean
           is_split: boolean
           matched_at: string | null
           matched_by: string | null
@@ -160,6 +161,8 @@ export type Database = {
           posted_date: string | null
           raw_data: Json | null
           receipt_id: string | null
+          reconciled_at: string | null
+          reconciled_by: string | null
           restaurant_id: string
           status: Database["public"]["Enums"]["transaction_status_enum"]
           stripe_transaction_id: string
@@ -177,6 +180,7 @@ export type Database = {
           id?: string
           inventory_transaction_id?: string | null
           is_categorized?: boolean
+          is_reconciled?: boolean
           is_split?: boolean
           matched_at?: string | null
           matched_by?: string | null
@@ -185,6 +189,8 @@ export type Database = {
           posted_date?: string | null
           raw_data?: Json | null
           receipt_id?: string | null
+          reconciled_at?: string | null
+          reconciled_by?: string | null
           restaurant_id: string
           status?: Database["public"]["Enums"]["transaction_status_enum"]
           stripe_transaction_id: string
@@ -202,6 +208,7 @@ export type Database = {
           id?: string
           inventory_transaction_id?: string | null
           is_categorized?: boolean
+          is_reconciled?: boolean
           is_split?: boolean
           matched_at?: string | null
           matched_by?: string | null
@@ -210,6 +217,8 @@ export type Database = {
           posted_date?: string | null
           raw_data?: Json | null
           receipt_id?: string | null
+          reconciled_at?: string | null
+          reconciled_by?: string | null
           restaurant_id?: string
           status?: Database["public"]["Enums"]["transaction_status_enum"]
           stripe_transaction_id?: string
@@ -899,6 +908,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "financial_statement_cache_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fiscal_periods: {
+        Row: {
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          id: string
+          is_closed: boolean
+          period_end: string
+          period_start: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          id?: string
+          is_closed?: boolean
+          period_end: string
+          period_start: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          id?: string
+          is_closed?: boolean
+          period_end?: string
+          period_start?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fiscal_periods_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -2701,6 +2754,88 @@ export type Database = {
           },
           {
             foreignKeyName: "transaction_categorization_rules_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transaction_reclassifications: {
+        Row: {
+          bank_transaction_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          new_category_id: string
+          original_category_id: string | null
+          original_journal_entry_id: string | null
+          reason: string | null
+          reclass_journal_entry_id: string
+          restaurant_id: string
+        }
+        Insert: {
+          bank_transaction_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          new_category_id: string
+          original_category_id?: string | null
+          original_journal_entry_id?: string | null
+          reason?: string | null
+          reclass_journal_entry_id: string
+          restaurant_id: string
+        }
+        Update: {
+          bank_transaction_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          new_category_id?: string
+          original_category_id?: string | null
+          original_journal_entry_id?: string | null
+          reason?: string | null
+          reclass_journal_entry_id?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_reclassifications_bank_transaction_id_fkey"
+            columns: ["bank_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_reclassifications_new_category_id_fkey"
+            columns: ["new_category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_reclassifications_original_category_id_fkey"
+            columns: ["original_category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_reclassifications_original_journal_entry_id_fkey"
+            columns: ["original_journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_reclassifications_reclass_journal_entry_id_fkey"
+            columns: ["reclass_journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_reclassifications_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"

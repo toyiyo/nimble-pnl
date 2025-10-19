@@ -92,7 +92,7 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions 
               "w-12 h-12 rounded-lg flex items-center justify-center",
               bank.status === 'connected' ? "bg-emerald-500/10" : "bg-muted"
             )}>
-              <Building2 className="h-6 w-6 text-primary" />
+              <Building2 className="h-6 w-6 text-primary" aria-hidden="true" focusable="false" />
             </div>
             <div>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -120,7 +120,7 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions 
         {/* Total Balance */}
         <div className="p-4 rounded-lg bg-gradient-to-br from-primary/5 to-transparent border">
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-            <Wallet className="h-4 w-4" />
+            <Wallet className="h-4 w-4" aria-hidden="true" focusable="false" />
             Total Balance
           </div>
           <div className="text-2xl font-bold">
@@ -131,7 +131,7 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions 
         {/* Account Summary */}
         <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
           <div className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <TrendingUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" focusable="false" />
             <span className="text-sm font-medium">{activeAccounts} Active Account{activeAccounts !== 1 ? 's' : ''}</span>
           </div>
           {bank.last_sync_at && (
@@ -179,7 +179,7 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions 
         {/* Error Message */}
         {bank.sync_error && (
           <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" focusable="false" />
             <span>{bank.sync_error}</span>
           </div>
         )}
@@ -193,7 +193,7 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions 
             onClick={handleRefreshBalance}
             disabled={isRefreshing}
           >
-            {isRefreshing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isRefreshing && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" focusable="false" />}
             Refresh Balance
           </Button>
           <Button 
@@ -203,7 +203,7 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions 
             onClick={handleSyncTransactions}
             disabled={isSyncing}
           >
-            {isSyncing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isSyncing && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" focusable="false" />}
             {isSyncing ? 'Importing Transactions...' : 'Sync Transactions'}
           </Button>
         </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -23,6 +23,18 @@ const Accounting = () => {
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
   const [showTestDialog, setShowTestDialog] = useState(false);
+
+  // Clean up Stripe iframes when leaving the Accounting page
+  useEffect(() => {
+    return () => {
+      // Remove all Stripe iframes on component unmount
+      const stripeIframes = document.querySelectorAll('iframe[src*="stripe.com"], iframe[name^="__privateStripe"]');
+      stripeIframes.forEach(iframe => {
+        iframe.remove();
+      });
+      console.log('[ACCOUNTING] Cleaned up Stripe iframes');
+    };
+  }, []);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);

@@ -112,11 +112,11 @@
   }
 }
 
-/* Prevent Stripe iframes from causing horizontal scroll */
+/* Contain Stripe iframes to prevent horizontal scroll */
 iframe[src*="stripe.com"],
 iframe[name^="__privateStripe"] {
-  max-width: 100% !important;
-  position: fixed !important;
+  max-width: 100vw !important;
+  contain: layout size style !important;
 }
 
 @keyframes wave {

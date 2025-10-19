@@ -17,40 +17,48 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
   const { data: balanceData, isLoading } = useQuery({
     queryKey: ['balance-sheet', restaurantId, asOfDate],
     queryFn: async () => {
-      const { data: assets, error: assetsError } = await supabase
+      // Fetch all chart of accounts for balance sheet categories
+      const { data: accounts, error: accountsError } = await supabase
         .from('chart_of_accounts')
-        .select('id, account_code, account_name, current_balance')
+        .select('id, account_code, account_name, account_type')
         .eq('restaurant_id', restaurantId)
-        .eq('account_type', 'asset')
+        .in('account_type', ['asset', 'liability', 'equity'])
         .eq('is_active', true)
         .order('account_code');
 
-      if (assetsError) throw assetsError;
+      if (accountsError) throw accountsError;
 
-      const { data: liabilities, error: liabilitiesError } = await supabase
-        .from('chart_of_accounts')
-        .select('id, account_code, account_name, current_balance')
+      // Fetch all transactions up to and including the asOfDate
+      const { data: transactions, error: transactionsError } = await supabase
+        .from('bank_transactions')
+        .select('amount, category_id')
         .eq('restaurant_id', restaurantId)
-        .eq('account_type', 'liability')
-        .eq('is_active', true)
-        .order('account_code');
+        .lte('transaction_date', asOfDate.toISOString().split('T')[0])
+        .not('category_id', 'is', null);
 
-      if (liabilitiesError) throw liabilitiesError;
+      if (transactionsError) throw transactionsError;
 
-      const { data: equity, error: equityError } = await supabase
-        .from('chart_of_accounts')
-        .select('id, account_code, account_name, current_balance')
-        .eq('restaurant_id', restaurantId)
-        .eq('account_type', 'equity')
-        .eq('is_active', true)
-        .order('account_code');
+      // Calculate balances by summing transactions for each account
+      const accountBalances = new Map<string, number>();
+      
+      transactions?.forEach(transaction => {
+        if (transaction.category_id) {
+          const currentBalance = accountBalances.get(transaction.category_id) || 0;
+          // Sum all transaction amounts (positive for assets/income, negative for liabilities/expenses)
+          accountBalances.set(transaction.category_id, currentBalance + Math.abs(transaction.amount));
+        }
+      });
 
-      if (equityError) throw equityError;
+      // Map accounts with their calculated balances
+      const accountsWithBalances = accounts?.map(account => ({
+        ...account,
+        current_balance: accountBalances.get(account.id) || 0,
+      })) || [];
 
       return {
-        assets: assets || [],
-        liabilities: liabilities || [],
-        equity: equity || [],
+        assets: accountsWithBalances.filter(a => a.account_type === 'asset'),
+        liabilities: accountsWithBalances.filter(a => a.account_type === 'liability'),
+        equity: accountsWithBalances.filter(a => a.account_type === 'equity'),
       };
     },
     enabled: !!restaurantId,

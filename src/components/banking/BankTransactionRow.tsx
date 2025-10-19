@@ -70,7 +70,7 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
           </div>
         </TableCell>
 
-        <TableCell>
+        <TableCell className="hidden md:table-cell">
           {transaction.normalized_payee || transaction.merchant_name || '—'}
         </TableCell>
 
@@ -86,7 +86,7 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
         </TableCell>
 
         {status === 'for_review' && (
-          <TableCell>
+          <TableCell className="hidden lg:table-cell">
             {suggestedCategory ? (
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{suggestedCategory.account_name}</Badge>
@@ -103,7 +103,7 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
         )}
 
         {status === 'categorized' && (
-          <TableCell>
+          <TableCell className="hidden lg:table-cell">
             {currentCategory ? (
               <Badge variant="secondary">{currentCategory.account_name}</Badge>
             ) : (
@@ -113,7 +113,7 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
         )}
 
         {status === 'excluded' && (
-          <TableCell>
+          <TableCell className="hidden lg:table-cell">
             <span className="text-sm text-muted-foreground">
               {transaction.excluded_reason || 'Excluded'}
             </span>

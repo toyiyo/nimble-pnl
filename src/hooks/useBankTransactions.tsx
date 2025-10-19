@@ -41,13 +41,13 @@ export function useBankTransactions(status?: TransactionStatus) {
     queryFn: async () => {
       if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
 
-      // Fetch all transactions by removing the default limit
+      // Use range to fetch all transactions (Supabase default max is 1000, so we fetch up to 10000)
       let query = supabase
         .from('bank_transactions')
         .select('*', { count: 'exact' })
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .order('transaction_date', { ascending: false })
-        .limit(10000); // Set a high limit to fetch all transactions
+        .range(0, 9999); // Fetch up to 10,000 transactions
 
       if (status) {
         query = query.eq('status', status as any);

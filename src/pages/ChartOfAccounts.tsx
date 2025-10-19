@@ -48,6 +48,16 @@ export default function ChartOfAccounts() {
     }).format(amount);
   };
 
+  // Display balance correctly based on normal balance (credit accounts show as positive)
+  const getDisplayBalance = (account: typeof accounts[0]) => {
+    // Revenue, liability, and equity have credit normal balances (stored as negative)
+    if (['revenue', 'liability', 'equity'].includes(account.account_type)) {
+      return Math.abs(account.current_balance);
+    }
+    // Assets, expenses, COGS have debit normal balances (stored as positive)
+    return account.current_balance;
+  };
+
   if (loading) {
     return (
       <div className="p-8">
@@ -115,7 +125,7 @@ export default function ChartOfAccounts() {
         {Object.entries(groupedAccounts).map(([type, typeAccounts]) => {
           const Icon = accountTypeIcons[type as keyof typeof accountTypeIcons];
           const colorClass = accountTypeColors[type as keyof typeof accountTypeColors];
-          const totalBalance = typeAccounts.reduce((sum, acc) => sum + acc.current_balance, 0);
+          const totalBalance = typeAccounts.reduce((sum, acc) => sum + getDisplayBalance(acc), 0);
 
           return (
             <Card key={type}>
@@ -156,7 +166,7 @@ export default function ChartOfAccounts() {
                       </div>
                       <div className="flex items-center justify-between md:justify-end gap-3 w-full md:w-auto">
                         <div className="text-right">
-                          <div className="font-semibold">{formatCurrency(account.current_balance)}</div>
+                          <div className="font-semibold">{formatCurrency(getDisplayBalance(account))}</div>
                           {account.is_system_account && (
                             <Badge variant="secondary" className="text-xs">System</Badge>
                           )}

@@ -108,7 +108,15 @@
   }
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
   }
+}
+
+/* Prevent Stripe iframes from causing horizontal scroll */
+iframe[src*="stripe.com"],
+iframe[name^="__privateStripe"] {
+  max-width: 100% !important;
+  position: fixed !important;
 }
 
 @keyframes wave {

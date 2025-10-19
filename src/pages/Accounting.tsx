@@ -5,9 +5,8 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useStripeFinancialConnections } from '@/hooks/useStripeFinancialConnections';
 import { BankConnectionCard } from '@/components/BankConnectionCard';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
-import { TestBankConnectionDialog } from '@/components/TestBankConnectionDialog';
 import { MetricIcon } from '@/components/MetricIcon';
-import { Building2, Plus, Wallet, TrendingUp, FlaskConical } from 'lucide-react';
+import { Building2, Plus, Wallet, TrendingUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { loadStripe } from '@stripe/stripe-js';
 
@@ -22,7 +21,6 @@ const Accounting = () => {
     syncTransactions
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
-  const [showTestDialog, setShowTestDialog] = useState(false);
 
   // Clean up Stripe iframes when leaving the Accounting page
   useEffect(() => {
@@ -174,24 +172,14 @@ const Accounting = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="text-xl font-semibold">Connected Banks</h2>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline"
-                  onClick={() => setShowTestDialog(true)}
-                  className="gap-2"
-                >
-                  <FlaskConical className="h-4 w-4" />
-                  Test Mode
-                </Button>
-                <Button 
-                  onClick={handleConnectBank}
-                  disabled={isCreatingSession}
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  {isCreatingSession ? 'Connecting...' : 'Connect Bank'}
-                </Button>
-              </div>
+              <Button 
+                onClick={handleConnectBank}
+                disabled={isCreatingSession}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                {isCreatingSession ? 'Connecting...' : 'Connect Bank'}
+              </Button>
             </div>
 
             {loading ? (
@@ -228,12 +216,6 @@ const Accounting = () => {
           </div>
         </div>
       )}
-      
-      <TestBankConnectionDialog
-        open={showTestDialog}
-        onOpenChange={setShowTestDialog}
-        restaurantId={selectedRestaurant?.restaurant_id || ''}
-      />
     </>
   );
 };

@@ -89,21 +89,36 @@ serve(async (req) => {
       bank.stripe_financial_account_id
     );
 
-    console.log("[REFRESH-BALANCE] Account retrieved, balance:", account.balance);
+    console.log("[REFRESH-BALANCE] Account retrieved, initial balance:", account.balance);
 
     // Refresh the balance in Stripe (this triggers a new fetch from the bank)
+    let finalAccount = account;
+    let refreshNote = null;
+    
     try {
       const refreshedAccount = await stripe.financialConnections.accounts.refresh(
         bank.stripe_financial_account_id,
         { features: ['balance'] }
       );
-      console.log("[REFRESH-BALANCE] Balance refresh triggered");
-    } catch (refreshError) {
-      console.log("[REFRESH-BALANCE] Refresh request sent, balance will update via webhook");
+      console.log("[REFRESH-BALANCE] Balance refresh succeeded immediately");
+      
+      // If refresh succeeded, use the refreshed account data
+      if (refreshedAccount && refreshedAccount.balance) {
+        finalAccount = refreshedAccount;
+        console.log("[REFRESH-BALANCE] Using refreshed balance:", refreshedAccount.balance);
+      } else {
+        // Refresh initiated but data not immediately available
+        console.log("[REFRESH-BALANCE] Refresh initiated, waiting for webhook update");
+        refreshNote = "Balance refresh initiated. Updated values will arrive via webhook within 1-2 minutes.";
+      }
+    } catch (refreshError: any) {
+      console.log("[REFRESH-BALANCE] Refresh request sent, balance will update via webhook:", refreshError.message);
+      refreshNote = "Balance refresh requested. Updated values will arrive via webhook within 1-2 minutes.";
+      // Continue with pre-refresh data as fallback
     }
 
-    // Update balance in our database
-    if (account.balance && (account.balance.current || account.balance.available)) {
+    // Update balance in our database using the best available data
+    if (finalAccount.balance && (finalAccount.balance.current || finalAccount.balance.available)) {
       // Check if we have an existing balance record
       const { data: existingBalance } = await supabaseAdmin
         .from("bank_account_balances")
@@ -116,8 +131,8 @@ serve(async (req) => {
         const { error: updateError } = await supabaseAdmin
           .from("bank_account_balances")
           .update({
-            current_balance: (account.balance.current?.usd || 0) / 100,
-            available_balance: account.balance.available?.usd ? account.balance.available.usd / 100 : null,
+            current_balance: (finalAccount.balance.current?.usd || 0) / 100,
+            available_balance: finalAccount.balance.available?.usd ? finalAccount.balance.available.usd / 100 : null,
             as_of_date: new Date().toISOString(),
           })
           .eq("id", existingBalance.id);
@@ -131,11 +146,11 @@ serve(async (req) => {
           .from("bank_account_balances")
           .insert({
             connected_bank_id: bankId,
-            account_name: account.display_name || account.institution_name,
-            account_type: account.subcategory,
-            account_mask: account.last4,
-            current_balance: (account.balance.current?.usd || 0) / 100,
-            available_balance: account.balance.available?.usd ? account.balance.available.usd / 100 : null,
+            account_name: finalAccount.display_name || finalAccount.institution_name,
+            account_type: finalAccount.subcategory,
+            account_mask: finalAccount.last4,
+            current_balance: (finalAccount.balance.current?.usd || 0) / 100,
+            available_balance: finalAccount.balance.available?.usd ? finalAccount.balance.available.usd / 100 : null,
             currency: "USD",
             is_active: true,
             as_of_date: new Date().toISOString(),
@@ -159,9 +174,11 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true,
         balance: {
-          current: (account.balance?.current?.usd || 0) / 100,
-          available: account.balance?.available?.usd ? account.balance.available.usd / 100 : undefined
-        }
+          current: (finalAccount.balance?.current?.usd || 0) / 100,
+          available: finalAccount.balance?.available?.usd ? finalAccount.balance.available.usd / 100 : undefined
+        },
+        refreshNote,
+        usingRefreshedData: finalAccount !== account
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

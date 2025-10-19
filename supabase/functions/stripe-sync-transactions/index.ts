@@ -176,7 +176,7 @@ serve(async (req) => {
     });
 
     // Fetch ALL transactions using pagination
-    let allTransactions: any[] = [];
+    let allTransactions: Stripe.FinancialConnections.Transaction[] = [];
     let hasMore = true;
     let startingAfter: string | undefined = undefined;
     
@@ -243,6 +243,11 @@ serve(async (req) => {
       // Insert new transaction
       const defaultCategoryId = txn.amount < 0 ? uncategorizedExpenseId : uncategorizedIncomeId;
       
+      // Safely extract merchant_name with optional chaining and type guard
+      const merchantName = typeof (txn as any).merchant_name === 'string' 
+        ? (txn as any).merchant_name 
+        : null;
+      
       const { error: insertError } = await supabaseAdmin
         .from("bank_transactions")
         .insert({
@@ -254,7 +259,7 @@ serve(async (req) => {
           amount: txn.amount / 100, // Convert cents to dollars
           currency: txn.currency.toLowerCase(),
           description: txn.description,
-          merchant_name: (txn as any).merchant_name,
+          merchant_name: merchantName,
           status: txn.status,
           category_id: defaultCategoryId,
           is_categorized: false, // Mark as uncategorized even though we set a default

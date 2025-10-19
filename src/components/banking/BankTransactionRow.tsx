@@ -4,8 +4,9 @@ import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, XCircle, ArrowLeftRight, FileText } from "lucide-react";
+import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
+import { SplitTransactionDialog } from "./SplitTransactionDialog";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 
@@ -16,6 +17,7 @@ interface BankTransactionRowProps {
 
 export function BankTransactionRow({ transaction, status }: BankTransactionRowProps) {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isSplitOpen, setIsSplitOpen] = useState(false);
   const { selectedRestaurant } = useRestaurantContext();
   const categorize = useCategorizeTransaction();
   const exclude = useExcludeTransaction();
@@ -128,6 +130,15 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
                 <Button
                   size="sm"
                   variant="outline"
+                  onClick={() => setIsSplitOpen(true)}
+                  title="Split transaction"
+                >
+                  <Split className="h-4 w-4 mr-1" />
+                  Split
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => setIsDetailOpen(true)}
                 >
                   <Edit className="h-4 w-4 mr-1" />
@@ -161,6 +172,12 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
         transaction={transaction}
         isOpen={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}
+      />
+
+      <SplitTransactionDialog
+        transaction={transaction}
+        isOpen={isSplitOpen}
+        onClose={() => setIsSplitOpen(false)}
       />
     </>
   );

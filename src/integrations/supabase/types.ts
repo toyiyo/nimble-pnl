@@ -3296,6 +3296,10 @@ export type Database = {
         Args: { "": string }
         Returns: string
       }
+      split_bank_transaction: {
+        Args: { p_splits: Json; p_transaction_id: string }
+        Returns: Json
+      }
       sync_clover_to_unified_sales: {
         Args: { p_restaurant_id: string }
         Returns: number

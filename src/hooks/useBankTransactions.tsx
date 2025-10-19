@@ -212,7 +212,7 @@ export function useSplitTransaction() {
         description?: string;
       }>;
     }) => {
-      const { data, error } = await supabase.rpc('split_bank_transaction', {
+      const { data, error } = await supabase.rpc('split_bank_transaction' as any, {
         p_transaction_id: transactionId,
         p_splits: splits as any,
       });

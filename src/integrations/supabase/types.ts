@@ -2885,6 +2885,14 @@ export type Database = {
         }
         Returns: Json
       }
+      categorize_bank_transaction_split: {
+        Args: {
+          p_restaurant_id: string
+          p_splits: Json
+          p_transaction_id: string
+        }
+        Returns: Json
+      }
       check_reconciliation_boundary: {
         Args: { p_restaurant_id: string }
         Returns: Json

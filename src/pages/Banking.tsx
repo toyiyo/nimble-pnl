@@ -8,16 +8,26 @@ import { BankTransactionList } from "@/components/banking/BankTransactionList";
 import { CategoryRulesDialog } from "@/components/banking/CategoryRulesDialog";
 import { ReconciliationDialog } from "@/components/banking/ReconciliationDialog";
 import { ReconciliationReport } from "@/components/banking/ReconciliationReport";
-import { Loader2, Building2, Sparkles, CheckCircle2, FileText } from "lucide-react";
+import { useCategorizeTransactions } from "@/hooks/useCategorizeTransactions";
+import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2 } from "lucide-react";
 
 export default function Banking() {
   const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation'>('for_review');
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
+  const { selectedRestaurant } = useRestaurantContext();
   
   const { data: forReviewTransactions, isLoading: isLoadingReview } = useBankTransactions('for_review');
   const { data: categorizedTransactions, isLoading: isLoadingCategorized } = useBankTransactions('categorized');
   const { data: excludedTransactions, isLoading: isLoadingExcluded } = useBankTransactions('excluded');
+  const categorizeAll = useCategorizeTransactions();
+  
+  const handleCategorizeAll = () => {
+    if (selectedRestaurant?.restaurant_id) {
+      categorizeAll.mutate(selectedRestaurant.restaurant_id);
+    }
+  };
 
   const reviewCount = forReviewTransactions?.length || 0;
   const categorizedCount = categorizedTransactions?.length || 0;
@@ -30,6 +40,20 @@ export default function Banking() {
         title="Banking"
         actions={
           <div className="flex gap-2">
+            {reviewCount > 0 && (
+              <Button 
+                onClick={handleCategorizeAll} 
+                disabled={categorizeAll.isPending}
+                variant="default"
+              >
+                {categorizeAll.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Wand2 className="h-4 w-4 mr-2" />
+                )}
+                Auto-Categorize All
+              </Button>
+            )}
             <Button onClick={() => setShowReconciliationDialog(true)} variant="outline">
               <CheckCircle2 className="h-4 w-4 mr-2" />
               Reconcile

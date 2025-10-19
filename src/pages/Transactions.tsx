@@ -44,7 +44,7 @@ const Transactions = () => {
             institution_name,
             bank_account_balances(account_mask)
           ),
-          chart_account:chart_of_accounts(
+          chart_account:chart_of_accounts!category_id(
             account_name
           )
         `)

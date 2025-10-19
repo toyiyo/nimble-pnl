@@ -149,14 +149,18 @@ export type Database = {
           created_at: string
           currency: string
           description: string
+          excluded_reason: string | null
           id: string
           inventory_transaction_id: string | null
           is_categorized: boolean
           is_reconciled: boolean
           is_split: boolean
+          is_transfer: boolean
+          match_confidence: number | null
           matched_at: string | null
           matched_by: string | null
           merchant_name: string | null
+          normalized_payee: string | null
           notes: string | null
           posted_date: string | null
           raw_data: Json | null
@@ -166,8 +170,11 @@ export type Database = {
           restaurant_id: string
           status: Database["public"]["Enums"]["transaction_status_enum"]
           stripe_transaction_id: string
+          suggested_category_id: string | null
+          suggested_payee: string | null
           transaction_date: string
           transaction_type: string | null
+          transfer_pair_id: string | null
           updated_at: string
         }
         Insert: {
@@ -177,14 +184,18 @@ export type Database = {
           created_at?: string
           currency?: string
           description: string
+          excluded_reason?: string | null
           id?: string
           inventory_transaction_id?: string | null
           is_categorized?: boolean
           is_reconciled?: boolean
           is_split?: boolean
+          is_transfer?: boolean
+          match_confidence?: number | null
           matched_at?: string | null
           matched_by?: string | null
           merchant_name?: string | null
+          normalized_payee?: string | null
           notes?: string | null
           posted_date?: string | null
           raw_data?: Json | null
@@ -194,8 +205,11 @@ export type Database = {
           restaurant_id: string
           status?: Database["public"]["Enums"]["transaction_status_enum"]
           stripe_transaction_id: string
+          suggested_category_id?: string | null
+          suggested_payee?: string | null
           transaction_date: string
           transaction_type?: string | null
+          transfer_pair_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -205,14 +219,18 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string
+          excluded_reason?: string | null
           id?: string
           inventory_transaction_id?: string | null
           is_categorized?: boolean
           is_reconciled?: boolean
           is_split?: boolean
+          is_transfer?: boolean
+          match_confidence?: number | null
           matched_at?: string | null
           matched_by?: string | null
           merchant_name?: string | null
+          normalized_payee?: string | null
           notes?: string | null
           posted_date?: string | null
           raw_data?: Json | null
@@ -222,8 +240,11 @@ export type Database = {
           restaurant_id?: string
           status?: Database["public"]["Enums"]["transaction_status_enum"]
           stripe_transaction_id?: string
+          suggested_category_id?: string | null
+          suggested_payee?: string | null
           transaction_date?: string
           transaction_type?: string | null
+          transfer_pair_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -260,6 +281,20 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_suggested_category_id_fkey"
+            columns: ["suggested_category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_transfer_pair_id_fkey"
+            columns: ["transfer_pair_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
         ]
@@ -3013,11 +3048,18 @@ export type Database = {
         Returns: string
       }
       categorize_bank_transaction: {
-        Args: {
-          p_category_id: string
-          p_restaurant_id: string
-          p_transaction_id: string
-        }
+        Args:
+          | {
+              p_category_id: string
+              p_description?: string
+              p_is_split?: boolean
+              p_transaction_id: string
+            }
+          | {
+              p_category_id: string
+              p_restaurant_id: string
+              p_transaction_id: string
+            }
         Returns: Json
       }
       categorize_bank_transaction_split: {
@@ -3086,6 +3128,10 @@ export type Database = {
       dmetaphone_alt: {
         Args: { "": string }
         Returns: string
+      }
+      exclude_bank_transaction: {
+        Args: { p_reason?: string; p_transaction_id: string }
+        Returns: Json
       }
       find_product_by_gtin: {
         Args: { p_restaurant_id: string; p_scanned_gtin: string }
@@ -3160,6 +3206,10 @@ export type Database = {
           p_severity?: string
         }
         Returns: undefined
+      }
+      mark_as_transfer: {
+        Args: { p_transaction_id_1: string; p_transaction_id_2: string }
+        Returns: Json
       }
       process_inventory_deduction: {
         Args: {
@@ -3367,6 +3417,11 @@ export type Database = {
         | "mm"
         | "ft"
         | "meter"
+      transaction_review_status:
+        | "for_review"
+        | "categorized"
+        | "excluded"
+        | "reconciled"
       transaction_status_enum: "pending" | "posted" | "reconciled" | "void"
     }
     CompositeTypes: {
@@ -3583,6 +3638,12 @@ export const Constants = {
         "mm",
         "ft",
         "meter",
+      ],
+      transaction_review_status: [
+        "for_review",
+        "categorized",
+        "excluded",
+        "reconciled",
       ],
       transaction_status_enum: ["pending", "posted", "reconciled", "void"],
     },

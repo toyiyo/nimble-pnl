@@ -1,0 +1,107 @@
+import { useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card } from "@/components/ui/card";
+import { useBankTransactions } from "@/hooks/useBankTransactions";
+import { BankTransactionList } from "@/components/banking/BankTransactionList";
+import { Loader2, Building2 } from "lucide-react";
+
+export default function Banking() {
+  const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded'>('for_review');
+  
+  const { data: forReviewTransactions, isLoading: isLoadingReview } = useBankTransactions('for_review');
+  const { data: categorizedTransactions, isLoading: isLoadingCategorized } = useBankTransactions('categorized');
+  const { data: excludedTransactions, isLoading: isLoadingExcluded } = useBankTransactions('excluded');
+
+  const reviewCount = forReviewTransactions?.length || 0;
+  const categorizedCount = categorizedTransactions?.length || 0;
+  const excludedCount = excludedTransactions?.length || 0;
+
+  return (
+    <div className="min-h-screen bg-background">
+      <PageHeader icon={Building2} title="Banking" />
+
+      <div className="container mx-auto px-4 py-8">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+          <TabsList className="grid w-full grid-cols-3 mb-6">
+            <TabsTrigger value="for_review" className="relative">
+              For Review
+              {reviewCount > 0 && (
+                <span className="ml-2 bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs">
+                  {reviewCount}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="categorized" className="relative">
+              Categorized
+              {categorizedCount > 0 && (
+                <span className="ml-2 bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs">
+                  {categorizedCount}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="excluded" className="relative">
+              Excluded
+              {excludedCount > 0 && (
+                <span className="ml-2 bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs">
+                  {excludedCount}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="for_review">
+            <Card className="p-6">
+              {isLoadingReview ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : forReviewTransactions && forReviewTransactions.length > 0 ? (
+                <BankTransactionList transactions={forReviewTransactions} status="for_review" />
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="text-lg">No transactions to review</p>
+                  <p className="text-sm mt-2">All caught up! 🎉</p>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="categorized">
+            <Card className="p-6">
+              {isLoadingCategorized ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : categorizedTransactions && categorizedTransactions.length > 0 ? (
+                <BankTransactionList transactions={categorizedTransactions} status="categorized" />
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="text-lg">No categorized transactions</p>
+                  <p className="text-sm mt-2">Start categorizing transactions from the "For Review" tab</p>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="excluded">
+            <Card className="p-6">
+              {isLoadingExcluded ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : excludedTransactions && excludedTransactions.length > 0 ? (
+                <BankTransactionList transactions={excludedTransactions} status="excluded" />
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="text-lg">No excluded transactions</p>
+                  <p className="text-sm mt-2">Duplicate or personal transactions will appear here</p>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}

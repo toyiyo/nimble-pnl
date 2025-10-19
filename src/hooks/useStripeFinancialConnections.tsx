@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -31,21 +32,21 @@ interface FinancialConnectionSession {
 }
 
 export const useStripeFinancialConnections = (restaurantId: string | null) => {
-  const [connectedBanks, setConnectedBanks] = useState<ConnectedBank[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  // Fetch connected banks
-  const fetchConnectedBanks = async () => {
-    if (!restaurantId) {
-      setConnectedBanks([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
+  // Fetch connected banks using React Query
+  const {
+    data: connectedBanks = [],
+    isLoading: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: ['connectedBanks', restaurantId],
+    queryFn: async () => {
+      if (!restaurantId) {
+        return [];
+      }
 
       // Fetch connected banks with their balances
       const { data: banks, error: banksError } = await supabase
@@ -78,18 +79,25 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
 
       if (banksError) throw banksError;
 
-      setConnectedBanks(banks || []);
-    } catch (error) {
-      console.error('Error fetching connected banks:', error);
+      return (banks || []) as ConnectedBank[];
+    },
+    enabled: !!restaurantId,
+    staleTime: 60000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  // Handle query errors with toast
+  useEffect(() => {
+    if (queryError) {
+      console.error('Error fetching connected banks:', queryError);
       toast({
         title: "Failed to Load Banks",
-        description: error instanceof Error ? error.message : "An error occurred",
+        description: queryError instanceof Error ? queryError.message : "An error occurred",
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [queryError, toast]);
 
   // Create Financial Connections session
   const createFinancialConnectionsSession = async (): Promise<FinancialConnectionSession | null> => {
@@ -147,7 +155,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
       });
 
       // Refresh the list
-      await fetchConnectedBanks();
+      queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] });
     } catch (error) {
       console.error('Error disconnecting bank:', error);
       toast({
@@ -157,11 +165,6 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
       });
     }
   };
-
-  // Load banks on mount and when restaurantId changes
-  useEffect(() => {
-    fetchConnectedBanks();
-  }, [restaurantId]);
 
   // Set up real-time subscription for bank updates
   useEffect(() => {
@@ -178,7 +181,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
           filter: `restaurant_id=eq.${restaurantId}`,
         },
         () => {
-          fetchConnectedBanks();
+          queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] });
         }
       )
       .subscribe();
@@ -186,7 +189,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [restaurantId]);
+  }, [restaurantId, queryClient]);
 
   // Refresh balance for a specific bank
   const refreshBalance = async (bankId: string) => {
@@ -206,7 +209,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
       });
 
       // Refresh the banks list
-      await fetchConnectedBanks();
+      queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] });
 
       return data;
     } catch (error) {
@@ -259,7 +262,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     isCreatingSession,
     createFinancialConnectionsSession,
     disconnectBank,
-    refreshBanks: fetchConnectedBanks,
+    refreshBanks: () => queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] }),
     refreshBalance,
     syncTransactions,
   };

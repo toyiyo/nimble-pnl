@@ -18,43 +18,49 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   const { data: incomeData, isLoading } = useQuery({
     queryKey: ['income-statement', restaurantId, dateFrom, dateTo],
     queryFn: async () => {
-      // Fetch revenue accounts
-      const { data: revenueAccounts, error: revenueError } = await supabase
+      // Fetch all chart of accounts for this restaurant
+      const { data: accounts, error: accountsError } = await supabase
         .from('chart_of_accounts')
-        .select('id, account_code, account_name, current_balance')
+        .select('id, account_code, account_name, account_type')
         .eq('restaurant_id', restaurantId)
-        .eq('account_type', 'revenue')
+        .in('account_type', ['revenue', 'expense', 'cogs'])
         .eq('is_active', true)
         .order('account_code');
 
-      if (revenueError) throw revenueError;
+      if (accountsError) throw accountsError;
 
-      // Fetch expense accounts
-      const { data: expenseAccounts, error: expenseError } = await supabase
-        .from('chart_of_accounts')
-        .select('id, account_code, account_name, current_balance')
+      // Fetch all transactions for the date range
+      const { data: transactions, error: transactionsError } = await supabase
+        .from('bank_transactions')
+        .select('amount, category_id')
         .eq('restaurant_id', restaurantId)
-        .eq('account_type', 'expense')
-        .eq('is_active', true)
-        .order('account_code');
+        .gte('transaction_date', dateFrom.toISOString().split('T')[0])
+        .lte('transaction_date', dateTo.toISOString().split('T')[0])
+        .not('category_id', 'is', null);
 
-      if (expenseError) throw expenseError;
+      if (transactionsError) throw transactionsError;
 
-      // Fetch COGS accounts
-      const { data: cogsAccounts, error: cogsError } = await supabase
-        .from('chart_of_accounts')
-        .select('id, account_code, account_name, current_balance')
-        .eq('restaurant_id', restaurantId)
-        .eq('account_type', 'cogs')
-        .eq('is_active', true)
-        .order('account_code');
+      // Calculate balances by summing transactions for each account
+      const accountBalances = new Map<string, number>();
+      
+      transactions?.forEach(transaction => {
+        if (transaction.category_id) {
+          const currentBalance = accountBalances.get(transaction.category_id) || 0;
+          // For expenses and COGS, amounts are negative, so we use absolute value
+          accountBalances.set(transaction.category_id, currentBalance + Math.abs(transaction.amount));
+        }
+      });
 
-      if (cogsError) throw cogsError;
+      // Map accounts with their calculated balances
+      const accountsWithBalances = accounts?.map(account => ({
+        ...account,
+        current_balance: accountBalances.get(account.id) || 0,
+      })) || [];
 
       return {
-        revenue: revenueAccounts || [],
-        expenses: expenseAccounts || [],
-        cogs: cogsAccounts || [],
+        revenue: accountsWithBalances.filter(a => a.account_type === 'revenue'),
+        expenses: accountsWithBalances.filter(a => a.account_type === 'expense'),
+        cogs: accountsWithBalances.filter(a => a.account_type === 'cogs'),
       };
     },
     enabled: !!restaurantId,

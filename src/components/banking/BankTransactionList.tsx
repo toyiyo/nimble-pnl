@@ -9,18 +9,18 @@ interface BankTransactionListProps {
 
 export function BankTransactionList({ transactions, status }: BankTransactionListProps) {
   return (
-    <div className="overflow-x-auto -mx-6 px-6">
+    <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="min-w-[100px]">Date</TableHead>
+            <TableHead className="whitespace-nowrap">Date</TableHead>
             <TableHead className="min-w-[200px]">Description</TableHead>
-            <TableHead className="min-w-[150px] hidden md:table-cell">Payee</TableHead>
-            <TableHead className="text-right min-w-[100px]">Amount</TableHead>
+            <TableHead className="whitespace-nowrap hidden md:table-cell">Payee</TableHead>
+            <TableHead className="text-right whitespace-nowrap">Amount</TableHead>
             {status === 'for_review' && <TableHead className="min-w-[150px] hidden lg:table-cell">Suggested</TableHead>}
             {status === 'categorized' && <TableHead className="min-w-[150px] hidden lg:table-cell">Category</TableHead>}
-            {status === 'excluded' && <TableHead className="min-w-[150px] hidden lg:table-cell">Reason</TableHead>}
-            <TableHead className="text-right min-w-[120px]">Actions</TableHead>
+            {status === 'excluded' && <TableHead className="whitespace-nowrap hidden lg:table-cell">Reason</TableHead>}
+            <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

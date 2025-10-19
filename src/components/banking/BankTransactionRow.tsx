@@ -121,7 +121,7 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
         )}
 
         <TableCell className="text-right">
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-1 flex-wrap">
             {status === 'for_review' && (
               <>
                 {transaction.suggested_category_id && (
@@ -130,9 +130,10 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
                     variant="default"
                     onClick={handleQuickAccept}
                     disabled={categorize.isPending}
+                    className="whitespace-nowrap"
                   >
-                    <Check className="h-4 w-4 mr-1" />
-                    Accept
+                    <Check className="h-4 w-4 md:mr-1" />
+                    <span className="hidden md:inline">Accept</span>
                   </Button>
                 )}
                 <Button
@@ -140,23 +141,26 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
                   variant="outline"
                   onClick={() => setIsSplitOpen(true)}
                   title="Split transaction"
+                  className="whitespace-nowrap"
                 >
-                  <Split className="h-4 w-4 mr-1" />
-                  Split
+                  <Split className="h-4 w-4 md:mr-1" />
+                  <span className="hidden md:inline">Split</span>
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => setIsDetailOpen(true)}
+                  className="whitespace-nowrap"
                 >
-                  <Edit className="h-4 w-4 mr-1" />
-                  Edit
+                  <Edit className="h-4 w-4 md:mr-1" />
+                  <span className="hidden md:inline">Edit</span>
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={handleExclude}
                   disabled={exclude.isPending}
+                  title="Exclude"
                 >
                   <XCircle className="h-4 w-4" />
                 </Button>
@@ -168,9 +172,10 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
                   size="sm"
                   variant="outline"
                   onClick={() => setIsDetailOpen(true)}
+                  className="whitespace-nowrap"
                 >
-                  <FileText className="h-4 w-4 mr-1" />
-                  View
+                  <FileText className="h-4 w-4 md:mr-1" />
+                  <span className="hidden md:inline">View</span>
                 </Button>
                 {transaction.is_reconciled ? (
                   <Button

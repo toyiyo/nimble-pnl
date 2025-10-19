@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Package, Scale } from 'lucide-react';
+import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
 
 interface SizePackagingSectionProps {
   form: any;
@@ -182,23 +183,15 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
                 <span className="text-base font-medium">Unit</span>
                 <span className="text-xs text-muted-foreground font-normal">📏</span>
               </FormLabel>
-              <Select onValueChange={field.onChange} value={field.value || undefined}>
-                <FormControl>
-                  <SelectTrigger className="text-center">
-                    <SelectValue placeholder="Select unit" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="ml">ml (milliliters)</SelectItem>
-                  <SelectItem value="L">L (liters)</SelectItem>
-                  <SelectItem value="oz">oz (ounces)</SelectItem>
-                  <SelectItem value="lb">lb (pounds)</SelectItem>
-                  <SelectItem value="g">g (grams)</SelectItem>
-                  <SelectItem value="kg">kg (kilograms)</SelectItem>
-                  <SelectItem value="gal">gal (gallons)</SelectItem>
-                  <SelectItem value="qt">qt (quarts)</SelectItem>
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <GroupedUnitSelector
+                  value={field.value || undefined}
+                  onValueChange={field.onChange}
+                  placeholder="Select unit"
+                  productName={productName}
+                  className="text-center"
+                />
+              </FormControl>
               <p className="text-xs text-muted-foreground">Unit of measurement</p>
               <FormMessage />
             </FormItem>

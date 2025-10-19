@@ -92,7 +92,8 @@ const STANDARD_CONVERSIONS: { [key: string]: { [key: string]: number } } = {
 };
 
 // Product-specific conversions (ingredient name -> unit conversions)
-const PRODUCT_SPECIFIC_CONVERSIONS: { [key: string]: { [key: string]: number } } = {
+// Exported for use in UI components to show available conversions
+export const PRODUCT_CONVERSIONS: { [key: string]: { [key: string]: number } } = {
   'rice': {
     'cup_to_g': 180,      // 1 cup uncooked rice = 180g
     'cup_to_oz': 6.3,     // 1 cup uncooked rice = 6.3 oz weight
@@ -181,8 +182,8 @@ export function convertUnits(
   // Try product-specific conversion first
   if (productName) {
     const productType = detectProductType(productName);
-    if (productType && PRODUCT_SPECIFIC_CONVERSIONS[productType]) {
-      const conversions = PRODUCT_SPECIFIC_CONVERSIONS[productType];
+    if (productType && PRODUCT_CONVERSIONS[productType]) {
+      const conversions = PRODUCT_CONVERSIONS[productType];
       const conversionKey = `${from}_to_${to}`;
       
       if (conversions[conversionKey]) {

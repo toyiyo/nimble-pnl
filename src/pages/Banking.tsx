@@ -7,10 +7,11 @@ import { useBankTransactions } from "@/hooks/useBankTransactions";
 import { BankTransactionList } from "@/components/banking/BankTransactionList";
 import { CategoryRulesDialog } from "@/components/banking/CategoryRulesDialog";
 import { ReconciliationDialog } from "@/components/banking/ReconciliationDialog";
-import { Loader2, Building2, Sparkles, CheckCircle2 } from "lucide-react";
+import { ReconciliationReport } from "@/components/banking/ReconciliationReport";
+import { Loader2, Building2, Sparkles, CheckCircle2, FileText } from "lucide-react";
 
 export default function Banking() {
-  const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded'>('for_review');
+  const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation'>('for_review');
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
   
@@ -43,7 +44,7 @@ export default function Banking() {
 
       <div className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-          <TabsList className="grid w-full grid-cols-3 mb-6">
+          <TabsList className="grid w-full grid-cols-4 mb-6">
             <TabsTrigger value="for_review" className="relative">
               For Review
               {reviewCount > 0 && (
@@ -67,6 +68,10 @@ export default function Banking() {
                   {excludedCount}
                 </span>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="reconciliation">
+              <FileText className="h-4 w-4 mr-2" />
+              Reconciliation
             </TabsTrigger>
           </TabsList>
 
@@ -119,6 +124,10 @@ export default function Banking() {
                 </div>
               )}
             </Card>
+          </TabsContent>
+
+          <TabsContent value="reconciliation">
+            <ReconciliationReport />
           </TabsContent>
         </Tabs>
       </div>

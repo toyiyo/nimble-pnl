@@ -33,6 +33,7 @@ const Transactions = () => {
   const { toast } = useToast();
   const categorizeTransactions = useCategorizeTransactions();
   const isMobile = useIsMobile();
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Fetch transactions
   const { data: transactions, isLoading, refetch } = useQuery({
@@ -58,6 +59,7 @@ const Transactions = () => {
         .limit(1000);
 
       if (error) throw error;
+      setIsInitialLoad(false);
       return data || [];
     },
     enabled: !!selectedRestaurant,
@@ -180,7 +182,7 @@ const Transactions = () => {
   const activeFilterCount = Object.values(filters).filter(v => v !== undefined && v !== '').length;
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 overflow-x-hidden">
       {/* Hero Section - More compact on mobile */}
       <div className="relative overflow-hidden rounded-xl md:rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-6 md:p-8">
         <div className="relative z-10">
@@ -348,21 +350,11 @@ const Transactions = () => {
       </Card>
 
       {/* Transactions - Mobile Card View / Desktop Table */}
-      {isLoading ? (
-        <div className="space-y-4">
-          {isMobile ? (
-            <>
-              <TransactionSkeleton />
-              <TransactionSkeleton />
-              <TransactionSkeleton />
-            </>
-          ) : (
-            <Card>
-              <CardContent className="pt-6">
-                <TransactionTableSkeleton />
-              </CardContent>
-            </Card>
-          )}
+      {isLoading || isInitialLoad ? (
+        <div className="space-y-3">
+          <TransactionSkeleton />
+          <TransactionSkeleton />
+          <TransactionSkeleton />
         </div>
       ) : filteredTransactions.length === 0 ? (
         <Card>
@@ -408,7 +400,7 @@ const Transactions = () => {
                       <TableHead className="whitespace-nowrap">Date</TableHead>
                       <TableHead className="min-w-[200px]">Description</TableHead>
                       <TableHead className="whitespace-nowrap hidden lg:table-cell">Bank Account</TableHead>
-                      <TableHead className="min-w-[200px] hidden xl:table-cell">Category</TableHead>
+                      <TableHead className="hidden xl:table-cell">Category</TableHead>
                       <TableHead className="text-right whitespace-nowrap">Amount</TableHead>
                       <TableHead className="whitespace-nowrap hidden md:table-cell">Status</TableHead>
                     </TableRow>
@@ -447,14 +439,14 @@ const Transactions = () => {
                           </div>
                         </TableCell>
                         <TableCell className="hidden xl:table-cell">
-                          <div className="min-w-[200px] space-y-1">
+                          <div className="space-y-1">
                             <CategorySelector
                               restaurantId={selectedRestaurant.restaurant_id}
                               value={txn.category_id}
                               onSelect={(categoryId) => handleCategorize(txn.id, categoryId)}
                             />
                             {!txn.is_categorized && (
-                              <Badge variant="outline" className="text-xs bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800">
+                              <Badge variant="outline" className="text-xs bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800 w-fit">
                                 Needs categorization
                               </Badge>
                             )}

@@ -59,6 +59,7 @@ export type Database = {
           current_balance: number
           id: string
           is_active: boolean
+          stripe_financial_account_id: string | null
           updated_at: string
         }
         Insert: {
@@ -73,6 +74,7 @@ export type Database = {
           current_balance?: number
           id?: string
           is_active?: boolean
+          stripe_financial_account_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -87,6 +89,7 @@ export type Database = {
           current_balance?: number
           id?: string
           is_active?: boolean
+          stripe_financial_account_id?: string | null
           updated_at?: string
         }
         Relationships: [

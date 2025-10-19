@@ -160,12 +160,13 @@ serve(async (req) => {
           }
         }
 
-        // Store account balance info
+        // Store account balance info using upsert to handle duplicate events
         if (balanceData && (balanceData.current || balanceData.available)) {
           const { error: balanceError } = await supabaseClient
             .from("bank_account_balances")
-            .insert({
+            .upsert({
               connected_bank_id: bankData.id,
+              stripe_financial_account_id: account.id,
               account_name: account.display_name || account.institution_name,
               account_type: account.subcategory,
               account_mask: account.last4,
@@ -174,12 +175,15 @@ serve(async (req) => {
               currency: "USD",
               is_active: true,
               as_of_date: new Date().toISOString(),
+            }, {
+              onConflict: "stripe_financial_account_id",
+              ignoreDuplicates: false, // Update existing record
             });
 
           if (balanceError) {
-            console.error("[FC-WEBHOOK] Error storing balance:", balanceError);
+            console.error("[FC-WEBHOOK] Error storing/updating balance:", balanceError);
           } else {
-            console.log("[FC-WEBHOOK] Balance stored successfully");
+            console.log("[FC-WEBHOOK] Balance stored/updated successfully");
           }
         } else {
           console.log("[FC-WEBHOOK] No balance data available yet");
@@ -250,7 +254,7 @@ serve(async (req) => {
           .single();
 
         if (bank && account.balance) {
-          // Update balance
+          // Update balance using stripe_financial_account_id for precise targeting
           const { error: balanceError } = await supabaseClient
             .from("bank_account_balances")
             .update({
@@ -258,7 +262,8 @@ serve(async (req) => {
               available_balance: account.balance.available?.usd ? account.balance.available.usd / 100 : null,
               as_of_date: new Date().toISOString(),
             })
-            .eq("connected_bank_id", bank.id);
+            .eq("stripe_financial_account_id", account.id)
+            .eq("connected_bank_id", bank.id); // Keep as safety filter
 
           if (balanceError) {
             console.error("[FC-WEBHOOK] Error updating balance:", balanceError);

@@ -5,10 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useChartOfAccounts } from '@/hooks/useChartOfAccounts';
-import { Plus, Wallet, TrendingDown, TrendingUp, DollarSign, ShoppingCart, Users, FolderPlus, Calculator } from 'lucide-react';
+import { Plus, Wallet, TrendingDown, TrendingUp, DollarSign, ShoppingCart, Users, FolderPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AccountDialog } from '@/components/AccountDialog';
-import { OpeningBalanceDialog } from '@/components/OpeningBalanceDialog';
 
 const accountTypeIcons = {
   asset: Wallet,
@@ -32,9 +31,7 @@ export default function ChartOfAccounts() {
   const { selectedRestaurant } = useRestaurantContext();
   const { accounts, loading, createDefaultAccounts, fetchAccounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
-  const [openingBalanceDialogOpen, setOpeningBalanceDialogOpen] = useState(false);
   const [selectedParentAccount, setSelectedParentAccount] = useState<{ id: string; name: string; type: string; code: string } | undefined>();
-  const [selectedAccountForBalance, setSelectedAccountForBalance] = useState<{ id: string; name: string; type: string; code: string } | undefined>();
 
   const groupedAccounts = accounts.reduce((acc, account) => {
     if (!acc[account.account_type]) {
@@ -43,23 +40,6 @@ export default function ChartOfAccounts() {
     acc[account.account_type].push(account);
     return acc;
   }, {} as Record<string, typeof accounts>);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
-
-  // Display balance correctly based on normal balance (credit accounts show as positive)
-  const getDisplayBalance = (account: typeof accounts[0]) => {
-    // Revenue, liability, and equity have credit normal balances (stored as negative)
-    if (['revenue', 'liability', 'equity'].includes(account.account_type)) {
-      return Math.abs(account.current_balance);
-    }
-    // Assets, expenses, COGS have debit normal balances (stored as positive)
-    return account.current_balance;
-  };
 
   if (loading) {
     return (
@@ -127,24 +107,17 @@ export default function ChartOfAccounts() {
         {Object.entries(groupedAccounts).map(([type, typeAccounts]) => {
           const Icon = accountTypeIcons[type as keyof typeof accountTypeIcons];
           const colorClass = accountTypeColors[type as keyof typeof accountTypeColors];
-          const totalBalance = typeAccounts.reduce((sum, acc) => sum + getDisplayBalance(acc), 0);
 
           return (
             <Card key={type}>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center bg-muted", colorClass)}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <CardTitle className="capitalize">{type}</CardTitle>
-                      <CardDescription>{typeAccounts.length} accounts</CardDescription>
-                    </div>
+                <div className="flex items-center gap-3">
+                  <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center bg-muted", colorClass)}>
+                    <Icon className="h-5 w-5" />
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm text-muted-foreground">Total Balance</div>
-                    <div className="text-xl font-bold">{formatCurrency(totalBalance)}</div>
+                  <div>
+                    <CardTitle className="capitalize">{type}</CardTitle>
+                    <CardDescription>{typeAccounts.length} accounts</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -166,51 +139,27 @@ export default function ChartOfAccounts() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center justify-between md:justify-end gap-2 w-full md:w-auto">
-                        <div className="text-right">
-                          <div className="font-semibold">{formatCurrency(getDisplayBalance(account))}</div>
-                          {account.is_system_account && (
-                            <Badge variant="secondary" className="text-xs">System</Badge>
-                          )}
-                        </div>
-                        <div className="flex gap-1">
-                          {account.account_type === 'asset' && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0"
-                              onClick={() => {
-                                setSelectedAccountForBalance({
-                                  id: account.id,
-                                  name: account.account_name,
-                                  type: account.account_type,
-                                  code: account.account_code,
-                                });
-                                setOpeningBalanceDialogOpen(true);
-                              }}
-                              title="Set opening balance"
-                            >
-                              <Calculator className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0"
-                            onClick={() => {
-                              setSelectedParentAccount({
-                                id: account.id,
-                                name: account.account_name,
-                                type: account.account_type,
-                                code: account.account_code,
-                              });
-                              setAccountDialogOpen(true);
-                            }}
-                          >
-                            <FolderPlus className="h-4 w-4 md:mr-1" />
-                            <span className="hidden md:inline">Add Sub</span>
-                          </Button>
-                        </div>
+                      <div className="flex items-center justify-end gap-2 w-full md:w-auto">
+                        {account.is_system_account && (
+                          <Badge variant="secondary" className="text-xs">System</Badge>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0"
+                          onClick={() => {
+                            setSelectedParentAccount({
+                              id: account.id,
+                              name: account.account_name,
+                              type: account.account_type,
+                              code: account.account_code,
+                            });
+                            setAccountDialogOpen(true);
+                          }}
+                        >
+                          <FolderPlus className="h-4 w-4 md:mr-1" />
+                          <span className="hidden md:inline">Add Sub</span>
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -228,16 +177,6 @@ export default function ChartOfAccounts() {
         parentAccount={selectedParentAccount}
         onSuccess={() => fetchAccounts()}
       />
-
-      {selectedAccountForBalance && (
-        <OpeningBalanceDialog
-          open={openingBalanceDialogOpen}
-          onOpenChange={setOpeningBalanceDialogOpen}
-          restaurantId={selectedRestaurant?.restaurant_id || ''}
-          account={selectedAccountForBalance}
-          onSuccess={() => fetchAccounts()}
-        />
-      )}
     </div>
   );
 }

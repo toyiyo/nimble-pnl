@@ -17,10 +17,10 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
   const { data: balanceData, isLoading } = useQuery({
     queryKey: ['balance-sheet', restaurantId, asOfDate],
     queryFn: async () => {
-      // Fetch all chart of accounts for balance sheet categories with their current balances
+      // Fetch all chart of accounts for balance sheet categories
       const { data: accounts, error: accountsError } = await supabase
         .from('chart_of_accounts')
-        .select('id, account_code, account_name, account_type, current_balance')
+        .select('id, account_code, account_name, account_type, normal_balance')
         .eq('restaurant_id', restaurantId)
         .in('account_type', ['asset', 'liability', 'equity'])
         .eq('is_active', true)
@@ -28,9 +28,25 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
 
       if (accountsError) throw accountsError;
 
-      // The current_balance field already contains the account balance
-      // updated from journal entries
-      const accountsWithBalances = accounts || [];
+      // Compute balance for each account from journal entries
+      const accountsWithBalances = await Promise.all(
+        (accounts || []).map(async (account) => {
+          const { data: balance, error: balanceError } = await supabase.rpc(
+            'compute_account_balance',
+            {
+              p_account_id: account.id,
+              p_as_of_date: format(asOfDate, 'yyyy-MM-dd'),
+            }
+          );
+
+          if (balanceError) {
+            console.error('Error computing balance:', balanceError);
+            return { ...account, current_balance: 0 };
+          }
+
+          return { ...account, current_balance: balance || 0 };
+        })
+      );
 
       return {
         assets: accountsWithBalances.filter(a => a.account_type === 'asset'),

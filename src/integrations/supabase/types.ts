@@ -2825,6 +2825,14 @@ export type Database = {
         Args: { p_restaurant_id: string; p_service_date: string }
         Returns: string
       }
+      categorize_bank_transaction: {
+        Args: {
+          p_category_id: string
+          p_restaurant_id: string
+          p_transaction_id: string
+        }
+        Returns: Json
+      }
       check_sale_already_processed: {
         Args: {
           p_external_order_id?: string
@@ -2846,6 +2854,10 @@ export type Database = {
       cleanup_rate_limit_logs: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      compute_account_balance: {
+        Args: { p_account_id: string; p_as_of_date?: string }
+        Returns: number
       }
       create_restaurant_with_owner: {
         Args:
@@ -2987,6 +2999,10 @@ export type Database = {
               p_sale_date: string
             }
         Returns: Json
+      }
+      rebuild_account_balances: {
+        Args: { p_restaurant_id: string }
+        Returns: number
       }
       search_products_by_name: {
         Args: { p_restaurant_id: string; p_search_term: string }

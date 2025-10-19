@@ -18,10 +18,12 @@ export const useCategorizeTransactions = () => {
       return data;
     },
     onSuccess: (data) => {
-      toast.success(data.message || 'Transactions categorized successfully');
+      const result = data as { message: string; count: number };
+      toast.success(result?.message || 'Transactions categorized successfully');
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
       queryClient.invalidateQueries({ queryKey: ['income-statement'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
     },
     onError: (error: Error) => {
       toast.error(`Failed to categorize transactions: ${error.message}`);

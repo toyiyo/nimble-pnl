@@ -79,137 +79,20 @@ const Transactions = () => {
 
   const handleCategorize = async (transactionId: string, categoryId: string) => {
     try {
-      // Get transaction details
-      const transaction = transactions?.find(t => t.id === transactionId);
-      if (!transaction) throw new Error('Transaction not found');
+      // Use the new database function that handles deduplication and reversing entries
+      const { data, error } = await supabase.rpc('categorize_bank_transaction', {
+        p_transaction_id: transactionId,
+        p_category_id: categoryId,
+        p_restaurant_id: selectedRestaurant.restaurant_id,
+      });
 
-      // Get category (account) details
-      const { data: category, error: categoryError } = await supabase
-        .from('chart_of_accounts')
-        .select('account_type')
-        .eq('id', categoryId)
-        .single();
+      if (error) throw error;
 
-      if (categoryError) throw categoryError;
-
-      // Get bank/cash account
-      const { data: bankAccount, error: bankError } = await supabase
-        .from('chart_of_accounts')
-        .select('id')
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('account_type', 'asset')
-        .eq('account_subtype', 'cash')
-        .eq('is_active', true)
-        .limit(1)
-        .single();
-
-      if (bankError || !bankAccount) {
-        throw new Error('No active bank account found in chart of accounts');
-      }
-
-      // Update transaction
-      const { error: updateError } = await supabase
-        .from('bank_transactions')
-        .update({ 
-          category_id: categoryId,
-          is_categorized: true,
-        })
-        .eq('id', transactionId);
-
-      if (updateError) throw updateError;
-
-      // Create journal entry
-      const entryNumber = `MANUAL-${Date.now()}-${transactionId.slice(0, 8)}`;
-      const { data: journalEntry, error: journalError } = await supabase
-        .from('journal_entries')
-        .insert({
-          restaurant_id: selectedRestaurant.restaurant_id,
-          entry_date: transaction.transaction_date,
-          entry_number: entryNumber,
-          description: `${transaction.description || 'Transaction'} - Manual categorization`,
-          reference_type: 'bank_transaction',
-          reference_id: transactionId,
-        })
-        .select('id')
-        .single();
-
-      if (journalError) throw journalError;
-
-      // Create journal entry lines (double-entry bookkeeping)
-      const absAmount = Math.abs(transaction.amount);
-      const isExpense = transaction.amount < 0;
-      
-      const lines = isExpense 
-        ? [
-            { // Debit expense
-              journal_entry_id: journalEntry.id,
-              account_id: categoryId,
-              debit_amount: absAmount,
-              credit_amount: 0,
-              description: 'Expense'
-            },
-            { // Credit bank
-              journal_entry_id: journalEntry.id,
-              account_id: bankAccount.id,
-              debit_amount: 0,
-              credit_amount: absAmount,
-              description: 'Payment'
-            }
-          ]
-        : [
-            { // Debit bank
-              journal_entry_id: journalEntry.id,
-              account_id: bankAccount.id,
-              debit_amount: absAmount,
-              credit_amount: 0,
-              description: 'Deposit'
-            },
-            { // Credit revenue
-              journal_entry_id: journalEntry.id,
-              account_id: categoryId,
-              debit_amount: 0,
-              credit_amount: absAmount,
-              description: 'Revenue'
-            }
-          ];
-
-      const { error: linesError } = await supabase
-        .from('journal_entry_lines')
-        .insert(lines);
-
-      if (linesError) throw linesError;
-
-      // Update journal entry totals
-      await supabase
-        .from('journal_entries')
-        .update({
-          total_debit: absAmount,
-          total_credit: absAmount
-        })
-        .eq('id', journalEntry.id);
-
-      // Update account balances
-      for (const line of lines) {
-        const balanceChange = line.debit_amount - line.credit_amount;
-        const { data: account } = await supabase
-          .from('chart_of_accounts')
-          .select('current_balance')
-          .eq('id', line.account_id)
-          .single();
-
-        if (account) {
-          await supabase
-            .from('chart_of_accounts')
-            .update({ 
-              current_balance: (account.current_balance || 0) + balanceChange 
-            })
-            .eq('id', line.account_id);
-        }
-      }
+      const result = data as { success: boolean; message: string };
 
       toast({
         title: "Transaction categorized",
-        description: "Journal entry created and account balances updated.",
+        description: result?.message || "Journal entry created successfully.",
       });
 
       refetch();

@@ -4,11 +4,12 @@ import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split } from "lucide-react";
+import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2 } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { SplitTransactionDialog } from "./SplitTransactionDialog";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
 
 interface BankTransactionRowProps {
   transaction: BankTransaction;
@@ -21,6 +22,8 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
   const { selectedRestaurant } = useRestaurantContext();
   const categorize = useCategorizeTransaction();
   const exclude = useExcludeTransaction();
+  const reconcile = useReconcileTransaction();
+  const unreconcile = useUnreconcileTransaction();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
 
   const isNegative = transaction.amount < 0;
@@ -72,9 +75,14 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
         </TableCell>
 
         <TableCell className="text-right">
-          <span className={isNegative ? "text-destructive" : "text-green-600"}>
-            {isNegative ? '-' : '+'}{formattedAmount}
-          </span>
+          <div className="flex items-center justify-end gap-2">
+            <span className={isNegative ? "text-destructive" : "text-green-600"}>
+              {isNegative ? '-' : '+'}{formattedAmount}
+            </span>
+            {transaction.is_reconciled && (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            )}
+          </div>
         </TableCell>
 
         {status === 'for_review' && (
@@ -155,14 +163,37 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
               </>
             )}
             {status === 'categorized' && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setIsDetailOpen(true)}
-              >
-                <FileText className="h-4 w-4 mr-1" />
-                View
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsDetailOpen(true)}
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  View
+                </Button>
+                {transaction.is_reconciled ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => unreconcile.mutate({ transactionId: transaction.id })}
+                    disabled={unreconcile.isPending}
+                    title="Unreconcile"
+                  >
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => reconcile.mutate({ transactionId: transaction.id })}
+                    disabled={reconcile.isPending}
+                    title="Mark as reconciled"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </TableCell>

@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { useBankTransactions } from "@/hooks/useBankTransactions";
 import { BankTransactionList } from "@/components/banking/BankTransactionList";
 import { CategoryRulesDialog } from "@/components/banking/CategoryRulesDialog";
-import { Loader2, Building2, Sparkles } from "lucide-react";
+import { ReconciliationDialog } from "@/components/banking/ReconciliationDialog";
+import { Loader2, Building2, Sparkles, CheckCircle2 } from "lucide-react";
 
 export default function Banking() {
   const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded'>('for_review');
   const [showRulesDialog, setShowRulesDialog] = useState(false);
+  const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
   
   const { data: forReviewTransactions, isLoading: isLoadingReview } = useBankTransactions('for_review');
   const { data: categorizedTransactions, isLoading: isLoadingCategorized } = useBankTransactions('categorized');
@@ -26,10 +28,16 @@ export default function Banking() {
         icon={Building2} 
         title="Banking"
         actions={
-          <Button onClick={() => setShowRulesDialog(true)} variant="outline">
-            <Sparkles className="h-4 w-4 mr-2" />
-            Categorization Rules
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setShowReconciliationDialog(true)} variant="outline">
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Reconcile
+            </Button>
+            <Button onClick={() => setShowRulesDialog(true)} variant="outline">
+              <Sparkles className="h-4 w-4 mr-2" />
+              Rules
+            </Button>
+          </div>
         }
       />
 
@@ -118,6 +126,11 @@ export default function Banking() {
       <CategoryRulesDialog
         isOpen={showRulesDialog}
         onClose={() => setShowRulesDialog(false)}
+      />
+
+      <ReconciliationDialog
+        isOpen={showReconciliationDialog}
+        onClose={() => setShowReconciliationDialog(false)}
       />
     </div>
   );

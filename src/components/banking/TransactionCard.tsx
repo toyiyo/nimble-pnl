@@ -46,11 +46,11 @@ export function TransactionCard({
   return (
     <Card 
       className={cn(
-        "transition-all hover:shadow-md",
+        "transition-all hover:shadow-md overflow-hidden",
         !transaction.is_categorized && "border-l-4 border-l-yellow-500 bg-yellow-50/50 dark:bg-yellow-950/20"
       )}
     >
-      <CardContent className="p-4 space-y-3">
+      <CardContent className="p-4 space-y-3 overflow-hidden">
         {/* Header: Date and Amount */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
@@ -96,7 +96,7 @@ export function TransactionCard({
         </div>
 
         {/* Category Selector */}
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0">
           <CategorySelector
             restaurantId={restaurantId}
             value={transaction.category_id}
@@ -105,7 +105,7 @@ export function TransactionCard({
           {!transaction.is_categorized && (
             <Badge 
               variant="outline" 
-              className="text-xs bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800"
+              className="text-xs bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800 w-fit"
             >
               Needs categorization
             </Badge>

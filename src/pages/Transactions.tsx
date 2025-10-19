@@ -25,6 +25,10 @@ import { useCategorizeTransactions } from '@/hooks/useCategorizeTransactions';
 import { TransactionCard } from '@/components/banking/TransactionCard';
 import { TransactionSkeleton, TransactionTableSkeleton } from '@/components/banking/TransactionSkeleton';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { CategoryRulesDialog } from '@/components/banking/CategoryRulesDialog';
+import { ReconciliationDialog } from '@/components/banking/ReconciliationDialog';
+import { BankTransactionList } from '@/components/banking/BankTransactionList';
+import { Sparkles, CheckCircle2 } from 'lucide-react';
 
 const Transactions = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -34,6 +38,8 @@ const Transactions = () => {
   const categorizeTransactions = useCategorizeTransactions();
   const isMobile = useIsMobile();
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [showRulesDialog, setShowRulesDialog] = useState(false);
+  const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
 
   // Fetch transactions
   const { data: transactions, isLoading, refetch } = useQuery({
@@ -277,6 +283,25 @@ const Transactions = () => {
                   </Badge>
                 )}
               </div>
+              
+              <Button
+                variant="outline" 
+                className="h-11 gap-2"
+                onClick={() => setShowRulesDialog(true)}
+              >
+                <Sparkles className="h-4 w-4" />
+                {!isMobile && <span>Rules</span>}
+              </Button>
+              
+              <Button
+                variant="outline" 
+                className="h-11 gap-2"
+                onClick={() => setShowReconciliationDialog(true)}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                {!isMobile && <span>Reconcile</span>}
+              </Button>
+              
               <Button
                 variant="outline" 
                 className="h-11"
@@ -389,91 +414,28 @@ const Transactions = () => {
           ))}
         </div>
       ) : (
-        // Desktop Table View with Banking.tsx pattern
+        // Desktop Table View - Use BankTransactionList for full functionality
         <Card>
           <div className="p-6">
             <div className="-mx-6">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="whitespace-nowrap">Date</TableHead>
-                      <TableHead className="min-w-[200px]">Description</TableHead>
-                      <TableHead className="whitespace-nowrap hidden lg:table-cell">Bank Account</TableHead>
-                      <TableHead className="hidden xl:table-cell">Category</TableHead>
-                      <TableHead className="text-right whitespace-nowrap">Amount</TableHead>
-                      <TableHead className="whitespace-nowrap hidden md:table-cell">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTransactions.map((txn) => (
-                      <TableRow 
-                        key={txn.id} 
-                        className={cn(
-                          "hover:bg-muted/50 transition-colors",
-                          !txn.is_categorized && "bg-yellow-50 dark:bg-yellow-950/20 border-l-4 border-l-yellow-500"
-                        )}
-                      >
-                        <TableCell className="font-medium whitespace-nowrap">
-                          {formatDate(txn.transaction_date)}
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{txn.merchant_name || txn.description}</div>
-                            {txn.merchant_name && txn.description !== txn.merchant_name && (
-                              <div className="text-xs text-muted-foreground line-clamp-1">{txn.description}</div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          <div className="flex items-center gap-2">
-                            <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                            <div className="min-w-0">
-                              <div className="truncate">{txn.connected_bank?.institution_name}</div>
-                              {txn.connected_bank?.bank_account_balances?.[0]?.account_mask && (
-                                <div className="text-xs text-muted-foreground">
-                                  ••••{txn.connected_bank.bank_account_balances[0].account_mask}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden xl:table-cell">
-                          <div className="space-y-1">
-                            <CategorySelector
-                              restaurantId={selectedRestaurant.restaurant_id}
-                              value={txn.category_id}
-                              onSelect={(categoryId) => handleCategorize(txn.id, categoryId)}
-                            />
-                            {!txn.is_categorized && (
-                              <Badge variant="outline" className="text-xs bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800 w-fit">
-                                Needs categorization
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right whitespace-nowrap">
-                          <span className={cn(
-                            "font-bold text-base",
-                            txn.amount < 0 ? "text-red-500" : "text-green-500"
-                          )}>
-                            {formatCurrency(txn.amount)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <Badge variant={txn.status === 'posted' ? 'default' : 'secondary'}>
-                            {txn.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <BankTransactionList 
+                transactions={filteredTransactions as any} 
+                status={filteredTransactions.every(t => t.is_categorized) ? 'categorized' : 'for_review'} 
+              />
             </div>
           </div>
         </Card>
       )}
+      
+      <CategoryRulesDialog
+        isOpen={showRulesDialog}
+        onClose={() => setShowRulesDialog(false)}
+      />
+      
+      <ReconciliationDialog
+        isOpen={showReconciliationDialog}
+        onClose={() => setShowReconciliationDialog(false)}
+      />
     </div>
   );
 };

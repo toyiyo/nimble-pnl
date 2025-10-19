@@ -1,8 +1,9 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Building2, Wallet, TrendingUp, AlertCircle } from 'lucide-react';
+import { Building2, Wallet, TrendingUp, AlertCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useState } from 'react';
 
 interface BankBalance {
   id: string;
@@ -35,8 +36,30 @@ interface BankConnectionCardProps {
 }
 
 export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions }: BankConnectionCardProps) => {
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const totalBalance = bank.balances.reduce((sum, balance) => sum + balance.current_balance, 0);
   const activeAccounts = bank.balances.filter(b => b.is_active).length;
+
+  const handleSyncTransactions = async () => {
+    if (!onSyncTransactions) return;
+    setIsSyncing(true);
+    try {
+      await onSyncTransactions(bank.id);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleRefreshBalance = async () => {
+    if (!onRefreshBalance) return;
+    setIsRefreshing(true);
+    try {
+      await onRefreshBalance(bank.id);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const formatCurrency = (amount: number, currency: string = 'USD') => {
     return new Intl.NumberFormat('en-US', {
@@ -167,17 +190,21 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions 
             variant="outline" 
             size="sm" 
             className="w-full"
-            onClick={() => onRefreshBalance?.(bank.id)}
+            onClick={handleRefreshBalance}
+            disabled={isRefreshing}
           >
+            {isRefreshing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Refresh Balance
           </Button>
           <Button 
             variant="default" 
             size="sm" 
             className="w-full"
-            onClick={() => onSyncTransactions?.(bank.id)}
+            onClick={handleSyncTransactions}
+            disabled={isSyncing}
           >
-            Sync Transactions
+            {isSyncing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isSyncing ? 'Importing Transactions...' : 'Sync Transactions'}
           </Button>
         </div>
       </CardContent>

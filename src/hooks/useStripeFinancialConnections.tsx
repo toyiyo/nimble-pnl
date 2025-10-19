@@ -221,6 +221,12 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
 
   // Sync transactions for a specific bank
   const syncTransactions = async (bankId: string) => {
+    // Show immediate feedback that sync is starting
+    toast({
+      title: "Importing Transactions",
+      description: "Fetching all transactions from your bank account. This may take a moment...",
+    });
+
     try {
       const { data, error } = await supabase.functions.invoke(
         'stripe-sync-transactions',
@@ -233,7 +239,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
 
       toast({
         title: data.message ? "Transaction Sync Started" : "Transactions Synced",
-        description: data.message || `Synced ${data.synced} new transactions`,
+        description: data.message || `Successfully imported ${data.synced} new transactions (${data.skipped} already existed)`,
       });
 
       return data;

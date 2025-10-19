@@ -42,7 +42,7 @@ const Transactions = () => {
           *,
           connected_bank:connected_banks(
             institution_name,
-            bank_account_balances(account_mask)
+            bank_account_balances(id, account_mask, account_name)
           ),
           chart_account:chart_of_accounts!category_id(
             account_name
@@ -50,7 +50,7 @@ const Transactions = () => {
         `)
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .order('transaction_date', { ascending: false })
-        .limit(100);
+        .limit(1000);
 
       if (error) throw error;
       return data || [];

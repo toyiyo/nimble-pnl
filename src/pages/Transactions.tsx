@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { MetricIcon } from '@/components/MetricIcon';
-import { Receipt, Search, Download, Building2 } from 'lucide-react';
+import { Receipt, Search, Download, Building2, Filter, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,9 @@ import { TransactionFiltersSheet, type TransactionFilters } from '@/components/T
 import { useToast } from '@/hooks/use-toast';
 import { CategorySelector } from '@/components/CategorySelector';
 import { useCategorizeTransactions } from '@/hooks/useCategorizeTransactions';
+import { TransactionCard } from '@/components/banking/TransactionCard';
+import { TransactionSkeleton, TransactionTableSkeleton } from '@/components/banking/TransactionSkeleton';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const Transactions = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -29,6 +32,7 @@ const Transactions = () => {
   const [filters, setFilters] = useState<TransactionFilters>({});
   const { toast } = useToast();
   const categorizeTransactions = useCategorizeTransactions();
+  const isMobile = useIsMobile();
 
   // Fetch transactions
   const { data: transactions, isLoading, refetch } = useQuery({
@@ -54,8 +58,6 @@ const Transactions = () => {
         .limit(1000);
 
       if (error) throw error;
-      
-      console.log('Sample transaction data:', data?.[0]);
       return data || [];
     },
     enabled: !!selectedRestaurant,
@@ -133,17 +135,9 @@ const Transactions = () => {
     // Category filter
     const matchesCategory = !filters.categoryId || txn.category_id === filters.categoryId;
     
-    // Bank account filter - since transactions link to connected_bank, not specific account
-    // we need to check if the selected bank account belongs to the transaction's connected bank
+    // Bank account filter
     const matchesBankAccount = !filters.bankAccountId || 
       (txn.connected_bank?.bank_account_balances?.some((acc: any) => acc.id === filters.bankAccountId) ?? false);
-    
-    console.log('Filter debug:', {
-      transactionId: txn.id,
-      filterBankAccountId: filters.bankAccountId,
-      connectedBankAccounts: txn.connected_bank?.bank_account_balances,
-      matches: matchesBankAccount
-    });
     
     // Uncategorized filter
     const matchesUncategorized = filters.showUncategorized === undefined || 
@@ -183,76 +177,108 @@ const Transactions = () => {
     );
   }
 
+  const activeFilterCount = Object.values(filters).filter(v => v !== undefined && v !== '').length;
+
   return (
-    <div className="space-y-6 md:space-y-8">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-8">
+    <div className="space-y-4 md:space-y-6">
+      {/* Hero Section - More compact on mobile */}
+      <div className="relative overflow-hidden rounded-xl md:rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-6 md:p-8">
         <div className="relative z-10">
-          <div className="flex items-center gap-4">
-            <MetricIcon icon={Receipt} variant="blue" />
+          <div className="flex items-center gap-3 md:gap-4">
+            <MetricIcon icon={Receipt} variant="blue" className="hidden sm:flex" />
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold">Bank Transactions</h1>
-              <p className="text-sm md:text-base text-muted-foreground mt-1">
+              <h1 className="text-xl md:text-2xl lg:text-3xl font-bold">Bank Transactions</h1>
+              <p className="text-xs md:text-sm text-muted-foreground mt-1">
                 View and categorize your bank transactions
               </p>
             </div>
           </div>
         </div>
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -z-0" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-accent/5 rounded-full blur-3xl -z-0" />
+        <div className="absolute top-0 right-0 w-32 md:w-64 h-32 md:h-64 bg-primary/5 rounded-full blur-3xl -z-0" />
+        <div className="absolute bottom-0 left-0 w-24 md:w-48 h-24 md:h-48 bg-accent/5 rounded-full blur-3xl -z-0" />
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{filteredTransactions.length}</div>
-            <div className="text-sm text-muted-foreground">Total Transactions</div>
+      {/* Enhanced Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+        <Card className="transition-all hover:shadow-lg hover:scale-[1.02]">
+          <CardContent className="pt-4 md:pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl md:text-3xl font-bold">{filteredTransactions.length}</div>
+                <div className="text-xs md:text-sm text-muted-foreground mt-1">Total Transactions</div>
+              </div>
+              <Wallet className="h-8 w-8 md:h-10 md:w-10 text-primary/40" />
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-red-500">{formatCurrency(totalDebits)}</div>
-            <div className="text-sm text-muted-foreground">Total Debits</div>
+        <Card className="transition-all hover:shadow-lg hover:scale-[1.02] bg-gradient-to-br from-red-500/5 to-transparent">
+          <CardContent className="pt-4 md:pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl md:text-3xl font-bold text-red-500">{formatCurrency(totalDebits)}</div>
+                <div className="text-xs md:text-sm text-muted-foreground mt-1">Total Debits</div>
+              </div>
+              <TrendingDown className="h-8 w-8 md:h-10 md:w-10 text-red-500/40" />
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-green-500">{formatCurrency(totalCredits)}</div>
-            <div className="text-sm text-muted-foreground">Total Credits</div>
+        <Card className="transition-all hover:shadow-lg hover:scale-[1.02] bg-gradient-to-br from-green-500/5 to-transparent">
+          <CardContent className="pt-4 md:pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl md:text-3xl font-bold text-green-500">{formatCurrency(totalCredits)}</div>
+                <div className="text-xs md:text-sm text-muted-foreground mt-1">Total Credits</div>
+              </div>
+              <TrendingUp className="h-8 w-8 md:h-10 md:w-10 text-green-500/40" />
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters & Actions */}
+      {/* Filters & Actions - Optimized for mobile */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-            <div className="relative flex-1 w-full md:w-auto">
+        <CardContent className="pt-4 md:pt-6">
+          <div className="flex flex-col gap-3 md:gap-4">
+            {/* Search Bar */}
+            <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search transactions..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-10 h-11"
               />
             </div>
-            <div className="flex gap-2 w-full md:w-auto">
+            
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 md:flex gap-2">
               <Button
                 variant="secondary"
                 onClick={() => categorizeTransactions.mutate(selectedRestaurant.restaurant_id)}
                 disabled={categorizeTransactions.isPending}
+                className="w-full md:w-auto h-11"
               >
-                {categorizeTransactions.isPending ? 'Categorizing...' : 'Categorize All Uncategorized'}
+                {categorizeTransactions.isPending ? 'Categorizing...' : isMobile ? 'Auto-Categorize' : 'Categorize All'}
               </Button>
-              <TransactionFiltersSheet 
-                restaurantId={selectedRestaurant.restaurant_id}
-                filters={filters} 
-                onFiltersChange={setFilters} 
-              />
+              <div className="relative">
+                <TransactionFiltersSheet 
+                  restaurantId={selectedRestaurant.restaurant_id}
+                  filters={filters} 
+                  onFiltersChange={setFilters} 
+                />
+                {activeFilterCount > 0 && (
+                  <Badge 
+                    variant="destructive" 
+                    className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                  >
+                    {activeFilterCount}
+                  </Badge>
+                )}
+              </div>
               <Button
                 variant="outline" 
-                className="gap-2"
+                className="h-11"
+                title={isMobile ? "Export to CSV" : "Export"}
                 onClick={() => {
                   if (filteredTransactions.length === 0) {
                     toast({
@@ -298,112 +324,164 @@ const Transactions = () => {
                 }}
               >
                 <Download className="h-4 w-4" />
-                Export
+                {!isMobile && <span>Export</span>}
               </Button>
             </div>
+
+            {/* Active Filters Indicator */}
+            {activeFilterCount > 0 && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Filter className="h-4 w-4" />
+                <span>{activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} active</span>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setFilters({})}
+                  className="h-7 text-xs"
+                >
+                  Clear all
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Transactions Table */}
-      <Card>
-        <CardContent className="pt-6">
-          {isLoading ? (
-            <div className="text-center p-8 text-muted-foreground">
-              Loading transactions...
-            </div>
-          ) : filteredTransactions.length === 0 ? (
-            <div className="text-center p-12">
+      {/* Transactions - Mobile Card View / Desktop Table */}
+      {isLoading ? (
+        <div className="space-y-4">
+          {isMobile ? (
+            <>
+              <TransactionSkeleton />
+              <TransactionSkeleton />
+              <TransactionSkeleton />
+            </>
+          ) : (
+            <Card>
+              <CardContent className="pt-6">
+                <TransactionTableSkeleton />
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      ) : filteredTransactions.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center p-8 md:p-12">
               <MetricIcon icon={Receipt} variant="blue" className="mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No Transactions Yet</h3>
-              <p className="text-sm text-muted-foreground mb-6">
-                Click "Sync Transactions" on your connected banks to import transactions
+              <h3 className="text-base md:text-lg font-semibold mb-2">No Transactions Yet</h3>
+              <p className="text-xs md:text-sm text-muted-foreground mb-6">
+                {activeFilterCount > 0 
+                  ? 'No transactions match your filters. Try adjusting your filters.'
+                  : 'Click "Sync Transactions" on your connected banks to import transactions'
+                }
               </p>
               <Button onClick={() => window.location.href = '/accounting'}>
                 Go to Accounting
               </Button>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Bank Account</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTransactions.map((txn) => (
-                   <TableRow 
-                      key={txn.id} 
-                      className={cn(
-                        "cursor-pointer hover:bg-muted/50",
-                        !txn.is_categorized && "bg-yellow-50 dark:bg-yellow-950/20 border-l-4 border-l-yellow-500"
-                      )}
-                    >
-                      <TableCell className="font-medium">
-                        {formatDate(txn.transaction_date)}
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{txn.merchant_name || txn.description}</div>
-                          {txn.merchant_name && txn.description !== txn.merchant_name && (
-                            <div className="text-xs text-muted-foreground">{txn.description}</div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      ) : isMobile ? (
+        // Mobile Card View
+        <div className="space-y-3">
+          {filteredTransactions.map((txn) => (
+            <TransactionCard
+              key={txn.id}
+              transaction={txn}
+              onCategorize={handleCategorize}
+              restaurantId={selectedRestaurant.restaurant_id}
+              formatDate={formatDate}
+              formatCurrency={formatCurrency}
+            />
+          ))}
+        </div>
+      ) : (
+        // Desktop Table View with Banking.tsx pattern
+        <Card>
+          <div className="p-6">
+            <div className="-mx-6">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-nowrap">Date</TableHead>
+                      <TableHead className="min-w-[200px]">Description</TableHead>
+                      <TableHead className="whitespace-nowrap hidden lg:table-cell">Bank Account</TableHead>
+                      <TableHead className="min-w-[200px] hidden xl:table-cell">Category</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Amount</TableHead>
+                      <TableHead className="whitespace-nowrap hidden md:table-cell">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTransactions.map((txn) => (
+                      <TableRow 
+                        key={txn.id} 
+                        className={cn(
+                          "hover:bg-muted/50 transition-colors",
+                          !txn.is_categorized && "bg-yellow-50 dark:bg-yellow-950/20 border-l-4 border-l-yellow-500"
+                        )}
+                      >
+                        <TableCell className="font-medium whitespace-nowrap">
+                          {formatDate(txn.transaction_date)}
+                        </TableCell>
+                        <TableCell>
                           <div>
-                            <div>{txn.connected_bank?.institution_name}</div>
-                            {txn.connected_bank?.bank_account_balances?.[0]?.account_mask && (
-                              <div className="text-xs text-muted-foreground">
-                                ••••{txn.connected_bank.bank_account_balances[0].account_mask}
-                              </div>
+                            <div className="font-medium">{txn.merchant_name || txn.description}</div>
+                            {txn.merchant_name && txn.description !== txn.merchant_name && (
+                              <div className="text-xs text-muted-foreground line-clamp-1">{txn.description}</div>
                             )}
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="min-w-[200px] space-y-1">
-                          <CategorySelector
-                            restaurantId={selectedRestaurant.restaurant_id}
-                            value={txn.category_id}
-                            onSelect={(categoryId) => handleCategorize(txn.id, categoryId)}
-                          />
-                          {!txn.is_categorized && (
-                            <Badge variant="outline" className="text-xs bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800">
-                              Needs categorization
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className={cn(
-                          "font-medium",
-                          txn.amount < 0 ? "text-red-500" : "text-green-500"
-                        )}>
-                          {formatCurrency(txn.amount)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={txn.status === 'posted' ? 'default' : 'secondary'}>
-                          {txn.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <div className="min-w-0">
+                              <div className="truncate">{txn.connected_bank?.institution_name}</div>
+                              {txn.connected_bank?.bank_account_balances?.[0]?.account_mask && (
+                                <div className="text-xs text-muted-foreground">
+                                  ••••{txn.connected_bank.bank_account_balances[0].account_mask}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden xl:table-cell">
+                          <div className="min-w-[200px] space-y-1">
+                            <CategorySelector
+                              restaurantId={selectedRestaurant.restaurant_id}
+                              value={txn.category_id}
+                              onSelect={(categoryId) => handleCategorize(txn.id, categoryId)}
+                            />
+                            {!txn.is_categorized && (
+                              <Badge variant="outline" className="text-xs bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800">
+                                Needs categorization
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap">
+                          <span className={cn(
+                            "font-bold text-base",
+                            txn.amount < 0 ? "text-red-500" : "text-green-500"
+                          )}>
+                            {formatCurrency(txn.amount)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <Badge variant={txn.status === 'posted' ? 'default' : 'secondary'}>
+                            {txn.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        </Card>
+      )}
     </div>
   );
 };

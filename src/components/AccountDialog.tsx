@@ -34,6 +34,11 @@ const accountTypes = [
 
 // Helper to format enum values to readable labels
 const formatSubtypeLabel = (value: string): string => {
+  // Special case: "other_expense" should be "Other Expenses" (plural)
+  if (value === 'other_expense') {
+    return 'Other Expenses';
+  }
+  
   return value
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))

@@ -159,14 +159,36 @@ serve(async (req) => {
       incomeId: uncategorizedIncomeId 
     });
 
-    // Try to fetch transactions
-    let transactions;
+    // Fetch ALL transactions using pagination
+    let allTransactions: any[] = [];
+    let hasMore = true;
+    let startingAfter: string | undefined = undefined;
+    
+    console.log("[SYNC-TRANSACTIONS] Fetching all transactions (paginated)");
+    
     try {
-      transactions = await stripe.financialConnections.transactions.list({
-        account: bank.stripe_financial_account_id,
-        limit: 100, // Get last 100 transactions
-      });
-      console.log("[SYNC-TRANSACTIONS] Found", transactions.data.length, "transactions");
+      while (hasMore) {
+        const params: any = {
+          account: bank.stripe_financial_account_id,
+          limit: 100,
+        };
+        
+        if (startingAfter) {
+          params.starting_after = startingAfter;
+        }
+        
+        const page = await stripe.financialConnections.transactions.list(params);
+        allTransactions = allTransactions.concat(page.data);
+        hasMore = page.has_more;
+        
+        if (hasMore && page.data.length > 0) {
+          startingAfter = page.data[page.data.length - 1].id;
+        }
+        
+        console.log("[SYNC-TRANSACTIONS] Fetched page:", page.data.length, "transactions, total so far:", allTransactions.length);
+      }
+      
+      console.log("[SYNC-TRANSACTIONS] Total transactions found:", allTransactions.length);
     } catch (fetchError: any) {
       console.log("[SYNC-TRANSACTIONS] No transactions available yet:", fetchError.message);
       
@@ -189,7 +211,7 @@ serve(async (req) => {
     let skippedCount = 0;
 
     // Store each transaction
-    for (const txn of transactions.data) {
+    for (const txn of allTransactions) {
       // Check if transaction already exists
       const { data: existing } = await supabaseAdmin
         .from("bank_transactions")
@@ -243,7 +265,7 @@ serve(async (req) => {
         success: true,
         synced: syncedCount,
         skipped: skippedCount,
-        total: transactions.data.length
+        total: allTransactions.length
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

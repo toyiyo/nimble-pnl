@@ -21,7 +21,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       // Fetch all chart of accounts for this restaurant
       const { data: accounts, error: accountsError } = await supabase
         .from('chart_of_accounts')
-        .select('id, account_code, account_name, account_type')
+        .select('id, account_code, account_name, account_type, normal_balance')
         .eq('restaurant_id', restaurantId)
         .in('account_type', ['revenue', 'expense', 'cogs'])
         .eq('is_active', true)
@@ -29,33 +29,55 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
 
       if (accountsError) throw accountsError;
 
-      // Fetch all transactions for the date range
-      const { data: transactions, error: transactionsError } = await supabase
-        .from('bank_transactions')
-        .select('amount, category_id')
-        .eq('restaurant_id', restaurantId)
-        .gte('transaction_date', dateFrom.toISOString().split('T')[0])
-        .lte('transaction_date', dateTo.toISOString().split('T')[0])
-        .not('category_id', 'is', null);
+      // Fetch journal entry lines for the date range
+      const { data: journalLines, error: journalError } = await supabase
+        .from('journal_entry_lines')
+        .select(`
+          account_id,
+          debit_amount,
+          credit_amount,
+          journal_entry:journal_entries!inner(
+            entry_date,
+            restaurant_id
+          )
+        `)
+        .gte('journal_entry.entry_date', dateFrom.toISOString().split('T')[0])
+        .lte('journal_entry.entry_date', dateTo.toISOString().split('T')[0])
+        .eq('journal_entry.restaurant_id', restaurantId);
 
-      if (transactionsError) throw transactionsError;
+      if (journalError) throw journalError;
 
-      // Calculate balances by summing transactions for each account
-      const accountBalances = new Map<string, number>();
+      // Calculate balances by account
+      const accountBalances = new Map<string, { debits: number; credits: number }>();
       
-      transactions?.forEach(transaction => {
-        if (transaction.category_id) {
-          const currentBalance = accountBalances.get(transaction.category_id) || 0;
-          // For expenses and COGS, amounts are negative, so we use absolute value
-          accountBalances.set(transaction.category_id, currentBalance + Math.abs(transaction.amount));
-        }
+      journalLines?.forEach((line: any) => {
+        const current = accountBalances.get(line.account_id) || { debits: 0, credits: 0 };
+        accountBalances.set(line.account_id, {
+          debits: current.debits + (line.debit_amount || 0),
+          credits: current.credits + (line.credit_amount || 0),
+        });
       });
 
       // Map accounts with their calculated balances
-      const accountsWithBalances = accounts?.map(account => ({
-        ...account,
-        current_balance: accountBalances.get(account.id) || 0,
-      })) || [];
+      // Revenue accounts: credits increase, debits decrease (normal balance = credit)
+      // Expense/COGS accounts: debits increase, credits decrease (normal balance = debit)
+      const accountsWithBalances = accounts?.map(account => {
+        const balance = accountBalances.get(account.id) || { debits: 0, credits: 0 };
+        let amount = 0;
+        
+        if (account.account_type === 'revenue') {
+          // Revenue: credits - debits (show as positive)
+          amount = balance.credits - balance.debits;
+        } else {
+          // Expenses/COGS: debits - credits (show as positive)
+          amount = balance.debits - balance.credits;
+        }
+        
+        return {
+          ...account,
+          current_balance: amount,
+        };
+      }) || [];
 
       return {
         revenue: accountsWithBalances.filter(a => a.account_type === 'revenue'),

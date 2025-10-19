@@ -102,10 +102,11 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions 
                   className={cn(
                     "text-xs",
                     bank.status === 'connected' && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
-                    bank.status === 'error' && "bg-destructive/10 text-destructive border-destructive/20"
+                    bank.status === 'error' && "bg-destructive/10 text-destructive border-destructive/20",
+                    bank.status === 'requires_reauth' && "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
                   )}
                 >
-                  {bank.status === 'connected' ? 'Active' : bank.status === 'error' ? 'Error' : 'Disconnected'}
+                  {bank.status === 'connected' ? 'Active' : bank.status === 'error' ? 'Error' : bank.status === 'requires_reauth' ? 'Requires Reauth' : 'Disconnected'}
                 </Badge>
               </CardTitle>
               <CardDescription className="text-xs mt-1">

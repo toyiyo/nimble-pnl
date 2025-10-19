@@ -94,6 +94,31 @@ serve(async (req) => {
 
         console.log("[FC-WEBHOOK] Bank stored with ID:", bankData.id);
 
+        // Trigger initial transaction sync
+        console.log("[FC-WEBHOOK] Triggering initial transaction sync...");
+        try {
+          const syncResponse = await fetch(
+            `${Deno.env.get("SUPABASE_URL")}/functions/v1/stripe-sync-transactions`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              },
+              body: JSON.stringify({ bankId: bankData.id }),
+            }
+          );
+          
+          if (syncResponse.ok) {
+            console.log("[FC-WEBHOOK] Initial sync triggered successfully");
+          } else {
+            const errorText = await syncResponse.text();
+            console.error("[FC-WEBHOOK] Failed to trigger initial sync:", errorText);
+          }
+        } catch (syncError) {
+          console.error("[FC-WEBHOOK] Error triggering sync:", syncError);
+        }
+
         // Fetch account details with balance from Stripe (since webhook may not include it)
         let balanceData = account.balance;
         if (!balanceData) {

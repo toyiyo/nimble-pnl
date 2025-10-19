@@ -50,11 +50,13 @@ const Accounting = () => {
         if (financialConnectionsSession.accounts && financialConnectionsSession.accounts.length > 0) {
           toast({
             title: "Bank Connected Successfully",
-            description: `Connected ${financialConnectionsSession.accounts.length} account(s)`,
+            description: `Syncing transactions and balance in the background...`,
           });
           
-          // Refresh the banks list
-          window.location.reload();
+          // Wait a moment for webhook to process, then refresh
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
         } else {
           toast({
             title: "Connection Cancelled",

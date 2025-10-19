@@ -53,10 +53,18 @@ export function BankConnectionStatus() {
           {banks.map((bank) => (
             <div key={bank.id} className="flex items-center justify-between p-3 border rounded-lg">
               <div className="flex items-center gap-3">
-                {bank.status === 'connected' ? (
-                  <CheckCircle className="h-5 w-5 text-green-600" />
+                {bank.institution_logo_url ? (
+                  <img 
+                    src={bank.institution_logo_url} 
+                    alt={bank.institution_name}
+                    className="h-10 w-10 rounded-lg object-contain"
+                  />
                 ) : (
-                  <XCircle className="h-5 w-5 text-destructive" />
+                  bank.status === 'connected' ? (
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                  ) : (
+                    <XCircle className="h-5 w-5 text-destructive" />
+                  )
                 )}
                 <div>
                   <div className="font-medium">{bank.institution_name}</div>

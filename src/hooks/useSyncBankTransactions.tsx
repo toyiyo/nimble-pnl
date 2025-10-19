@@ -8,26 +8,42 @@ export function useSyncBankTransactions() {
 
   return useMutation({
     mutationFn: async (bankId: string) => {
-      const { data, error } = await supabase.functions.invoke(
+      // First sync transactions
+      const { data: syncData, error: syncError } = await supabase.functions.invoke(
         'stripe-sync-transactions',
         {
           body: { bankId }
         }
       );
 
-      if (error) throw error;
-      return data;
+      if (syncError) throw syncError;
+
+      // Then refresh balance
+      const { data: balanceData, error: balanceError } = await supabase.functions.invoke(
+        'stripe-refresh-balance',
+        {
+          body: { bankId }
+        }
+      );
+
+      if (balanceError) {
+        console.error('Balance refresh error:', balanceError);
+        // Don't fail the entire operation if balance refresh fails
+      }
+
+      return { sync: syncData, balance: balanceData };
     },
     onSuccess: (data: any) => {
-      if (data.synced > 0) {
+      const syncData = data.sync;
+      if (syncData.synced > 0) {
         toast({
           title: "Sync complete",
-          description: `Imported ${data.synced} new transactions`,
+          description: `Imported ${syncData.synced} new transactions and refreshed balance`,
         });
       } else {
         toast({
-          title: "Sync initiated",
-          description: data.message || "Transaction sync is in progress",
+          title: "Sync complete",
+          description: syncData.message || "Transactions and balance updated",
         });
       }
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });

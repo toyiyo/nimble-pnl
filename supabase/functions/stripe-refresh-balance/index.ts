@@ -177,6 +177,8 @@ serve(async (req) => {
           current: (finalAccount.balance?.current?.usd || 0) / 100,
           available: finalAccount.balance?.available?.usd ? finalAccount.balance.available.usd / 100 : undefined
         },
+        source: finalAccount !== account ? "refreshed" : "pre_refresh",
+        account_id: finalAccount.id,
         refreshNote,
         usingRefreshedData: finalAccount !== account
       }),

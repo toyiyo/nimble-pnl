@@ -21,12 +21,14 @@ import { cn } from '@/lib/utils';
 import { TransactionFiltersSheet, type TransactionFilters } from '@/components/TransactionFilters';
 import { useToast } from '@/hooks/use-toast';
 import { CategorySelector } from '@/components/CategorySelector';
+import { useCategorizeTransactions } from '@/hooks/useCategorizeTransactions';
 
 const Transactions = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState<TransactionFilters>({});
   const { toast } = useToast();
+  const categorizeTransactions = useCategorizeTransactions();
 
   // Fetch transactions
   const { data: transactions, isLoading, refetch } = useQuery({
@@ -224,6 +226,13 @@ const Transactions = () => {
               />
             </div>
             <div className="flex gap-2 w-full md:w-auto">
+              <Button
+                variant="secondary"
+                onClick={() => categorizeTransactions.mutate(selectedRestaurant.restaurant_id)}
+                disabled={categorizeTransactions.isPending}
+              >
+                {categorizeTransactions.isPending ? 'Categorizing...' : 'Categorize All Uncategorized'}
+              </Button>
               <TransactionFiltersSheet 
                 restaurantId={selectedRestaurant.restaurant_id}
                 filters={filters} 

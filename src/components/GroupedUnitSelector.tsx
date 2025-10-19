@@ -2,7 +2,7 @@ import React from 'react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { getUnitOptions, VALID_UNITS } from '@/lib/validUnits';
-import { PRODUCT_CONVERSIONS } from '@/lib/enhancedUnitConversion';
+import { PRODUCT_CONVERSIONS, WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS, convertUnits } from '@/lib/enhancedUnitConversion';
 import { cn } from '@/lib/utils';
 
 interface GroupedUnitSelectorProps {
@@ -10,6 +10,7 @@ interface GroupedUnitSelectorProps {
   onValueChange: (value: string) => void;
   placeholder?: string;
   productName?: string;
+  productSizeUnit?: string;
   className?: string;
 }
 
@@ -18,24 +19,43 @@ export function GroupedUnitSelector({
   onValueChange, 
   placeholder = "Select unit",
   productName,
+  productSizeUnit,
   className 
 }: GroupedUnitSelectorProps) {
   
   // Determine which units have conversion factors for this product
   const getConversionStatus = (unit: string): { hasConversion: boolean; label?: string } => {
-    if (!productName) return { hasConversion: false };
+    // Check product-specific conversions first
+    if (productName) {
+      const normalizedName = productName.toLowerCase();
+      
+      for (const [productType, conversions] of Object.entries(PRODUCT_CONVERSIONS)) {
+        if (normalizedName.includes(productType.replace('_', ' '))) {
+          const hasFromConversion = Object.keys(conversions).some(key => 
+            key.startsWith(`${unit}_to_`) || key.endsWith(`_to_${unit}`)
+          );
+          
+          if (hasFromConversion) {
+            return { hasConversion: true, label: '✓' };
+          }
+        }
+      }
+    }
     
-    const normalizedName = productName.toLowerCase();
-    
-    // Check all product types for conversions involving this unit
-    for (const [productType, conversions] of Object.entries(PRODUCT_CONVERSIONS)) {
-      if (normalizedName.includes(productType.replace('_', ' '))) {
-        // Check if there's a conversion from/to this unit
-        const hasFromConversion = Object.keys(conversions).some(key => 
-          key.startsWith(`${unit}_to_`) || key.endsWith(`_to_${unit}`)
-        );
-        
-        if (hasFromConversion) {
+    // Check standard conversions between same unit categories
+    if (productSizeUnit) {
+      const sizeUnit = productSizeUnit.toLowerCase();
+      const recipeUnit = unit.toLowerCase();
+      
+      // Check if both units are in the same category
+      const bothWeight = WEIGHT_UNITS.includes(sizeUnit) && WEIGHT_UNITS.includes(recipeUnit);
+      const bothVolume = VOLUME_UNITS.includes(sizeUnit) && VOLUME_UNITS.includes(recipeUnit);
+      const bothCount = COUNT_UNITS.includes(sizeUnit) && COUNT_UNITS.includes(recipeUnit);
+      
+      if (bothWeight || bothVolume || bothCount) {
+        // Try conversion to verify it's actually possible
+        const testConversion = convertUnits(1, recipeUnit, sizeUnit, productName);
+        if (testConversion) {
           return { hasConversion: true, label: '✓' };
         }
       }

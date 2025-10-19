@@ -158,6 +158,7 @@ export function RecipeIngredientItem({
                     onValueChange={field.onChange}
                     placeholder="Unit"
                     productName={selectedProduct?.name}
+                    productSizeUnit={selectedProduct?.size_unit || selectedProduct?.uom_purchase}
                   />
                 </FormControl>
                 <FormMessage />

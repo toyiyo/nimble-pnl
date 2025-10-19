@@ -47,6 +47,31 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // Check if event has already been processed (idempotency)
+    const { data: existingEvent, error: eventCheckError } = await supabaseClient
+      .from("stripe_events")
+      .select("stripe_event_id")
+      .eq("stripe_event_id", event.id)
+      .maybeSingle();
+
+    if (eventCheckError) {
+      console.error("[FC-WEBHOOK] Error checking event:", eventCheckError);
+      throw eventCheckError;
+    }
+
+    if (existingEvent) {
+      console.log("[FC-WEBHOOK] Event already processed:", event.id);
+      return new Response(
+        JSON.stringify({ received: true, message: "Event already processed" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        }
+      );
+    }
+
+    console.log("[FC-WEBHOOK] Processing new event:", event.id);
+
     // Handle different event types
     switch (event.type) {
       case "financial_connections.account.created": {
@@ -72,10 +97,10 @@ serve(async (req) => {
 
         console.log("[FC-WEBHOOK] Restaurant ID from customer metadata:", restaurantId);
 
-        // Store connected bank info
+        // Store connected bank info using upsert to handle duplicate events
         const { data: bankData, error: bankError } = await supabaseClient
           .from("connected_banks")
-          .insert({
+          .upsert({
             restaurant_id: restaurantId,
             stripe_financial_account_id: account.id,
             institution_name: account.institution_name,
@@ -83,16 +108,19 @@ serve(async (req) => {
             status: "connected",
             connected_at: new Date().toISOString(),
             last_sync_at: new Date().toISOString(),
+          }, {
+            onConflict: "stripe_financial_account_id",
+            ignoreDuplicates: false, // Update existing record
           })
           .select()
           .single();
 
         if (bankError) {
-          console.error("[FC-WEBHOOK] Error storing bank:", bankError);
+          console.error("[FC-WEBHOOK] Error storing/updating bank:", bankError);
           throw bankError;
         }
 
-        console.log("[FC-WEBHOOK] Bank stored with ID:", bankData.id);
+        console.log("[FC-WEBHOOK] Bank stored/updated with ID:", bankData.id);
 
         // Trigger initial transaction sync
         console.log("[FC-WEBHOOK] Triggering initial transaction sync...");
@@ -157,6 +185,21 @@ serve(async (req) => {
           console.log("[FC-WEBHOOK] No balance data available yet");
         }
 
+        // Record event as processed after successful handling
+        const { error: recordError } = await supabaseClient
+          .from("stripe_events")
+          .insert({
+            stripe_event_id: event.id,
+            event_type: event.type,
+          });
+
+        if (recordError) {
+          console.error("[FC-WEBHOOK] Error recording event:", recordError);
+          // Don't throw - bank is created, just log the error
+        } else {
+          console.log("[FC-WEBHOOK] Event recorded as processed");
+        }
+
         console.log("[FC-WEBHOOK] Bank account created successfully");
         break;
       }
@@ -177,6 +220,18 @@ serve(async (req) => {
         if (updateError) {
           console.error("[FC-WEBHOOK] Error updating bank:", updateError);
           throw updateError;
+        }
+
+        // Record event as processed
+        const { error: recordError } = await supabaseClient
+          .from("stripe_events")
+          .insert({
+            stripe_event_id: event.id,
+            event_type: event.type,
+          });
+
+        if (recordError) {
+          console.error("[FC-WEBHOOK] Error recording event:", recordError);
         }
 
         console.log("[FC-WEBHOOK] Bank status updated to disconnected");
@@ -210,12 +265,31 @@ serve(async (req) => {
           } else {
             console.log("[FC-WEBHOOK] Balance updated successfully");
           }
+
+          // Record event as processed
+          const { error: recordError } = await supabaseClient
+            .from("stripe_events")
+            .insert({
+              stripe_event_id: event.id,
+              event_type: event.type,
+            });
+
+          if (recordError) {
+            console.error("[FC-WEBHOOK] Error recording event:", recordError);
+          }
         }
         break;
       }
 
       default:
         console.log("[FC-WEBHOOK] Unhandled event type:", event.type);
+        // Still record unhandled events to prevent reprocessing
+        await supabaseClient
+          .from("stripe_events")
+          .insert({
+            stripe_event_id: event.id,
+            event_type: event.type,
+          });
     }
 
     return new Response(

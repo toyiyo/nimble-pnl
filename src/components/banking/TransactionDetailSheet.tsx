@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { BankTransaction, useCategorizeTransaction } from "@/hooks/useBankTransactions";
 import {
@@ -16,7 +16,7 @@ import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { SearchableAccountSelector } from "./SearchableAccountSelector";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeftRight, Building2, Calendar, DollarSign, FileText } from "lucide-react";
+import { ArrowLeftRight, Building2, Calendar, DollarSign, FileText, Sparkles } from "lucide-react";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 
 interface TransactionDetailSheetProps {
@@ -49,6 +49,16 @@ export function TransactionDetailSheet({
   }).format(Math.abs(transaction.amount));
 
   const selectedAccount = accounts?.find(a => a.id === selectedCategoryId);
+
+  // Show suggestion if available
+  const hasSuggestion = transaction.suggested_category_id && transaction.match_confidence;
+  
+  useEffect(() => {
+    // Auto-select suggested category if available and no category is selected
+    if (hasSuggestion && !transaction.category_id) {
+      setSelectedCategoryId(transaction.suggested_category_id || '');
+    }
+  }, [hasSuggestion, transaction.category_id, transaction.suggested_category_id]);
 
   const handleSave = async () => {
     if (!selectedCategoryId) return;
@@ -139,6 +149,25 @@ export function TransactionDetailSheet({
 
           {/* Edit Form */}
           <div className="space-y-4">
+            {hasSuggestion && (
+              <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="h-4 w-4 text-primary mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">AI Suggestion</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Based on your categorization history
+                      {transaction.match_confidence && (
+                        <span className="ml-1">
+                          ({Math.round(transaction.match_confidence * 100)}% confidence)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="payee">Payee</Label>
               <div className="relative">

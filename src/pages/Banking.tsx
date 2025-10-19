@@ -2,12 +2,15 @@ import { useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { useBankTransactions } from "@/hooks/useBankTransactions";
 import { BankTransactionList } from "@/components/banking/BankTransactionList";
-import { Loader2, Building2 } from "lucide-react";
+import { CategoryRulesDialog } from "@/components/banking/CategoryRulesDialog";
+import { Loader2, Building2, Sparkles } from "lucide-react";
 
 export default function Banking() {
   const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded'>('for_review');
+  const [showRulesDialog, setShowRulesDialog] = useState(false);
   
   const { data: forReviewTransactions, isLoading: isLoadingReview } = useBankTransactions('for_review');
   const { data: categorizedTransactions, isLoading: isLoadingCategorized } = useBankTransactions('categorized');
@@ -19,7 +22,16 @@ export default function Banking() {
 
   return (
     <div className="min-h-screen bg-background">
-      <PageHeader icon={Building2} title="Banking" />
+      <PageHeader 
+        icon={Building2} 
+        title="Banking"
+        actions={
+          <Button onClick={() => setShowRulesDialog(true)} variant="outline">
+            <Sparkles className="h-4 w-4 mr-2" />
+            Categorization Rules
+          </Button>
+        }
+      />
 
       <div className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
@@ -102,6 +114,11 @@ export default function Banking() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <CategoryRulesDialog
+        isOpen={showRulesDialog}
+        onClose={() => setShowRulesDialog(false)}
+      />
     </div>
   );
 }

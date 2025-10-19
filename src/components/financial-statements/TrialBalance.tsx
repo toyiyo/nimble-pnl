@@ -17,15 +17,37 @@ export function TrialBalance({ restaurantId, asOfDate }: TrialBalanceProps) {
   const { data: accounts, isLoading } = useQuery({
     queryKey: ['trial-balance', restaurantId, asOfDate],
     queryFn: async () => {
+      // Fetch all accounts
       const { data, error } = await supabase
         .from('chart_of_accounts')
-        .select('id, account_code, account_name, account_type, current_balance, normal_balance')
+        .select('id, account_code, account_name, account_type, normal_balance')
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
         .order('account_code');
 
       if (error) throw error;
-      return data || [];
+
+      // Compute balance for each account from journal entries
+      const accountsWithBalances = await Promise.all(
+        (data || []).map(async (account) => {
+          const { data: balance, error: balanceError } = await supabase.rpc(
+            'compute_account_balance',
+            {
+              p_account_id: account.id,
+              p_as_of_date: format(asOfDate, 'yyyy-MM-dd'),
+            }
+          );
+
+          if (balanceError) {
+            console.error('Error computing balance:', balanceError);
+            return { ...account, current_balance: 0 };
+          }
+
+          return { ...account, current_balance: balance || 0 };
+        })
+      );
+
+      return accountsWithBalances;
     },
     enabled: !!restaurantId,
   });
@@ -37,13 +59,32 @@ export function TrialBalance({ restaurantId, asOfDate }: TrialBalanceProps) {
     }).format(amount);
   };
 
+  // Helper function to get debit/credit amounts for trial balance display
+  const getTrialBalanceAmounts = (balance: number, normalBalance: string) => {
+    // For debit normal accounts: positive = debit, negative = credit
+    // For credit normal accounts: positive = credit, negative = debit
+    if (normalBalance === 'debit') {
+      return {
+        debit: balance >= 0 ? balance : 0,
+        credit: balance < 0 ? Math.abs(balance) : 0,
+      };
+    } else {
+      return {
+        debit: balance < 0 ? Math.abs(balance) : 0,
+        credit: balance >= 0 ? balance : 0,
+      };
+    }
+  };
+
   // Calculate debit and credit totals
   const totalDebits = accounts?.reduce((sum, acc) => {
-    return sum + (acc.normal_balance === 'debit' ? acc.current_balance : 0);
+    const amounts = getTrialBalanceAmounts(acc.current_balance, acc.normal_balance);
+    return sum + amounts.debit;
   }, 0) || 0;
 
   const totalCredits = accounts?.reduce((sum, acc) => {
-    return sum + (acc.normal_balance === 'credit' ? acc.current_balance : 0);
+    const amounts = getTrialBalanceAmounts(acc.current_balance, acc.normal_balance);
+    return sum + amounts.credit;
   }, 0) || 0;
 
   const handleExport = () => {
@@ -52,12 +93,15 @@ export function TrialBalance({ restaurantId, asOfDate }: TrialBalanceProps) {
       [`As of: ${format(asOfDate, 'MMM dd, yyyy')}`],
       [''],
       ['Account Code', 'Account Name', 'Debit', 'Credit'],
-      ...accounts!.map(acc => [
-        acc.account_code,
-        acc.account_name,
-        acc.normal_balance === 'debit' ? acc.current_balance : '',
-        acc.normal_balance === 'credit' ? acc.current_balance : '',
-      ]),
+      ...accounts!.map(acc => {
+        const amounts = getTrialBalanceAmounts(acc.current_balance, acc.normal_balance);
+        return [
+          acc.account_code,
+          acc.account_name,
+          amounts.debit || '',
+          amounts.credit || '',
+        ];
+      }),
       ['', 'TOTALS', totalDebits, totalCredits],
     ].map(row => row.join(',')).join('\n');
 
@@ -113,18 +157,21 @@ export function TrialBalance({ restaurantId, asOfDate }: TrialBalanceProps) {
               </tr>
             </thead>
             <tbody>
-              {accounts?.map((account) => (
-                <tr key={account.id} className="border-b hover:bg-muted/50">
-                  <td className="py-2 px-3 font-mono text-xs text-muted-foreground">{account.account_code}</td>
-                  <td className="py-2 px-3">{account.account_name}</td>
-                  <td className="py-2 px-3 text-right font-medium">
-                    {account.normal_balance === 'debit' ? formatCurrency(account.current_balance) : '—'}
-                  </td>
-                  <td className="py-2 px-3 text-right font-medium">
-                    {account.normal_balance === 'credit' ? formatCurrency(account.current_balance) : '—'}
-                  </td>
-                </tr>
-              ))}
+              {accounts?.map((account) => {
+                const amounts = getTrialBalanceAmounts(account.current_balance, account.normal_balance);
+                return (
+                  <tr key={account.id} className="border-b hover:bg-muted/50">
+                    <td className="py-2 px-3 font-mono text-xs text-muted-foreground">{account.account_code}</td>
+                    <td className="py-2 px-3">{account.account_name}</td>
+                    <td className="py-2 px-3 text-right font-medium">
+                      {amounts.debit > 0 ? formatCurrency(amounts.debit) : '—'}
+                    </td>
+                    <td className="py-2 px-3 text-right font-medium">
+                      {amounts.credit > 0 ? formatCurrency(amounts.credit) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
               <tr className="border-t-2 font-bold">
                 <td colSpan={2} className="py-3 px-3">TOTALS</td>
                 <td className="py-3 px-3 text-right">{formatCurrency(totalDebits)}</td>

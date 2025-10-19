@@ -85,9 +85,9 @@ const Accounting = () => {
     }
   };
 
-  const totalBalance = connectedBanks.reduce((sum, bank) => {
-    return sum + (bank.balances?.[0]?.current_balance || 0);
-  }, 0);
+  const totalBalance = connectedBanks
+    .flatMap(bank => bank.balances || [])
+    .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
 
   return (
     <>

@@ -195,3 +195,46 @@ export function useCategorizedTransactionsSplit() {
     enabled: !!selectedRestaurant?.restaurant_id,
   });
 }
+
+export function useSplitTransaction() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({
+      transactionId,
+      splits,
+    }: {
+      transactionId: string;
+      splits: Array<{
+        category_id: string;
+        amount: number;
+        description?: string;
+      }>;
+    }) => {
+      const { data, error } = await supabase.rpc('split_bank_transaction', {
+        p_transaction_id: transactionId,
+        p_splits: splits as any,
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['bank-transactions-split'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      toast({
+        title: "Transaction split",
+        description: "The transaction has been successfully split across categories.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error splitting transaction",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}

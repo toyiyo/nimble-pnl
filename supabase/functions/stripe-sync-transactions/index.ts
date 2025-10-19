@@ -15,23 +15,37 @@ serve(async (req) => {
   try {
     console.log("[SYNC-TRANSACTIONS] Starting transaction sync");
 
-    // Authenticate user
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { auth: { persistSession: false } }
-    );
-
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       throw new Error("No authorization header provided");
     }
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     
-    if (authError || !user) {
-      throw new Error("User not authenticated");
+    // Check if this is an internal service role call (from webhook) or user call
+    const isServiceRoleCall = token === serviceRoleKey;
+    
+    let userId: string | undefined;
+
+    if (!isServiceRoleCall) {
+      // Authenticate user for regular calls
+      const supabaseClient = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        { auth: { persistSession: false } }
+      );
+
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+      
+      if (authError || !user) {
+        throw new Error("User not authenticated");
+      }
+      
+      userId = user.id;
+      console.log("[SYNC-TRANSACTIONS] Authenticated user:", userId);
+    } else {
+      console.log("[SYNC-TRANSACTIONS] Service role call (from webhook)");
     }
 
     // Get request body
@@ -46,7 +60,7 @@ serve(async (req) => {
     // Use service role for database operations
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      serviceRoleKey
     );
 
     // Get bank connection details
@@ -60,16 +74,18 @@ serve(async (req) => {
       throw new Error("Bank not found");
     }
 
-    // Verify user has access
-    const { data: userRestaurant } = await supabaseAdmin
-      .from("user_restaurants")
-      .select("role")
-      .eq("restaurant_id", bank.restaurant_id)
-      .eq("user_id", user.id)
-      .single();
+    // Verify user has access (only for non-service-role calls)
+    if (!isServiceRoleCall && userId) {
+      const { data: userRestaurant } = await supabaseAdmin
+        .from("user_restaurants")
+        .select("role")
+        .eq("restaurant_id", bank.restaurant_id)
+        .eq("user_id", userId)
+        .single();
 
-    if (!userRestaurant) {
-      throw new Error("User does not have access to this restaurant");
+      if (!userRestaurant) {
+        throw new Error("User does not have access to this restaurant");
+      }
     }
 
     // Initialize Stripe

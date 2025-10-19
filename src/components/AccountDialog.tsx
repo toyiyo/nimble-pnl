@@ -31,12 +31,12 @@ const accountTypes = [
 ];
 
 const subtypesByType = {
-  asset: ['cash', 'bank', 'accounts_receivable', 'inventory', 'prepaid', 'fixed_asset', 'other_asset'],
-  liability: ['accounts_payable', 'credit_card', 'payroll_liabilities', 'sales_tax', 'loans', 'other_liability'],
-  equity: ['owner_equity', 'retained_earnings', 'drawings'],
-  revenue: ['food_sales', 'beverage_sales', 'alcohol_sales', 'catering', 'delivery', 'other_income'],
-  expense: ['labor', 'rent', 'utilities', 'marketing', 'insurance', 'supplies', 'maintenance', 'professional_fees', 'other_expense'],
-  cogs: ['food_cost', 'beverage_cost', 'packaging'],
+  asset: ['cash', 'accounts_receivable', 'inventory', 'prepaid_expenses', 'fixed_assets', 'accumulated_depreciation', 'other_assets'],
+  liability: ['accounts_payable', 'credit_card', 'loan', 'payroll_liabilities', 'deferred_revenue', 'other_liabilities'],
+  equity: ['owners_equity', 'retained_earnings', 'distributions'],
+  revenue: ['food_sales', 'beverage_sales', 'alcohol_sales', 'catering_income', 'other_income'],
+  expense: ['labor', 'rent', 'utilities', 'marketing', 'insurance', 'repairs_maintenance', 'professional_fees', 'other_expenses'],
+  cogs: ['food_cost', 'beverage_cost', 'packaging_cost'],
 };
 
 export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount, onSuccess }: AccountDialogProps) {

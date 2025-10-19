@@ -11,6 +11,7 @@ import { ReconciliationReport } from "@/components/banking/ReconciliationReport"
 import { BankConnectionStatus } from "@/components/banking/BankConnectionStatus";
 import { useCategorizeTransactions } from "@/hooks/useCategorizeTransactions";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2 } from "lucide-react";
 
 export default function Banking() {
@@ -23,6 +24,7 @@ export default function Banking() {
   const { data: categorizedTransactions, isLoading: isLoadingCategorized } = useBankTransactions('categorized');
   const { data: excludedTransactions, isLoading: isLoadingExcluded } = useBankTransactions('excluded');
   const categorizeAll = useCategorizeTransactions();
+  const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   
   const handleCategorizeAll = () => {
     if (selectedRestaurant?.restaurant_id) {
@@ -112,7 +114,7 @@ export default function Banking() {
                   </div>
                 ) : forReviewTransactions && forReviewTransactions.length > 0 ? (
                   <div className="-mx-6">
-                    <BankTransactionList transactions={forReviewTransactions} status="for_review" />
+                    <BankTransactionList transactions={forReviewTransactions} status="for_review" accounts={accounts} />
                   </div>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
@@ -133,7 +135,7 @@ export default function Banking() {
                   </div>
                 ) : categorizedTransactions && categorizedTransactions.length > 0 ? (
                   <div className="-mx-6">
-                    <BankTransactionList transactions={categorizedTransactions} status="categorized" />
+                    <BankTransactionList transactions={categorizedTransactions} status="categorized" accounts={accounts} />
                   </div>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
@@ -154,7 +156,7 @@ export default function Banking() {
                   </div>
                 ) : excludedTransactions && excludedTransactions.length > 0 ? (
                   <div className="-mx-6">
-                    <BankTransactionList transactions={excludedTransactions} status="excluded" />
+                    <BankTransactionList transactions={excludedTransactions} status="excluded" accounts={accounts} />
                   </div>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">

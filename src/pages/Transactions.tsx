@@ -29,6 +29,7 @@ import { CategoryRulesDialog } from '@/components/banking/CategoryRulesDialog';
 import { ReconciliationDialog } from '@/components/banking/ReconciliationDialog';
 import { BankTransactionList } from '@/components/banking/BankTransactionList';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
+import { useChartOfAccounts } from '@/hooks/useChartOfAccounts';
 
 const Transactions = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -37,6 +38,7 @@ const Transactions = () => {
   const { toast } = useToast();
   const categorizeTransactions = useCategorizeTransactions();
   const isMobile = useIsMobile();
+  const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
@@ -421,6 +423,7 @@ const Transactions = () => {
               <BankTransactionList 
                 transactions={filteredTransactions as any} 
                 status={filteredTransactions.every(t => t.is_categorized) ? 'categorized' : 'for_review'} 
+                accounts={accounts}
               />
             </div>
           </div>

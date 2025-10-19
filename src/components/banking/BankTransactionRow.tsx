@@ -7,16 +7,17 @@ import { Badge } from "@/components/ui/badge";
 import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2 } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { SplitTransactionDialog } from "./SplitTransactionDialog";
-import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
+import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
 
 interface BankTransactionRowProps {
   transaction: BankTransaction;
   status: 'for_review' | 'categorized' | 'excluded';
+  accounts: ChartAccount[];
 }
 
-export function BankTransactionRow({ transaction, status }: BankTransactionRowProps) {
+export function BankTransactionRow({ transaction, status, accounts }: BankTransactionRowProps) {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isSplitOpen, setIsSplitOpen] = useState(false);
   const { selectedRestaurant } = useRestaurantContext();
@@ -24,7 +25,6 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
   const exclude = useExcludeTransaction();
   const reconcile = useReconcileTransaction();
   const unreconcile = useUnreconcileTransaction();
-  const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
 
   const isNegative = transaction.amount < 0;
   const formattedAmount = new Intl.NumberFormat('en-US', {

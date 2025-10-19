@@ -1,13 +1,15 @@
 import { BankTransaction } from "@/hooks/useBankTransactions";
 import { BankTransactionRow } from "./BankTransactionRow";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ChartAccount } from "@/hooks/useChartOfAccounts";
 
 interface BankTransactionListProps {
   transactions: BankTransaction[];
   status: 'for_review' | 'categorized' | 'excluded';
+  accounts: ChartAccount[];
 }
 
-export function BankTransactionList({ transactions, status }: BankTransactionListProps) {
+export function BankTransactionList({ transactions, status, accounts }: BankTransactionListProps) {
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -29,6 +31,7 @@ export function BankTransactionList({ transactions, status }: BankTransactionLis
               key={transaction.id}
               transaction={transaction}
               status={status}
+              accounts={accounts}
             />
           ))}
         </TableBody>

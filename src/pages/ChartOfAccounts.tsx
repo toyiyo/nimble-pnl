@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useChartOfAccounts } from '@/hooks/useChartOfAccounts';
-import { Plus, Wallet, TrendingDown, TrendingUp, DollarSign, ShoppingCart, Users, FolderPlus } from 'lucide-react';
+import { Plus, Wallet, TrendingDown, TrendingUp, DollarSign, ShoppingCart, Users, FolderPlus, Calculator } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AccountDialog } from '@/components/AccountDialog';
+import { OpeningBalanceDialog } from '@/components/OpeningBalanceDialog';
 
 const accountTypeIcons = {
   asset: Wallet,
@@ -31,7 +32,9 @@ export default function ChartOfAccounts() {
   const { selectedRestaurant } = useRestaurantContext();
   const { accounts, loading, createDefaultAccounts, fetchAccounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
+  const [openingBalanceDialogOpen, setOpeningBalanceDialogOpen] = useState(false);
   const [selectedParentAccount, setSelectedParentAccount] = useState<{ id: string; name: string; type: string; code: string } | undefined>();
+  const [selectedAccountForBalance, setSelectedAccountForBalance] = useState<{ id: string; name: string; type: string; code: string } | undefined>();
 
   const groupedAccounts = accounts.reduce((acc, account) => {
     if (!acc[account.account_type]) {
@@ -164,30 +167,51 @@ export default function ChartOfAccounts() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center justify-between md:justify-end gap-3 w-full md:w-auto">
+                      <div className="flex items-center justify-between md:justify-end gap-2 w-full md:w-auto">
                         <div className="text-right">
                           <div className="font-semibold">{formatCurrency(getDisplayBalance(account))}</div>
                           {account.is_system_account && (
                             <Badge variant="secondary" className="text-xs">System</Badge>
                           )}
                         </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0"
-                          onClick={() => {
-                            setSelectedParentAccount({
-                              id: account.id,
-                              name: account.account_name,
-                              type: account.account_type,
-                              code: account.account_code,
-                            });
-                            setAccountDialogOpen(true);
-                          }}
-                        >
-                          <FolderPlus className="h-4 w-4 md:mr-1" />
-                          <span className="hidden md:inline">Add Sub</span>
-                        </Button>
+                        <div className="flex gap-1">
+                          {account.account_type === 'asset' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0"
+                              onClick={() => {
+                                setSelectedAccountForBalance({
+                                  id: account.id,
+                                  name: account.account_name,
+                                  type: account.account_type,
+                                  code: account.account_code,
+                                });
+                                setOpeningBalanceDialogOpen(true);
+                              }}
+                              title="Set opening balance"
+                            >
+                              <Calculator className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0"
+                            onClick={() => {
+                              setSelectedParentAccount({
+                                id: account.id,
+                                name: account.account_name,
+                                type: account.account_type,
+                                code: account.account_code,
+                              });
+                              setAccountDialogOpen(true);
+                            }}
+                          >
+                            <FolderPlus className="h-4 w-4 md:mr-1" />
+                            <span className="hidden md:inline">Add Sub</span>
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -205,6 +229,16 @@ export default function ChartOfAccounts() {
         parentAccount={selectedParentAccount}
         onSuccess={() => fetchAccounts()}
       />
+
+      {selectedAccountForBalance && (
+        <OpeningBalanceDialog
+          open={openingBalanceDialogOpen}
+          onOpenChange={setOpeningBalanceDialogOpen}
+          restaurantId={selectedRestaurant?.restaurant_id || ''}
+          account={selectedAccountForBalance}
+          onSuccess={() => fetchAccounts()}
+        />
+      )}
     </div>
   );
 }

@@ -90,8 +90,8 @@ export default function ChartOfAccounts() {
   }
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 md:p-8">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 md:mb-8 gap-4">
         <PageHeader 
           icon={Wallet}
           iconVariant="emerald"
@@ -104,6 +104,7 @@ export default function ChartOfAccounts() {
             setAccountDialogOpen(true);
           }}
           size="lg"
+          className="w-full md:w-auto"
         >
           <Plus className="mr-2 h-5 w-5" />
           Add Account
@@ -140,20 +141,20 @@ export default function ChartOfAccounts() {
                   {typeAccounts.map((account) => (
                     <div
                       key={account.id}
-                      className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors group"
+                      className="flex flex-col md:flex-row items-start md:items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors group gap-3"
                     >
-                      <div className="flex items-center gap-3 flex-1">
-                        <Badge variant="outline" className="font-mono">
+                      <div className="flex items-start md:items-center gap-3 flex-1 w-full">
+                        <Badge variant="outline" className="font-mono shrink-0">
                           {account.account_code}
                         </Badge>
-                        <div className="flex-1">
-                          <div className="font-medium">{account.account_name}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium break-words">{account.account_name}</div>
                           {account.description && (
-                            <div className="text-sm text-muted-foreground">{account.description}</div>
+                            <div className="text-sm text-muted-foreground break-words">{account.description}</div>
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-between md:justify-end gap-3 w-full md:w-auto">
                         <div className="text-right">
                           <div className="font-semibold">{formatCurrency(account.current_balance)}</div>
                           {account.is_system_account && (
@@ -163,7 +164,7 @@ export default function ChartOfAccounts() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0"
                           onClick={() => {
                             setSelectedParentAccount({
                               id: account.id,
@@ -174,8 +175,8 @@ export default function ChartOfAccounts() {
                             setAccountDialogOpen(true);
                           }}
                         >
-                          <FolderPlus className="h-4 w-4 mr-1" />
-                          Add Sub
+                          <FolderPlus className="h-4 w-4 md:mr-1" />
+                          <span className="hidden md:inline">Add Sub</span>
                         </Button>
                       </div>
                     </div>

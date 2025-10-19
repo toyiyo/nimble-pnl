@@ -136,6 +136,8 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
         
         // Other Income & Expenses (9000-9999)
         { account_code: '9000', account_name: 'Interest Expense', account_type: 'expense', account_subtype: 'other_expenses', normal_balance: 'debit' },
+        { account_code: '9100', account_name: 'Uncategorized Expense', account_type: 'expense', account_subtype: 'other_expenses', normal_balance: 'debit', description: 'Default category for unclassified expenses from bank transactions' },
+        { account_code: '9200', account_name: 'Uncategorized Income', account_type: 'revenue', account_subtype: 'other_income', normal_balance: 'credit', description: 'Default category for unclassified income from bank transactions' },
       ] as const;
 
       const accountsToInsert = defaultAccounts.map(acc => ({

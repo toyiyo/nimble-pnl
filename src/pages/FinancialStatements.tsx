@@ -72,7 +72,7 @@ const FinancialStatements = () => {
               <Calendar className="h-5 w-5 text-muted-foreground" />
               <span className="font-medium">Report Period</span>
             </div>
-            <div className="flex gap-2 items-center">
+            <div className="flex flex-wrap gap-2 items-center w-full md:w-auto">
               <DateRangePicker
                 from={dateRange.from}
                 to={dateRange.to}

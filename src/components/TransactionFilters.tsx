@@ -32,6 +32,7 @@ export interface TransactionFilters {
   transactionType?: string;
   categoryId?: string;
   bankAccountId?: string;
+  showUncategorized?: boolean;
 }
 
 interface TransactionFiltersProps {
@@ -216,6 +217,23 @@ export const TransactionFiltersSheet = ({ restaurantId, filters, onFiltersChange
                     </SelectItem>
                   ))
                 )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Uncategorized Filter */}
+          <div className="space-y-2">
+            <Label>Show Only</Label>
+            <Select
+              value={localFilters.showUncategorized === true ? 'uncategorized' : 'all'}
+              onValueChange={(value) => setLocalFilters({ ...localFilters, showUncategorized: value === 'uncategorized' ? true : undefined })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All transactions" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All transactions</SelectItem>
+                <SelectItem value="uncategorized">Uncategorized only</SelectItem>
               </SelectContent>
             </Select>
           </div>

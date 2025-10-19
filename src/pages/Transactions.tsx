@@ -131,9 +131,13 @@ const Transactions = () => {
     const matchesBankAccount = !filters.bankAccountId || 
       txn.connected_bank?.bank_account_balances?.some((acc: any) => acc.id === filters.bankAccountId);
     
+    // Uncategorized filter
+    const matchesUncategorized = filters.showUncategorized === undefined || 
+      (filters.showUncategorized ? !txn.is_categorized : true);
+    
     return matchesSearch && matchesDateFrom && matchesDateTo && 
            matchesMinAmount && matchesMaxAmount && matchesStatus && matchesType &&
-           matchesCategory && matchesBankAccount;
+           matchesCategory && matchesBankAccount && matchesUncategorized;
   }) || [];
 
   const totalDebits = filteredTransactions
@@ -313,7 +317,13 @@ const Transactions = () => {
                 </TableHeader>
                 <TableBody>
                   {filteredTransactions.map((txn) => (
-                    <TableRow key={txn.id} className="cursor-pointer hover:bg-muted/50">
+                   <TableRow 
+                      key={txn.id} 
+                      className={cn(
+                        "cursor-pointer hover:bg-muted/50",
+                        !txn.is_categorized && "bg-yellow-50 dark:bg-yellow-950/20 border-l-4 border-l-yellow-500"
+                      )}
+                    >
                       <TableCell className="font-medium">
                         {formatDate(txn.transaction_date)}
                       </TableCell>
@@ -339,12 +349,17 @@ const Transactions = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="min-w-[200px]">
+                        <div className="min-w-[200px] space-y-1">
                           <CategorySelector
                             restaurantId={selectedRestaurant.restaurant_id}
                             value={txn.category_id}
                             onSelect={(categoryId) => handleCategorize(txn.id, categoryId)}
                           />
+                          {!txn.is_categorized && (
+                            <Badge variant="outline" className="text-xs bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800">
+                              Needs categorization
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">

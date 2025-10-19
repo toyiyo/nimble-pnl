@@ -140,6 +140,25 @@ serve(async (req) => {
 
     console.log("[SYNC-TRANSACTIONS] Fetching transactions from Stripe");
 
+    // Get default uncategorized accounts
+    const { data: uncategorizedAccounts } = await supabaseAdmin
+      .from("chart_of_accounts")
+      .select("id, account_name, account_type")
+      .eq("restaurant_id", bank.restaurant_id)
+      .in("account_name", ["Uncategorized Expense", "Uncategorized Income"]);
+
+    const uncategorizedExpenseId = uncategorizedAccounts?.find(
+      (acc) => acc.account_name === "Uncategorized Expense"
+    )?.id;
+    const uncategorizedIncomeId = uncategorizedAccounts?.find(
+      (acc) => acc.account_name === "Uncategorized Income"
+    )?.id;
+
+    console.log("[SYNC-TRANSACTIONS] Uncategorized accounts:", { 
+      expenseId: uncategorizedExpenseId, 
+      incomeId: uncategorizedIncomeId 
+    });
+
     // Try to fetch transactions
     let transactions;
     try {
@@ -184,6 +203,8 @@ serve(async (req) => {
       }
 
       // Insert new transaction
+      const defaultCategoryId = txn.amount < 0 ? uncategorizedExpenseId : uncategorizedIncomeId;
+      
       const { error: insertError } = await supabaseAdmin
         .from("bank_transactions")
         .insert({
@@ -196,8 +217,9 @@ serve(async (req) => {
           currency: txn.currency.toLowerCase(),
           description: txn.description,
           merchant_name: (txn as any).merchant_name,
-          category: (txn as any).category,
           status: txn.status,
+          category_id: defaultCategoryId,
+          is_categorized: false, // Mark as uncategorized even though we set a default
           raw_data: txn,
         });
 

@@ -2905,6 +2905,10 @@ export type Database = {
           uom_purchase: string
         }[]
       }
+      get_account_subtypes: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       get_product_cost_per_recipe_unit: {
         Args: { product_id: string }
         Returns: number

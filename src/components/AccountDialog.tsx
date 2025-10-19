@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useAccountSubtypes } from '@/hooks/useAccountSubtypes';
+import { Loader2 } from 'lucide-react';
 
 interface AccountDialogProps {
   open: boolean;
@@ -30,7 +32,16 @@ const accountTypes = [
   { value: 'cogs', label: 'Cost of Goods Sold' },
 ];
 
-const subtypesByType = {
+// Helper to format enum values to readable labels
+const formatSubtypeLabel = (value: string): string => {
+  return value
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+// Fallback hardcoded subtypes (will be replaced by dynamic values)
+const fallbackSubtypesByType: Record<string, string[]> = {
   asset: ['cash', 'accounts_receivable', 'inventory', 'prepaid_expenses', 'fixed_assets', 'accumulated_depreciation', 'other_assets'],
   liability: ['accounts_payable', 'credit_card', 'loan', 'payroll_liabilities', 'deferred_revenue', 'other_liabilities'],
   equity: ['owners_equity', 'retained_earnings', 'distributions'],
@@ -42,6 +53,8 @@ const subtypesByType = {
 export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount, onSuccess }: AccountDialogProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const { data: accountSubtypes, isLoading: subtypesLoading } = useAccountSubtypes();
+  
   const [formData, setFormData] = useState({
     account_name: '',
     account_code: parentAccount?.code ? `${parentAccount.code}-` : '',
@@ -50,6 +63,18 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
     description: '',
     normal_balance: 'debit',
   });
+
+  // Build subtypes from dynamic data or fallback
+  const subtypesByType: Record<string, string[]> = accountSubtypes
+    ? {
+        asset: accountSubtypes.asset,
+        liability: accountSubtypes.liability,
+        equity: accountSubtypes.equity,
+        revenue: accountSubtypes.revenue,
+        expense: accountSubtypes.expense,
+        cogs: accountSubtypes.cogs,
+      }
+    : fallbackSubtypesByType;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,7 +125,7 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] bg-background">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>
@@ -114,7 +139,14 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          {subtypesLoading && (
+            <div className="flex items-center justify-center py-4 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              Loading account types...
+            </div>
+          )}
+
+          <div className="space-y-4 py-4" style={{ opacity: subtypesLoading ? 0.5 : 1 }}>
             <div className="space-y-2">
               <Label htmlFor="account_name">Account Name *</Label>
               <Input
@@ -123,6 +155,7 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
                 onChange={(e) => setFormData({ ...formData, account_name: e.target.value })}
                 placeholder="e.g., Office Supplies"
                 required
+                disabled={subtypesLoading}
               />
             </div>
 
@@ -134,6 +167,7 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
                 onChange={(e) => setFormData({ ...formData, account_code: e.target.value })}
                 placeholder="e.g., 7800 or 7800-01"
                 required
+                disabled={subtypesLoading}
               />
               <p className="text-xs text-muted-foreground">
                 Use format like 7800 for main accounts or 7800-01 for sub-accounts
@@ -147,11 +181,12 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
                   <Select
                     value={formData.account_type}
                     onValueChange={(value) => setFormData({ ...formData, account_type: value, account_subtype: '' })}
+                    disabled={subtypesLoading}
                   >
-                    <SelectTrigger id="account_type">
+                    <SelectTrigger id="account_type" className="bg-background">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-popover z-50">
                       {accountTypes.map((type) => (
                         <SelectItem key={type.value} value={type.value}>
                           {type.label}
@@ -166,14 +201,15 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
                   <Select
                     value={formData.account_subtype}
                     onValueChange={(value) => setFormData({ ...formData, account_subtype: value })}
+                    disabled={subtypesLoading}
                   >
-                    <SelectTrigger id="account_subtype">
+                    <SelectTrigger id="account_subtype" className="bg-background">
                       <SelectValue placeholder="Select a subtype (optional)" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-popover z-50">
                       {subtypesByType[formData.account_type as keyof typeof subtypesByType]?.map((subtype) => (
                         <SelectItem key={subtype} value={subtype}>
-                          {subtype.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                          {formatSubtypeLabel(subtype)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -185,11 +221,12 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
                   <Select
                     value={formData.normal_balance}
                     onValueChange={(value) => setFormData({ ...formData, normal_balance: value })}
+                    disabled={subtypesLoading}
                   >
-                    <SelectTrigger id="normal_balance">
+                    <SelectTrigger id="normal_balance" className="bg-background">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-popover z-50">
                       <SelectItem value="debit">Debit</SelectItem>
                       <SelectItem value="credit">Credit</SelectItem>
                     </SelectContent>
@@ -206,6 +243,7 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Optional description for internal use"
                 rows={3}
+                disabled={subtypesLoading}
               />
             </div>
           </div>
@@ -214,7 +252,7 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || subtypesLoading}>
               {loading ? 'Creating...' : 'Create Account'}
             </Button>
           </DialogFooter>

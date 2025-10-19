@@ -25,40 +25,21 @@ export function GroupedUnitSelector({
   
   // Determine which units have conversion factors for this product
   const getConversionStatus = (unit: string): { hasConversion: boolean; label?: string } => {
-    // Check product-specific conversions first
-    if (productName) {
-      const normalizedName = productName.toLowerCase();
-      
-      for (const [productType, conversions] of Object.entries(PRODUCT_CONVERSIONS)) {
-        if (normalizedName.includes(productType.replace('_', ' '))) {
-          const hasFromConversion = Object.keys(conversions).some(key => 
-            key.startsWith(`${unit}_to_`) || key.endsWith(`_to_${unit}`)
-          );
-          
-          if (hasFromConversion) {
-            return { hasConversion: true, label: '✓' };
-          }
-        }
-      }
+    // Only show conversions if we have a productSizeUnit (i.e., in recipe context)
+    if (!productSizeUnit) {
+      return { hasConversion: false };
     }
     
-    // Check standard conversions between same unit categories
-    if (productSizeUnit) {
-      const sizeUnit = productSizeUnit.toLowerCase();
-      const recipeUnit = unit.toLowerCase();
-      
-      // Check if both units are in the same category
-      const bothWeight = WEIGHT_UNITS.includes(sizeUnit) && WEIGHT_UNITS.includes(recipeUnit);
-      const bothVolume = VOLUME_UNITS.includes(sizeUnit) && VOLUME_UNITS.includes(recipeUnit);
-      const bothCount = COUNT_UNITS.includes(sizeUnit) && COUNT_UNITS.includes(recipeUnit);
-      
-      if (bothWeight || bothVolume || bothCount) {
-        // Try conversion to verify it's actually possible
-        const testConversion = convertUnits(1, recipeUnit, sizeUnit, productName);
-        if (testConversion) {
-          return { hasConversion: true, label: '✓' };
-        }
-      }
+    const sizeUnit = productSizeUnit.toLowerCase();
+    const recipeUnit = unit.toLowerCase();
+    
+    // Check if both units are in the same category
+    const bothWeight = WEIGHT_UNITS.includes(sizeUnit) && WEIGHT_UNITS.includes(recipeUnit);
+    const bothVolume = VOLUME_UNITS.includes(sizeUnit) && VOLUME_UNITS.includes(recipeUnit);
+    const bothCount = COUNT_UNITS.includes(sizeUnit) && COUNT_UNITS.includes(recipeUnit);
+    
+    if (bothWeight || bothVolume || bothCount) {
+      return { hasConversion: true, label: '✓' };
     }
     
     return { hasConversion: false };

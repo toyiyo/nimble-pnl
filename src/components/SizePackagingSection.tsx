@@ -188,7 +188,6 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
                   value={field.value || undefined}
                   onValueChange={field.onChange}
                   placeholder="Select unit"
-                  productName={productName}
                   className="text-center"
                 />
               </FormControl>

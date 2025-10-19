@@ -24,7 +24,7 @@ export function BankTransactionRow({ transaction, status }: BankTransactionRowPr
   const exclude = useExcludeTransaction();
   const reconcile = useReconcileTransaction();
   const unreconcile = useUnreconcileTransaction();
-  const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
+  const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
 
   const isNegative = transaction.amount < 0;
   const formattedAmount = new Intl.NumberFormat('en-US', {

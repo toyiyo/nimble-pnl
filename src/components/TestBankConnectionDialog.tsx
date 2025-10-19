@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Info } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface TestBankConnectionDialogProps {
   open: boolean;
@@ -34,17 +35,44 @@ export const TestBankConnectionDialog = ({
   const [bankType, setBankType] = useState('checking');
   const [balance, setBalance] = useState('5000.00');
   const [isCreating, setIsCreating] = useState(false);
+  const { toast } = useToast();
 
   const handleCreateTestConnection = async () => {
-    // This is a placeholder for test mode
-    // In production, you'd use Stripe's test mode
-    console.log('Creating test bank connection:', {
-      restaurantId,
-      bankType,
-      balance,
-    });
+    setIsCreating(true);
     
-    onOpenChange(false);
+    try {
+      // This is a placeholder for test mode
+      // In production, you'd use Stripe's test mode
+      if (import.meta.env.DEV) {
+        console.log('[TEST-BANK] Creating test bank connection:', {
+          restaurantId,
+          bankType,
+          balance,
+        });
+      }
+      
+      // Simulate async operation
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      toast({
+        title: "Test Connection Created",
+        description: `Successfully created ${bankType} account with balance $${balance}`,
+      });
+      
+      // Only close dialog on success
+      onOpenChange(false);
+    } catch (error) {
+      console.error('[TEST-BANK] Error creating test connection:', error);
+      
+      toast({
+        title: "Failed to Create Test Connection",
+        description: error instanceof Error ? error.message : "An error occurred while creating the test connection",
+        variant: "destructive",
+      });
+    } finally {
+      // Always clear loading state
+      setIsCreating(false);
+    }
   };
 
   return (

@@ -13,6 +13,7 @@ import { TrialBalance } from '@/components/financial-statements/TrialBalance';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { addMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { useReconcileBalances } from '@/hooks/useReconcileBalances';
+import { useCalculateOpeningBalance } from '@/hooks/useCalculateOpeningBalance';
 
 const FinancialStatements = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -21,6 +22,7 @@ const FinancialStatements = () => {
     to: endOfMonth(new Date()),
   });
   const { mutate: reconcileBalances, isPending: isReconciling } = useReconcileBalances();
+  const { mutate: calculateOpeningBalance, isPending: isCalculating } = useCalculateOpeningBalance();
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -107,6 +109,15 @@ const FinancialStatements = () => {
                 }}
               >
                 This Month
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => calculateOpeningBalance(selectedRestaurant.restaurant_id)}
+                disabled={isCalculating}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isCalculating ? 'animate-spin' : ''}`} />
+                Calculate Opening Balance
               </Button>
               <Button
                 variant="outline"

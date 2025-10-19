@@ -40,7 +40,8 @@ const Transactions = () => {
         .from('bank_transactions')
         .select(`
           *,
-          connected_bank:connected_banks(
+          connected_bank:connected_banks!inner(
+            id,
             institution_name,
             bank_account_balances(id, account_mask, account_name)
           ),
@@ -53,6 +54,8 @@ const Transactions = () => {
         .limit(1000);
 
       if (error) throw error;
+      
+      console.log('Sample transaction data:', data?.[0]);
       return data || [];
     },
     enabled: !!selectedRestaurant,
@@ -130,9 +133,17 @@ const Transactions = () => {
     // Category filter
     const matchesCategory = !filters.categoryId || txn.category_id === filters.categoryId;
     
-    // Bank account filter
+    // Bank account filter - since transactions link to connected_bank, not specific account
+    // we need to check if the selected bank account belongs to the transaction's connected bank
     const matchesBankAccount = !filters.bankAccountId || 
-      txn.connected_bank?.bank_account_balances?.some((acc: any) => acc.id === filters.bankAccountId);
+      (txn.connected_bank?.bank_account_balances?.some((acc: any) => acc.id === filters.bankAccountId) ?? false);
+    
+    console.log('Filter debug:', {
+      transactionId: txn.id,
+      filterBankAccountId: filters.bankAccountId,
+      connectedBankAccounts: txn.connected_bank?.bank_account_balances,
+      matches: matchesBankAccount
+    });
     
     // Uncategorized filter
     const matchesUncategorized = filters.showUncategorized === undefined || 

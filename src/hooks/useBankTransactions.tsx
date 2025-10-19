@@ -30,6 +30,18 @@ export interface BankTransaction {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  connected_bank?: {
+    id: string;
+    institution_name: string;
+    bank_account_balances: Array<{
+      id: string;
+      account_mask: string | null;
+      account_name: string;
+    }>;
+  };
+  chart_account?: {
+    account_name: string;
+  } | null;
 }
 
 export function useBankTransactions(status?: TransactionStatus) {
@@ -59,6 +71,38 @@ export function useBankTransactions(status?: TransactionStatus) {
       return data as BankTransaction[];
     },
     enabled: !!selectedRestaurant?.restaurant_id,
+    staleTime: 60000,
+  });
+}
+
+export function useBankTransactionsWithRelations(restaurantId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['bank-transactions', restaurantId],
+    queryFn: async () => {
+      if (!restaurantId) return [];
+
+      const { data, error } = await supabase
+        .from('bank_transactions')
+        .select(`
+          *,
+          connected_bank:connected_banks!inner(
+            id,
+            institution_name,
+            bank_account_balances(id, account_mask, account_name)
+          ),
+          chart_account:chart_of_accounts!category_id(
+            account_name
+          )
+        `)
+        .eq('restaurant_id', restaurantId)
+        .order('transaction_date', { ascending: false })
+        .limit(1000);
+
+      if (error) throw error;
+      return (data || []) as BankTransaction[];
+    },
+    enabled: !!restaurantId,
+    staleTime: 60000,
   });
 }
 

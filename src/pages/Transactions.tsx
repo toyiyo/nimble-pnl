@@ -16,7 +16,6 @@ import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { MetricIcon } from '@/components/MetricIcon';
 import { Receipt, Search, Download, Building2, Filter, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { TransactionFiltersSheet, type TransactionFilters } from '@/components/TransactionFilters';
 import { useToast } from '@/hooks/use-toast';
@@ -30,6 +29,7 @@ import { ReconciliationDialog } from '@/components/banking/ReconciliationDialog'
 import { BankTransactionList } from '@/components/banking/BankTransactionList';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
 import { useChartOfAccounts } from '@/hooks/useChartOfAccounts';
+import { useBankTransactionsWithRelations } from '@/hooks/useBankTransactions';
 
 const Transactions = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -44,34 +44,12 @@ const Transactions = () => {
   const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
 
   // Fetch transactions
-  const { data: transactions, isLoading, refetch } = useQuery({
-    queryKey: ['bank-transactions', selectedRestaurant?.restaurant_id],
-    queryFn: async () => {
-      if (!selectedRestaurant) return [];
-
-      const { data, error } = await supabase
-        .from('bank_transactions')
-        .select(`
-          *,
-          connected_bank:connected_banks!inner(
-            id,
-            institution_name,
-            bank_account_balances(id, account_mask, account_name)
-          ),
-          chart_account:chart_of_accounts!category_id(
-            account_name
-          )
-        `)
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .order('transaction_date', { ascending: false })
-        .limit(1000);
-
-      if (error) throw error;
-      setIsInitialLoad(false);
-      return data || [];
-    },
-    enabled: !!selectedRestaurant,
-  });
+  const { data: transactions, isLoading, refetch } = useBankTransactionsWithRelations(selectedRestaurant?.restaurant_id);
+  
+  // Track initial load state
+  if (transactions && isInitialLoad) {
+    setIsInitialLoad(false);
+  }
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);

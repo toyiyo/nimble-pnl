@@ -1735,6 +1735,54 @@ export type Database = {
           },
         ]
       }
+      reconciliation_boundaries: {
+        Row: {
+          balance_start_date: string
+          created_at: string
+          id: string
+          last_reconciled_at: string
+          opening_balance: number
+          opening_balance_journal_entry_id: string | null
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          balance_start_date: string
+          created_at?: string
+          id?: string
+          last_reconciled_at?: string
+          opening_balance?: number
+          opening_balance_journal_entry_id?: string | null
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          balance_start_date?: string
+          created_at?: string
+          id?: string
+          last_reconciled_at?: string
+          opening_balance?: number
+          opening_balance_journal_entry_id?: string | null
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reconciliation_boundaries_opening_balance_journal_entry_id_fkey"
+            columns: ["opening_balance_journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reconciliation_boundaries_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reconciliation_items: {
         Row: {
           actual_quantity: number | null
@@ -2805,6 +2853,10 @@ export type Database = {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: undefined
       }
+      apply_reconciliation_adjustment: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
+      }
       bulk_process_historical_sales: {
         Args: {
           p_end_date: string
@@ -2831,6 +2883,10 @@ export type Database = {
           p_restaurant_id: string
           p_transaction_id: string
         }
+        Returns: Json
+      }
+      check_reconciliation_boundary: {
+        Args: { p_restaurant_id: string }
         Returns: Json
       }
       check_sale_already_processed: {

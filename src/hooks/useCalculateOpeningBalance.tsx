@@ -128,7 +128,22 @@ export const useCalculateOpeningBalance = () => {
 
       if (linesError) throw linesError;
 
-      // Step 10: Rebuild account balances
+      // Step 10: Save reconciliation boundary
+      const { error: boundaryError } = await supabase
+        .from('reconciliation_boundaries')
+        .upsert({
+          restaurant_id: restaurantId,
+          balance_start_date: openingDate,
+          opening_balance: openingBalance,
+          opening_balance_journal_entry_id: journalEntry.id,
+          last_reconciled_at: new Date().toISOString(),
+        }, {
+          onConflict: 'restaurant_id'
+        });
+
+      if (boundaryError) throw boundaryError;
+
+      // Step 11: Rebuild account balances
       const { error: rebuildError } = await supabase.rpc('rebuild_account_balances', {
         p_restaurant_id: restaurantId
       });

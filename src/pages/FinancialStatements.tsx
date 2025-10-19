@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { MetricIcon } from '@/components/MetricIcon';
-import { FileText, Download, Calendar, RefreshCw } from 'lucide-react';
+import { FileText, Download, Calendar, RefreshCw, AlertCircle } from 'lucide-react';
 import { IncomeStatement } from '@/components/financial-statements/IncomeStatement';
 import { BalanceSheet } from '@/components/financial-statements/BalanceSheet';
 import { CashFlowStatement } from '@/components/financial-statements/CashFlowStatement';
@@ -14,6 +14,7 @@ import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { addMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { useReconcileBalances } from '@/hooks/useReconcileBalances';
 import { useCalculateOpeningBalance } from '@/hooks/useCalculateOpeningBalance';
+import { useReconciliationCheck } from '@/hooks/useReconciliationCheck';
 
 const FinancialStatements = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -23,6 +24,7 @@ const FinancialStatements = () => {
   });
   const { mutate: reconcileBalances, isPending: isReconciling } = useReconcileBalances();
   const { mutate: calculateOpeningBalance, isPending: isCalculating } = useCalculateOpeningBalance();
+  const { check, isChecking, applyAdjustment, isApplying } = useReconciliationCheck(selectedRestaurant?.restaurant_id);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -128,8 +130,48 @@ const FinancialStatements = () => {
                 <RefreshCw className={`h-4 w-4 mr-2 ${isReconciling ? 'animate-spin' : ''}`} />
                 Rebuild Balances
               </Button>
+              
+              {check?.has_violation && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => applyAdjustment(selectedRestaurant.restaurant_id)}
+                  disabled={isApplying}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isApplying ? 'animate-spin' : ''}`} />
+                  Fix Reconciliation
+                </Button>
+              )}
             </div>
           </div>
+          
+          {check?.has_violation && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 mt-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <h4 className="font-semibold text-destructive mb-1">Reconciliation Issue Detected</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Historical transactions from {new Date(check.earliest_transaction_date || '').toLocaleDateString()} 
+                    {' '}were imported after opening balance was set for {new Date(check.boundary_date || '').toLocaleDateString()}.
+                    This created a {new Intl.NumberFormat('en-US', { 
+                      style: 'currency', 
+                      currency: 'USD' 
+                    }).format(Math.abs(check.adjustment_needed || 0))} discrepancy.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Opening balance will be adjusted from {new Intl.NumberFormat('en-US', { 
+                      style: 'currency', 
+                      currency: 'USD' 
+                    }).format(check.current_opening_balance || 0)} to {new Intl.NumberFormat('en-US', { 
+                      style: 'currency', 
+                      currency: 'USD' 
+                    }).format(check.new_opening_balance || 0)}.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

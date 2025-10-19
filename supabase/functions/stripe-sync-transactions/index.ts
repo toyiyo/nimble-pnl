@@ -291,15 +291,36 @@ serve(async (req) => {
       
       console.log("[SYNC-TRANSACTIONS] Auto-categorized", categorizedCount, "transactions");
       
-      // Rebuild account balances so financial statements reflect new transactions
+      // Check for reconciliation boundary violations and auto-fix
       try {
-        console.log("[SYNC-TRANSACTIONS] Rebuilding account balances");
-        await supabaseAdmin.rpc('rebuild_account_balances', {
+        console.log("[SYNC-TRANSACTIONS] Checking reconciliation boundary");
+        const { data: checkData, error: checkError } = await supabaseAdmin.rpc('check_reconciliation_boundary', {
           p_restaurant_id: bank.restaurant_id
         });
-        console.log("[SYNC-TRANSACTIONS] Account balances rebuilt successfully");
+
+        if (checkError) {
+          console.error("[SYNC-TRANSACTIONS] Error checking reconciliation:", checkError.message);
+        } else if (checkData && checkData.has_violation) {
+          console.log("[SYNC-TRANSACTIONS] Reconciliation violation detected, applying adjustment");
+          const { error: adjustError } = await supabaseAdmin.rpc('apply_reconciliation_adjustment', {
+            p_restaurant_id: bank.restaurant_id
+          });
+          
+          if (adjustError) {
+            console.error("[SYNC-TRANSACTIONS] Error applying adjustment:", adjustError.message);
+          } else {
+            console.log("[SYNC-TRANSACTIONS] Reconciliation adjustment applied successfully");
+          }
+        } else {
+          // No violation, just rebuild balances
+          console.log("[SYNC-TRANSACTIONS] No reconciliation issues, rebuilding account balances");
+          await supabaseAdmin.rpc('rebuild_account_balances', {
+            p_restaurant_id: bank.restaurant_id
+          });
+          console.log("[SYNC-TRANSACTIONS] Account balances rebuilt successfully");
+        }
       } catch (error: any) {
-        console.error("[SYNC-TRANSACTIONS] Error rebuilding balances:", error.message);
+        console.error("[SYNC-TRANSACTIONS] Error in reconciliation check/fix:", error.message);
       }
     }
 

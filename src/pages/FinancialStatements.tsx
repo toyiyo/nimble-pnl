@@ -5,13 +5,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { MetricIcon } from '@/components/MetricIcon';
-import { FileText, Download, Calendar } from 'lucide-react';
+import { FileText, Download, Calendar, RefreshCw } from 'lucide-react';
 import { IncomeStatement } from '@/components/financial-statements/IncomeStatement';
 import { BalanceSheet } from '@/components/financial-statements/BalanceSheet';
 import { CashFlowStatement } from '@/components/financial-statements/CashFlowStatement';
 import { TrialBalance } from '@/components/financial-statements/TrialBalance';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { addMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { useReconcileBalances } from '@/hooks/useReconcileBalances';
 
 const FinancialStatements = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -19,6 +20,7 @@ const FinancialStatements = () => {
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   });
+  const { mutate: reconcileBalances, isPending: isReconciling } = useReconcileBalances();
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -105,6 +107,15 @@ const FinancialStatements = () => {
                 }}
               >
                 This Month
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => reconcileBalances(selectedRestaurant.restaurant_id)}
+                disabled={isReconciling}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isReconciling ? 'animate-spin' : ''}`} />
+                Rebuild Balances
               </Button>
             </div>
           </div>

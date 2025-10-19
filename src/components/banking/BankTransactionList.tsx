@@ -11,18 +11,18 @@ interface BankTransactionListProps {
 
 export function BankTransactionList({ transactions, status, accounts }: BankTransactionListProps) {
   return (
-    <div className="overflow-x-auto">
-      <Table>
+    <div className="w-full overflow-x-auto">
+      <Table className="min-w-[700px]">
         <TableHeader>
           <TableRow>
-            <TableHead className="whitespace-nowrap">Date</TableHead>
-            <TableHead className="min-w-[200px]">Description</TableHead>
-            <TableHead className="whitespace-nowrap hidden md:table-cell">Payee</TableHead>
-            <TableHead className="text-right whitespace-nowrap">Amount</TableHead>
-            {status === 'for_review' && <TableHead className="min-w-[150px] hidden lg:table-cell">Suggested</TableHead>}
-            {status === 'categorized' && <TableHead className="min-w-[150px] hidden lg:table-cell">Category</TableHead>}
-            {status === 'excluded' && <TableHead className="whitespace-nowrap hidden lg:table-cell">Reason</TableHead>}
-            <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
+            <TableHead className="w-[110px] whitespace-nowrap">Date</TableHead>
+            <TableHead className="min-w-[180px]">Description</TableHead>
+            <TableHead className="w-[120px] whitespace-nowrap hidden md:table-cell">Payee</TableHead>
+            <TableHead className="w-[100px] text-right whitespace-nowrap">Amount</TableHead>
+            {status === 'for_review' && <TableHead className="w-[140px] hidden lg:table-cell">Suggested</TableHead>}
+            {status === 'categorized' && <TableHead className="w-[140px] hidden lg:table-cell">Category</TableHead>}
+            {status === 'excluded' && <TableHead className="w-[120px] hidden lg:table-cell">Reason</TableHead>}
+            <TableHead className="w-[140px] text-right whitespace-nowrap">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

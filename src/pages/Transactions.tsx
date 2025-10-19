@@ -261,16 +261,16 @@ const Transactions = () => {
             </div>
             
             {/* Action Buttons */}
-            <div className="grid grid-cols-2 md:flex gap-2">
+            <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
               <Button
                 variant="secondary"
                 onClick={() => categorizeTransactions.mutate(selectedRestaurant.restaurant_id)}
                 disabled={categorizeTransactions.isPending}
                 className="w-full md:w-auto h-11"
               >
-                {categorizeTransactions.isPending ? 'Categorizing...' : isMobile ? 'Auto-Categorize' : 'Categorize All'}
+                {categorizeTransactions.isPending ? 'Categorizing...' : isMobile ? 'Auto' : 'Categorize All'}
               </Button>
-              <div className="relative">
+              <div className="relative w-full md:w-auto">
                 <TransactionFiltersSheet 
                   restaurantId={selectedRestaurant.restaurant_id}
                   filters={filters} 
@@ -288,7 +288,7 @@ const Transactions = () => {
               
               <Button
                 variant="outline" 
-                className="h-11 gap-2"
+                className="w-full md:w-auto h-11 gap-2"
                 onClick={() => setShowRulesDialog(true)}
               >
                 <Sparkles className="h-4 w-4" />
@@ -297,7 +297,7 @@ const Transactions = () => {
               
               <Button
                 variant="outline" 
-                className="h-11 gap-2"
+                className="w-full md:w-auto h-11 gap-2"
                 onClick={() => setShowReconciliationDialog(true)}
               >
                 <CheckCircle2 className="h-4 w-4" />
@@ -306,7 +306,7 @@ const Transactions = () => {
               
               <Button
                 variant="outline" 
-                className="h-11"
+                className="col-span-2 md:col-span-1 md:w-auto h-11 gap-2"
                 title={isMobile ? "Export to CSV" : "Export"}
                 onClick={() => {
                   if (filteredTransactions.length === 0) {
@@ -353,7 +353,7 @@ const Transactions = () => {
                 }}
               >
                 <Download className="h-4 w-4" />
-                {!isMobile && <span>Export</span>}
+                {!isMobile && <span className="ml-2">Export</span>}
               </Button>
             </div>
 
@@ -418,15 +418,15 @@ const Transactions = () => {
       ) : (
         // Desktop Table View - Use BankTransactionList for full functionality
         <Card>
-          <div className="p-6">
-            <div className="-mx-6">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
               <BankTransactionList 
                 transactions={filteredTransactions as any} 
                 status={filteredTransactions.every(t => t.is_categorized) ? 'categorized' : 'for_review'} 
                 accounts={accounts}
               />
             </div>
-          </div>
+          </CardContent>
         </Card>
       )}
       

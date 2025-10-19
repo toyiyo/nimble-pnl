@@ -110,10 +110,10 @@ export function CategoryRulesDialog({ isOpen, onClose }: CategoryRulesDialogProp
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          <div>{rule.usage_count}x used</div>
-                          {rule.last_used_at && (
+                          <div>{rule.apply_count}x used</div>
+                          {rule.last_applied_at && (
                             <div className="text-xs text-muted-foreground">
-                              Last: {format(new Date(rule.last_used_at), 'MMM d')}
+                              Last: {format(new Date(rule.last_applied_at), 'MMM d')}
                             </div>
                           )}
                         </div>

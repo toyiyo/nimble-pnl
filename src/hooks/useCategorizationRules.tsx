@@ -9,6 +9,7 @@ export interface CategorizationRule {
   rule_name: string;
   match_type: 'payee_exact' | 'payee_contains' | 'description_contains' | 'amount_range' | 'amount_exact';
   match_value: string;
+  match_value_lower?: string;
   amount_min?: number;
   amount_max?: number;
   category_id: string;
@@ -17,8 +18,8 @@ export interface CategorizationRule {
   auto_apply: boolean;
   created_at: string;
   updated_at: string;
-  last_used_at?: string;
-  usage_count: number;
+  last_applied_at?: string;
+  apply_count: number;
 }
 
 export function useCategorizationRules() {
@@ -31,11 +32,11 @@ export function useCategorizationRules() {
       if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
 
       const { data, error } = await supabase
-        .from('categorization_rules' as any)
+        .from('transaction_categorization_rules')
         .select('*')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .order('priority', { ascending: false })
-        .order('usage_count', { ascending: false });
+        .order('apply_count', { ascending: false });
 
       if (error) throw error;
       return data as unknown as CategorizationRule[];
@@ -50,12 +51,10 @@ export function useCreateRule() {
 
   return useMutation({
     mutationFn: async (rule: Partial<CategorizationRule>) => {
+      const { match_value_lower, ...ruleData } = rule;
       const { data, error } = await supabase
-        .from('categorization_rules' as any)
-        .insert([{
-          ...rule,
-          match_value_lower: rule.match_value?.toLowerCase(),
-        }])
+        .from('transaction_categorization_rules')
+        .insert([ruleData as any])
         .select()
         .single();
 
@@ -85,12 +84,10 @@ export function useUpdateRule() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<CategorizationRule> & { id: string }) => {
+      const { match_value_lower, ...updateData } = updates;
       const { data, error } = await supabase
-        .from('categorization_rules' as any)
-        .update({
-          ...updates,
-          match_value_lower: updates.match_value?.toLowerCase(),
-        })
+        .from('transaction_categorization_rules')
+        .update(updateData)
         .eq('id', id)
         .select()
         .single();
@@ -122,7 +119,7 @@ export function useDeleteRule() {
   return useMutation({
     mutationFn: async (ruleId: string) => {
       const { error } = await supabase
-        .from('categorization_rules' as any)
+        .from('transaction_categorization_rules')
         .delete()
         .eq('id', ruleId);
 

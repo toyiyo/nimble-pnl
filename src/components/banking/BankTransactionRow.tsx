@@ -76,11 +76,11 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
 
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-2">
-            <span className={isNegative ? "text-destructive" : "text-green-600"}>
+            <span className={isNegative ? "text-destructive" : "text-success"}>
               {isNegative ? '-' : '+'}{formattedAmount}
             </span>
             {transaction.is_reconciled && (
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <CheckCircle2 className="h-4 w-4 text-success" />
             )}
           </div>
         </TableCell>
@@ -185,7 +185,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
                     disabled={unreconcile.isPending}
                     title="Unreconcile"
                   >
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <CheckCircle2 className="h-4 w-4 text-success" />
                   </Button>
                 ) : (
                   <Button

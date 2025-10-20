@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Package, Receipt, ChefHat, TrendingUp, ShoppingCart, Users, Settings, FileText } from "lucide-react";
+import { Package, Receipt, ChefHat, TrendingUp, ShoppingCart, Users, Settings, FileText, Wallet } from "lucide-react";
 
 interface DashboardQuickActionsProps {
   restaurantId: string;
@@ -47,6 +47,13 @@ export function DashboardQuickActions({ restaurantId }: DashboardQuickActionsPro
       color: "text-pink-600 dark:text-pink-400",
     },
     {
+      title: "Bank Accounts",
+      description: "Connect banks",
+      icon: Wallet,
+      onClick: () => navigate("/accounting/banks"),
+      color: "text-emerald-600 dark:text-emerald-400",
+    },
+    {
       title: "Integrations",
       description: "Connect systems",
       icon: Users,
@@ -59,13 +66,6 @@ export function DashboardQuickActions({ restaurantId }: DashboardQuickActionsPro
       icon: Settings,
       onClick: () => navigate("/settings"),
       color: "text-gray-600 dark:text-gray-400",
-    },
-    {
-      title: "Inventory Audit",
-      description: "View transactions",
-      icon: FileText,
-      onClick: () => navigate("/inventory-audit"),
-      color: "text-teal-600 dark:text-teal-400",
     },
   ];
 

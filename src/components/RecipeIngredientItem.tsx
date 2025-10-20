@@ -1,16 +1,15 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { SearchableProductSelector } from '@/components/SearchableProductSelector';
 import { Trash2, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import { Control } from 'react-hook-form';
 import { Product } from '@/hooks/useProducts';
 import { RecipeConversionInfo } from './RecipeConversionInfo';
-import { suggestRecipeUnits } from '@/lib/unitConversion';
 import { calculateInventoryImpact, getProductUnitInfo } from '@/lib/enhancedUnitConversion';
+import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
 
 interface RecipeIngredientItemProps {
   index: number;
@@ -153,41 +152,15 @@ export function RecipeIngredientItem({
             render={({ field }) => (
               <FormItem className="w-28">
                 <FormLabel>Unit</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Unit" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent className="bg-background border shadow-md z-50 max-h-[200px] overflow-y-auto">
-                    {(() => {
-                      if (selectedProduct?.uom_purchase) {
-                        // Show smart suggestions first, then all other units
-                        const suggested = suggestRecipeUnits(selectedProduct.uom_purchase);
-                        const otherUnits = measurementUnits.filter(unit => !suggested.includes(unit));
-                        
-                        return [
-                          ...suggested.map((unit, idx) => (
-                            <SelectItem key={unit} value={unit}>
-                              {unit} {idx === 0 ? '(recommended)' : ''}
-                            </SelectItem>
-                          )),
-                          ...otherUnits.map((unit) => (
-                            <SelectItem key={unit} value={unit}>
-                              {unit}
-                            </SelectItem>
-                          ))
-                        ];
-                      }
-                      // Fallback to all measurement units
-                      return measurementUnits.map((unit) => (
-                        <SelectItem key={unit} value={unit}>
-                          {unit}
-                        </SelectItem>
-                      ));
-                    })()}
-                  </SelectContent>
-                </Select>
+                <FormControl>
+                  <GroupedUnitSelector
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    placeholder="Unit"
+                    productName={selectedProduct?.name}
+                    productSizeUnit={selectedProduct?.size_unit || selectedProduct?.uom_purchase}
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

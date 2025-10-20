@@ -46,6 +46,331 @@ export type Database = {
           },
         ]
       }
+      bank_account_balances: {
+        Row: {
+          account_mask: string | null
+          account_name: string
+          account_type: string | null
+          as_of_date: string
+          available_balance: number | null
+          connected_bank_id: string
+          created_at: string
+          currency: string
+          current_balance: number
+          id: string
+          is_active: boolean
+          stripe_financial_account_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_mask?: string | null
+          account_name: string
+          account_type?: string | null
+          as_of_date?: string
+          available_balance?: number | null
+          connected_bank_id: string
+          created_at?: string
+          currency?: string
+          current_balance?: number
+          id?: string
+          is_active?: boolean
+          stripe_financial_account_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_mask?: string | null
+          account_name?: string
+          account_type?: string | null
+          as_of_date?: string
+          available_balance?: number | null
+          connected_bank_id?: string
+          created_at?: string
+          currency?: string
+          current_balance?: number
+          id?: string
+          is_active?: boolean
+          stripe_financial_account_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_account_balances_connected_bank_id_fkey"
+            columns: ["connected_bank_id"]
+            isOneToOne: false
+            referencedRelation: "connected_banks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_transaction_splits: {
+        Row: {
+          amount: number
+          category_id: string
+          created_at: string
+          description: string | null
+          id: string
+          transaction_id: string
+        }
+        Insert: {
+          amount: number
+          category_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          transaction_id: string
+        }
+        Update: {
+          amount?: number
+          category_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_transaction_splits_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transaction_splits_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_transactions: {
+        Row: {
+          amount: number
+          category_id: string | null
+          connected_bank_id: string
+          created_at: string
+          currency: string
+          description: string
+          excluded_reason: string | null
+          id: string
+          inventory_transaction_id: string | null
+          is_categorized: boolean
+          is_reconciled: boolean
+          is_split: boolean
+          is_transfer: boolean
+          match_confidence: number | null
+          matched_at: string | null
+          matched_by: string | null
+          merchant_name: string | null
+          normalized_payee: string | null
+          notes: string | null
+          posted_date: string | null
+          raw_data: Json | null
+          receipt_id: string | null
+          reconciled_at: string | null
+          reconciled_by: string | null
+          restaurant_id: string
+          status: Database["public"]["Enums"]["transaction_status_enum"]
+          stripe_transaction_id: string
+          suggested_category_id: string | null
+          suggested_payee: string | null
+          transaction_date: string
+          transaction_type: string | null
+          transfer_pair_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          category_id?: string | null
+          connected_bank_id: string
+          created_at?: string
+          currency?: string
+          description: string
+          excluded_reason?: string | null
+          id?: string
+          inventory_transaction_id?: string | null
+          is_categorized?: boolean
+          is_reconciled?: boolean
+          is_split?: boolean
+          is_transfer?: boolean
+          match_confidence?: number | null
+          matched_at?: string | null
+          matched_by?: string | null
+          merchant_name?: string | null
+          normalized_payee?: string | null
+          notes?: string | null
+          posted_date?: string | null
+          raw_data?: Json | null
+          receipt_id?: string | null
+          reconciled_at?: string | null
+          reconciled_by?: string | null
+          restaurant_id: string
+          status?: Database["public"]["Enums"]["transaction_status_enum"]
+          stripe_transaction_id: string
+          suggested_category_id?: string | null
+          suggested_payee?: string | null
+          transaction_date: string
+          transaction_type?: string | null
+          transfer_pair_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          category_id?: string | null
+          connected_bank_id?: string
+          created_at?: string
+          currency?: string
+          description?: string
+          excluded_reason?: string | null
+          id?: string
+          inventory_transaction_id?: string | null
+          is_categorized?: boolean
+          is_reconciled?: boolean
+          is_split?: boolean
+          is_transfer?: boolean
+          match_confidence?: number | null
+          matched_at?: string | null
+          matched_by?: string | null
+          merchant_name?: string | null
+          normalized_payee?: string | null
+          notes?: string | null
+          posted_date?: string | null
+          raw_data?: Json | null
+          receipt_id?: string | null
+          reconciled_at?: string | null
+          reconciled_by?: string | null
+          restaurant_id?: string
+          status?: Database["public"]["Enums"]["transaction_status_enum"]
+          stripe_transaction_id?: string
+          suggested_category_id?: string | null
+          suggested_payee?: string | null
+          transaction_date?: string
+          transaction_type?: string | null
+          transfer_pair_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_transactions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_connected_bank_id_fkey"
+            columns: ["connected_bank_id"]
+            isOneToOne: false
+            referencedRelation: "connected_banks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_inventory_transaction_id_fkey"
+            columns: ["inventory_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "receipt_imports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_suggested_category_id_fkey"
+            columns: ["suggested_category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_transfer_pair_id_fkey"
+            columns: ["transfer_pair_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chart_of_accounts: {
+        Row: {
+          account_code: string
+          account_name: string
+          account_subtype: Database["public"]["Enums"]["account_subtype_enum"]
+          account_type: Database["public"]["Enums"]["account_type_enum"]
+          created_at: string
+          current_balance: number
+          description: string | null
+          id: string
+          is_active: boolean
+          is_system_account: boolean
+          location_code: string | null
+          normal_balance: string
+          parent_account_id: string | null
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_code: string
+          account_name: string
+          account_subtype: Database["public"]["Enums"]["account_subtype_enum"]
+          account_type: Database["public"]["Enums"]["account_type_enum"]
+          created_at?: string
+          current_balance?: number
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_system_account?: boolean
+          location_code?: string | null
+          normal_balance: string
+          parent_account_id?: string | null
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_code?: string
+          account_name?: string
+          account_subtype?: Database["public"]["Enums"]["account_subtype_enum"]
+          account_type?: Database["public"]["Enums"]["account_type_enum"]
+          created_at?: string
+          current_balance?: number
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_system_account?: boolean
+          location_code?: string | null
+          normal_balance?: string
+          parent_account_id?: string | null
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chart_of_accounts_parent_account_id_fkey"
+            columns: ["parent_account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chart_of_accounts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clover_connections: {
         Row: {
           access_token: string
@@ -285,6 +610,59 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "clover_orders_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      connected_banks: {
+        Row: {
+          connected_at: string
+          created_at: string
+          disconnected_at: string | null
+          id: string
+          institution_logo_url: string | null
+          institution_name: string
+          last_sync_at: string | null
+          restaurant_id: string
+          status: Database["public"]["Enums"]["bank_connection_status_enum"]
+          stripe_financial_account_id: string
+          sync_error: string | null
+          updated_at: string
+        }
+        Insert: {
+          connected_at?: string
+          created_at?: string
+          disconnected_at?: string | null
+          id?: string
+          institution_logo_url?: string | null
+          institution_name: string
+          last_sync_at?: string | null
+          restaurant_id: string
+          status?: Database["public"]["Enums"]["bank_connection_status_enum"]
+          stripe_financial_account_id: string
+          sync_error?: string | null
+          updated_at?: string
+        }
+        Update: {
+          connected_at?: string
+          created_at?: string
+          disconnected_at?: string | null
+          id?: string
+          institution_logo_url?: string | null
+          institution_name?: string
+          last_sync_at?: string | null
+          restaurant_id?: string
+          status?: Database["public"]["Enums"]["bank_connection_status_enum"]
+          stripe_financial_account_id?: string
+          sync_error?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connected_banks_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -537,6 +915,88 @@ export type Database = {
         }
         Relationships: []
       }
+      financial_statement_cache: {
+        Row: {
+          end_date: string
+          generated_at: string
+          id: string
+          restaurant_id: string
+          start_date: string
+          statement_data: Json
+          statement_type: string
+        }
+        Insert: {
+          end_date: string
+          generated_at?: string
+          id?: string
+          restaurant_id: string
+          start_date: string
+          statement_data: Json
+          statement_type: string
+        }
+        Update: {
+          end_date?: string
+          generated_at?: string
+          id?: string
+          restaurant_id?: string
+          start_date?: string
+          statement_data?: Json
+          statement_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_statement_cache_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fiscal_periods: {
+        Row: {
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          id: string
+          is_closed: boolean
+          period_end: string
+          period_start: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          id?: string
+          is_closed?: boolean
+          period_end: string
+          period_start: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          id?: string
+          is_closed?: boolean
+          period_end?: string
+          period_start?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fiscal_periods_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_reconciliations: {
         Row: {
           created_at: string
@@ -709,6 +1169,107 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      journal_entries: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string
+          entry_date: string
+          entry_number: string
+          id: string
+          is_balanced: boolean | null
+          reference_id: string | null
+          reference_type: string | null
+          restaurant_id: string
+          total_credit: number
+          total_debit: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description: string
+          entry_date: string
+          entry_number: string
+          id?: string
+          is_balanced?: boolean | null
+          reference_id?: string | null
+          reference_type?: string | null
+          restaurant_id: string
+          total_credit?: number
+          total_debit?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          entry_date?: string
+          entry_number?: string
+          id?: string
+          is_balanced?: boolean | null
+          reference_id?: string | null
+          reference_type?: string | null
+          restaurant_id?: string
+          total_credit?: number
+          total_debit?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_entries_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journal_entry_lines: {
+        Row: {
+          account_id: string
+          created_at: string
+          credit_amount: number
+          debit_amount: number
+          description: string | null
+          id: string
+          journal_entry_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          credit_amount?: number
+          debit_amount?: number
+          description?: string | null
+          id?: string
+          journal_entry_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          credit_amount?: number
+          debit_amount?: number
+          description?: string | null
+          id?: string
+          journal_entry_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_entry_lines_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pos_sales: {
         Row: {
@@ -1265,6 +1826,54 @@ export type Database = {
           },
         ]
       }
+      reconciliation_boundaries: {
+        Row: {
+          balance_start_date: string
+          created_at: string
+          id: string
+          last_reconciled_at: string
+          opening_balance: number
+          opening_balance_journal_entry_id: string | null
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          balance_start_date: string
+          created_at?: string
+          id?: string
+          last_reconciled_at?: string
+          opening_balance?: number
+          opening_balance_journal_entry_id?: string | null
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          balance_start_date?: string
+          created_at?: string
+          id?: string
+          last_reconciled_at?: string
+          opening_balance?: number
+          opening_balance_journal_entry_id?: string | null
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reconciliation_boundaries_opening_balance_journal_entry_id_fkey"
+            columns: ["opening_balance_journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reconciliation_boundaries_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reconciliation_items: {
         Row: {
           actual_quantity: number | null
@@ -1368,6 +1977,7 @@ export type Database = {
           id: string
           name: string
           phone: string | null
+          stripe_customer_id: string | null
           timezone: string | null
           updated_at: string
         }
@@ -1378,6 +1988,7 @@ export type Database = {
           id?: string
           name: string
           phone?: string | null
+          stripe_customer_id?: string | null
           timezone?: string | null
           updated_at?: string
         }
@@ -1388,6 +1999,7 @@ export type Database = {
           id?: string
           name?: string
           phone?: string | null
+          stripe_customer_id?: string | null
           timezone?: string | null
           updated_at?: string
         }
@@ -2085,6 +2697,30 @@ export type Database = {
           },
         ]
       }
+      stripe_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          processed_at: string
+          stripe_event_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          processed_at?: string
+          stripe_event_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          processed_at?: string
+          stripe_event_id?: string
+        }
+        Relationships: []
+      }
       suppliers: {
         Row: {
           address: string | null
@@ -2126,6 +2762,148 @@ export type Database = {
           website?: string | null
         }
         Relationships: []
+      }
+      transaction_categorization_rules: {
+        Row: {
+          apply_count: number
+          category_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          last_applied_at: string | null
+          match_type: string
+          match_value: string
+          priority: number
+          restaurant_id: string
+          rule_name: string
+          updated_at: string
+        }
+        Insert: {
+          apply_count?: number
+          category_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_applied_at?: string | null
+          match_type: string
+          match_value: string
+          priority?: number
+          restaurant_id: string
+          rule_name: string
+          updated_at?: string
+        }
+        Update: {
+          apply_count?: number
+          category_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_applied_at?: string | null
+          match_type?: string
+          match_value?: string
+          priority?: number
+          restaurant_id?: string
+          rule_name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_categorization_rules_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_categorization_rules_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transaction_reclassifications: {
+        Row: {
+          bank_transaction_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          new_category_id: string
+          original_category_id: string | null
+          original_journal_entry_id: string | null
+          reason: string | null
+          reclass_journal_entry_id: string
+          restaurant_id: string
+        }
+        Insert: {
+          bank_transaction_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          new_category_id: string
+          original_category_id?: string | null
+          original_journal_entry_id?: string | null
+          reason?: string | null
+          reclass_journal_entry_id: string
+          restaurant_id: string
+        }
+        Update: {
+          bank_transaction_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          new_category_id?: string
+          original_category_id?: string | null
+          original_journal_entry_id?: string | null
+          reason?: string | null
+          reclass_journal_entry_id?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_reclassifications_bank_transaction_id_fkey"
+            columns: ["bank_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_reclassifications_new_category_id_fkey"
+            columns: ["new_category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_reclassifications_original_category_id_fkey"
+            columns: ["original_category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_reclassifications_original_journal_entry_id_fkey"
+            columns: ["original_journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_reclassifications_reclass_journal_entry_id_fkey"
+            columns: ["reclass_journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_reclassifications_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       unified_sales: {
         Row: {
@@ -2272,6 +3050,10 @@ export type Database = {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: undefined
       }
+      apply_reconciliation_adjustment: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
+      }
       bulk_process_historical_sales: {
         Args: {
           p_end_date: string
@@ -2291,6 +3073,32 @@ export type Database = {
       calculate_square_daily_pnl: {
         Args: { p_restaurant_id: string; p_service_date: string }
         Returns: string
+      }
+      categorize_bank_transaction: {
+        Args:
+          | {
+              p_category_id: string
+              p_description?: string
+              p_transaction_id: string
+            }
+          | {
+              p_category_id: string
+              p_restaurant_id: string
+              p_transaction_id: string
+            }
+        Returns: Json
+      }
+      categorize_bank_transaction_split: {
+        Args: {
+          p_restaurant_id: string
+          p_splits: Json
+          p_transaction_id: string
+        }
+        Returns: Json
+      }
+      check_reconciliation_boundary: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
       }
       check_sale_already_processed: {
         Args: {
@@ -2313,6 +3121,10 @@ export type Database = {
       cleanup_rate_limit_logs: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      compute_account_balance: {
+        Args: { p_account_id: string; p_as_of_date?: string }
+        Returns: number
       }
       create_restaurant_with_owner: {
         Args:
@@ -2343,6 +3155,10 @@ export type Database = {
         Args: { "": string }
         Returns: string
       }
+      exclude_bank_transaction: {
+        Args: { p_reason?: string; p_transaction_id: string }
+        Returns: Json
+      }
       find_product_by_gtin: {
         Args: { p_restaurant_id: string; p_scanned_gtin: string }
         Returns: {
@@ -2371,6 +3187,10 @@ export type Database = {
           sku: string
           uom_purchase: string
         }[]
+      }
+      get_account_subtypes: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       get_product_cost_per_recipe_unit: {
         Args: { product_id: string }
@@ -2413,6 +3233,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      mark_as_transfer: {
+        Args: { p_transaction_id_1: string; p_transaction_id_2: string }
+        Returns: Json
+      }
       process_inventory_deduction: {
         Args: {
           p_pos_item_name: string
@@ -2450,6 +3274,10 @@ export type Database = {
               p_sale_date: string
             }
         Returns: Json
+      }
+      rebuild_account_balances: {
+        Args: { p_restaurant_id: string }
+        Returns: number
       }
       search_products_by_name: {
         Args: { p_restaurant_id: string; p_search_term: string }
@@ -2494,6 +3322,10 @@ export type Database = {
         Args: { "": string }
         Returns: string
       }
+      split_bank_transaction: {
+        Args: { p_splits: Json; p_transaction_id: string }
+        Returns: Json
+      }
       sync_clover_to_unified_sales: {
         Args: { p_restaurant_id: string }
         Returns: number
@@ -2530,6 +3362,60 @@ export type Database = {
       }
     }
     Enums: {
+      account_subtype_enum:
+        | "cash"
+        | "bank"
+        | "accounts_receivable"
+        | "inventory"
+        | "fixed_assets"
+        | "other_current_assets"
+        | "other_assets"
+        | "accounts_payable"
+        | "credit_card"
+        | "loan"
+        | "other_current_liabilities"
+        | "long_term_liabilities"
+        | "owners_equity"
+        | "retained_earnings"
+        | "sales"
+        | "other_income"
+        | "cost_of_goods_sold"
+        | "operating_expenses"
+        | "payroll"
+        | "tax_expense"
+        | "other_expenses"
+        | "prepaid_expenses"
+        | "accumulated_depreciation"
+        | "payroll_liabilities"
+        | "deferred_revenue"
+        | "other_liabilities"
+        | "distributions"
+        | "food_sales"
+        | "beverage_sales"
+        | "alcohol_sales"
+        | "catering_income"
+        | "food_cost"
+        | "beverage_cost"
+        | "packaging_cost"
+        | "labor"
+        | "rent"
+        | "utilities"
+        | "marketing"
+        | "insurance"
+        | "repairs_maintenance"
+        | "professional_fees"
+      account_type_enum:
+        | "asset"
+        | "liability"
+        | "equity"
+        | "revenue"
+        | "expense"
+        | "cogs"
+      bank_connection_status_enum:
+        | "connected"
+        | "disconnected"
+        | "requires_reauth"
+        | "error"
       measurement_unit:
         | "oz"
         | "ml"
@@ -2561,6 +3447,12 @@ export type Database = {
         | "mm"
         | "ft"
         | "meter"
+      transaction_review_status:
+        | "for_review"
+        | "categorized"
+        | "excluded"
+        | "reconciled"
+      transaction_status_enum: "pending" | "posted" | "reconciled" | "void"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2688,6 +3580,63 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      account_subtype_enum: [
+        "cash",
+        "bank",
+        "accounts_receivable",
+        "inventory",
+        "fixed_assets",
+        "other_current_assets",
+        "other_assets",
+        "accounts_payable",
+        "credit_card",
+        "loan",
+        "other_current_liabilities",
+        "long_term_liabilities",
+        "owners_equity",
+        "retained_earnings",
+        "sales",
+        "other_income",
+        "cost_of_goods_sold",
+        "operating_expenses",
+        "payroll",
+        "tax_expense",
+        "other_expenses",
+        "prepaid_expenses",
+        "accumulated_depreciation",
+        "payroll_liabilities",
+        "deferred_revenue",
+        "other_liabilities",
+        "distributions",
+        "food_sales",
+        "beverage_sales",
+        "alcohol_sales",
+        "catering_income",
+        "food_cost",
+        "beverage_cost",
+        "packaging_cost",
+        "labor",
+        "rent",
+        "utilities",
+        "marketing",
+        "insurance",
+        "repairs_maintenance",
+        "professional_fees",
+      ],
+      account_type_enum: [
+        "asset",
+        "liability",
+        "equity",
+        "revenue",
+        "expense",
+        "cogs",
+      ],
+      bank_connection_status_enum: [
+        "connected",
+        "disconnected",
+        "requires_reauth",
+        "error",
+      ],
       measurement_unit: [
         "oz",
         "ml",
@@ -2720,6 +3669,13 @@ export const Constants = {
         "ft",
         "meter",
       ],
+      transaction_review_status: [
+        "for_review",
+        "categorized",
+        "excluded",
+        "reconciled",
+      ],
+      transaction_status_enum: ["pending", "posted", "reconciled", "void"],
     },
   },
 } as const

@@ -15,6 +15,7 @@ interface Transaction {
   amount: number;
   status: string;
   is_categorized: boolean;
+  is_split: boolean;
   category_id?: string;
   connected_bank?: {
     institution_name: string;
@@ -99,14 +100,23 @@ export function TransactionCard({
             </div>
           </div>
 
-          {/* Category Selector */}
+          {/* Category Selector or Split Indicator */}
           <div className="space-y-2 w-full">
-            <CategorySelector
-              restaurantId={restaurantId}
-              value={transaction.category_id}
-              onSelect={(categoryId) => onCategorize(transaction.id, categoryId)}
-            />
-            {!transaction.is_categorized && (
+            {transaction.is_split ? (
+              <Badge 
+                variant="secondary" 
+                className="text-xs bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 border-blue-300 dark:border-blue-800 w-fit"
+              >
+                Split Transaction
+              </Badge>
+            ) : (
+              <CategorySelector
+                restaurantId={restaurantId}
+                value={transaction.category_id}
+                onSelect={(categoryId) => onCategorize(transaction.id, categoryId)}
+              />
+            )}
+            {!transaction.is_categorized && !transaction.is_split && (
               <Badge 
                 variant="outline" 
                 className="text-xs bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800 w-fit"

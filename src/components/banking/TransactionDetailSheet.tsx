@@ -16,8 +16,10 @@ import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { SearchableAccountSelector } from "./SearchableAccountSelector";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeftRight, Building2, Calendar, DollarSign, FileText, Sparkles } from "lucide-react";
+import { ArrowLeftRight, Building2, Calendar, DollarSign, FileText, Sparkles, Split } from "lucide-react";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
 
 interface TransactionDetailSheetProps {
   transaction: BankTransaction;
@@ -41,6 +43,21 @@ export function TransactionDetailSheet({
   const categorize = useCategorizeTransaction();
   const { selectedRestaurant } = useRestaurantContext();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
+
+  // Fetch split details if transaction is split
+  const { data: splits } = useQuery({
+    queryKey: ['transaction-splits', transaction.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('bank_transaction_splits')
+        .select('*, category:chart_of_accounts(account_name, account_code)')
+        .eq('transaction_id', transaction.id);
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!transaction.is_split,
+  });
 
   const isNegative = transaction.amount < 0;
   const formattedAmount = new Intl.NumberFormat('en-US', {
@@ -99,12 +116,20 @@ export function TransactionDetailSheet({
                   </div>
                 </div>
               </div>
-              {transaction.is_transfer && (
-                <Badge variant="secondary">
-                  <ArrowLeftRight className="h-3 w-3 mr-1" />
-                  Transfer
-                </Badge>
-              )}
+              <div className="flex gap-2">
+                {transaction.is_transfer && (
+                  <Badge variant="secondary">
+                    <ArrowLeftRight className="h-3 w-3 mr-1" />
+                    Transfer
+                  </Badge>
+                )}
+                {transaction.is_split && (
+                  <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200">
+                    <Split className="h-3 w-3 mr-1" />
+                    Split
+                  </Badge>
+                )}
+              </div>
             </div>
 
             <Separator />
@@ -143,12 +168,53 @@ export function TransactionDetailSheet({
                 {transaction.description}
               </div>
             </div>
+
+            {/* Split Transaction Details */}
+            {transaction.is_split && splits && splits.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium flex items-center gap-2">
+                  <Split className="h-4 w-4" />
+                  Split Breakdown
+                </div>
+                <div className="space-y-2">
+                  {splits.map((split: any, index: number) => (
+                    <div 
+                      key={split.id} 
+                      className="flex items-center justify-between p-3 bg-muted/50 rounded-md border"
+                    >
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">
+                          {split.category?.account_name || 'Unknown Category'}
+                        </div>
+                        {split.category?.account_code && (
+                          <div className="text-xs text-muted-foreground">
+                            {split.category.account_code}
+                          </div>
+                        )}
+                        {split.description && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {split.description}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-sm font-semibold">
+                        {new Intl.NumberFormat('en-US', {
+                          style: 'currency',
+                          currency: 'USD',
+                        }).format(split.amount)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <Separator />
 
-          {/* Edit Form */}
-          <div className="space-y-4">
+          {/* Edit Form - Only show if not split */}
+          {!transaction.is_split && (
+            <div className="space-y-4">
             {hasSuggestion && (
               <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
                 <div className="flex items-start gap-2">
@@ -207,20 +273,29 @@ export function TransactionDetailSheet({
               />
             </div>
           </div>
+          )}
 
           {/* Actions */}
-          <div className="flex gap-3">
-            <Button
-              onClick={handleSave}
-              disabled={!selectedCategoryId || categorize.isPending}
-              className="flex-1"
-            >
-              Save & Categorize
-            </Button>
-            <Button variant="outline" onClick={onClose} className="flex-1">
-              Cancel
-            </Button>
-          </div>
+          {!transaction.is_split ? (
+            <div className="flex gap-3">
+              <Button
+                onClick={handleSave}
+                disabled={!selectedCategoryId || categorize.isPending}
+                className="flex-1"
+              >
+                Save & Categorize
+              </Button>
+              <Button variant="outline" onClick={onClose} className="flex-1">
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={onClose} className="w-full">
+                Close
+              </Button>
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>

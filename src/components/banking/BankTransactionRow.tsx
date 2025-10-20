@@ -61,12 +61,20 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
         <TableCell>
           <div className="flex flex-col">
             <span className="font-medium">{transaction.description}</span>
-            {transaction.is_transfer && (
-              <Badge variant="secondary" className="mt-1 w-fit">
-                <ArrowLeftRight className="h-3 w-3 mr-1" />
-                Transfer
-              </Badge>
-            )}
+            <div className="flex gap-2 mt-1">
+              {transaction.is_transfer && (
+                <Badge variant="secondary" className="w-fit">
+                  <ArrowLeftRight className="h-3 w-3 mr-1" />
+                  Transfer
+                </Badge>
+              )}
+              {transaction.is_split && (
+                <Badge variant="secondary" className="w-fit bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200">
+                  <Split className="h-3 w-3 mr-1" />
+                  Split
+                </Badge>
+              )}
+            </div>
           </div>
         </TableCell>
 
@@ -104,7 +112,12 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
 
         {status === 'categorized' && (
           <TableCell className="hidden lg:table-cell">
-            {currentCategory ? (
+            {transaction.is_split ? (
+              <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200">
+                <Split className="h-3 w-3 mr-1" />
+                Split across categories
+              </Badge>
+            ) : currentCategory ? (
               <Badge variant="secondary">{currentCategory.account_name}</Badge>
             ) : (
               <span className="text-muted-foreground text-sm">—</span>

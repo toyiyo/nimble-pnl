@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Building2, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CategorySelector } from "@/components/CategorySelector";
+import { TransactionDetailSheet } from "./TransactionDetailSheet";
 
 interface Transaction {
   id: string;
@@ -41,90 +43,97 @@ export function TransactionCard({
   formatDate,
   formatCurrency 
 }: TransactionCardProps) {
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const isNegative = transaction.amount < 0;
 
   return (
-    <Card 
-      className={cn(
-        "transition-all hover:shadow-md overflow-hidden",
-        !transaction.is_categorized && "border-l-4 border-l-yellow-500 bg-yellow-50/50 dark:bg-yellow-950/20"
-      )}
-    >
-      <CardContent className="p-4 space-y-3 overflow-hidden">
-        {/* Header: Date and Amount */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-muted-foreground">
-              {formatDate(transaction.transaction_date)}
-            </p>
-            <h4 className="font-semibold text-base truncate mt-1">
-              {transaction.merchant_name || transaction.description}
-            </h4>
-            {transaction.merchant_name && transaction.description !== transaction.merchant_name && (
-              <p className="text-xs text-muted-foreground truncate mt-0.5">
-                {transaction.description}
+    <>
+      <Card 
+        className={cn(
+          "transition-all hover:shadow-md w-full max-w-full",
+          !transaction.is_categorized && "border-l-4 border-l-yellow-500 bg-yellow-50/50 dark:bg-yellow-950/20"
+        )}
+      >
+        <CardContent className="p-4 space-y-3 w-full max-w-full overflow-hidden">
+          {/* Header: Date and Amount */}
+          <div className="flex items-start justify-between gap-2 min-w-0">
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <p className="text-sm font-medium text-muted-foreground">
+                {formatDate(transaction.transaction_date)}
               </p>
-            )}
-          </div>
-          <div className="text-right flex-shrink-0">
-            <div className={cn(
-              "text-lg font-bold",
-              isNegative ? "text-red-500" : "text-green-500"
-            )}>
-              {formatCurrency(transaction.amount)}
+              <h4 className="font-semibold text-base truncate mt-1">
+                {transaction.merchant_name || transaction.description}
+              </h4>
+              {transaction.merchant_name && transaction.description !== transaction.merchant_name && (
+                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                  {transaction.description}
+                </p>
+              )}
             </div>
-            <Badge 
-              variant={transaction.status === 'posted' ? 'default' : 'secondary'} 
-              className="mt-1"
-            >
-              {transaction.status}
-            </Badge>
+            <div className="text-right flex-shrink-0">
+              <div className={cn(
+                "text-lg font-bold whitespace-nowrap",
+                isNegative ? "text-red-500" : "text-green-500"
+              )}>
+                {formatCurrency(transaction.amount)}
+              </div>
+              <Badge 
+                variant={transaction.status === 'posted' ? 'default' : 'secondary'} 
+                className="mt-1 text-xs"
+              >
+                {transaction.status}
+              </Badge>
+            </div>
           </div>
-        </div>
 
-        {/* Bank Info */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Building2 className="h-4 w-4 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <span className="truncate">{transaction.connected_bank?.institution_name}</span>
-            {transaction.connected_bank?.bank_account_balances?.[0]?.account_mask && (
-              <span className="ml-2">
-                ••••{transaction.connected_bank.bank_account_balances[0].account_mask}
-              </span>
+          {/* Bank Info */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0 overflow-hidden">
+            <Building2 className="h-4 w-4 flex-shrink-0" />
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <span className="truncate block">{transaction.connected_bank?.institution_name}</span>
+              {transaction.connected_bank?.bank_account_balances?.[0]?.account_mask && (
+                <span className="ml-2 whitespace-nowrap">
+                  ••••{transaction.connected_bank.bank_account_balances[0].account_mask}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Category Selector */}
+          <div className="space-y-2 w-full">
+            <CategorySelector
+              restaurantId={restaurantId}
+              value={transaction.category_id}
+              onSelect={(categoryId) => onCategorize(transaction.id, categoryId)}
+            />
+            {!transaction.is_categorized && (
+              <Badge 
+                variant="outline" 
+                className="text-xs bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800 w-fit"
+              >
+                Needs categorization
+              </Badge>
             )}
           </div>
-        </div>
 
-        {/* Category Selector */}
-        <div className="space-y-2 min-w-0">
-          <CategorySelector
-            restaurantId={restaurantId}
-            value={transaction.category_id}
-            onSelect={(categoryId) => onCategorize(transaction.id, categoryId)}
-          />
-          {!transaction.is_categorized && (
-            <Badge 
-              variant="outline" 
-              className="text-xs bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800 w-fit"
-            >
-              Needs categorization
-            </Badge>
-          )}
-        </div>
-
-        {/* View Details Button */}
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="w-full justify-between mt-2"
-          onClick={() => {
-            // Could expand to show more details
-          }}
-        >
-          <span>View Details</span>
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </CardContent>
-    </Card>
+          {/* View Details Button */}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="w-full justify-between mt-2"
+            onClick={() => setIsDetailOpen(true)}
+          >
+            <span>View Details</span>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </CardContent>
+      </Card>
+      
+      <TransactionDetailSheet
+        transaction={transaction as any}
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+      />
+    </>
   );
 }

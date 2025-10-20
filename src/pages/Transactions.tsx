@@ -168,9 +168,9 @@ const Transactions = () => {
   const activeFilterCount = Object.values(filters).filter(v => v !== undefined && v !== '').length;
 
   return (
-    <div className="space-y-4 md:space-y-6 w-full max-w-full">
+    <div className="space-y-4 md:space-y-6 w-full max-w-full overflow-x-hidden px-4 md:px-0">
       {/* Hero Section - More compact on mobile */}
-      <div className="relative overflow-hidden rounded-xl md:rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-6 md:p-8">
+      <div className="relative overflow-hidden rounded-xl md:rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-6 md:p-8 w-full max-w-full">
         <div className="relative z-10">
           <div className="flex items-center gap-3 md:gap-4">
             <MetricIcon icon={Receipt} variant="blue" className="hidden sm:flex" />
@@ -380,8 +380,8 @@ const Transactions = () => {
           </CardContent>
         </Card>
       ) : isMobile ? (
-        // Mobile Card View
-        <div className="space-y-3">
+        // Mobile Card View - Properly constrained
+        <div className="space-y-3 w-full max-w-full overflow-x-hidden">
           {filteredTransactions.map((txn) => (
             <TransactionCard
               key={txn.id}

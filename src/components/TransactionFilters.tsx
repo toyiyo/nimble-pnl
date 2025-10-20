@@ -51,12 +51,15 @@ export const TransactionFiltersSheet = ({ restaurantId, filters, onFiltersChange
     queryFn: async () => {
       const { data, error } = await supabase
         .from('connected_banks')
-        .select('id, institution_name, bank_account_balances(id, account_name, account_mask)')
+        .select('id, institution_name, bank_account_balances!inner(id, account_name, account_mask, is_active)')
         .eq('restaurant_id', restaurantId)
-        .eq('status', 'connected');
+        .eq('status', 'connected')
+        .eq('bank_account_balances.is_active', true);
       
       if (error) throw error;
-      return data;
+      
+      // Filter out banks with no active balance records
+      return data?.filter(bank => bank.bank_account_balances && bank.bank_account_balances.length > 0) || [];
     },
     enabled: !!restaurantId && open,
   });

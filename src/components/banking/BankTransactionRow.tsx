@@ -4,7 +4,7 @@ import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2 } from "lucide-react";
+import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2, Building2 } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { SplitTransactionDialog } from "./SplitTransactionDialog";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
@@ -79,7 +79,15 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
         </TableCell>
 
         <TableCell className="hidden md:table-cell">
-          {transaction.normalized_payee || transaction.merchant_name || '—'}
+          <div className="flex flex-col gap-1">
+            <span>{transaction.normalized_payee || transaction.merchant_name || '—'}</span>
+            {transaction.supplier && (
+              <Badge variant="secondary" className="w-fit bg-primary/10 text-primary">
+                <Building2 className="h-3 w-3 mr-1" />
+                {transaction.supplier.name}
+              </Badge>
+            )}
+          </div>
         </TableCell>
 
         <TableCell className="text-right">

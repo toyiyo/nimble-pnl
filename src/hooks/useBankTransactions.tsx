@@ -43,6 +43,10 @@ export interface BankTransaction {
   chart_account?: {
     account_name: string;
   } | null;
+  supplier?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 export function useBankTransactions(status?: TransactionStatus) {
@@ -54,13 +58,13 @@ export function useBankTransactions(status?: TransactionStatus) {
     queryFn: async () => {
       if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
 
-      // Use range to fetch all transactions (Supabase default max is 1000, so we fetch up to 10000)
+      // Use range to fetch all transactions with supplier info
       let query = supabase
         .from('bank_transactions')
-        .select('*', { count: 'exact' })
+        .select('*, supplier:suppliers(id, name)', { count: 'exact' })
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .order('transaction_date', { ascending: false })
-        .range(0, 9999); // Fetch up to 10,000 transactions
+        .range(0, 9999);
 
       if (status) {
         query = query.eq('status', status as any);
@@ -93,6 +97,10 @@ export function useBankTransactionsWithRelations(restaurantId: string | null | u
           ),
           chart_account:chart_of_accounts!category_id(
             account_name
+          ),
+          supplier:suppliers(
+            id,
+            name
           )
         `)
         .eq('restaurant_id', restaurantId)

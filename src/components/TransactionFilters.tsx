@@ -22,6 +22,8 @@ import { Badge } from '@/components/ui/badge';
 import { CategorySelector } from '@/components/CategorySelector';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 
 export interface TransactionFilters {
   dateFrom?: string;
@@ -90,166 +92,182 @@ export const TransactionFiltersSheet = ({ restaurantId, filters, onFiltersChange
           )}
         </Button>
       </SheetTrigger>
-      <SheetContent>
+      <SheetContent className="flex flex-col">
         <SheetHeader>
           <SheetTitle>Filter Transactions</SheetTitle>
           <SheetDescription>
             Apply filters to narrow down your transaction list
           </SheetDescription>
         </SheetHeader>
-        <div className="space-y-6 mt-6">
-          {/* Date Range */}
-          <div className="space-y-2">
-            <Label>Date Range</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs text-muted-foreground">From</Label>
-                <Input
-                  type="date"
-                  value={localFilters.dateFrom || ''}
-                  onChange={(e) => setLocalFilters({ ...localFilters, dateFrom: e.target.value })}
-                />
+        
+        <ScrollArea className="flex-1 -mx-6 px-6">
+          <div className="space-y-6 mt-6 pb-4">
+            {/* Basic Filters Section */}
+            <div className="space-y-4">
+              {/* Date Range */}
+              <div className="space-y-2">
+                <Label>Date Range <span className="text-xs text-muted-foreground">(Optional)</span></Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">From</Label>
+                    <Input
+                      type="date"
+                      value={localFilters.dateFrom || ''}
+                      onChange={(e) => setLocalFilters({ ...localFilters, dateFrom: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">To</Label>
+                    <Input
+                      type="date"
+                      value={localFilters.dateTo || ''}
+                      onChange={(e) => setLocalFilters({ ...localFilters, dateTo: e.target.value })}
+                    />
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">To</Label>
-                <Input
-                  type="date"
-                  value={localFilters.dateTo || ''}
-                  onChange={(e) => setLocalFilters({ ...localFilters, dateTo: e.target.value })}
-                />
+
+              {/* Amount Range */}
+              <div className="space-y-2">
+                <Label>Amount Range <span className="text-xs text-muted-foreground">(Optional)</span></Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Min</Label>
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={localFilters.minAmount || ''}
+                      onChange={(e) => setLocalFilters({ ...localFilters, minAmount: parseFloat(e.target.value) || undefined })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Max</Label>
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={localFilters.maxAmount || ''}
+                      onChange={(e) => setLocalFilters({ ...localFilters, maxAmount: parseFloat(e.target.value) || undefined })}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Amount Range */}
-          <div className="space-y-2">
-            <Label>Amount Range</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs text-muted-foreground">Min</Label>
-                <Input
-                  type="number"
-                  placeholder="0.00"
-                  value={localFilters.minAmount || ''}
-                  onChange={(e) => setLocalFilters({ ...localFilters, minAmount: parseFloat(e.target.value) || undefined })}
-                />
+            <Separator />
+
+            {/* Transaction Filters Section */}
+            <div className="space-y-4">
+              {/* Status */}
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={localFilters.status || 'all'}
+                  onValueChange={(value) => setLocalFilters({ ...localFilters, status: value === 'all' ? undefined : value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="posted">Posted</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Max</Label>
-                <Input
-                  type="number"
-                  placeholder="0.00"
-                  value={localFilters.maxAmount || ''}
-                  onChange={(e) => setLocalFilters({ ...localFilters, maxAmount: parseFloat(e.target.value) || undefined })}
-                />
+
+              {/* Transaction Type */}
+              <div className="space-y-2">
+                <Label>Transaction Type</Label>
+                <Select
+                  value={localFilters.transactionType || 'all'}
+                  onValueChange={(value) => setLocalFilters({ ...localFilters, transactionType: value === 'all' ? undefined : value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All types</SelectItem>
+                    <SelectItem value="debit">Debits (Expenses)</SelectItem>
+                    <SelectItem value="credit">Credits (Income)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Bank Account Filter */}
+              <div className="space-y-2">
+                <Label>Bank Account</Label>
+                <Select
+                  value={localFilters.bankAccountId || 'all'}
+                  onValueChange={(value) => setLocalFilters({ ...localFilters, bankAccountId: value === 'all' ? undefined : value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All accounts" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All accounts</SelectItem>
+                    {bankAccounts?.map((bank) => 
+                      bank.bank_account_balances?.map((account: any) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {bank.institution_name} {account.account_mask ? `••••${account.account_mask}` : ''}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          </div>
 
-          {/* Status */}
-          <div className="space-y-2">
-            <Label>Status</Label>
-            <Select
-              value={localFilters.status || 'all'}
-              onValueChange={(value) => setLocalFilters({ ...localFilters, status: value === 'all' ? undefined : value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="posted">Posted</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            <Separator />
 
-          {/* Transaction Type */}
-          <div className="space-y-2">
-            <Label>Transaction Type</Label>
-            <Select
-              value={localFilters.transactionType || 'all'}
-              onValueChange={(value) => setLocalFilters({ ...localFilters, transactionType: value === 'all' ? undefined : value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All types" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="debit">Debits (Expenses)</SelectItem>
-                <SelectItem value="credit">Credits (Income)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Category Filter */}
-          <div className="space-y-2">
-            <Label>Category</Label>
-            <CategorySelector
-              restaurantId={restaurantId}
-              value={localFilters.categoryId}
-              onSelect={(categoryId) => setLocalFilters({ ...localFilters, categoryId })}
-            />
-            {localFilters.categoryId && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setLocalFilters({ ...localFilters, categoryId: undefined })}
-              >
-                Clear category
-              </Button>
-            )}
-          </div>
-
-          {/* Bank Account Filter */}
-          <div className="space-y-2">
-            <Label>Bank Account</Label>
-            <Select
-              value={localFilters.bankAccountId || 'all'}
-              onValueChange={(value) => setLocalFilters({ ...localFilters, bankAccountId: value === 'all' ? undefined : value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All accounts" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All accounts</SelectItem>
-                {bankAccounts?.map((bank) => 
-                  bank.bank_account_balances?.map((account: any) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {bank.institution_name} {account.account_mask ? `••••${account.account_mask}` : ''}
-                    </SelectItem>
-                  ))
+            {/* Category Filters Section */}
+            <div className="space-y-4">
+              {/* Category Filter */}
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <CategorySelector
+                  restaurantId={restaurantId}
+                  value={localFilters.categoryId}
+                  onSelect={(categoryId) => setLocalFilters({ ...localFilters, categoryId })}
+                />
+                {localFilters.categoryId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setLocalFilters({ ...localFilters, categoryId: undefined })}
+                  >
+                    Clear category
+                  </Button>
                 )}
-              </SelectContent>
-            </Select>
-          </div>
+              </div>
 
-          {/* Uncategorized Filter */}
-          <div className="space-y-2">
-            <Label>Show Only</Label>
-            <Select
-              value={localFilters.showUncategorized === true ? 'uncategorized' : 'all'}
-              onValueChange={(value) => setLocalFilters({ ...localFilters, showUncategorized: value === 'uncategorized' ? true : undefined })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All transactions" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All transactions</SelectItem>
-                <SelectItem value="uncategorized">Uncategorized only</SelectItem>
-              </SelectContent>
-            </Select>
+              {/* Uncategorized Filter */}
+              <div className="space-y-2">
+                <Label>Show Only</Label>
+                <Select
+                  value={localFilters.showUncategorized === true ? 'uncategorized' : 'all'}
+                  onValueChange={(value) => setLocalFilters({ ...localFilters, showUncategorized: value === 'uncategorized' ? true : undefined })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All transactions" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All transactions</SelectItem>
+                    <SelectItem value="uncategorized">Uncategorized only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
+        </ScrollArea>
 
-          {/* Actions */}
-          <div className="flex gap-2 pt-4">
-            <Button onClick={handleApply} className="flex-1">
-              Apply Filters
-            </Button>
-            <Button onClick={handleReset} variant="outline">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+        {/* Sticky Footer with Actions */}
+        <div className="border-t pt-4 mt-auto space-y-2">
+          <Button onClick={handleApply} className="w-full" size="lg">
+            Apply Filters
+          </Button>
+          <Button onClick={handleReset} variant="outline" className="w-full">
+            Clear All Filters
+          </Button>
         </div>
       </SheetContent>
     </Sheet>

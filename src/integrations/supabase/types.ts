@@ -3079,12 +3079,6 @@ export type Database = {
           | {
               p_category_id: string
               p_description?: string
-              p_is_split?: boolean
-              p_transaction_id: string
-            }
-          | {
-              p_category_id: string
-              p_description?: string
               p_transaction_id: string
             }
           | {

@@ -168,7 +168,7 @@ const Transactions = () => {
   const activeFilterCount = Object.values(filters).filter(v => v !== undefined && v !== '').length;
 
   return (
-    <div className="space-y-4 md:space-y-6 overflow-x-hidden">
+    <div className="space-y-4 md:space-y-6 w-full max-w-full">
       {/* Hero Section - More compact on mobile */}
       <div className="relative overflow-hidden rounded-xl md:rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-6 md:p-8">
         <div className="relative z-10">
@@ -395,15 +395,13 @@ const Transactions = () => {
         </div>
       ) : (
         // Desktop Table View - Use BankTransactionList for full functionality
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <BankTransactionList 
-                transactions={filteredTransactions as any} 
-                status={filteredTransactions.every(t => t.is_categorized) ? 'categorized' : 'for_review'} 
-                accounts={accounts}
-              />
-            </div>
+        <Card className="w-full max-w-full overflow-hidden">
+          <CardContent className="p-0 w-full max-w-full">
+            <BankTransactionList 
+              transactions={filteredTransactions as any} 
+              status={filteredTransactions.every(t => t.is_categorized) ? 'categorized' : 'for_review'} 
+              accounts={accounts}
+            />
           </CardContent>
         </Card>
       )}

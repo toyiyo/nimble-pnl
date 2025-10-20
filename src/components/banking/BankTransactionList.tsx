@@ -11,8 +11,8 @@ interface BankTransactionListProps {
 
 export function BankTransactionList({ transactions, status, accounts }: BankTransactionListProps) {
   return (
-    <div className="w-full overflow-x-auto">
-      <Table className="min-w-[700px]">
+    <div className="w-full overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+      <Table className="min-w-[700px] max-w-full">
         <TableHeader>
           <TableRow>
             <TableHead className="w-[110px] whitespace-nowrap">Date</TableHead>

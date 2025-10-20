@@ -19,6 +19,7 @@ export interface BankTransaction {
   category_id: string | null;
   suggested_category_id: string | null;
   suggested_payee: string | null;
+  supplier_id: string | null;
   status: TransactionStatus;
   is_categorized: boolean;
   is_reconciled: boolean;
@@ -116,17 +117,20 @@ export function useCategorizeTransaction() {
       categoryId,
       description,
       normalizedPayee,
+      supplierId,
     }: {
       transactionId: string;
       categoryId: string;
       description?: string;
       normalizedPayee?: string;
+      supplierId?: string;
     }) => {
       const { data, error } = await supabase.rpc('categorize_bank_transaction', {
         p_transaction_id: transactionId,
         p_category_id: categoryId,
         p_description: description,
         p_normalized_payee: normalizedPayee,
+        p_supplier_id: supplierId,
       });
 
       if (error) throw error;

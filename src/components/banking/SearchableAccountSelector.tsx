@@ -22,16 +22,18 @@ interface SearchableAccountSelectorProps {
   value?: string;
   onValueChange: (value: string) => void;
   placeholder?: string;
+  disabled?: boolean;
 }
 
 export function SearchableAccountSelector({
   value,
   onValueChange,
   placeholder = "Select account",
+  disabled = false,
 }: SearchableAccountSelectorProps) {
   const [open, setOpen] = useState(false);
   const { selectedRestaurant } = useRestaurantContext();
-  const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
+  const { accounts, loading } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
 
   const selectedAccount = useMemo(
     () => accounts?.find((account) => account.id === value),
@@ -52,6 +54,9 @@ export function SearchableAccountSelector({
     }, {} as Record<string, typeof accounts>);
   }, [accounts]);
 
+  const isEmpty = !loading && accounts.length === 0;
+  const isDisabled = disabled || loading;
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -59,9 +64,16 @@ export function SearchableAccountSelector({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-busy={loading}
           className="w-full justify-between"
+          disabled={isDisabled}
         >
-          {selectedAccount ? (
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              Loading accounts...
+            </span>
+          ) : selectedAccount ? (
             <span className="flex items-center gap-2">
               <span className="font-mono text-xs text-muted-foreground">
                 {selectedAccount.account_code}
@@ -74,39 +86,47 @@ export function SearchableAccountSelector({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0" align="start">
+      <PopoverContent className="w-full p-0 bg-background z-50" align="start">
         <Command>
           <CommandInput placeholder="Search accounts..." />
           <CommandList>
-            <CommandEmpty>No account found.</CommandEmpty>
-            {groupedAccounts &&
-              Object.entries(groupedAccounts).map(([type, typeAccounts]) => (
-                <CommandGroup key={type} heading={type}>
-                  {typeAccounts.map((account) => (
-                    <CommandItem
-                      key={account.id}
-                      value={`${account.account_code} ${account.account_name}`}
-                      onSelect={() => {
-                        onValueChange(account.id);
-                        setOpen(false);
-                      }}
-                    >
-                      <Check
-                        className={cn(
-                          "mr-2 h-4 w-4",
-                          value === account.id ? "opacity-100" : "opacity-0"
-                        )}
-                      />
-                      <span className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-muted-foreground w-16">
-                          {account.account_code}
+            {isEmpty ? (
+              <div className="py-6 px-4 text-center text-sm text-muted-foreground">
+                <p className="font-medium mb-1">No accounts found</p>
+                <p className="text-xs">Create accounts in Chart of Accounts to get started</p>
+              </div>
+            ) : (
+              <>
+                <CommandEmpty>No account found.</CommandEmpty>
+                {Object.entries(groupedAccounts).map(([type, typeAccounts]) => (
+                  <CommandGroup key={type} heading={type}>
+                    {typeAccounts.map((account) => (
+                      <CommandItem
+                        key={account.id}
+                        value={`${account.account_code} ${account.account_name}`}
+                        onSelect={() => {
+                          onValueChange(account.id);
+                          setOpen(false);
+                        }}
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            value === account.id ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <span className="flex items-center gap-2">
+                          <span className="font-mono text-xs text-muted-foreground w-16">
+                            {account.account_code}
+                          </span>
+                          <span>{account.account_name}</span>
                         </span>
-                        <span>{account.account_name}</span>
-                      </span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              ))}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                ))}
+              </>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

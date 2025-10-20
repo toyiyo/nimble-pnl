@@ -161,32 +161,33 @@ serve(async (req) => {
         }
 
         // Store account balance info using upsert to handle duplicate events
-        if (balanceData && (balanceData.current || balanceData.available)) {
-          const { error: balanceError } = await supabaseClient
-            .from("bank_account_balances")
-            .upsert({
-              connected_bank_id: bankData.id,
-              stripe_financial_account_id: account.id,
-              account_name: account.display_name || account.institution_name,
-              account_type: account.subcategory,
-              account_mask: account.last4,
-              current_balance: (balanceData.current?.usd || 0) / 100,
-              available_balance: balanceData.available?.usd ? balanceData.available.usd / 100 : null,
-              currency: "USD",
-              is_active: true,
-              as_of_date: new Date().toISOString(),
-            }, {
-              onConflict: "stripe_financial_account_id",
-              ignoreDuplicates: false, // Update existing record
-            });
+        // Create balance record even if balance is null (E*TRADE returns null initially)
+        const currentBalance = balanceData?.current?.usd;
+        const availableBalance = balanceData?.available?.usd;
+        const hasBalanceData = currentBalance !== undefined || availableBalance !== undefined;
 
-          if (balanceError) {
-            console.error("[FC-WEBHOOK] Error storing/updating balance:", balanceError);
-          } else {
-            console.log("[FC-WEBHOOK] Balance stored/updated successfully");
-          }
+        const { error: balanceError } = await supabaseClient
+          .from("bank_account_balances")
+          .upsert({
+            connected_bank_id: bankData.id,
+            stripe_financial_account_id: account.id,
+            account_name: account.display_name || account.institution_name,
+            account_type: account.subcategory,
+            account_mask: account.last4,
+            current_balance: currentBalance ? currentBalance / 100 : 0,
+            available_balance: availableBalance ? availableBalance / 100 : null,
+            currency: "USD",
+            is_active: true,
+            as_of_date: new Date().toISOString(),
+          }, {
+            onConflict: "stripe_financial_account_id",
+            ignoreDuplicates: false, // Update existing record
+          });
+
+        if (balanceError) {
+          console.error("[FC-WEBHOOK] Error storing/updating balance:", balanceError);
         } else {
-          console.log("[FC-WEBHOOK] No balance data available yet");
+          console.log("[FC-WEBHOOK] Balance record", hasBalanceData ? "stored with data" : "created as placeholder");
         }
 
         // Record event as processed after successful handling

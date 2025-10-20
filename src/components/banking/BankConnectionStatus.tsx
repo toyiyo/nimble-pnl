@@ -27,6 +27,7 @@ export function BankConnectionStatus() {
       return data;
     },
     enabled: !!selectedRestaurant?.restaurant_id,
+    refetchInterval: 5000, // Check every 5 seconds for updates
   });
 
   if (isLoading) {
@@ -74,9 +75,12 @@ export function BankConnectionStatus() {
                       {bank.bank_account_balances[0].account_mask}
                     </div>
                   )}
-                  {bank.last_sync_at && (
+                   {bank.last_sync_at && (
                     <div className="text-xs text-muted-foreground">
                       Last synced: {format(new Date(bank.last_sync_at), 'MMM dd, yyyy h:mm a')}
+                      {new Date(bank.last_sync_at) > new Date(Date.now() - 60000) && (
+                        <span className="ml-2 text-blue-600">• Syncing...</span>
+                      )}
                     </div>
                   )}
                 </div>

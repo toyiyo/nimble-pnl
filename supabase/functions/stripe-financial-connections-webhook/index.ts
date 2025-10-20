@@ -286,6 +286,62 @@ serve(async (req) => {
         break;
       }
 
+      case "financial_connections.account.refreshed_transactions": {
+        const account = event.data.object as Stripe.FinancialConnections.Account;
+        console.log("[FC-WEBHOOK] Transactions refreshed for account:", account.id);
+
+        // Find the connected bank
+        const { data: bank } = await supabaseClient
+          .from("connected_banks")
+          .select("id")
+          .eq("stripe_financial_account_id", account.id)
+          .single();
+
+        if (bank) {
+          console.log("[FC-WEBHOOK] Triggering transaction sync for bank:", bank.id);
+          
+          // Trigger transaction sync to pull the new transactions
+          try {
+            const syncResponse = await fetch(
+              `${Deno.env.get("SUPABASE_URL")}/functions/v1/stripe-sync-transactions`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                },
+                body: JSON.stringify({ bankId: bank.id }),
+              }
+            );
+            
+            if (syncResponse.ok) {
+              const syncResult = await syncResponse.json();
+              console.log("[FC-WEBHOOK] Transaction sync completed:", syncResult);
+            } else {
+              const errorText = await syncResponse.text();
+              console.error("[FC-WEBHOOK] Transaction sync failed:", errorText);
+            }
+          } catch (syncError) {
+            console.error("[FC-WEBHOOK] Error triggering transaction sync:", syncError);
+          }
+
+          // Record event as processed
+          const { error: recordError } = await supabaseClient
+            .from("stripe_events")
+            .insert({
+              stripe_event_id: event.id,
+              event_type: event.type,
+            });
+
+          if (recordError) {
+            console.error("[FC-WEBHOOK] Error recording event:", recordError);
+          }
+        } else {
+          console.error("[FC-WEBHOOK] Bank not found for account:", account.id);
+        }
+        break;
+      }
+
       default:
         console.log("[FC-WEBHOOK] Unhandled event type:", event.type);
         // Still record unhandled events to prevent reprocessing

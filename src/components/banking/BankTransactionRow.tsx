@@ -170,12 +170,13 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
                 </Button>
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
                   onClick={handleExclude}
                   disabled={exclude.isPending}
-                  title="Exclude"
+                  className="whitespace-nowrap text-destructive hover:text-destructive"
                 >
-                  <XCircle className="h-4 w-4" />
+                  <XCircle className="h-4 w-4 md:mr-1" />
+                  <span className="hidden md:inline">Exclude</span>
                 </Button>
               </>
             )}

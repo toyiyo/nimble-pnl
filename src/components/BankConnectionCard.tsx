@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Building2, Wallet, TrendingUp, AlertCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import { useToast } from '@/hooks/use-toast';
 
 interface BankBalance {
   id: string;
@@ -38,6 +39,7 @@ interface BankConnectionCardProps {
 export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions }: BankConnectionCardProps) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const { toast } = useToast();
   const totalBalance = bank.balances.reduce((sum, balance) => sum + balance.current_balance, 0);
   const activeAccounts = bank.balances.filter(b => b.is_active).length;
 
@@ -46,6 +48,17 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions 
     setIsSyncing(true);
     try {
       await onSyncTransactions(bank.id);
+      toast({
+        title: "Success",
+        description: "Transactions synced successfully",
+      });
+    } catch (error) {
+      console.error('Transaction sync error:', error);
+      toast({
+        variant: "destructive",
+        title: "Sync Failed",
+        description: error instanceof Error ? error.message : "Failed to sync transactions. Please try again.",
+      });
     } finally {
       setIsSyncing(false);
     }
@@ -56,6 +69,17 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions 
     setIsRefreshing(true);
     try {
       await onRefreshBalance(bank.id);
+      toast({
+        title: "Success",
+        description: "Balance refreshed successfully",
+      });
+    } catch (error) {
+      console.error('Balance refresh error:', error);
+      toast({
+        variant: "destructive",
+        title: "Refresh Failed",
+        description: error instanceof Error ? error.message : "Failed to refresh balance. Please try again.",
+      });
     } finally {
       setIsRefreshing(false);
     }

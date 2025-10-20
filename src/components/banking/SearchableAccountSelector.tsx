@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,17 +33,24 @@ export function SearchableAccountSelector({
   const { selectedRestaurant } = useRestaurantContext();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
 
-  const selectedAccount = accounts?.find((account) => account.id === value);
+  const selectedAccount = useMemo(
+    () => accounts?.find((account) => account.id === value),
+    [accounts, value]
+  );
 
-  // Group accounts by type
-  const groupedAccounts = accounts?.reduce((acc, account) => {
-    const type = account.account_type;
-    if (!acc[type]) {
-      acc[type] = [];
-    }
-    acc[type].push(account);
-    return acc;
-  }, {} as Record<string, typeof accounts>);
+  // Group accounts by type with useMemo for better performance
+  const groupedAccounts = useMemo(() => {
+    if (!accounts) return {};
+    
+    return accounts.reduce((acc, account) => {
+      const type = account.account_type;
+      if (!acc[type]) {
+        acc[type] = [];
+      }
+      acc[type].push(account);
+      return acc;
+    }, {} as Record<string, typeof accounts>);
+  }, [accounts]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

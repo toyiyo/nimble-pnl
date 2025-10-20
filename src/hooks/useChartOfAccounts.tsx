@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -21,20 +21,15 @@ export interface ChartAccount {
   updated_at: string;
 }
 
+// Optimized hook using React Query with caching
 export const useChartOfAccounts = (restaurantId: string | null) => {
-  const [accounts, setAccounts] = useState<ChartAccount[]>([]);
-  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const fetchAccounts = async () => {
-    if (!restaurantId) {
-      setAccounts([]);
-      setLoading(false);
-      return;
-    }
+  const { data: accounts = [], isLoading: loading } = useQuery({
+    queryKey: ['chart-of-accounts', restaurantId],
+    queryFn: async () => {
+      if (!restaurantId) return [];
 
-    try {
-      setLoading(true);
       const { data, error } = await supabase
         .from('chart_of_accounts')
         .select('*')
@@ -42,19 +37,29 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
         .eq('is_active', true)
         .order('account_code');
 
-      if (error) throw error;
-      setAccounts(data || []);
-    } catch (error) {
-      console.error('Error fetching chart of accounts:', error);
-      toast({
-        title: "Failed to Load Accounts",
-        description: error instanceof Error ? error.message : "An error occurred",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
+      if (error) {
+        console.error('Error fetching chart of accounts:', error);
+        toast({
+          title: "Failed to Load Accounts",
+          description: error instanceof Error ? error.message : "An error occurred",
+          variant: "destructive",
+        });
+        throw error;
+      }
+
+      return data || [];
+    },
+    enabled: !!restaurantId,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+  });
+
+  const fetchAccounts = async () => {
+    // This is now handled by React Query automatically
+    // Keeping for backward compatibility
   };
+
+  const queryClient = useQueryClient();
 
   const createDefaultAccounts = async () => {
     if (!restaurantId) return;
@@ -276,7 +281,8 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
         description: "Your chart of accounts has been set up with standard restaurant categories",
       });
 
-      await fetchAccounts();
+      // Invalidate the query to refetch accounts
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts', restaurantId] });
     } catch (error) {
       console.error('Error creating default accounts:', error);
       toast({
@@ -286,10 +292,6 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
       });
     }
   };
-
-  useEffect(() => {
-    fetchAccounts();
-  }, [restaurantId]);
 
   return {
     accounts,

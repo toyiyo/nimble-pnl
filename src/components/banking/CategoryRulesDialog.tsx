@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { useCategorizationRules, useDeleteRule, useUpdateRule } from "@/hooks/useCategorizationRules";
 import { CreateRuleDialog } from "./CreateRuleDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 
 interface CategoryRulesDialogProps {
@@ -21,7 +22,7 @@ interface CategoryRulesDialogProps {
 
 export function CategoryRulesDialog({ isOpen, onClose }: CategoryRulesDialogProps) {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const { data: rules, isLoading } = useCategorizationRules();
+  const { data: rules, isLoading, isError, error } = useCategorizationRules();
   const deleteRule = useDeleteRule();
   const updateRule = useUpdateRule();
 
@@ -71,8 +72,14 @@ export function CategoryRulesDialog({ isOpen, onClose }: CategoryRulesDialogProp
 
           <div className="space-y-4">
             {isLoading ? (
-              <div className="text-center py-8 text-muted-foreground">
-                Loading rules...
+              <div className="space-y-3" aria-live="polite">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : isError ? (
+              <div className="text-center py-8 text-destructive" role="alert" aria-live="assertive">
+                {error?.message || 'Failed to load rules. Please try again.'}
               </div>
             ) : rules && rules.length > 0 ? (
               <Table>

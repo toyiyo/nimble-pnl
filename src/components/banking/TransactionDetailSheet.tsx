@@ -40,6 +40,13 @@ export function TransactionDetailSheet({
     transaction.normalized_payee || transaction.merchant_name || ''
   );
 
+  // Reset state when transaction changes
+  useEffect(() => {
+    setSelectedCategoryId(transaction.category_id || transaction.suggested_category_id || '');
+    setDescription(transaction.notes || '');
+    setPayee(transaction.normalized_payee || transaction.merchant_name || '');
+  }, [transaction.id, transaction.category_id, transaction.suggested_category_id, transaction.notes, transaction.normalized_payee, transaction.merchant_name]);
+
   const categorize = useCategorizeTransaction();
   const { selectedRestaurant } = useRestaurantContext();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
@@ -84,6 +91,7 @@ export function TransactionDetailSheet({
       transactionId: transaction.id,
       categoryId: selectedCategoryId,
       description: description || undefined,
+      normalizedPayee: payee || undefined,
     });
 
     onClose();

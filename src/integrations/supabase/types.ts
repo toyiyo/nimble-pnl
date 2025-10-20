@@ -3079,6 +3079,12 @@ export type Database = {
           | {
               p_category_id: string
               p_description?: string
+              p_normalized_payee?: string
+              p_transaction_id: string
+            }
+          | {
+              p_category_id: string
+              p_description?: string
               p_transaction_id: string
             }
           | {

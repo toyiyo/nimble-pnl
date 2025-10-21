@@ -299,7 +299,7 @@ serve(async (req) => {
           .single();
 
         if (bank) {
-          console.log("[FC-WEBHOOK] Triggering transaction sync for bank:", bank.id);
+          console.log("[FC-WEBHOOK] Triggering transaction sync and balance refresh for bank:", bank.id);
           
           // Trigger transaction sync to pull the new transactions
           try {
@@ -324,6 +324,30 @@ serve(async (req) => {
             }
           } catch (syncError) {
             console.error("[FC-WEBHOOK] Error triggering transaction sync:", syncError);
+          }
+
+          // Also refresh balance to keep it in sync with transactions
+          try {
+            const balanceResponse = await fetch(
+              `${Deno.env.get("SUPABASE_URL")}/functions/v1/stripe-refresh-balance`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                },
+                body: JSON.stringify({ bankId: bank.id }),
+              }
+            );
+            
+            if (balanceResponse.ok) {
+              console.log("[FC-WEBHOOK] Balance refresh triggered successfully");
+            } else {
+              const errorText = await balanceResponse.text();
+              console.error("[FC-WEBHOOK] Balance refresh failed:", errorText);
+            }
+          } catch (balanceError) {
+            console.error("[FC-WEBHOOK] Error triggering balance refresh:", balanceError);
           }
 
           // Record event as processed

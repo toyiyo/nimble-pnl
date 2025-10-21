@@ -73,12 +73,14 @@ export const DisconnectBankDialog = ({
           </Button>
         )}
       </AlertDialogTrigger>
-      <AlertDialogContent className="max-w-2xl">
-        <AlertDialogHeader>
+      <AlertDialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <AlertDialogHeader className="flex-shrink-0">
           <AlertDialogTitle className="flex items-center gap-2 text-xl">
             <Unplug className="h-5 w-5 text-destructive" />
             Disconnect {bankName}?
           </AlertDialogTitle>
+        </AlertDialogHeader>
+        <div className="overflow-y-auto flex-1 px-6 -mx-6">
           <AlertDialogDescription className="text-base space-y-4 pt-4">
             <p>
               This will stop automatic transaction updates from your bank account. 
@@ -178,8 +180,8 @@ export const DisconnectBankDialog = ({
               )}
             </div>
           </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter className="gap-2 sm:gap-2">
+        </div>
+        <AlertDialogFooter className="gap-2 sm:gap-2 flex-shrink-0">
           <AlertDialogCancel disabled={isDisconnecting}>
             Cancel
           </AlertDialogCancel>

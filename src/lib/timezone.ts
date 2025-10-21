@@ -13,7 +13,16 @@ export function formatDateInTimezone(date: Date | string, timezone: string, form
     return format(dateObj, formatStr);
   }
   
-  // For full timestamps (including those stored as timestamptz in database),
+  // For timestamps stored as "2025-10-20 00:00:00+00" (date with time at midnight UTC),
+  // extract just the date portion to avoid timezone shift issues
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}\s+00:00:00/.test(date)) {
+    const datePart = date.substring(0, 10); // Extract YYYY-MM-DD
+    const [year, month, day] = datePart.split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
+    return format(dateObj, formatStr);
+  }
+  
+  // For full timestamps with actual time components,
   // convert to the target timezone. The database stores dates in UTC, so we need
   // to convert them to the restaurant's local timezone for display.
   const dateObj = typeof date === 'string' ? new Date(date) : date;

@@ -105,6 +105,7 @@ export function useBankTransactionsWithRelations(restaurantId: string | null | u
         `)
         .eq('restaurant_id', restaurantId)
         .order('transaction_date', { ascending: false })
+        .order('id', { ascending: false }) // Stable secondary sort
         .limit(1000);
 
       if (error) throw error;

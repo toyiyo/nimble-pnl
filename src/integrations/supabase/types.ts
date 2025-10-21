@@ -175,6 +175,7 @@ export type Database = {
           stripe_transaction_id: string
           suggested_category_id: string | null
           suggested_payee: string | null
+          supplier_id: string | null
           transaction_date: string
           transaction_type: string | null
           transfer_pair_id: string | null
@@ -210,6 +211,7 @@ export type Database = {
           stripe_transaction_id: string
           suggested_category_id?: string | null
           suggested_payee?: string | null
+          supplier_id?: string | null
           transaction_date: string
           transaction_type?: string | null
           transfer_pair_id?: string | null
@@ -245,6 +247,7 @@ export type Database = {
           stripe_transaction_id?: string
           suggested_category_id?: string | null
           suggested_payee?: string | null
+          supplier_id?: string | null
           transaction_date?: string
           transaction_type?: string | null
           transfer_pair_id?: string | null
@@ -291,6 +294,13 @@ export type Database = {
             columns: ["suggested_category_id"]
             isOneToOne: false
             referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
           {
@@ -2721,6 +2731,100 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_categorization_rules: {
+        Row: {
+          auto_apply: boolean | null
+          created_at: string | null
+          default_category_id: string | null
+          id: string
+          restaurant_id: string
+          supplier_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          auto_apply?: boolean | null
+          created_at?: string | null
+          default_category_id?: string | null
+          id?: string
+          restaurant_id: string
+          supplier_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          auto_apply?: boolean | null
+          created_at?: string | null
+          default_category_id?: string | null
+          id?: string
+          restaurant_id?: string
+          supplier_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_categorization_rules_default_category_id_fkey"
+            columns: ["default_category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_categorization_rules_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_categorization_rules_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_name_variations: {
+        Row: {
+          created_at: string | null
+          id: string
+          match_type: string
+          name_variation: string
+          restaurant_id: string
+          supplier_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          match_type: string
+          name_variation: string
+          restaurant_id: string
+          supplier_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          match_type?: string
+          name_variation?: string
+          restaurant_id?: string
+          supplier_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_name_variations_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_name_variations_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           address: string | null
@@ -3079,6 +3183,19 @@ export type Database = {
           | {
               p_category_id: string
               p_description?: string
+              p_normalized_payee?: string
+              p_supplier_id?: string
+              p_transaction_id: string
+            }
+          | {
+              p_category_id: string
+              p_description?: string
+              p_normalized_payee?: string
+              p_transaction_id: string
+            }
+          | {
+              p_category_id: string
+              p_description?: string
               p_transaction_id: string
             }
           | {
@@ -3325,6 +3442,15 @@ export type Database = {
       split_bank_transaction: {
         Args: { p_splits: Json; p_transaction_id: string }
         Returns: Json
+      }
+      suggest_supplier_for_payee: {
+        Args: { p_payee_name: string; p_restaurant_id: string }
+        Returns: {
+          match_confidence: number
+          match_type: string
+          supplier_id: string
+          supplier_name: string
+        }[]
       }
       sync_clover_to_unified_sales: {
         Args: { p_restaurant_id: string }

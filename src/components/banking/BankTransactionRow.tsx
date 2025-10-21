@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { format } from "date-fns";
 import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from "@/hooks/useBankTransactions";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2 } from "lucide-react";
+import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2, Building2 } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { SplitTransactionDialog } from "./SplitTransactionDialog";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface BankTransactionRowProps {
   transaction: BankTransaction;
@@ -25,6 +25,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
   const exclude = useExcludeTransaction();
   const reconcile = useReconcileTransaction();
   const unreconcile = useUnreconcileTransaction();
+  const { formatTransactionDate } = useDateFormat();
 
   const isNegative = transaction.amount < 0;
   const formattedAmount = new Intl.NumberFormat('en-US', {
@@ -55,7 +56,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
     <>
       <TableRow className="hover:bg-muted/50">
         <TableCell className="font-medium">
-          {format(new Date(transaction.transaction_date), 'MMM dd, yyyy')}
+          {formatTransactionDate(transaction.transaction_date, 'MMM dd, yyyy')}
         </TableCell>
         
         <TableCell>
@@ -79,7 +80,15 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
         </TableCell>
 
         <TableCell className="hidden md:table-cell">
-          {transaction.normalized_payee || transaction.merchant_name || '—'}
+          <div className="flex flex-col gap-1">
+            <span>{transaction.normalized_payee || transaction.merchant_name || '—'}</span>
+            {transaction.supplier && (
+              <Badge variant="secondary" className="w-fit bg-primary/10 text-primary">
+                <Building2 className="h-3 w-3 mr-1" />
+                {transaction.supplier.name}
+              </Badge>
+            )}
+          </div>
         </TableCell>
 
         <TableCell className="text-right">
@@ -170,12 +179,13 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
                 </Button>
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
                   onClick={handleExclude}
                   disabled={exclude.isPending}
-                  title="Exclude"
+                  className="whitespace-nowrap text-destructive hover:text-destructive"
                 >
-                  <XCircle className="h-4 w-4" />
+                  <XCircle className="h-4 w-4 md:mr-1" />
+                  <span className="hidden md:inline">Exclude</span>
                 </Button>
               </>
             )}

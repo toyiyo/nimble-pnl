@@ -27,6 +27,8 @@ export function BankConnectionStatus() {
       return data;
     },
     enabled: !!selectedRestaurant?.restaurant_id,
+    // Poll every 30 seconds to reduce server load; users can manually sync via the Sync button for immediate updates
+    refetchInterval: 30000,
   });
 
   if (isLoading) {
@@ -74,9 +76,20 @@ export function BankConnectionStatus() {
                       {bank.bank_account_balances[0].account_mask}
                     </div>
                   )}
-                  {bank.last_sync_at && (
-                    <div className="text-xs text-muted-foreground">
-                      Last synced: {format(new Date(bank.last_sync_at), 'MMM dd, yyyy h:mm a')}
+                   {bank.last_sync_at && (
+                    <div className="text-xs text-muted-foreground" aria-live="polite">
+                      {(() => {
+                        const lastSync = new Date(bank.last_sync_at);
+                        const isRecentlySynced = (Date.now() - lastSync.getTime()) < 60000;
+                        return (
+                          <>
+                            Last synced: {format(lastSync, 'MMM dd, yyyy h:mm a')}
+                            {isRecentlySynced && (
+                              <span className="ml-2 text-primary">• Recently synced</span>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -90,6 +103,7 @@ export function BankConnectionStatus() {
                   variant="outline"
                   onClick={() => syncTransactions.mutate(bank.id)}
                   disabled={syncTransactions.isPending}
+                  aria-label={`Sync transactions for ${bank.institution_name}`}
                 >
                   {syncTransactions.isPending ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />

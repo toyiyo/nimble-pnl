@@ -6,20 +6,18 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 export interface CategorizationRule {
   id: string;
   restaurant_id: string;
-  rule_name: string;
-  match_type: 'payee_exact' | 'payee_contains' | 'description_contains' | 'amount_range' | 'amount_exact';
-  match_value: string;
-  match_value_lower?: string;
-  amount_min?: number;
-  amount_max?: number;
-  category_id: string;
-  priority: number;
-  is_active: boolean;
+  supplier_id: string;
+  default_category_id: string;
   auto_apply: boolean;
   created_at: string;
   updated_at: string;
-  last_applied_at?: string;
-  apply_count: number;
+  supplier?: {
+    name: string;
+  };
+  category?: {
+    account_name: string;
+    account_code: string;
+  };
 }
 
 export function useCategorizationRules() {
@@ -32,14 +30,17 @@ export function useCategorizationRules() {
       if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
 
       const { data, error } = await supabase
-        .from('transaction_categorization_rules')
-        .select('*')
+        .from('supplier_categorization_rules')
+        .select(`
+          *,
+          supplier:suppliers(name),
+          category:chart_of_accounts(account_name, account_code)
+        `)
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .order('priority', { ascending: false })
-        .order('apply_count', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as unknown as CategorizationRule[];
+      return (data || []) as CategorizationRule[];
     },
     enabled: !!selectedRestaurant?.restaurant_id,
   });
@@ -50,11 +51,25 @@ export function useCreateRule() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (rule: Partial<CategorizationRule>) => {
-      const { match_value_lower, ...ruleData } = rule;
+    mutationFn: async ({
+      restaurantId,
+      supplierId,
+      categoryId,
+      autoApply,
+    }: {
+      restaurantId: string;
+      supplierId: string;
+      categoryId: string;
+      autoApply: boolean;
+    }) => {
       const { data, error } = await supabase
-        .from('transaction_categorization_rules')
-        .insert([ruleData as any])
+        .from('supplier_categorization_rules')
+        .insert({
+          restaurant_id: restaurantId,
+          supplier_id: supplierId,
+          default_category_id: categoryId,
+          auto_apply: autoApply,
+        })
         .select()
         .single();
 
@@ -83,12 +98,23 @@ export function useUpdateRule() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<CategorizationRule> & { id: string }) => {
-      const { match_value_lower, ...updateData } = updates;
+    mutationFn: async ({
+      ruleId,
+      categoryId,
+      autoApply,
+    }: {
+      ruleId: string;
+      categoryId?: string;
+      autoApply?: boolean;
+    }) => {
+      const updates: any = { updated_at: new Date().toISOString() };
+      if (categoryId !== undefined) updates.default_category_id = categoryId;
+      if (autoApply !== undefined) updates.auto_apply = autoApply;
+
       const { data, error } = await supabase
-        .from('transaction_categorization_rules')
-        .update(updateData)
-        .eq('id', id)
+        .from('supplier_categorization_rules')
+        .update(updates)
+        .eq('id', ruleId)
         .select()
         .single();
 
@@ -119,7 +145,7 @@ export function useDeleteRule() {
   return useMutation({
     mutationFn: async (ruleId: string) => {
       const { error } = await supabase
-        .from('transaction_categorization_rules')
+        .from('supplier_categorization_rules')
         .delete()
         .eq('id', ruleId);
 
@@ -148,20 +174,24 @@ export function useApplyRules() {
 
   return useMutation({
     mutationFn: async (restaurantId: string) => {
-      // This would call an edge function to apply rules to all uncategorized transactions
-      const { data, error } = await supabase.functions.invoke('apply-categorization-rules', {
-        body: { restaurant_id: restaurantId }
-      });
+      const { data, error } = await supabase.functions.invoke(
+        'apply-categorization-rules',
+        {
+          body: { restaurantId }
+        }
+      );
 
       if (error) throw error;
       return data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+      const result = data as { message: string; count: number };
       toast({
         title: "Rules applied",
-        description: `${data?.applied_count || 0} transactions were automatically categorized.`,
+        description: result?.message || 'Categorization rules applied successfully',
       });
+      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
     },
     onError: (error: Error) => {
       toast({

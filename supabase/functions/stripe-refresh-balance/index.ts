@@ -117,57 +117,73 @@ serve(async (req) => {
       // Continue with pre-refresh data as fallback
     }
 
-    // Update balance in our database using the best available data
-    if (finalAccount.balance && (finalAccount.balance.current || finalAccount.balance.available)) {
-      // Check if we have an existing balance record
-      const { data: existingBalance } = await supabaseAdmin
+    // Update balance in our database - create record even if balance is null
+    // (E*TRADE and some other institutions don't provide balance immediately)
+    
+    // Check if we have an existing balance record
+    const { data: existingBalance } = await supabaseAdmin
+      .from("bank_account_balances")
+      .select("id, stripe_financial_account_id")
+      .eq("connected_bank_id", bankId)
+      .maybeSingle();
+
+    const currentBalance = finalAccount.balance?.current?.usd;
+    const availableBalance = finalAccount.balance?.available?.usd;
+    const hasBalanceData = currentBalance !== undefined || availableBalance !== undefined;
+
+    const balanceData = {
+      account_name: finalAccount.display_name || finalAccount.institution_name,
+      account_type: finalAccount.subcategory,
+      account_mask: finalAccount.last4,
+      current_balance: currentBalance == null ? null : currentBalance / 100,
+      available_balance: availableBalance == null ? null : availableBalance / 100,
+      currency: "USD",
+      is_active: true,
+      as_of_date: new Date().toISOString(),
+      stripe_financial_account_id: bank.stripe_financial_account_id,
+    };
+
+    if (existingBalance) {
+      // Update existing balance
+      const { error: updateError } = await supabaseAdmin
         .from("bank_account_balances")
-        .select("id")
-        .eq("connected_bank_id", bankId)
-        .single();
+        .update(balanceData)
+        .eq("id", existingBalance.id);
 
-      if (existingBalance) {
-        // Update existing balance
-        const { error: updateError } = await supabaseAdmin
-          .from("bank_account_balances")
-          .update({
-            current_balance: (finalAccount.balance.current?.usd || 0) / 100,
-            available_balance: finalAccount.balance.available?.usd ? finalAccount.balance.available.usd / 100 : null,
-            as_of_date: new Date().toISOString(),
-          })
-          .eq("id", existingBalance.id);
-
-        if (updateError) {
-          console.error("[REFRESH-BALANCE] Error updating balance:", updateError);
-        }
-      } else {
-        // Create new balance record
-        const { error: insertError } = await supabaseAdmin
-          .from("bank_account_balances")
-          .insert({
-            connected_bank_id: bankId,
-            account_name: finalAccount.display_name || finalAccount.institution_name,
-            account_type: finalAccount.subcategory,
-            account_mask: finalAccount.last4,
-            current_balance: (finalAccount.balance.current?.usd || 0) / 100,
-            available_balance: finalAccount.balance.available?.usd ? finalAccount.balance.available.usd / 100 : null,
-            currency: "USD",
-            is_active: true,
-            as_of_date: new Date().toISOString(),
-          });
-
-        if (insertError) {
-          console.error("[REFRESH-BALANCE] Error inserting balance:", insertError);
-        }
+      if (updateError) {
+        console.error("[REFRESH-BALANCE] Error updating balance:", updateError);
+        throw new Error(`Failed to update balance record: ${updateError.message}`);
       }
+      console.log("[REFRESH-BALANCE] Balance updated:", hasBalanceData ? "with data" : "placeholder created");
+    } else {
+      // Create new balance record (even if balance is null - webhook will update later)
+      const { error: insertError } = await supabaseAdmin
+        .from("bank_account_balances")
+        .insert({
+          connected_bank_id: bankId,
+          ...balanceData
+        });
 
-      // Update last_sync_at on the bank
-      await supabaseAdmin
-        .from("connected_banks")
-        .update({ last_sync_at: new Date().toISOString() })
-        .eq("id", bankId);
+      if (insertError) {
+        console.error("[REFRESH-BALANCE] Error inserting balance:", insertError);
+        throw new Error(`Failed to create balance record: ${insertError.message}`);
+      }
+      console.log("[REFRESH-BALANCE] Balance record created:", hasBalanceData ? "with data" : "as placeholder");
+    }
 
-      console.log("[REFRESH-BALANCE] Balance updated successfully");
+    // Update last_sync_at on the bank
+    const { error: syncError } = await supabaseAdmin
+      .from("connected_banks")
+      .update({ last_sync_at: new Date().toISOString() })
+      .eq("id", bankId);
+
+    if (syncError) {
+      console.error(`[REFRESH-BALANCE] Failed to update last_sync_at for bank ${bankId}:`, syncError);
+      throw new Error(`Failed to update sync timestamp: ${syncError.message}`);
+    }
+
+    if (!hasBalanceData) {
+      refreshNote = refreshNote || "Balance data not yet available from E*TRADE. Please check back in a few minutes or contact support if this persists.";
     }
 
     return new Response(

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { format } from "date-fns";
 import { BankTransaction, useCategorizeTransaction } from "@/hooks/useBankTransactions";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import {
   Sheet,
   SheetContent,
@@ -20,6 +20,10 @@ import { ArrowLeftRight, Building2, Calendar, DollarSign, FileText, Sparkles, Sp
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
+import { SupplierSuggestion } from "./SupplierSuggestion";
+import { SearchableSupplierSelector } from "@/components/SearchableSupplierSelector";
+import { useSuppliers } from "@/hooks/useSuppliers";
+import { toast } from "sonner";
 
 interface TransactionDetailSheetProps {
   transaction: BankTransaction;
@@ -39,10 +43,23 @@ export function TransactionDetailSheet({
   const [payee, setPayee] = useState(
     transaction.normalized_payee || transaction.merchant_name || ''
   );
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | undefined>(
+    transaction.supplier_id
+  );
+
+  // Reset state when transaction changes
+  useEffect(() => {
+    setSelectedCategoryId(transaction.category_id || transaction.suggested_category_id || '');
+    setDescription(transaction.notes || '');
+    setPayee(transaction.normalized_payee || transaction.merchant_name || '');
+    setSelectedSupplierId(transaction.supplier_id);
+  }, [transaction.id, transaction.category_id, transaction.suggested_category_id, transaction.notes, transaction.normalized_payee, transaction.merchant_name, transaction.supplier_id]);
 
   const categorize = useCategorizeTransaction();
   const { selectedRestaurant } = useRestaurantContext();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
+  const { formatTransactionDate } = useDateFormat();
+  const { suppliers, createSupplier } = useSuppliers();
 
   // Fetch split details if transaction is split
   const { data: splits } = useQuery({
@@ -57,6 +74,23 @@ export function TransactionDetailSheet({
       return data;
     },
     enabled: !!transaction.is_split,
+  });
+
+  // Fetch supplier suggestions based on payee name
+  const { data: supplierSuggestions } = useQuery({
+    queryKey: ['supplier-suggestions', payee, selectedRestaurant?.restaurant_id],
+    queryFn: async () => {
+      if (!payee || payee.length < 2) return [];
+      
+      const { data, error } = await supabase.rpc('suggest_supplier_for_payee', {
+        p_restaurant_id: selectedRestaurant?.restaurant_id,
+        p_payee_name: payee
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!payee && !!selectedRestaurant?.restaurant_id && !transaction.is_split,
   });
 
   const isNegative = transaction.amount < 0;
@@ -77,6 +111,25 @@ export function TransactionDetailSheet({
     }
   }, [hasSuggestion, transaction.category_id, transaction.suggested_category_id]);
 
+  const handleSupplierChange = async (value: string, isNew: boolean) => {
+    if (isNew) {
+      // Create new supplier with the entered name
+      const newSupplier = await createSupplier({ name: value, is_active: true });
+      if (newSupplier) {
+        setSelectedSupplierId(newSupplier.id);
+        setPayee(newSupplier.name);
+        toast.success(`Created new supplier: ${newSupplier.name}`);
+      }
+    } else {
+      // Select existing supplier
+      setSelectedSupplierId(value);
+      const supplier = suppliers.find(s => s.id === value);
+      if (supplier) {
+        setPayee(supplier.name);
+      }
+    }
+  };
+
   const handleSave = async () => {
     if (!selectedCategoryId) return;
 
@@ -84,6 +137,8 @@ export function TransactionDetailSheet({
       transactionId: transaction.id,
       categoryId: selectedCategoryId,
       description: description || undefined,
+      normalizedPayee: payee || undefined,
+      supplierId: selectedSupplierId,
     });
 
     onClose();
@@ -141,7 +196,7 @@ export function TransactionDetailSheet({
                   Date
                 </div>
                 <div className="font-medium">
-                  {format(new Date(transaction.transaction_date), 'MMMM dd, yyyy')}
+                  {formatTransactionDate(transaction.transaction_date, 'MMMM dd, yyyy')}
                 </div>
               </div>
 
@@ -235,17 +290,19 @@ export function TransactionDetailSheet({
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="payee">Payee</Label>
-              <div className="relative">
-                <Building2 className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="payee"
-                  value={payee}
-                  onChange={(e) => setPayee(e.target.value)}
-                  placeholder="Enter payee name"
-                  className="pl-10"
-                />
-              </div>
+              <Label htmlFor="payee">Payee / Supplier</Label>
+              <SearchableSupplierSelector
+                value={selectedSupplierId}
+                onValueChange={handleSupplierChange}
+                suppliers={suppliers}
+                placeholder="Search or create supplier..."
+                showNewIndicator={true}
+              />
+              {payee && !selectedSupplierId && (
+                <p className="text-xs text-muted-foreground">
+                  Original payee: {payee}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -272,6 +329,18 @@ export function TransactionDetailSheet({
                 rows={3}
               />
             </div>
+
+            {/* Supplier Suggestions */}
+            {supplierSuggestions && supplierSuggestions.length > 0 && (
+              <>
+                <Separator />
+                <SupplierSuggestion
+                  suggestions={supplierSuggestions}
+                  selectedSupplierId={selectedSupplierId}
+                  onSelectSupplier={setSelectedSupplierId}
+                />
+              </>
+            )}
           </div>
           )}
 

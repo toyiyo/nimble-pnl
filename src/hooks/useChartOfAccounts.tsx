@@ -203,7 +203,7 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
 
       const { error: parentError } = await supabase
         .from('chart_of_accounts')
-        .insert(parentAccountsToInsert);
+        .upsert(parentAccountsToInsert, { onConflict: 'restaurant_id,account_code' });
 
       if (parentError) throw parentError;
 
@@ -233,7 +233,7 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
 
       const { error: childError } = await supabase
         .from('chart_of_accounts')
-        .insert(childAccountsToInsert);
+        .upsert(childAccountsToInsert, { onConflict: 'restaurant_id,account_code' });
 
       if (childError) throw childError;
 

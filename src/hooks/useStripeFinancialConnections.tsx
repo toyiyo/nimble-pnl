@@ -136,26 +136,31 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     }
   };
 
-  // Disconnect a bank
-  const disconnectBank = async (bankId: string) => {
+  // Disconnect a bank and optionally delete data
+  const disconnectBank = async (bankId: string, deleteData: boolean = false) => {
     try {
-      const { error } = await supabase
-        .from('connected_banks')
-        .update({
-          status: 'disconnected',
-          disconnected_at: new Date().toISOString(),
-        })
-        .eq('id', bankId);
+      const { data, error } = await supabase.functions.invoke(
+        'stripe-disconnect-bank',
+        {
+          body: { bankId, deleteData }
+        }
+      );
 
       if (error) throw error;
 
       toast({
         title: "Bank Disconnected",
-        description: "The bank account has been disconnected successfully",
+        description: data.message || "The bank account has been disconnected successfully",
       });
 
       // Refresh the list
       queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] });
+      
+      // If data was deleted, also invalidate transactions queries
+      if (deleteData) {
+        queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+        queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      }
     } catch (error) {
       console.error('Error disconnecting bank:', error);
       toast({
@@ -163,6 +168,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
+      throw error; // Re-throw to let dialog handle it
     }
   };
 

@@ -113,3 +113,12 @@ verify_jwt = true
 
 [functions.stripe-financial-connections-webhook]
 verify_jwt = false
+
+[functions.stripe-disconnect-bank]
+verify_jwt = true
+
+[functions.stripe-refresh-balance]
+verify_jwt = true
+
+[functions.stripe-sync-transactions]
+verify_jwt = true

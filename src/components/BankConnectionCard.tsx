@@ -5,6 +5,7 @@ import { Building2, Wallet, TrendingUp, AlertCircle, Loader2 } from 'lucide-reac
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { DisconnectBankDialog } from '@/components/banking/DisconnectBankDialog';
 
 interface BankBalance {
   id: string;
@@ -34,9 +35,10 @@ interface BankConnectionCardProps {
   restaurantId: string;
   onRefreshBalance?: (bankId: string) => Promise<void>;
   onSyncTransactions?: (bankId: string) => Promise<void>;
+  onDisconnect?: (bankId: string, deleteData: boolean) => Promise<void>;
 }
 
-export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions }: BankConnectionCardProps) => {
+export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions, onDisconnect }: BankConnectionCardProps) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
@@ -231,6 +233,22 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions 
             {isSyncing && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" focusable="false" />}
             {isSyncing ? 'Importing Transactions...' : 'Sync Transactions'}
           </Button>
+          
+          {onDisconnect && (
+            <DisconnectBankDialog
+              bankName={bank.institution_name}
+              bankId={bank.id}
+              onDisconnect={onDisconnect}
+            >
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                Disconnect Bank
+              </Button>
+            </DisconnectBankDialog>
+          )}
         </div>
       </CardContent>
     </Card>

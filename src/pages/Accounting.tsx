@@ -18,7 +18,8 @@ const Accounting = () => {
     createFinancialConnectionsSession,
     isCreatingSession,
     refreshBalance,
-    syncTransactions
+    syncTransactions,
+    disconnectBank
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
 
@@ -209,6 +210,7 @@ const Accounting = () => {
                     restaurantId={selectedRestaurant.restaurant_id}
                     onRefreshBalance={refreshBalance}
                     onSyncTransactions={syncTransactions}
+                    onDisconnect={disconnectBank}
                   />
                 ))}
               </div>

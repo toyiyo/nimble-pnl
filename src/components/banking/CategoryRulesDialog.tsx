@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Trash2, Plus, Settings2 } from "lucide-react";
+import { toast } from "sonner";
 import { useCategorizationRules, useCreateRule, useUpdateRule, useDeleteRule, useApplyRules } from "@/hooks/useCategorizationRules";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
@@ -19,7 +20,7 @@ interface CategoryRulesDialogProps {
 export function CategoryRulesDialog({ open, onOpenChange }: CategoryRulesDialogProps) {
   const { selectedRestaurant } = useRestaurantContext();
   const { data: rules, isLoading } = useCategorizationRules();
-  const { suppliers } = useSuppliers();
+  const { suppliers, createSupplier } = useSuppliers();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const createRule = useCreateRule();
   const updateRule = useUpdateRule();
@@ -36,6 +37,22 @@ export function CategoryRulesDialog({ open, onOpenChange }: CategoryRulesDialogP
   const expenseAccounts = accounts?.filter(
     (acc) => acc.account_type === 'expense' || acc.account_type === 'cogs'
   );
+
+  const handleSupplierChange = async (value: string, isNew: boolean) => {
+    if (isNew) {
+      try {
+        const newSupplier = await createSupplier({ name: value, is_active: true });
+        if (newSupplier) {
+          setNewRule({ ...newRule, supplierId: newSupplier.id });
+          toast.success(`Created new supplier: ${newSupplier.name}`);
+        }
+      } catch (error) {
+        toast.error('Failed to create supplier');
+      }
+    } else {
+      setNewRule({ ...newRule, supplierId: value });
+    }
+  };
 
   const handleCreateRule = async () => {
     if (!selectedRestaurant?.restaurant_id || !newRule.supplierId || !newRule.categoryId) return;
@@ -151,8 +168,9 @@ export function CategoryRulesDialog({ open, onOpenChange }: CategoryRulesDialogP
                 <Label>Supplier</Label>
                 <SearchableSupplierSelector
                   value={newRule.supplierId}
-                  onValueChange={(value) => setNewRule({ ...newRule, supplierId: value })}
+                  onValueChange={handleSupplierChange}
                   suppliers={suppliers || []}
+                  showNewIndicator={true}
                 />
               </div>
 

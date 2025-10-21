@@ -27,7 +27,8 @@ export function BankConnectionStatus() {
       return data;
     },
     enabled: !!selectedRestaurant?.restaurant_id,
-    refetchInterval: 5000, // Check every 5 seconds for updates
+    // Poll every 30 seconds to reduce server load; users can manually sync via the Sync button for immediate updates
+    refetchInterval: 30000,
   });
 
   if (isLoading) {
@@ -76,11 +77,19 @@ export function BankConnectionStatus() {
                     </div>
                   )}
                    {bank.last_sync_at && (
-                    <div className="text-xs text-muted-foreground">
-                      Last synced: {format(new Date(bank.last_sync_at), 'MMM dd, yyyy h:mm a')}
-                      {new Date(bank.last_sync_at) > new Date(Date.now() - 60000) && (
-                        <span className="ml-2 text-blue-600">• Syncing...</span>
-                      )}
+                    <div className="text-xs text-muted-foreground" aria-live="polite">
+                      {(() => {
+                        const lastSync = new Date(bank.last_sync_at);
+                        const isRecentlysynced = (Date.now() - lastSync.getTime()) < 60000;
+                        return (
+                          <>
+                            Last synced: {format(lastSync, 'MMM dd, yyyy h:mm a')}
+                            {isRecentlysynced && (
+                              <span className="ml-2 text-primary">• Recently synced</span>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -94,6 +103,7 @@ export function BankConnectionStatus() {
                   variant="outline"
                   onClick={() => syncTransactions.mutate(bank.id)}
                   disabled={syncTransactions.isPending}
+                  aria-label={`Sync transactions for ${bank.institution_name}`}
                 >
                   {syncTransactions.isPending ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />

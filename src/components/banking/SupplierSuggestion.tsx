@@ -30,13 +30,13 @@ export function SupplierSuggestion({
   const getMatchTypeColor = (matchType: string) => {
     switch (matchType) {
       case 'exact':
-        return 'bg-green-100 dark:bg-green-950 text-green-800 dark:text-green-200';
+        return 'bg-primary/10 text-primary border-primary/20';
       case 'alias':
-        return 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200';
+        return 'bg-secondary/50 text-secondary-foreground border-secondary/20';
       case 'fuzzy':
-        return 'bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200';
+        return 'bg-muted text-muted-foreground border-border';
       default:
-        return 'bg-muted text-muted-foreground';
+        return 'bg-muted text-muted-foreground border-border';
     }
   };
 
@@ -58,6 +58,8 @@ export function SupplierSuggestion({
                 ? "border-primary bg-primary/5"
                 : "border-border hover:border-primary/50 hover:bg-muted/50"
             )}
+            aria-label={`Select supplier ${suggestion.supplier_name}`}
+            aria-pressed={selectedSupplierId === suggestion.supplier_id}
           >
             <div className="flex items-center gap-3">
               <div className={cn(
@@ -72,8 +74,8 @@ export function SupplierSuggestion({
                 <div className="font-medium">{suggestion.supplier_name}</div>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge 
-                    variant="secondary" 
-                    className={cn("text-xs", getMatchTypeColor(suggestion.match_type))}
+                    variant="outline" 
+                    className={cn("text-xs border", getMatchTypeColor(suggestion.match_type))}
                   >
                     {suggestion.match_type}
                   </Badge>
@@ -96,6 +98,7 @@ export function SupplierSuggestion({
           size="sm"
           className="w-full"
           onClick={onCreateSupplier}
+          aria-label="Create a new supplier"
         >
           <Building2 className="h-4 w-4 mr-2" />
           Create New Supplier

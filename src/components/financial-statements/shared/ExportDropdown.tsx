@@ -9,31 +9,45 @@ import { Download, FileText, FileSpreadsheet, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 interface ExportDropdownProps {
-  onExportCSV: () => void;
-  onExportPDF: () => void;
+  onExportCSV: () => Promise<void> | void;
+  onExportPDF: () => Promise<void> | void;
   isExporting?: boolean;
 }
 
 export const ExportDropdown = ({ onExportCSV, onExportPDF, isExporting = false }: ExportDropdownProps) => {
+  const [isWorking, setIsWorking] = useState(false);
   const [exportType, setExportType] = useState<'csv' | 'pdf' | null>(null);
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     setExportType('csv');
-    onExportCSV();
-    setTimeout(() => setExportType(null), 1000);
+    setIsWorking(true);
+    try {
+      await onExportCSV();
+    } finally {
+      setIsWorking(false);
+      setExportType(null);
+    }
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     setExportType('pdf');
-    onExportPDF();
-    setTimeout(() => setExportType(null), 1000);
+    setIsWorking(true);
+    try {
+      await onExportPDF();
+    } finally {
+      setIsWorking(false);
+      setExportType(null);
+    }
   };
+
+  const isDisabled = isExporting || isWorking;
+  const showSpinner = isExporting || isWorking;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" disabled={isExporting}>
-          {isExporting ? (
+        <Button variant="outline" disabled={isDisabled}>
+          {showSpinner ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Exporting...
@@ -47,20 +61,12 @@ export const ExportDropdown = ({ onExportCSV, onExportPDF, isExporting = false }
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="bg-background">
-        <DropdownMenuItem onClick={handleExportCSV} className="cursor-pointer">
-          {exportType === 'csv' ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <FileSpreadsheet className="mr-2 h-4 w-4" />
-          )}
+        <DropdownMenuItem onClick={handleExportCSV} className="cursor-pointer" disabled={isDisabled}>
+          <FileSpreadsheet className="mr-2 h-4 w-4" />
           Export as CSV
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleExportPDF} className="cursor-pointer">
-          {exportType === 'pdf' ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <FileText className="mr-2 h-4 w-4" />
-          )}
+        <DropdownMenuItem onClick={handleExportPDF} className="cursor-pointer" disabled={isDisabled}>
+          <FileText className="mr-2 h-4 w-4" />
           Export as PDF
         </DropdownMenuItem>
       </DropdownMenuContent>

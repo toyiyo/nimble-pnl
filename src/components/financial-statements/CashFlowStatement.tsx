@@ -1,10 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Download, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { ExportDropdown } from './shared/ExportDropdown';
+import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
 
 interface CashFlowStatementProps {
   restaurantId: string;
@@ -14,6 +15,21 @@ interface CashFlowStatementProps {
 
 export function CashFlowStatement({ restaurantId, dateFrom, dateTo }: CashFlowStatementProps) {
   const { toast } = useToast();
+
+  // Fetch restaurant name for exports
+  const { data: restaurant } = useQuery({
+    queryKey: ['restaurant', restaurantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('name')
+        .eq('id', restaurantId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!restaurantId,
+  });
 
   const { data: cashFlowData, isLoading } = useQuery({
     queryKey: ['cash-flow', restaurantId, dateFrom, dateTo],
@@ -79,7 +95,7 @@ export function CashFlowStatement({ restaurantId, dateFrom, dateTo }: CashFlowSt
     }).format(amount);
   };
 
-  const handleExport = () => {
+  const handleExportCSV = () => {
     const csvContent = [
       ['Cash Flow Statement'],
       [`Period: ${format(dateFrom, 'MMM dd, yyyy')} - ${format(dateTo, 'MMM dd, yyyy')}`],
@@ -94,8 +110,14 @@ export function CashFlowStatement({ restaurantId, dateFrom, dateTo }: CashFlowSt
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const filename = generateStandardFilename(
+      'cash-flow',
+      restaurant?.name || 'restaurant',
+      dateFrom,
+      dateTo
+    );
     a.href = url;
-    a.download = `cash-flow-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.download = `${filename}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -104,6 +126,42 @@ export function CashFlowStatement({ restaurantId, dateFrom, dateTo }: CashFlowSt
     toast({
       title: 'Export successful',
       description: 'Cash flow statement exported to CSV',
+    });
+  };
+
+  const handleExportPDF = () => {
+    const data = [
+      { label: 'Cash Flow from Operating Activities', amount: undefined, isBold: true },
+      { label: 'Net cash from operations', amount: operating, indent: 1 },
+      { label: 'Net Operating Cash Flow', amount: operating, isSubtotal: true },
+      { label: '', amount: undefined },
+      { label: 'Cash Flow from Investing Activities', amount: undefined, isBold: true },
+      { label: 'Net Investing Cash Flow', amount: investing, isSubtotal: true },
+      { label: '', amount: undefined },
+      { label: 'Cash Flow from Financing Activities', amount: undefined, isBold: true },
+      { label: 'Net Financing Cash Flow', amount: financing, isSubtotal: true },
+      { label: '', amount: undefined },
+      { label: 'Net Change in Cash', amount: netChange, isTotal: true },
+    ];
+
+    const filename = generateStandardFilename(
+      'cash-flow',
+      restaurant?.name || 'restaurant',
+      dateFrom,
+      dateTo
+    );
+
+    generateFinancialReportPDF({
+      title: 'Cash Flow Statement',
+      restaurantName: restaurant?.name || 'Restaurant',
+      dateRange: `For the period ${format(dateFrom, 'MMM dd, yyyy')} - ${format(dateTo, 'MMM dd, yyyy')}`,
+      data,
+      filename: `${filename}.pdf`,
+    });
+
+    toast({
+      title: 'Export successful',
+      description: 'Cash flow statement exported to PDF',
     });
   };
 
@@ -132,10 +190,7 @@ export function CashFlowStatement({ restaurantId, dateFrom, dateTo }: CashFlowSt
               For the period {format(dateFrom, 'MMM dd, yyyy')} - {format(dateTo, 'MMM dd, yyyy')}
             </CardDescription>
           </div>
-          <Button onClick={handleExport} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
+          <ExportDropdown onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} />
         </div>
       </CardHeader>
       <CardContent>
@@ -157,7 +212,7 @@ export function CashFlowStatement({ restaurantId, dateFrom, dateTo }: CashFlowSt
               </div>
               <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
                 <span>Net Operating Cash Flow</span>
-                <span className={operating >= 0 ? 'text-green-600' : 'text-red-600'}>
+                <span className={operating >= 0 ? 'text-success' : 'text-destructive'}>
                   {formatCurrency(operating)}
                 </span>
               </div>
@@ -170,7 +225,7 @@ export function CashFlowStatement({ restaurantId, dateFrom, dateTo }: CashFlowSt
             <div className="space-y-2">
               <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
                 <span>Net Investing Cash Flow</span>
-                <span className={investing >= 0 ? 'text-green-600' : 'text-red-600'}>
+                <span className={investing >= 0 ? 'text-success' : 'text-destructive'}>
                   {formatCurrency(investing)}
                 </span>
               </div>
@@ -183,7 +238,7 @@ export function CashFlowStatement({ restaurantId, dateFrom, dateTo }: CashFlowSt
             <div className="space-y-2">
               <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
                 <span>Net Financing Cash Flow</span>
-                <span className={financing >= 0 ? 'text-green-600' : 'text-red-600'}>
+                <span className={financing >= 0 ? 'text-success' : 'text-destructive'}>
                   {formatCurrency(financing)}
                 </span>
               </div>
@@ -193,7 +248,7 @@ export function CashFlowStatement({ restaurantId, dateFrom, dateTo }: CashFlowSt
           {/* Net Change in Cash */}
           <div className="flex justify-between items-center py-4 px-3 bg-primary/10 border border-primary/20 rounded-lg font-bold text-xl">
             <span>Net Change in Cash</span>
-            <span className={netChange >= 0 ? 'text-green-600' : 'text-red-600'}>
+            <span className={netChange >= 0 ? 'text-success' : 'text-destructive'}>
               {formatCurrency(netChange)}
             </span>
           </div>

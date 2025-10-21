@@ -1,10 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Download, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { ExportDropdown } from './shared/ExportDropdown';
+import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
 
 interface IncomeStatementProps {
   restaurantId: string;
@@ -14,6 +15,21 @@ interface IncomeStatementProps {
 
 export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatementProps) {
   const { toast } = useToast();
+
+  // Fetch restaurant name for exports
+  const { data: restaurant } = useQuery({
+    queryKey: ['restaurant', restaurantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('name')
+        .eq('id', restaurantId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!restaurantId,
+  });
 
   const { data: incomeData, isLoading } = useQuery({
     queryKey: ['income-statement', restaurantId, dateFrom, dateTo],
@@ -101,7 +117,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   const grossProfit = totalRevenue - totalCOGS;
   const netIncome = grossProfit - totalExpenses;
 
-  const handleExport = () => {
+  const handleExportCSV = () => {
     const csvContent = [
       ['Income Statement'],
       [`Period: ${format(dateFrom, 'MMM dd, yyyy')} - ${format(dateTo, 'MMM dd, yyyy')}`],
@@ -126,8 +142,14 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const filename = generateStandardFilename(
+      'income-statement',
+      restaurant?.name || 'restaurant',
+      dateFrom,
+      dateTo
+    );
     a.href = url;
-    a.download = `income-statement-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.download = `${filename}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -136,6 +158,57 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     toast({
       title: 'Export successful',
       description: 'Income statement exported to CSV',
+    });
+  };
+
+  const handleExportPDF = () => {
+    const data = [
+      ...incomeData!.revenue.map(acc => ({
+        label: `${acc.account_code} - ${acc.account_name}`,
+        amount: acc.current_balance,
+        indent: 1,
+      })),
+      { label: 'Total Revenue', amount: totalRevenue, isSubtotal: true },
+      { label: '', amount: undefined },
+      { label: 'Cost of Goods Sold', amount: undefined, isBold: true },
+      ...incomeData!.cogs.map(acc => ({
+        label: `${acc.account_code} - ${acc.account_name}`,
+        amount: acc.current_balance,
+        indent: 1,
+      })),
+      { label: 'Total COGS', amount: totalCOGS, isSubtotal: true },
+      { label: '', amount: undefined },
+      { label: 'Gross Profit', amount: grossProfit, isTotal: true },
+      { label: '', amount: undefined },
+      { label: 'Operating Expenses', amount: undefined, isBold: true },
+      ...incomeData!.expenses.map(acc => ({
+        label: `${acc.account_code} - ${acc.account_name}`,
+        amount: acc.current_balance,
+        indent: 1,
+      })),
+      { label: 'Total Expenses', amount: totalExpenses, isSubtotal: true },
+      { label: '', amount: undefined },
+      { label: 'Net Income', amount: netIncome, isTotal: true },
+    ];
+
+    const filename = generateStandardFilename(
+      'income-statement',
+      restaurant?.name || 'restaurant',
+      dateFrom,
+      dateTo
+    );
+
+    generateFinancialReportPDF({
+      title: 'Income Statement',
+      restaurantName: restaurant?.name || 'Restaurant',
+      dateRange: `For the period ${format(dateFrom, 'MMM dd, yyyy')} - ${format(dateTo, 'MMM dd, yyyy')}`,
+      data,
+      filename: `${filename}.pdf`,
+    });
+
+    toast({
+      title: 'Export successful',
+      description: 'Income statement exported to PDF',
     });
   };
 
@@ -159,10 +232,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
               For the period {format(dateFrom, 'MMM dd, yyyy')} - {format(dateTo, 'MMM dd, yyyy')}
             </CardDescription>
           </div>
-          <Button onClick={handleExport} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
+          <ExportDropdown onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} />
         </div>
       </CardHeader>
       <CardContent>
@@ -210,7 +280,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
           {/* Gross Profit */}
           <div className="flex justify-between items-center py-3 px-3 bg-muted rounded-lg font-bold text-lg">
             <span>Gross Profit</span>
-            <span className={grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}>
+            <span className={grossProfit >= 0 ? 'text-success' : 'text-destructive'}>
               {formatCurrency(grossProfit)}
             </span>
           </div>
@@ -238,7 +308,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
           {/* Net Income */}
           <div className="flex justify-between items-center py-4 px-3 bg-primary/10 border border-primary/20 rounded-lg font-bold text-xl">
             <span>Net Income</span>
-            <span className={netIncome >= 0 ? 'text-green-600' : 'text-red-600'}>
+            <span className={netIncome >= 0 ? 'text-success' : 'text-destructive'}>
               {formatCurrency(netIncome)}
             </span>
           </div>

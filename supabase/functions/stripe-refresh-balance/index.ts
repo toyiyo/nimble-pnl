@@ -152,9 +152,9 @@ serve(async (req) => {
 
       if (updateError) {
         console.error("[REFRESH-BALANCE] Error updating balance:", updateError);
-      } else {
-        console.log("[REFRESH-BALANCE] Balance updated:", hasBalanceData ? "with data" : "placeholder created");
+        throw new Error(`Failed to update balance record: ${updateError.message}`);
       }
+      console.log("[REFRESH-BALANCE] Balance updated:", hasBalanceData ? "with data" : "placeholder created");
     } else {
       // Create new balance record (even if balance is null - webhook will update later)
       const { error: insertError } = await supabaseAdmin
@@ -166,16 +166,21 @@ serve(async (req) => {
 
       if (insertError) {
         console.error("[REFRESH-BALANCE] Error inserting balance:", insertError);
-      } else {
-        console.log("[REFRESH-BALANCE] Balance record created:", hasBalanceData ? "with data" : "as placeholder");
+        throw new Error(`Failed to create balance record: ${insertError.message}`);
       }
+      console.log("[REFRESH-BALANCE] Balance record created:", hasBalanceData ? "with data" : "as placeholder");
     }
 
     // Update last_sync_at on the bank
-    await supabaseAdmin
+    const { error: syncError } = await supabaseAdmin
       .from("connected_banks")
       .update({ last_sync_at: new Date().toISOString() })
       .eq("id", bankId);
+
+    if (syncError) {
+      console.error(`[REFRESH-BALANCE] Failed to update last_sync_at for bank ${bankId}:`, syncError);
+      throw new Error(`Failed to update sync timestamp: ${syncError.message}`);
+    }
 
     if (!hasBalanceData) {
       refreshNote = refreshNote || "Balance data not yet available from E*TRADE. Please check back in a few minutes or contact support if this persists.";

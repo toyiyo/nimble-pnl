@@ -80,11 +80,11 @@ export function BankConnectionStatus() {
                     <div className="text-xs text-muted-foreground" aria-live="polite">
                       {(() => {
                         const lastSync = new Date(bank.last_sync_at);
-                        const isRecentlysynced = (Date.now() - lastSync.getTime()) < 60000;
+                        const isRecentlySynced = (Date.now() - lastSync.getTime()) < 60000;
                         return (
                           <>
                             Last synced: {format(lastSync, 'MMM dd, yyyy h:mm a')}
-                            {isRecentlysynced && (
+                            {isRecentlySynced && (
                               <span className="ml-2 text-primary">• Recently synced</span>
                             )}
                           </>

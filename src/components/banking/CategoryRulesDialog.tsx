@@ -40,14 +40,9 @@ export function CategoryRulesDialog({ open, onOpenChange }: CategoryRulesDialogP
 
   const handleSupplierChange = async (value: string, isNew: boolean) => {
     if (isNew) {
-      try {
-        const newSupplier = await createSupplier({ name: value, is_active: true });
-        if (newSupplier) {
-          setNewRule({ ...newRule, supplierId: newSupplier.id });
-          toast.success(`Created new supplier: ${newSupplier.name}`);
-        }
-      } catch (error) {
-        toast.error('Failed to create supplier');
+      const newSupplier = await createSupplier({ name: value, is_active: true });
+      if (newSupplier) {
+        setNewRule({ ...newRule, supplierId: newSupplier.id });
       }
     } else {
       setNewRule({ ...newRule, supplierId: value });
@@ -137,6 +132,7 @@ export function CategoryRulesDialog({ open, onOpenChange }: CategoryRulesDialogP
                       variant="ghost"
                       onClick={() => deleteRule.mutate(rule.id)}
                       disabled={deleteRule.isPending}
+                      aria-label={`Delete rule${rule.supplier?.name ? `: ${rule.supplier.name}` : ''}`}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
@@ -176,21 +172,27 @@ export function CategoryRulesDialog({ open, onOpenChange }: CategoryRulesDialogP
 
               <div className="space-y-2">
                 <Label>Default Category</Label>
-                <Select
-                  value={newRule.categoryId}
-                  onValueChange={(value) => setNewRule({ ...newRule, categoryId: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {expenseAccounts?.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {account.account_code} - {account.account_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {!expenseAccounts || expenseAccounts.length === 0 ? (
+                  <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
+                    No expense categories available — please create an expense/COGS account first
+                  </div>
+                ) : (
+                  <Select
+                    value={newRule.categoryId}
+                    onValueChange={(value) => setNewRule({ ...newRule, categoryId: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {expenseAccounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.account_code} - {account.account_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="flex items-center gap-2">

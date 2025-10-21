@@ -96,39 +96,46 @@ serve(async (req) => {
     if (deleteData) {
       logStep("Starting data deletion");
 
-      // Delete journal entries associated with this bank's transactions
-      const { error: journalDeleteError } = await supabaseClient
-        .from('journal_entries')
-        .delete()
-        .in('bank_transaction_id', 
-          supabaseClient
-            .from('bank_transactions')
-            .select('id')
-            .eq('connected_bank_id', bankId)
-        );
+      // First, get all transaction IDs for this bank
+      const { data: transactions, error: txFetchError } = await supabaseClient
+        .from('bank_transactions')
+        .select('id')
+        .eq('connected_bank_id', bankId);
 
-      if (journalDeleteError) {
-        logStep("Error deleting journal entries", { error: journalDeleteError.message });
-        throw new Error(`Failed to delete journal entries: ${journalDeleteError.message}`);
+      if (txFetchError) {
+        logStep("Error fetching transaction IDs", { error: txFetchError.message });
+        throw new Error(`Failed to fetch transaction IDs: ${txFetchError.message}`);
       }
-      logStep("Journal entries deleted");
 
-      // Delete transaction splits
-      const { error: splitsDeleteError } = await supabaseClient
-        .from('bank_transaction_splits')
-        .delete()
-        .in('transaction_id',
-          supabaseClient
-            .from('bank_transactions')
-            .select('id')
-            .eq('connected_bank_id', bankId)
-        );
+      const transactionIds = transactions?.map(tx => tx.id) || [];
+      logStep("Found transactions to delete", { count: transactionIds.length });
 
-      if (splitsDeleteError) {
-        logStep("Error deleting transaction splits", { error: splitsDeleteError.message });
-        throw new Error(`Failed to delete transaction splits: ${splitsDeleteError.message}`);
+      // Only proceed with deletions if there are transactions
+      if (transactionIds.length > 0) {
+        // Delete journal entries associated with this bank's transactions
+        const { error: journalDeleteError } = await supabaseClient
+          .from('journal_entries')
+          .delete()
+          .in('bank_transaction_id', transactionIds);
+
+        if (journalDeleteError) {
+          logStep("Error deleting journal entries", { error: journalDeleteError.message });
+          throw new Error(`Failed to delete journal entries: ${journalDeleteError.message}`);
+        }
+        logStep("Journal entries deleted");
+
+        // Delete transaction splits
+        const { error: splitsDeleteError } = await supabaseClient
+          .from('bank_transaction_splits')
+          .delete()
+          .in('transaction_id', transactionIds);
+
+        if (splitsDeleteError) {
+          logStep("Error deleting transaction splits", { error: splitsDeleteError.message });
+          throw new Error(`Failed to delete transaction splits: ${splitsDeleteError.message}`);
+        }
+        logStep("Transaction splits deleted");
       }
-      logStep("Transaction splits deleted");
 
       // Delete bank transactions
       const { error: transactionsDeleteError } = await supabaseClient

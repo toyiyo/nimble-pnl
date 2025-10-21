@@ -21,6 +21,9 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { SupplierSuggestion } from "./SupplierSuggestion";
+import { SearchableSupplierSelector } from "@/components/SearchableSupplierSelector";
+import { useSuppliers } from "@/hooks/useSuppliers";
+import { toast } from "sonner";
 
 interface TransactionDetailSheetProps {
   transaction: BankTransaction;
@@ -56,6 +59,7 @@ export function TransactionDetailSheet({
   const { selectedRestaurant } = useRestaurantContext();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
   const { formatTransactionDate } = useDateFormat();
+  const { suppliers, createSupplier } = useSuppliers();
 
   // Fetch split details if transaction is split
   const { data: splits } = useQuery({
@@ -106,6 +110,25 @@ export function TransactionDetailSheet({
       setSelectedCategoryId(transaction.suggested_category_id || '');
     }
   }, [hasSuggestion, transaction.category_id, transaction.suggested_category_id]);
+
+  const handleSupplierChange = async (value: string, isNew: boolean) => {
+    if (isNew) {
+      // Create new supplier with the entered name
+      const newSupplier = await createSupplier({ name: value, is_active: true });
+      if (newSupplier) {
+        setSelectedSupplierId(newSupplier.id);
+        setPayee(newSupplier.name);
+        toast.success(`Created new supplier: ${newSupplier.name}`);
+      }
+    } else {
+      // Select existing supplier
+      setSelectedSupplierId(value);
+      const supplier = suppliers.find(s => s.id === value);
+      if (supplier) {
+        setPayee(supplier.name);
+      }
+    }
+  };
 
   const handleSave = async () => {
     if (!selectedCategoryId) return;
@@ -267,17 +290,19 @@ export function TransactionDetailSheet({
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="payee">Payee</Label>
-              <div className="relative">
-                <Building2 className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="payee"
-                  value={payee}
-                  onChange={(e) => setPayee(e.target.value)}
-                  placeholder="Enter payee name"
-                  className="pl-10"
-                />
-              </div>
+              <Label htmlFor="payee">Payee / Supplier</Label>
+              <SearchableSupplierSelector
+                value={selectedSupplierId}
+                onValueChange={handleSupplierChange}
+                suppliers={suppliers}
+                placeholder="Search or create supplier..."
+                showNewIndicator={true}
+              />
+              {payee && !selectedSupplierId && (
+                <p className="text-xs text-muted-foreground">
+                  Original payee: {payee}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

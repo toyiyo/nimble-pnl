@@ -31,6 +31,7 @@ import { Sparkles, CheckCircle2 } from 'lucide-react';
 import { useChartOfAccounts } from '@/hooks/useChartOfAccounts';
 import { useBankTransactionsWithRelations } from '@/hooks/useBankTransactions';
 import { useDateFormat } from '@/hooks/useDateFormat';
+import { formatDateInTimezone } from '@/lib/timezone';
 
 const Transactions = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -43,7 +44,7 @@ const Transactions = () => {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
-  const { formatTransactionDate } = useDateFormat();
+  const { formatTransactionDate, timezone } = useDateFormat();
 
   // Fetch transactions
   const { data: transactions, isLoading, refetch } = useBankTransactionsWithRelations(selectedRestaurant?.restaurant_id);
@@ -102,9 +103,10 @@ const Transactions = () => {
       txn.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       txn.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    // Date filters
-    const matchesDateFrom = !filters.dateFrom || new Date(txn.transaction_date) >= new Date(filters.dateFrom);
-    const matchesDateTo = !filters.dateTo || new Date(txn.transaction_date) <= new Date(filters.dateTo);
+    // Date filters - Convert timestamp to restaurant's local date for accurate filtering
+    const transactionLocalDate = formatDateInTimezone(txn.transaction_date, timezone, 'yyyy-MM-dd');
+    const matchesDateFrom = !filters.dateFrom || transactionLocalDate >= filters.dateFrom;
+    const matchesDateTo = !filters.dateTo || transactionLocalDate <= filters.dateTo;
     
     // Amount filters
     const matchesMinAmount = filters.minAmount === undefined || Math.abs(txn.amount) >= filters.minAmount;

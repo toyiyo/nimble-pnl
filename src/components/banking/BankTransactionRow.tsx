@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { format } from "date-fns";
 import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from "@/hooks/useBankTransactions";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,7 @@ import { SplitTransactionDialog } from "./SplitTransactionDialog";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface BankTransactionRowProps {
   transaction: BankTransaction;
@@ -25,6 +25,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
   const exclude = useExcludeTransaction();
   const reconcile = useReconcileTransaction();
   const unreconcile = useUnreconcileTransaction();
+  const { formatTransactionDate } = useDateFormat();
 
   const isNegative = transaction.amount < 0;
   const formattedAmount = new Intl.NumberFormat('en-US', {
@@ -55,7 +56,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
     <>
       <TableRow className="hover:bg-muted/50">
         <TableCell className="font-medium">
-          {format(new Date(transaction.transaction_date), 'MMM dd, yyyy')}
+          {formatTransactionDate(transaction.transaction_date, 'MMM dd, yyyy')}
         </TableCell>
         
         <TableCell>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { format } from "date-fns";
 import { BankTransaction, useCategorizeTransaction } from "@/hooks/useBankTransactions";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import {
   Sheet,
   SheetContent,
@@ -55,6 +55,7 @@ export function TransactionDetailSheet({
   const categorize = useCategorizeTransaction();
   const { selectedRestaurant } = useRestaurantContext();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
+  const { formatTransactionDate } = useDateFormat();
 
   // Fetch split details if transaction is split
   const { data: splits } = useQuery({
@@ -172,7 +173,7 @@ export function TransactionDetailSheet({
                   Date
                 </div>
                 <div className="font-medium">
-                  {format(new Date(transaction.transaction_date), 'MMMM dd, yyyy')}
+                  {formatTransactionDate(transaction.transaction_date, 'MMMM dd, yyyy')}
                 </div>
               </div>
 

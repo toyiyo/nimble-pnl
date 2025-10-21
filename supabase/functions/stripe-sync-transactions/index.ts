@@ -115,7 +115,7 @@ serve(async (req) => {
         await stripe.financialConnections.accounts.subscribe(
           bank.stripe_financial_account_id,
           {
-            features: ['transactions', 'balance'],
+            features: ['transactions'],
           }
         );
         console.log("[SYNC-TRANSACTIONS] Successfully subscribed - initial sync will take a few minutes");
@@ -146,7 +146,7 @@ serve(async (req) => {
       const refreshResult = await stripe.financialConnections.accounts.refresh(
         bank.stripe_financial_account_id,
         {
-          features: ['transactions', 'balance'],
+          features: ['transactions'],
         }
       );
       console.log("[SYNC-TRANSACTIONS] Refresh status:", refreshResult.transaction_refresh?.status);

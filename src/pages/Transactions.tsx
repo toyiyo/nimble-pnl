@@ -407,8 +407,8 @@ const Transactions = () => {
       )}
       
       <CategoryRulesDialog
-        isOpen={showRulesDialog}
-        onClose={() => setShowRulesDialog(false)}
+        open={showRulesDialog}
+        onOpenChange={setShowRulesDialog}
       />
       
       <ReconciliationDialog

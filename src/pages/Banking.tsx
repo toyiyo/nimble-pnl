@@ -176,8 +176,8 @@ export default function Banking() {
       </div>
 
       <CategoryRulesDialog
-        isOpen={showRulesDialog}
-        onClose={() => setShowRulesDialog(false)}
+        open={showRulesDialog}
+        onOpenChange={setShowRulesDialog}
       />
 
       <ReconciliationDialog

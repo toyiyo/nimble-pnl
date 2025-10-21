@@ -1,203 +1,212 @@
 import { useState } from "react";
-import { Plus, Sparkles, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { useCategorizationRules, useDeleteRule, useUpdateRule } from "@/hooks/useCategorizationRules";
-import { CreateRuleDialog } from "./CreateRuleDialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
-import { format } from "date-fns";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Trash2, Plus, Settings2 } from "lucide-react";
+import { useCategorizationRules, useCreateRule, useUpdateRule, useDeleteRule, useApplyRules } from "@/hooks/useCategorizationRules";
+import { useSuppliers } from "@/hooks/useSuppliers";
+import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
+import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { SearchableSupplierSelector } from "@/components/SearchableSupplierSelector";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface CategoryRulesDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-export function CategoryRulesDialog({ isOpen, onClose }: CategoryRulesDialogProps) {
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const { data: rules, isLoading, isError, error } = useCategorizationRules();
-  const deleteRule = useDeleteRule();
+export function CategoryRulesDialog({ open, onOpenChange }: CategoryRulesDialogProps) {
+  const { selectedRestaurant } = useRestaurantContext();
+  const { data: rules, isLoading } = useCategorizationRules();
+  const { suppliers } = useSuppliers();
+  const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
+  const createRule = useCreateRule();
   const updateRule = useUpdateRule();
+  const deleteRule = useDeleteRule();
+  const applyRules = useApplyRules();
 
-  const getMatchTypeLabel = (type: string) => {
-    switch (type) {
-      case 'payee_exact': return 'Payee (Exact)';
-      case 'payee_contains': return 'Payee (Contains)';
-      case 'description_contains': return 'Description';
-      case 'amount_exact': return 'Amount (Exact)';
-      case 'amount_range': return 'Amount (Range)';
-      default: return type;
-    }
+  const [showNewRule, setShowNewRule] = useState(false);
+  const [newRule, setNewRule] = useState({
+    supplierId: '',
+    categoryId: '',
+    autoApply: false,
+  });
+
+  const expenseAccounts = accounts?.filter(
+    (acc) => acc.account_type === 'expense' || acc.account_type === 'cogs'
+  );
+
+  const handleCreateRule = async () => {
+    if (!selectedRestaurant?.restaurant_id || !newRule.supplierId || !newRule.categoryId) return;
+
+    await createRule.mutateAsync({
+      restaurantId: selectedRestaurant.restaurant_id,
+      supplierId: newRule.supplierId,
+      categoryId: newRule.categoryId,
+      autoApply: newRule.autoApply,
+    });
+
+    setNewRule({ supplierId: '', categoryId: '', autoApply: false });
+    setShowNewRule(false);
   };
 
-  const handleToggleActive = async (rule: any) => {
+  const handleToggleAutoApply = async (ruleId: string, currentValue: boolean) => {
     await updateRule.mutateAsync({
-      id: rule.id,
-      is_active: !rule.is_active,
+      ruleId,
+      autoApply: !currentValue,
     });
   };
 
-  const handleToggleAutoApply = async (rule: any) => {
-    await updateRule.mutateAsync({
-      id: rule.id,
-      auto_apply: !rule.auto_apply,
-    });
+  const handleApplyRules = async () => {
+    if (!selectedRestaurant?.restaurant_id) return;
+    await applyRules.mutateAsync(selectedRestaurant.restaurant_id);
   };
 
   return (
-    <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle>Categorization Rules</DialogTitle>
-                <DialogDescription>
-                  Manage automatic categorization rules for bank transactions
-                </DialogDescription>
-              </div>
-              <Button onClick={() => setShowCreateDialog(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Rule
-              </Button>
-            </div>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Settings2 className="h-5 w-5" />
+            Supplier Categorization Rules
+          </DialogTitle>
+          <DialogDescription>
+            Set up automatic categorization rules for your suppliers. When enabled, transactions from these suppliers will be automatically categorized.
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="space-y-4">
-            {isLoading ? (
-              <div className="space-y-3" aria-live="polite">
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-              </div>
-            ) : isError ? (
-              <div className="text-center py-8 text-destructive" role="alert" aria-live="assertive">
-                {error?.message || 'Failed to load rules. Please try again.'}
-              </div>
-            ) : rules && rules.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Rule Name</TableHead>
-                    <TableHead>Match Type</TableHead>
-                    <TableHead>Match Value</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Usage</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rules.map((rule) => (
-                    <TableRow key={rule.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {rule.rule_name.startsWith('Auto:') && (
-                            <Sparkles className="h-3 w-3 text-primary" />
-                          )}
-                          {rule.rule_name}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{getMatchTypeLabel(rule.match_type)}</Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {rule.match_value}
-                        {rule.amount_min !== null && ` ($${rule.amount_min}${rule.amount_max ? `-$${rule.amount_max}` : ''})`}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{rule.priority}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div>{rule.apply_count}x used</div>
-                          {rule.last_applied_at && (
-                            <div className="text-xs text-muted-foreground">
-                              Last: {format(new Date(rule.last_applied_at), 'MMM d')}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          {rule.is_active ? (
-                            <Badge variant="default">Active</Badge>
-                          ) : (
-                            <Badge variant="secondary">Inactive</Badge>
-                          )}
-                          {rule.auto_apply && (
-                            <Badge variant="outline" className="text-xs">
-                              <Sparkles className="h-2 w-2 mr-1" />
-                              Auto
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleToggleActive(rule)}
-                            disabled={updateRule.isPending}
-                          >
-                            {rule.is_active ? (
-                              <ToggleRight className="h-4 w-4" />
-                            ) : (
-                              <ToggleLeft className="h-4 w-4" />
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleToggleAutoApply(rule)}
-                            disabled={updateRule.isPending}
-                            title="Toggle auto-apply"
-                          >
-                            <Sparkles className={`h-4 w-4 ${rule.auto_apply ? 'text-primary' : 'text-muted-foreground'}`} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteRule.mutate(rule.id)}
-                            disabled={deleteRule.isPending}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="text-center py-12 text-muted-foreground">
-                <Sparkles className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg">No rules yet</p>
-                <p className="text-sm mt-2">
-                  Rules are automatically created as you categorize transactions
-                </p>
-                <Button onClick={() => setShowCreateDialog(true)} className="mt-4">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create First Rule
+        <div className="space-y-4">
+          {/* Existing Rules */}
+          {isLoading ? (
+            <div className="text-center py-4 text-muted-foreground">Loading rules...</div>
+          ) : rules && rules.length > 0 ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Active Rules</h3>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleApplyRules}
+                  disabled={applyRules.isPending}
+                >
+                  Apply Rules to Existing Transactions
                 </Button>
               </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+              {rules.map((rule) => (
+                <div
+                  key={rule.id}
+                  className="flex items-center justify-between p-3 border rounded-lg bg-card"
+                >
+                  <div className="flex-1">
+                    <div className="font-medium">{rule.supplier?.name}</div>
+                    <div className="text-sm text-muted-foreground">
+                      → {rule.category?.account_code} - {rule.category?.account_name}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor={`auto-${rule.id}`} className="text-xs">
+                        Auto-apply
+                      </Label>
+                      <Switch
+                        id={`auto-${rule.id}`}
+                        checked={rule.auto_apply}
+                        onCheckedChange={() => handleToggleAutoApply(rule.id, rule.auto_apply)}
+                      />
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => deleteRule.mutate(rule.id)}
+                      disabled={deleteRule.isPending}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No rules configured yet. Create your first rule below.
+            </div>
+          )}
 
-      <CreateRuleDialog
-        isOpen={showCreateDialog}
-        onClose={() => setShowCreateDialog(false)}
-      />
-    </>
+          {/* Add New Rule */}
+          {!showNewRule ? (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setShowNewRule(true)}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add New Rule
+            </Button>
+          ) : (
+            <div className="border rounded-lg p-4 space-y-4 bg-muted/50">
+              <h3 className="text-sm font-medium">New Categorization Rule</h3>
+              
+              <div className="space-y-2">
+                <Label>Supplier</Label>
+                <SearchableSupplierSelector
+                  value={newRule.supplierId}
+                  onValueChange={(value) => setNewRule({ ...newRule, supplierId: value })}
+                  suppliers={suppliers || []}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Default Category</Label>
+                <Select
+                  value={newRule.categoryId}
+                  onValueChange={(value) => setNewRule({ ...newRule, categoryId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {expenseAccounts?.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.account_code} - {account.account_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="new-auto-apply"
+                  checked={newRule.autoApply}
+                  onCheckedChange={(checked) => setNewRule({ ...newRule, autoApply: checked })}
+                />
+                <Label htmlFor="new-auto-apply" className="text-sm">
+                  Automatically apply to new transactions
+                </Label>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleCreateRule}
+                  disabled={!newRule.supplierId || !newRule.categoryId || createRule.isPending}
+                >
+                  Create Rule
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowNewRule(false);
+                    setNewRule({ supplierId: '', categoryId: '', autoApply: false });
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

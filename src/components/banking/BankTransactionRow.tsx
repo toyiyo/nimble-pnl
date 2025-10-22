@@ -111,7 +111,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
         {status === 'for_review' && (
           <TableCell className="hidden lg:table-cell">
             {transaction.is_categorized && currentCategory ? (
-              <Badge variant="secondary">{currentCategory.account_name}</Badge>
+              <Badge className="bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-50 border border-slate-300 dark:border-slate-600">{currentCategory.account_name}</Badge>
             ) : suggestedCategory ? (
               <div className="flex items-center gap-2">
                 <Badge className="bg-amber-100 dark:bg-amber-900 text-amber-900 dark:text-amber-50 border border-amber-400 dark:border-amber-600">
@@ -133,7 +133,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
                 Split across categories
               </Badge>
             ) : currentCategory ? (
-              <Badge variant="secondary">{currentCategory.account_name}</Badge>
+              <Badge className="bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-50 border border-slate-300 dark:border-slate-600">{currentCategory.account_name}</Badge>
             ) : (
               <span className="text-muted-foreground text-sm">—</span>
             )}

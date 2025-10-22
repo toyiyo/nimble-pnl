@@ -419,10 +419,24 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
               <CardContent className="flex-1 overflow-hidden p-0">
                 <ScrollArea className="h-full px-6 pb-6">
                   {eligibleTransactions.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
+                    <div className="text-center py-12 text-muted-foreground space-y-4">
                       <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>No transactions available to reconcile</p>
-                      <p className="text-sm mt-2">All transactions are either already reconciled or don't match your criteria</p>
+                      <div>
+                        <p className="font-medium text-lg mb-2">No transactions available to reconcile</p>
+                        <div className="text-sm space-y-2 max-w-md mx-auto text-left">
+                          <p className="font-medium">To appear here, transactions must meet ALL criteria:</p>
+                          <ul className="list-disc list-inside space-y-1">
+                            <li>From the selected bank account ({selectedAccount?.institution_name})</li>
+                            <li>Already categorized (go to "For Review" tab to categorize)</li>
+                            <li>Date on or before {endingDate ? format(endingDate, 'MMM dd, yyyy') : 'ending date'}</li>
+                            <li>Not already reconciled</li>
+                          </ul>
+                          <p className="mt-3 text-xs italic">
+                            Tip: If you don't see your transactions, first categorize them in the "For Review" tab, 
+                            then return here to reconcile.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-2">

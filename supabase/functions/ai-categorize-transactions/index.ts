@@ -267,7 +267,19 @@ serve(async (req) => {
     }
 
     const data = await finalResponse.json();
-    const aiResponse = data.choices[0].message.content;
+    let aiResponse = data.choices[0].message.content;
+
+    // Strip markdown code blocks if present
+    aiResponse = aiResponse.trim();
+    if (aiResponse.startsWith('```json')) {
+      aiResponse = aiResponse.slice(7); // Remove ```json
+    } else if (aiResponse.startsWith('```')) {
+      aiResponse = aiResponse.slice(3); // Remove ```
+    }
+    if (aiResponse.endsWith('```')) {
+      aiResponse = aiResponse.slice(0, -3); // Remove trailing ```
+    }
+    aiResponse = aiResponse.trim();
 
     let categorizations;
     try {

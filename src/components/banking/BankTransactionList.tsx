@@ -20,7 +20,7 @@ export function BankTransactionList({ transactions, status, accounts }: BankTran
             <TableHead className="w-[120px] whitespace-nowrap hidden md:table-cell">Payee</TableHead>
             <TableHead className="w-[140px] whitespace-nowrap hidden lg:table-cell">Bank Account</TableHead>
             <TableHead className="w-[100px] text-right whitespace-nowrap">Amount</TableHead>
-            {status === 'for_review' && <TableHead className="w-[140px] hidden lg:table-cell">Suggested</TableHead>}
+            {status === 'for_review' && <TableHead className="w-[140px] hidden lg:table-cell">Category</TableHead>}
             {status === 'categorized' && <TableHead className="w-[140px] hidden lg:table-cell">Category</TableHead>}
             {status === 'excluded' && <TableHead className="w-[120px] hidden lg:table-cell">Reason</TableHead>}
             <TableHead className="w-[60px] text-right whitespace-nowrap">Actions</TableHead>

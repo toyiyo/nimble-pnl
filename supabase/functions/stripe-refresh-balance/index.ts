@@ -135,7 +135,7 @@ serve(async (req) => {
       account_name: finalAccount.display_name || finalAccount.institution_name,
       account_type: finalAccount.subcategory,
       account_mask: finalAccount.last4,
-      current_balance: currentBalance == null ? null : currentBalance / 100,
+      current_balance: currentBalance == null ? 0 : currentBalance / 100,
       available_balance: availableBalance == null ? null : availableBalance / 100,
       currency: "USD",
       is_active: true,

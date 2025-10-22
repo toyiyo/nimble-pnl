@@ -66,6 +66,20 @@ serve(async (req) => {
     }
     logStep("Bank found", { bankId: bank.id, institutionName: bank.institution_name });
 
+    // Verify user has access to this bank's restaurant
+    const { data: userRestaurant, error: accessError } = await supabaseClient
+      .from('user_restaurants')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('restaurant_id', bank.restaurant_id)
+      .single();
+
+    if (accessError || !userRestaurant || !['owner', 'manager'].includes(userRestaurant.role)) {
+      logStep("Authorization failed", { userId: user.id, restaurantId: bank.restaurant_id });
+      throw new Error('Unauthorized: You do not have permission to disconnect this bank');
+    }
+    logStep("Authorization verified", { userId: user.id, role: userRestaurant.role });
+
     // Initialize Stripe
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
     if (!stripeKey) {

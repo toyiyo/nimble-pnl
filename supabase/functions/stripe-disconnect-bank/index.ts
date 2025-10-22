@@ -92,78 +92,117 @@ serve(async (req) => {
       });
     }
 
-    // If deleteData is true, delete related transactions and journal entries
+    // If deleteData is true, delete related data in the background
     if (deleteData) {
-      logStep("Starting data deletion");
+      // Mark as disconnected immediately
+      const { error: updateError } = await supabaseClient
+        .from('connected_banks')
+        .update({
+          status: 'disconnected',
+          disconnected_at: new Date().toISOString(),
+        })
+        .eq('id', bankId);
 
-      // First, get all transaction IDs for this bank
-      const { data: transactions, error: txFetchError } = await supabaseClient
-        .from('bank_transactions')
-        .select('id')
-        .eq('connected_bank_id', bankId);
-
-      if (txFetchError) {
-        logStep("Error fetching transaction IDs", { error: txFetchError.message });
-        throw new Error(`Failed to fetch transaction IDs: ${txFetchError.message}`);
+      if (updateError) {
+        throw new Error(`Failed to update bank status: ${updateError.message}`);
       }
+      logStep("Bank connection marked as disconnected");
 
-      const transactionIds = transactions?.map(tx => tx.id) || [];
-      logStep("Found transactions to delete", { count: transactionIds.length });
+      // Start background deletion task
+      const deleteTask = async () => {
+        try {
+          logStep("Starting background deletion");
 
-      // Only proceed with deletions if there are transactions
-      if (transactionIds.length > 0) {
-        // Delete journal entries associated with bank transactions
-        const { error: journalDeleteError } = await supabaseClient
-          .from('journal_entries')
-          .delete()
-          .eq('reference_type', 'bank_transaction')
-          .in('reference_id', transactionIds);
+          // First, get all transaction IDs for this bank
+          const { data: transactions, error: txFetchError } = await supabaseClient
+            .from('bank_transactions')
+            .select('id')
+            .eq('connected_bank_id', bankId);
 
-        if (journalDeleteError) {
-          logStep("Error deleting journal entries", { error: journalDeleteError.message });
-          throw new Error(`Failed to delete journal entries: ${journalDeleteError.message}`);
+          if (txFetchError) {
+            logStep("Error fetching transaction IDs", { error: txFetchError.message });
+            return;
+          }
+
+          const transactionIds = transactions?.map(tx => tx.id) || [];
+          logStep("Found transactions to delete", { count: transactionIds.length });
+
+          // Only proceed with deletions if there are transactions
+          if (transactionIds.length > 0) {
+            // Delete journal entries associated with bank transactions
+            const { error: journalDeleteError } = await supabaseClient
+              .from('journal_entries')
+              .delete()
+              .eq('reference_type', 'bank_transaction')
+              .in('reference_id', transactionIds);
+
+            if (journalDeleteError) {
+              logStep("Error deleting journal entries", { error: journalDeleteError.message });
+            } else {
+              logStep("Journal entries deleted");
+            }
+
+            // Delete transaction splits
+            const { error: splitsDeleteError } = await supabaseClient
+              .from('bank_transaction_splits')
+              .delete()
+              .in('transaction_id', transactionIds);
+
+            if (splitsDeleteError) {
+              logStep("Error deleting transaction splits", { error: splitsDeleteError.message });
+            } else {
+              logStep("Transaction splits deleted");
+            }
+          }
+
+          // Delete bank transactions
+          const { error: transactionsDeleteError } = await supabaseClient
+            .from('bank_transactions')
+            .delete()
+            .eq('connected_bank_id', bankId);
+
+          if (transactionsDeleteError) {
+            logStep("Error deleting bank transactions", { error: transactionsDeleteError.message });
+          } else {
+            logStep("Bank transactions deleted");
+          }
+
+          // Delete bank account balances
+          const { error: balancesDeleteError } = await supabaseClient
+            .from('bank_account_balances')
+            .delete()
+            .eq('connected_bank_id', bankId);
+
+          if (balancesDeleteError) {
+            logStep("Error deleting balances", { error: balancesDeleteError.message });
+          } else {
+            logStep("Bank account balances deleted");
+          }
+
+          logStep("Background deletion completed successfully");
+        } catch (error) {
+          logStep("Background deletion failed", { error: error instanceof Error ? error.message : 'Unknown error' });
         }
-        logStep("Journal entries deleted");
+      };
 
-        // Delete transaction splits
-        const { error: splitsDeleteError } = await supabaseClient
-          .from('bank_transaction_splits')
-          .delete()
-          .in('transaction_id', transactionIds);
+      // Start the background task without waiting
+      EdgeRuntime.waitUntil(deleteTask());
 
-        if (splitsDeleteError) {
-          logStep("Error deleting transaction splits", { error: splitsDeleteError.message });
-          throw new Error(`Failed to delete transaction splits: ${splitsDeleteError.message}`);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Bank disconnected. All related data is being deleted in the background.',
+          dataDeleted: true,
+          background: true,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
         }
-        logStep("Transaction splits deleted");
-      }
-
-      // Delete bank transactions
-      const { error: transactionsDeleteError } = await supabaseClient
-        .from('bank_transactions')
-        .delete()
-        .eq('connected_bank_id', bankId);
-
-      if (transactionsDeleteError) {
-        logStep("Error deleting bank transactions", { error: transactionsDeleteError.message });
-        throw new Error(`Failed to delete transactions: ${transactionsDeleteError.message}`);
-      }
-      logStep("Bank transactions deleted");
-
-      // Delete bank account balances
-      const { error: balancesDeleteError } = await supabaseClient
-        .from('bank_account_balances')
-        .delete()
-        .eq('connected_bank_id', bankId);
-
-      if (balancesDeleteError) {
-        logStep("Error deleting balances", { error: balancesDeleteError.message });
-        throw new Error(`Failed to delete balances: ${balancesDeleteError.message}`);
-      }
-      logStep("Bank account balances deleted");
+      );
     }
 
-    // Update the bank connection status to disconnected
+    // If not deleting data, just mark as disconnected
     const { error: updateError } = await supabaseClient
       .from('connected_banks')
       .update({
@@ -180,10 +219,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: deleteData 
-          ? 'Bank disconnected and all related data deleted successfully'
-          : 'Bank disconnected successfully. Transaction history preserved.',
-        dataDeleted: deleteData,
+        message: 'Bank disconnected successfully. Transaction history preserved.',
+        dataDeleted: false,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

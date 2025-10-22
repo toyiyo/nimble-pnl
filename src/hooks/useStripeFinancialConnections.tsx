@@ -138,6 +138,15 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
 
   // Disconnect a bank and optionally delete data
   const disconnectBank = async (bankId: string, deleteData: boolean = false) => {
+    // Show loading toast
+    const loadingToast = toast({
+      title: deleteData ? "Disconnecting Bank..." : "Disconnecting...",
+      description: deleteData 
+        ? "This may take a moment as we prepare to delete all associated data." 
+        : "Removing bank connection...",
+      duration: Infinity, // Keep visible until we dismiss it
+    });
+
     try {
       const { data, error } = await supabase.functions.invoke(
         'stripe-disconnect-bank',
@@ -146,12 +155,24 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
         }
       );
 
+      // Dismiss loading toast
+      loadingToast.dismiss();
+
       if (error) throw error;
 
-      toast({
-        title: "Bank Disconnected",
-        description: data.message || "The bank account has been disconnected successfully",
-      });
+      // Show success message based on whether it's background processing
+      if (data.background) {
+        toast({
+          title: "Bank Disconnected",
+          description: "Your bank has been disconnected. All associated data is being deleted in the background. This may take a few minutes.",
+          duration: 8000,
+        });
+      } else {
+        toast({
+          title: "Bank Disconnected",
+          description: data.message || "The bank account has been disconnected successfully",
+        });
+      }
 
       // Refresh the list
       queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] });
@@ -162,6 +183,9 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
         queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
       }
     } catch (error) {
+      // Dismiss loading toast
+      loadingToast.dismiss();
+      
       console.error('Error disconnecting bank:', error);
       toast({
         title: "Failed to Disconnect",

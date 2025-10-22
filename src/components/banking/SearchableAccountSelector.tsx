@@ -15,6 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 
@@ -89,45 +90,47 @@ export function SearchableAccountSelector({
       <PopoverContent className="w-full p-0 bg-background z-50" align="start">
         <Command>
           <CommandInput placeholder="Search accounts..." />
-          <CommandList className="max-h-[300px] overflow-y-auto">
-            {isEmpty ? (
-              <div className="py-6 px-4 text-center text-sm text-muted-foreground">
-                <p className="font-medium mb-1">No accounts found</p>
-                <p className="text-xs">Create accounts in Chart of Accounts to get started</p>
-              </div>
-            ) : (
-              <>
-                <CommandEmpty>No account found.</CommandEmpty>
-                {Object.entries(groupedAccounts).map(([type, typeAccounts]) => (
-                  <CommandGroup key={type} heading={type}>
-                    {typeAccounts.map((account) => (
-                      <CommandItem
-                        key={account.id}
-                        value={`${account.account_code} ${account.account_name}`}
-                        onSelect={() => {
-                          onValueChange(account.id);
-                          setOpen(false);
-                        }}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            value === account.id ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <span className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-muted-foreground w-16">
-                            {account.account_code}
+          <ScrollArea className="h-[300px]">
+            <CommandList>
+              {isEmpty ? (
+                <div className="py-6 px-4 text-center text-sm text-muted-foreground">
+                  <p className="font-medium mb-1">No accounts found</p>
+                  <p className="text-xs">Create accounts in Chart of Accounts to get started</p>
+                </div>
+              ) : (
+                <>
+                  <CommandEmpty>No account found.</CommandEmpty>
+                  {Object.entries(groupedAccounts).map(([type, typeAccounts]) => (
+                    <CommandGroup key={type} heading={type}>
+                      {typeAccounts.map((account) => (
+                        <CommandItem
+                          key={account.id}
+                          value={`${account.account_code} ${account.account_name}`}
+                          onSelect={() => {
+                            onValueChange(account.id);
+                            setOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              value === account.id ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <span className="flex items-center gap-2">
+                            <span className="font-mono text-xs text-muted-foreground w-16">
+                              {account.account_code}
+                            </span>
+                            <span>{account.account_name}</span>
                           </span>
-                          <span>{account.account_name}</span>
-                        </span>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                ))}
-              </>
-            )}
-          </CommandList>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  ))}
+                </>
+              )}
+            </CommandList>
+          </ScrollArea>
         </Command>
       </PopoverContent>
     </Popover>

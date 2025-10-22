@@ -262,15 +262,13 @@ serve(async (req) => {
       );
     }
 
-    // Check if there are more transactions to process
+    // Check total count of transactions needing categorization
     const { count: remainingCount } = await supabaseClient
       .from('bank_transactions')
       .select('id', { count: 'exact', head: true })
       .eq('restaurant_id', restaurantId)
       .or(`category_id.is.null,category_id.in.(${uncategorizedIds.join(',')})`)
       .is('suggested_category_id', null);
-
-    const hasMore = (remainingCount ?? 0) > transactions.length;
 
     // Get chart of accounts (excluding uncategorized ones)
     const { data: accounts, error: accountsError } = await supabaseClient
@@ -408,8 +406,12 @@ serve(async (req) => {
 
     console.log(`✅ Successfully suggested categories for ${updatedCount} transactions`);
 
-    const responseMessage = hasMore 
-      ? `AI suggested categories for ${updatedCount} transactions. ${(remainingCount ?? 0) - transactions.length} more need categorization - click again to continue.`
+    // Calculate remaining based on authoritative count and actual processed count
+    const remainingAfterProcessing = (remainingCount ?? 0) - updatedCount;
+    const hasMoreAfterProcessing = remainingAfterProcessing > 0;
+
+    const responseMessage = hasMoreAfterProcessing 
+      ? `AI suggested categories for ${updatedCount} transactions. ${remainingAfterProcessing} more need categorization - click again to continue.`
       : `AI suggested categories for ${updatedCount} transactions. All transactions have been processed!`;
 
     return new Response(
@@ -418,8 +420,8 @@ serve(async (req) => {
         message: responseMessage,
         categorized: updatedCount,
         total: transactions.length,
-        remaining: hasMore ? (remainingCount ?? 0) - transactions.length : 0,
-        hasMore,
+        remaining: remainingAfterProcessing,
+        hasMore: hasMoreAfterProcessing,
         results
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

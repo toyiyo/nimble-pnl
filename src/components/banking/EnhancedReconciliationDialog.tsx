@@ -18,6 +18,7 @@ import { useReconcileTransactions } from "@/hooks/useReconcileTransactions";
 import { format } from "date-fns";
 import { CalendarIcon, CheckCircle2, AlertCircle, Loader2, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDateInTimezone } from "@/lib/timezone";
 import { toast } from "sonner";
 
 interface EnhancedReconciliationDialogProps {
@@ -61,17 +62,23 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
       return [];
     }
     
+    const timezone = selectedRestaurant?.restaurant?.timezone || 'America/Chicago';
+    const endingDateStr = formatDateInTimezone(endingDate, timezone, 'yyyy-MM-dd');
+    
     console.log('[RECONCILIATION] Filtering transactions:', {
       totalCategorized: categorizedTransactions.length,
       selectedAccountId,
       endingDate: endingDate.toISOString(),
+      endingDateStr,
+      timezone,
       sampleTransaction: categorizedTransactions[0],
     });
     
     const filtered = categorizedTransactions.filter(t => {
       const matchesBank = t.connected_bank_id === selectedAccountId;
       const notReconciled = !t.is_reconciled;
-      const beforeDate = new Date(t.transaction_date) <= endingDate;
+      const txnDateStr = formatDateInTimezone(t.transaction_date, timezone, 'yyyy-MM-dd');
+      const beforeDate = txnDateStr <= endingDateStr;
       
       if (!matchesBank || !notReconciled || !beforeDate) {
         console.log('[RECONCILIATION] Transaction filtered out:', {
@@ -83,6 +90,8 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
           is_reconciled: t.is_reconciled,
           notReconciled,
           transaction_date: t.transaction_date,
+          txnDateStr,
+          endingDateStr,
           beforeDate
         });
       }

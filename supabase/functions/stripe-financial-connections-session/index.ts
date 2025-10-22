@@ -101,6 +101,15 @@ serve(async (req) => {
     if (restaurant?.stripe_customer_id) {
       stripeCustomerId = restaurant.stripe_customer_id;
       console.log("[FC-SESSION] Using existing Stripe customer:", stripeCustomerId);
+      
+      // CRITICAL: Update customer metadata to ensure it points to the correct restaurant
+      // This prevents tenant isolation breaches when reconnecting banks
+      await stripe.customers.update(stripeCustomerId, {
+        metadata: {
+          restaurant_id: restaurantId,
+        },
+      });
+      console.log("[FC-SESSION] Updated Stripe customer metadata for restaurant:", restaurantId);
     } else {
       // Create new Stripe customer
       const customer = await stripe.customers.create({

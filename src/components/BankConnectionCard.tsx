@@ -115,18 +115,10 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div className={cn(
-              "w-12 h-12 rounded-lg flex items-center justify-center overflow-hidden",
+              "w-12 h-12 rounded-lg flex items-center justify-center",
               bank.status === 'connected' ? "bg-emerald-500/10" : "bg-muted"
             )}>
-              {bank.institution_logo_url ? (
-                <img 
-                  src={bank.institution_logo_url} 
-                  alt={`${bank.institution_name} logo`}
-                  className="w-full h-full object-contain p-1"
-                />
-              ) : (
-                <Building2 className="h-6 w-6 text-primary" aria-hidden="true" focusable="false" />
-              )}
+              <Building2 className="h-6 w-6 text-primary" aria-hidden="true" focusable="false" />
             </div>
             <div>
               <CardTitle className="text-lg flex items-center gap-2">

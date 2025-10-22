@@ -18,5 +18,9 @@ export function useConnectedBanks(restaurantId: string | null | undefined, enabl
       return data;
     },
     enabled: !!restaurantId && enabled,
+    staleTime: 60_000, // 1 minute
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
   });
 }

@@ -35,7 +35,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
   const [step, setStep] = useState<ReconciliationStep>('setup');
   
   // Setup form state
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [selectedAccountBalanceId, setSelectedAccountBalanceId] = useState<string>("");
   const [endingDate, setEndingDate] = useState<Date>();
   const [endingBalance, setEndingBalance] = useState("");
   const [interestEarned, setInterestEarned] = useState("0.00");
@@ -46,17 +46,38 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
 
   // Fetch connected bank accounts
   const { data: connectedBanks } = useConnectedBanks(selectedRestaurant?.restaurant_id, isOpen);
+  
+  // Flatten all bank account balances from all connected banks
+  const bankAccountBalances = useMemo(() => {
+    if (!connectedBanks) return [];
+    
+    return connectedBanks.flatMap(bank => 
+      (bank.bank_account_balances || []).map(balance => ({
+        id: balance.id,
+        connectedBankId: bank.id,
+        institutionName: bank.institution_name,
+        accountName: balance.account_name,
+        accountMask: balance.account_mask,
+      }))
+    );
+  }, [connectedBanks]);
+  
+  // Get the selected account balance details
+  const selectedAccount = useMemo(() => {
+    return bankAccountBalances.find(acc => acc.id === selectedAccountBalanceId);
+  }, [bankAccountBalances, selectedAccountBalanceId]);
 
   // Fetch categorized (but not yet reconciled) transactions
   const { data: categorizedTransactions } = useBankTransactions('categorized');
   
   // Filter transactions for selected account and before ending date
   const eligibleTransactions = useMemo(() => {
-    if (!categorizedTransactions || !selectedAccountId || !endingDate) {
+    if (!categorizedTransactions || !selectedAccountBalanceId || !selectedAccount || !endingDate) {
       console.log('[RECONCILIATION] No data to filter:', { 
         hasCategorized: !!categorizedTransactions,
         categorizedCount: categorizedTransactions?.length,
-        hasAccountId: !!selectedAccountId, 
+        hasAccountBalanceId: !!selectedAccountBalanceId,
+        hasSelectedAccount: !!selectedAccount,
         hasEndingDate: !!endingDate 
       });
       return [];
@@ -67,7 +88,8 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
     
     console.log('[RECONCILIATION] Filtering transactions:', {
       totalCategorized: categorizedTransactions.length,
-      selectedAccountId,
+      selectedAccountBalanceId,
+      connectedBankId: selectedAccount.connectedBankId,
       endingDate: endingDate.toISOString(),
       endingDateStr,
       timezone,
@@ -75,7 +97,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
     });
     
     const filtered = categorizedTransactions.filter(t => {
-      const matchesBank = t.connected_bank_id === selectedAccountId;
+      const matchesBank = t.connected_bank_id === selectedAccount.connectedBankId;
       const notReconciled = !t.is_reconciled;
       const txnDateStr = formatDateInTimezone(t.transaction_date, timezone, 'yyyy-MM-dd');
       const beforeDate = txnDateStr <= endingDateStr;
@@ -85,7 +107,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
           id: t.id,
           description: t.description,
           connected_bank_id: t.connected_bank_id,
-          selectedAccountId,
+          selectedConnectedBankId: selectedAccount.connectedBankId,
           matchesBank,
           is_reconciled: t.is_reconciled,
           notReconciled,
@@ -105,7 +127,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
     });
     
     return filtered;
-  }, [categorizedTransactions, selectedAccountId, endingDate]);
+  }, [categorizedTransactions, selectedAccountBalanceId, selectedAccount, endingDate, selectedRestaurant]);
 
   // Calculate balances
   const selectedBalance = useMemo(() => {
@@ -126,7 +148,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
 
   // Get the last reconciled balance for this account (opening balance)
   const { data: accountBalance } = useOpeningBalance(
-    selectedAccountId, 
+    selectedAccountBalanceId, 
     endingDate, 
     step === 'matching'
   );
@@ -136,7 +158,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
   const difference = adjustedStatementBalance - calculatedBalance;
 
   const handleStartReconciliation = () => {
-    if (!selectedAccountId || !endingDate || !endingBalance) {
+    if (!selectedAccountBalanceId || !endingDate || !endingBalance) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -163,7 +185,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
       return;
     }
 
-    if (!selectedAccountId || !endingDate) {
+    if (!selectedAccountBalanceId || !endingDate) {
       toast.error("Missing required information");
       return;
     }
@@ -171,7 +193,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
     try {
       await reconcileTransactionsMutation.mutateAsync({
         transactionIds: Array.from(selectedTransactions),
-        connectedBankId: selectedAccountId,
+        accountBalanceId: selectedAccountBalanceId,
         adjustedStatementBalance,
         endingDate,
       });
@@ -184,7 +206,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
 
   const handleClose = () => {
     setStep('setup');
-    setSelectedAccountId("");
+    setSelectedAccountBalanceId("");
     setEndingDate(undefined);
     setEndingBalance("");
     setInterestEarned("0.00");
@@ -193,10 +215,13 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
     onClose();
   };
 
-  const selectedAccount = connectedBanks?.find(b => b.id === selectedAccountId);
-
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      // Only reset state when dialog is closing (open === false)
+      if (!open) {
+        handleClose();
+      }
+    }}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Bank Reconciliation</DialogTitle>
@@ -214,18 +239,16 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="account">Bank Account</Label>
-                  <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                  <Select value={selectedAccountBalanceId} onValueChange={setSelectedAccountBalanceId}>
                     <SelectTrigger id="account">
                       <SelectValue placeholder="Select account to reconcile" />
                     </SelectTrigger>
                     <SelectContent>
-                      {connectedBanks?.map(bank => (
-                        <SelectItem key={bank.id} value={bank.id}>
-                          {bank.institution_name}
-                          {bank.bank_account_balances?.[0]?.account_name && 
-                            ` - ${bank.bank_account_balances[0].account_name}`}
-                          {bank.bank_account_balances?.[0]?.account_mask && 
-                            ` (••••${bank.bank_account_balances[0].account_mask})`}
+                      {bankAccountBalances.map(account => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.institutionName}
+                          {account.accountName && ` - ${account.accountName}`}
+                          {account.accountMask && ` (••••${account.accountMask})`}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -310,7 +333,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
                   </Button>
                   <Button 
                     onClick={handleStartReconciliation}
-                    disabled={!selectedAccountId || !endingDate || !endingBalance}
+                    disabled={!selectedAccountBalanceId || !endingDate || !endingBalance}
                   >
                     Start Reconciling
                   </Button>
@@ -378,7 +401,8 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
                         <div className="text-sm space-y-2 max-w-md mx-auto text-left">
                           <p className="font-medium">To appear here, transactions must meet ALL criteria:</p>
                           <ul className="list-disc list-inside space-y-1">
-                            <li>From the selected bank account ({selectedAccount?.institution_name})</li>
+                            <li>From the selected bank account ({selectedAccount?.institutionName}
+                              {selectedAccount?.accountName && ` - ${selectedAccount.accountName}`})</li>
                             <li>Already categorized (go to "For Review" tab to categorize)</li>
                             <li>Date on or before {endingDate ? format(endingDate, 'MMM dd, yyyy') : 'ending date'}</li>
                             <li>Not already reconciled</li>
@@ -462,7 +486,8 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
               <CheckCircle2 className="h-16 w-16 text-green-600 mx-auto mb-4" />
               <h3 className="text-2xl font-bold mb-2">Reconciliation Complete!</h3>
               <p className="text-muted-foreground">
-                Successfully reconciled {selectedTransactions.size} transactions for {selectedAccount?.institution_name}
+                Successfully reconciled {selectedTransactions.size} transactions for {selectedAccount?.institutionName}
+                {selectedAccount?.accountName && ` - ${selectedAccount.accountName}`}
               </p>
             </div>
 

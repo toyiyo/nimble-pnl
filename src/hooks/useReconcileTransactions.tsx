@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 interface ReconcileTransactionsParams {
   transactionIds: string[];
-  connectedBankId: string;
+  accountBalanceId: string;
   adjustedStatementBalance: number;
   endingDate: Date;
 }
@@ -15,7 +15,7 @@ export function useReconcileTransactions() {
   return useMutation({
     mutationFn: async ({ 
       transactionIds, 
-      connectedBankId, 
+      accountBalanceId, 
       adjustedStatementBalance, 
       endingDate 
     }: ReconcileTransactionsParams) => {
@@ -36,7 +36,7 @@ export function useReconcileTransactions() {
 
       await Promise.all(updates);
 
-      // Update account balance
+      // Update account balance using the specific bank account balance ID
       await supabase
         .from('bank_account_balances')
         .update({
@@ -44,7 +44,7 @@ export function useReconcileTransactions() {
           as_of_date: endingDate.toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('connected_bank_id', connectedBankId);
+        .eq('id', accountBalanceId);
 
       return transactionIds.length;
     },

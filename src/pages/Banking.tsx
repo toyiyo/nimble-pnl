@@ -505,15 +505,19 @@ export default function Banking() {
         </div>
       </div>
 
-      <CategoryRulesDialog
-        open={showRulesDialog}
-        onOpenChange={setShowRulesDialog}
-      />
+      {selectedRestaurant && (
+        <>
+          <CategoryRulesDialog
+            open={showRulesDialog}
+            onOpenChange={setShowRulesDialog}
+          />
 
-      <EnhancedReconciliationDialog
-        isOpen={showReconciliationDialog}
-        onClose={() => setShowReconciliationDialog(false)}
-      />
+          <EnhancedReconciliationDialog
+            isOpen={showReconciliationDialog}
+            onClose={() => setShowReconciliationDialog(false)}
+          />
+        </>
+      )}
     </div>
   );
 }

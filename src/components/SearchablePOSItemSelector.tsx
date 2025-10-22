@@ -15,7 +15,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { POSItem } from "@/hooks/usePOSItems";
 
 interface SearchablePOSItemSelectorProps {
@@ -87,8 +86,10 @@ export function SearchablePOSItemSelector({
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <ScrollArea className="h-[300px]">
-            <CommandList>
+          <CommandList 
+            className="max-h-72 overflow-y-auto overscroll-contain"
+            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+          >
             <CommandEmpty>
               <div className="py-6 text-center text-sm">
                 <p className="text-muted-foreground">No POS items found</p>
@@ -127,7 +128,6 @@ export function SearchablePOSItemSelector({
               ))}
             </CommandGroup>
           </CommandList>
-          </ScrollArea>
         </Command>
       </PopoverContent>
     </Popover>

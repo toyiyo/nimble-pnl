@@ -16,7 +16,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Product } from '@/hooks/useProducts';
 
 interface SearchableProductSelectorProps {
@@ -109,8 +108,10 @@ export function SearchableProductSelector({
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <ScrollArea className="h-[300px]">
-            <CommandList>
+          <CommandList 
+            className="max-h-72 overflow-y-auto overscroll-contain"
+            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+          >
             <CommandEmpty>
               <div className="py-6 text-center text-sm">
                 <p className="text-muted-foreground">No products found</p>
@@ -178,7 +179,6 @@ export function SearchableProductSelector({
               </CommandGroup>
             )}
           </CommandList>
-          </ScrollArea>
         </Command>
       </PopoverContent>
     </Popover>

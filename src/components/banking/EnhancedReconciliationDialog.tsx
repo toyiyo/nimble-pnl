@@ -132,28 +132,32 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
     return ending + interest - charges;
   }, [endingBalance, interestEarned, serviceCharges]);
 
-  // Get the last reconciled balance for this account
+  // Get the last reconciled balance for this account (opening balance)
   const { data: accountBalance } = useQuery({
-    queryKey: ['account-balance', selectedAccountId],
+    queryKey: ['account-balance', selectedAccountId, endingDate],
     queryFn: async () => {
-      if (!selectedAccountId) return null;
+      if (!selectedAccountId || !endingDate) return null;
       
+      // Get the most recent balance BEFORE the ending date (this is our opening balance)
       const { data, error } = await supabase
         .from('bank_account_balances')
-        .select('current_balance')
+        .select('current_balance, as_of_date')
         .eq('connected_bank_id', selectedAccountId)
+        .lt('as_of_date', endingDate.toISOString())
         .order('as_of_date', { ascending: false })
         .limit(1)
         .maybeSingle();
       
       if (error) throw error;
+      console.log('[RECONCILIATION] Opening balance:', data);
       return data?.current_balance || 0;
     },
-    enabled: !!selectedAccountId && step === 'matching',
+    enabled: !!selectedAccountId && step === 'matching' && !!endingDate,
   });
 
-  const quickbooksBalance = (accountBalance || 0) + selectedBalance;
-  const difference = adjustedStatementBalance - quickbooksBalance;
+  const openingBalance = accountBalance || 0;
+  const calculatedBalance = openingBalance + selectedBalance;
+  const difference = adjustedStatementBalance - calculatedBalance;
 
   const handleStartReconciliation = () => {
     if (!selectedAccountId || !endingDate || !endingBalance) {
@@ -379,9 +383,12 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
                     </div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground mb-1">QuickBooks Balance</div>
+                    <div className="text-muted-foreground mb-1">EasyShift Balance</div>
                     <div className="font-semibold text-lg">
-                      ${quickbooksBalance.toFixed(2)}
+                      ${calculatedBalance.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Opening: ${openingBalance.toFixed(2)} + Selected: ${selectedBalance.toFixed(2)}
                     </div>
                   </div>
                   <div>

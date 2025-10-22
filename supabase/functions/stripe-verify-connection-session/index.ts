@@ -45,9 +45,9 @@ serve(async (req) => {
       throw new Error('sessionId and restaurantId are required');
     }
 
-    // Verify user has access to this restaurant
+    // Verify user has access to this restaurant (using user_restaurants table)
     const { data: membership, error: membershipError } = await supabaseAdmin
-      .from('restaurant_members')
+      .from('user_restaurants')
       .select('role')
       .eq('restaurant_id', restaurantId)
       .eq('user_id', user.id)

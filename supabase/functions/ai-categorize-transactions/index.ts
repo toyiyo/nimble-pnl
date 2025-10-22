@@ -9,12 +9,17 @@ const corsHeaders = {
 
 const SYSTEM_PROMPT = `You are an expert accountant helping categorize bank transactions. Analyze each transaction and assign it to the most appropriate account from the Chart of Accounts provided.
 
-RULES:
+CRITICAL RULES:
+- You MUST ONLY use account codes that are explicitly listed in the Chart of Accounts provided
+- DO NOT invent, guess, or use account codes that are not in the provided list
+- If uncertain, choose the closest matching account from the provided list
 - Match transaction descriptions and payees to appropriate accounts
 - Positive amounts are typically income/revenue
 - Negative amounts are typically expenses
 - Use confidence: "high" for obvious matches, "medium" for likely matches, "low" for uncertain
-- Always provide brief reasoning for each categorization`;
+- Always provide brief reasoning for each categorization
+
+IMPORTANT: Double-check that every account_code you return appears in the Chart of Accounts list provided in the user prompt. Invalid codes will be rejected.`;
 
 const buildUserPrompt = (transactions: any[], accounts: any[]) => `
 CHART OF ACCOUNTS:
@@ -367,7 +372,8 @@ serve(async (req) => {
         // Find the account by code
         const account = accounts.find(a => a.account_code === cat.account_code);
         if (!account) {
-          console.warn(`Account code ${cat.account_code} not found`);
+          console.warn(`❌ Account code ${cat.account_code} not found in chart of accounts. AI may have hallucinated this code.`);
+          console.warn(`   Available account codes: ${accounts.map(a => a.account_code).join(', ')}`);
           continue;
         }
 

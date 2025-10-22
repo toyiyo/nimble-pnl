@@ -50,7 +50,7 @@ export function DashboardQuickActions({ restaurantId }: DashboardQuickActionsPro
       title: "Bank Accounts",
       description: "Connect banks",
       icon: Wallet,
-      onClick: () => navigate("/accounting/banks"),
+      onClick: () => navigate("/banking"),
       color: "text-emerald-600 dark:text-emerald-400",
     },
     {

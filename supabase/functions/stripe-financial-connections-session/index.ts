@@ -212,7 +212,7 @@ serve(async (req) => {
       filters: {
         countries: ["US"],
       },
-      return_url: `${origin}/accounting/banks?restaurant_id=${restaurantId}`,
+      return_url: `${origin}/banking?restaurant_id=${restaurantId}`,
     });
 
     console.log("[FC-SESSION] Session created successfully:", session.id);

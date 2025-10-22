@@ -421,8 +421,8 @@ const Transactions = () => {
                   : 'Click "Sync Transactions" on your connected banks to import transactions'
                 }
               </p>
-              <Button onClick={() => window.location.href = '/accounting'}>
-                Go to Accounting
+              <Button onClick={() => window.location.href = '/banking'}>
+                Go to Banking
               </Button>
             </div>
           </CardContent>

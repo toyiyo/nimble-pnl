@@ -2,8 +2,6 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -33,88 +31,147 @@ ${idx + 1}. ID: ${txn.id}
 
 Categorize each transaction with the appropriate account code, confidence level, and reasoning.`;
 
-async function categorizeWithOpenRouter(
+// Model configurations (free models first, then paid fallbacks)
+const MODELS = [
+  // Free models
+  {
+    name: "Llama 4 Maverick Free",
+    id: "meta-llama/llama-4-maverick:free",
+    maxRetries: 2
+  },
+  {
+    name: "Gemma 3 27B Free",
+    id: "google/gemma-3-27b-it:free",
+    maxRetries: 2
+  },
+  // Paid models (fallback)
+  {
+    name: "Gemini 2.5 Flash Lite",
+    id: "google/gemini-2.5-flash-lite",
+    maxRetries: 1
+  },
+  {
+    name: "Claude Sonnet 4.5",
+    id: "anthropic/claude-sonnet-4-5",
+    maxRetries: 1
+  },
+  {
+    name: "Llama 4 Maverick Paid",
+    id: "meta-llama/llama-4-maverick",
+    maxRetries: 1
+  }
+];
+
+// Helper function to build structured output request body
+function buildCategorizationRequestBody(
+  modelId: string,
+  transactions: any[],
+  accounts: any[]
+): any {
+  return {
+    model: modelId,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: buildUserPrompt(transactions, accounts) }
+    ],
+    response_format: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'transaction_categorizations',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: {
+            categorizations: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  transaction_id: { 
+                    type: 'string', 
+                    description: 'UUID of the transaction' 
+                  },
+                  account_code: { 
+                    type: 'string', 
+                    description: 'Account code from chart of accounts' 
+                  },
+                  confidence: { 
+                    type: 'string', 
+                    enum: ['high', 'medium', 'low'],
+                    description: 'Confidence level of categorization'
+                  },
+                  reasoning: { 
+                    type: 'string', 
+                    description: 'Brief explanation for categorization' 
+                  }
+                },
+                required: ['transaction_id', 'account_code', 'confidence', 'reasoning'],
+                additionalProperties: false
+              }
+            }
+          },
+          required: ['categorizations'],
+          additionalProperties: false
+        }
+      }
+    }
+  };
+}
+
+// Generic function to call a model with retries
+async function callModel(
+  modelConfig: typeof MODELS[0],
   transactions: any[],
   accounts: any[],
   openRouterApiKey: string
-) {
-  console.log('🤖 Calling OpenRouter with structured output for guaranteed valid JSON...');
+): Promise<Response | null> {
+  let retryCount = 0;
   
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${openRouterApiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://ncdujvdgqtaunuyigflp.supabase.co',
-      'X-Title': 'Restaurant AI Categorization'
-    },
-    body: JSON.stringify({
-      model: 'openai/gpt-4o-mini',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: buildUserPrompt(transactions, accounts) }
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'transaction_categorizations',
-          strict: true,
-          schema: {
-            type: 'object',
-            properties: {
-              categorizations: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    transaction_id: { 
-                      type: 'string', 
-                      description: 'UUID of the transaction' 
-                    },
-                    account_code: { 
-                      type: 'string', 
-                      description: 'Account code from chart of accounts' 
-                    },
-                    confidence: { 
-                      type: 'string', 
-                      enum: ['high', 'medium', 'low'],
-                      description: 'Confidence level of categorization'
-                    },
-                    reasoning: { 
-                      type: 'string', 
-                      description: 'Brief explanation for categorization' 
-                    }
-                  },
-                  required: ['transaction_id', 'account_code', 'confidence', 'reasoning'],
-                  additionalProperties: false
-                }
-              }
-            },
-            required: ['categorizations'],
-            additionalProperties: false
-          }
-        }
+  while (retryCount < modelConfig.maxRetries) {
+    try {
+      console.log(`🔄 ${modelConfig.name} attempt ${retryCount + 1}/${modelConfig.maxRetries}...`);
+      
+      const requestBody = buildCategorizationRequestBody(
+        modelConfig.id,
+        transactions,
+        accounts
+      );
+
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterApiKey}`,
+          "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+          "X-Title": "Restaurant AI Categorization",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (response.ok) {
+        console.log(`✅ ${modelConfig.name} succeeded`);
+        return response;
       }
-    }),
-  });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('❌ OpenRouter API error:', response.status, errorText);
-    throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
+      if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
+        console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
+        retryCount++;
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
+        break;
+      }
+    } catch (error) {
+      console.error(`❌ ${modelConfig.name} error:`, error);
+      retryCount++;
+      if (retryCount < modelConfig.maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+      }
+    }
   }
-
-  const data = await response.json();
-  const content = data.choices[0].message.content;
   
-  if (!content) {
-    throw new Error('No content in OpenRouter response');
-  }
-
-  const result = JSON.parse(content);
-  console.log('✅ OpenRouter returned structured categorizations:', result.categorizations.length);
-  
-  return result.categorizations;
+  return null;
 }
 
 serve(async (req) => {
@@ -156,6 +213,7 @@ serve(async (req) => {
       throw new Error('Access denied');
     }
 
+    const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
     if (!openRouterApiKey) {
       console.error('OpenRouter API key not found');
       return new Response(
@@ -213,17 +271,37 @@ serve(async (req) => {
       throw new Error('No chart of accounts found');
     }
 
-    console.log(`🚀 Starting AI categorization for ${transactions.length} transactions using OpenRouter...`);
+    console.log(`🚀 Starting AI categorization for ${transactions.length} transactions with multi-model fallback...`);
 
-    let categorizations;
-    try {
-      categorizations = await categorizeWithOpenRouter(transactions, accounts, openRouterApiKey);
-    } catch (error) {
-      console.error('❌ OpenRouter categorization failed:', error);
+    let finalResponse: Response | undefined;
+
+    // Try models in order: free models first, then paid fallbacks
+    for (const modelConfig of MODELS) {
+      console.log(`🚀 Trying ${modelConfig.name}...`);
+      
+      const response = await callModel(
+        modelConfig,
+        transactions,
+        accounts,
+        openRouterApiKey
+      );
+      
+      if (response) {
+        finalResponse = response;
+        break;
+      }
+      
+      console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
+    }
+
+    // If all models failed
+    if (!finalResponse || !finalResponse.ok) {
+      console.error('❌ All models failed');
+      
       return new Response(
         JSON.stringify({ 
-          error: 'AI categorization failed. Please try again later.',
-          details: error.message
+          error: 'AI categorization temporarily unavailable. All AI models failed.',
+          details: 'Please try again later'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -231,6 +309,27 @@ serve(async (req) => {
         }
       );
     }
+
+    const data = await finalResponse.json();
+    
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error('Invalid response from AI model');
+    }
+
+    const content = data.choices[0].message.content;
+    
+    if (!content) {
+      throw new Error('No content in AI response');
+    }
+
+    const result = JSON.parse(content);
+    const categorizations = result.categorizations;
+    
+    if (!categorizations || !Array.isArray(categorizations)) {
+      throw new Error('Invalid categorizations format in AI response');
+    }
+
+    console.log(`✅ AI returned ${categorizations.length} categorizations`);
 
     // Update transactions with AI suggestions
     let updatedCount = 0;

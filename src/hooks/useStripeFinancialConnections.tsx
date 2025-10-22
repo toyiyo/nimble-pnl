@@ -287,8 +287,11 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
   };
 
   // Verify connection session and process linked accounts
-  const verifyConnectionSession = async (sessionId: string) => {
-    if (!restaurantId) {
+  const verifyConnectionSession = async (sessionId: string, currentRestaurantId?: string) => {
+    // Use passed restaurantId or fall back to hook parameter
+    const activeRestaurantId = currentRestaurantId || restaurantId;
+    
+    if (!activeRestaurantId) {
       toast({
         title: "No Restaurant Selected",
         description: "Please select a restaurant first",
@@ -298,12 +301,12 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     }
 
     try {
-      console.log("[VERIFY-SESSION] Verifying session:", sessionId);
+      console.log("[VERIFY-SESSION] Verifying session:", sessionId, "for restaurant:", activeRestaurantId);
       
       const { data, error } = await supabase.functions.invoke(
         'stripe-verify-connection-session',
         {
-          body: { sessionId, restaurantId }
+          body: { sessionId, restaurantId: activeRestaurantId }
         }
       );
 
@@ -312,7 +315,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
       console.log("[VERIFY-SESSION] Results:", data);
 
       // Refresh the banks list
-      queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['connectedBanks', activeRestaurantId] });
 
       if (data.success && data.accountsProcessed > 0) {
         toast({

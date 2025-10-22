@@ -80,7 +80,7 @@ export default function Banking() {
         // Always verify the session, even if Stripe reports no accounts
         // This handles cases where webhooks fail or aren't sent (e.g., reconnections)
         console.log("[BANKING] Session completed, verifying with backend...");
-        await verifyConnectionSession(sessionData.sessionId);
+        await verifyConnectionSession(sessionData.sessionId, selectedRestaurant.restaurant_id);
         
         // The verifyConnectionSession function will show appropriate toasts
         // and refresh the banks list automatically

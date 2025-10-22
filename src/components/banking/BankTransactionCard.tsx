@@ -3,9 +3,11 @@ import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2, Building2, Sparkles } from "lucide-react";
+import { Check, Edit, XCircle, FileText, Split, CheckCircle2, Sparkles } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { SplitTransactionDialog } from "./SplitTransactionDialog";
+import { BankAccountInfo } from "./BankAccountInfo";
+import { TransactionBadges } from "./TransactionBadges";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
@@ -71,12 +73,6 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
               <div className={`text-lg font-bold ${isNegative ? "text-destructive" : "text-success"}`}>
                 {isNegative ? '-' : '+'}{formattedAmount}
               </div>
-              {transaction.is_reconciled && (
-                <Badge variant="secondary" className="mt-1 bg-success/10 text-success border-success/20">
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Reconciled
-                </Badge>
-              )}
             </div>
           </div>
 
@@ -86,38 +82,24 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
               <span className="text-muted-foreground">Payee:</span>
               <span className="font-medium">{transaction.normalized_payee || transaction.merchant_name || '—'}</span>
             </div>
-            {transaction.supplier && (
-              <Badge variant="secondary" className="w-fit bg-primary/10 text-primary">
-                <Building2 className="h-3 w-3 mr-1" />
-                {transaction.supplier.name}
-              </Badge>
-            )}
+            
             <div className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Bank:</span>
-              <span>{transaction.connected_bank?.institution_name || '—'}</span>
-              {transaction.connected_bank?.bank_account_balances?.[0]?.account_mask && (
-                <span className="text-xs text-muted-foreground">
-                  (••••{transaction.connected_bank.bank_account_balances[0].account_mask})
-                </span>
-              )}
+              <BankAccountInfo
+                institutionName={transaction.connected_bank?.institution_name}
+                accountMask={transaction.connected_bank?.bank_account_balances?.[0]?.account_mask}
+                showIcon={false}
+              />
             </div>
           </div>
 
-          {/* Badges for special transaction types */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            {transaction.is_transfer && (
-              <Badge variant="secondary">
-                <ArrowLeftRight className="h-3 w-3 mr-1" />
-                Transfer
-              </Badge>
-            )}
-            {transaction.is_split && (
-              <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200">
-                <Split className="h-3 w-3 mr-1" />
-                Split
-              </Badge>
-            )}
-          </div>
+          {/* Transaction Badges */}
+          <TransactionBadges
+            isTransfer={transaction.is_transfer}
+            isSplit={transaction.is_split}
+            supplierName={transaction.supplier?.name}
+            className="mb-3"
+          />
 
           {/* AI Suggestion Section - Prominent */}
           {hasSuggestion && (

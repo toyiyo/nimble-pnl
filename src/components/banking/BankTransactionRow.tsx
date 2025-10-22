@@ -3,9 +3,11 @@ import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2, Building2, MoreVertical, Sparkles } from "lucide-react";
+import { Check, Edit, XCircle, FileText, Split, CheckCircle2, MoreVertical, Sparkles } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { SplitTransactionDialog } from "./SplitTransactionDialog";
+import { BankAccountInfo } from "./BankAccountInfo";
+import { TransactionBadges } from "./TransactionBadges";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
@@ -69,20 +71,11 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
         <TableCell>
           <div className="flex flex-col">
             <span className="font-medium">{transaction.description}</span>
-            <div className="flex gap-2 mt-1">
-              {transaction.is_transfer && (
-                <Badge variant="secondary" className="w-fit">
-                  <ArrowLeftRight className="h-3 w-3 mr-1" />
-                  Transfer
-                </Badge>
-              )}
-              {transaction.is_split && (
-                <Badge variant="secondary" className="w-fit bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200">
-                  <Split className="h-3 w-3 mr-1" />
-                  Split
-                </Badge>
-              )}
-            </div>
+            <TransactionBadges
+              isTransfer={transaction.is_transfer}
+              isSplit={transaction.is_split}
+              className="mt-1"
+            />
           </div>
         </TableCell>
 
@@ -90,23 +83,18 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
           <div className="flex flex-col gap-1">
             <span>{transaction.normalized_payee || transaction.merchant_name || '—'}</span>
             {transaction.supplier && (
-              <Badge variant="secondary" className="w-fit bg-primary/10 text-primary">
-                <Building2 className="h-3 w-3 mr-1" />
-                {transaction.supplier.name}
-              </Badge>
+              <TransactionBadges supplierName={transaction.supplier.name} />
             )}
           </div>
         </TableCell>
 
         <TableCell className="hidden lg:table-cell">
-          <div className="flex flex-col gap-1">
-            <span className="text-sm">{transaction.connected_bank?.institution_name || '—'}</span>
-            {transaction.connected_bank?.bank_account_balances?.[0]?.account_mask && (
-              <span className="text-xs text-muted-foreground">
-                ••••{transaction.connected_bank.bank_account_balances[0].account_mask}
-              </span>
-            )}
-          </div>
+          <BankAccountInfo
+            institutionName={transaction.connected_bank?.institution_name}
+            accountMask={transaction.connected_bank?.bank_account_balances?.[0]?.account_mask}
+            showIcon={false}
+            layout="stacked"
+          />
         </TableCell>
 
         <TableCell className="text-right">

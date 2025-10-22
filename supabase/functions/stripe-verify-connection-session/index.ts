@@ -171,6 +171,7 @@ serve(async (req) => {
             .from('bank_account_balances')
             .upsert({
               connected_bank_id: bankId,
+              stripe_financial_account_id: account.id,
               account_name: account.display_name,
               account_type: account.subcategory || account.category,
               account_mask: account.last4,
@@ -180,7 +181,7 @@ serve(async (req) => {
               as_of_date: new Date(account.balance.as_of * 1000).toISOString(),
               is_active: true,
             }, {
-              onConflict: 'connected_bank_id,account_mask',
+              onConflict: 'stripe_financial_account_id',
             });
 
           if (balanceError) {

@@ -179,7 +179,7 @@ serve(async (req) => {
             connected_bank_id: bankId,
             ...balanceData
           }, {
-            onConflict: 'connected_bank_id,stripe_financial_account_id'
+            onConflict: 'stripe_financial_account_id'
           });
 
         if (upsertError) {

@@ -205,6 +205,23 @@ serve(async (req) => {
           console.error(`[VERIFY-SESSION] Transaction sync error:`, syncErr);
         }
 
+        // Trigger initial balance refresh to ensure it appears immediately
+        console.log(`[VERIFY-SESSION] Triggering initial balance refresh for bank ${bankId}`);
+        try {
+          const { error: balanceError } = await supabaseAdmin.functions.invoke(
+            'stripe-refresh-balance',
+            {
+              body: { bankId }
+            }
+          );
+          
+          if (balanceError) {
+            console.error(`[VERIFY-SESSION] Balance refresh failed:`, balanceError);
+          }
+        } catch (balanceErr) {
+          console.error(`[VERIFY-SESSION] Balance refresh error:`, balanceErr);
+        }
+
         results.push({
           accountId: account.id,
           displayName: account.display_name,

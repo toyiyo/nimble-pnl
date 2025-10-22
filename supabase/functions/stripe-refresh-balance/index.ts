@@ -15,25 +15,6 @@ serve(async (req) => {
   try {
     console.log("[REFRESH-BALANCE] Starting balance refresh");
 
-    // Authenticate user
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { auth: { persistSession: false } }
-    );
-
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      throw new Error("No authorization header provided");
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-    
-    if (authError || !user) {
-      throw new Error("User not authenticated");
-    }
-
     // Get request body
     const { bankId } = await req.json();
     
@@ -41,15 +22,66 @@ serve(async (req) => {
       throw new Error("Bank ID is required");
     }
 
-    console.log("[REFRESH-BALANCE] Refreshing balance for bank:", bankId);
-
     // Use service role to fetch bank details
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Get bank connection details
+    // Check if this is a service role call (from webhook or other internal function)
+    const authHeader = req.headers.get("Authorization");
+    const isServiceRole = authHeader?.includes(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
+
+    if (!isServiceRole) {
+      // Regular user call - authenticate and verify access
+      console.log("[REFRESH-BALANCE] Authenticating user request");
+      
+      if (!authHeader) {
+        throw new Error("No authorization header provided");
+      }
+
+      const supabaseClient = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        { auth: { persistSession: false } }
+      );
+
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+      
+      if (authError || !user) {
+        throw new Error("User not authenticated");
+      }
+
+      // Get bank connection details
+      const { data: bank, error: bankError } = await supabaseAdmin
+        .from("connected_banks")
+        .select("*, restaurant_id")
+        .eq("id", bankId)
+        .single();
+
+      if (bankError || !bank) {
+        throw new Error("Bank not found");
+      }
+
+      // Verify user has access to this restaurant
+      const { data: userRestaurant } = await supabaseAdmin
+        .from("user_restaurants")
+        .select("role")
+        .eq("restaurant_id", bank.restaurant_id)
+        .eq("user_id", user.id)
+        .single();
+
+      if (!userRestaurant) {
+        throw new Error("User does not have access to this restaurant");
+      }
+    } else {
+      console.log("[REFRESH-BALANCE] Service role call - skipping user authentication");
+    }
+
+    console.log("[REFRESH-BALANCE] Refreshing balance for bank:", bankId);
+
+    // Get bank connection details (already fetched for user calls, fetch for service role)
     const { data: bank, error: bankError } = await supabaseAdmin
       .from("connected_banks")
       .select("*, restaurant_id")
@@ -58,18 +90,6 @@ serve(async (req) => {
 
     if (bankError || !bank) {
       throw new Error("Bank not found");
-    }
-
-    // Verify user has access to this restaurant
-    const { data: userRestaurant } = await supabaseAdmin
-      .from("user_restaurants")
-      .select("role")
-      .eq("restaurant_id", bank.restaurant_id)
-      .eq("user_id", user.id)
-      .single();
-
-    if (!userRestaurant) {
-      throw new Error("User does not have access to this restaurant");
     }
 
     // Initialize Stripe

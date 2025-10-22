@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useBankTransactions } from "@/hooks/useBankTransactions";
 import { BankTransactionList } from "@/components/banking/BankTransactionList";
 import { CategoryRulesDialog } from "@/components/banking/CategoryRulesDialog";
-import { ReconciliationDialog } from "@/components/banking/ReconciliationDialog";
+import { EnhancedReconciliationDialog } from "@/components/banking/EnhancedReconciliationDialog";
 import { ReconciliationReport } from "@/components/banking/ReconciliationReport";
 import { BankConnectionStatus } from "@/components/banking/BankConnectionStatus";
 import { useCategorizeTransactions } from "@/hooks/useCategorizeTransactions";
@@ -180,7 +180,7 @@ export default function Banking() {
         onOpenChange={setShowRulesDialog}
       />
 
-      <ReconciliationDialog
+      <EnhancedReconciliationDialog
         isOpen={showReconciliationDialog}
         onClose={() => setShowReconciliationDialog(false)}
       />

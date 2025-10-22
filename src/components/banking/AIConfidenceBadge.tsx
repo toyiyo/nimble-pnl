@@ -28,9 +28,9 @@ export function AIConfidenceBadge({ confidence, reasoning }: AIConfidenceBadgePr
   const isMobile = useIsMobile();
 
   const confidenceStyles = {
-    high: "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100 border-green-300 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-800",
-    medium: "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-200 dark:hover:bg-yellow-800",
-    low: "bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-100 border-orange-300 dark:border-orange-700 hover:bg-orange-200 dark:hover:bg-orange-800"
+    high: "bg-success/10 text-success border-success/30 hover:bg-success/20",
+    medium: "bg-warning/10 text-warning border-warning/30 hover:bg-warning/20",
+    low: "bg-destructive/10 text-destructive border-destructive/30 hover:bg-destructive/20"
   };
 
   const confidenceLabels = {

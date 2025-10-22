@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
@@ -99,8 +99,89 @@ serve(async (req) => {
       .single();
     
     if (restaurant?.stripe_customer_id) {
-      stripeCustomerId = restaurant.stripe_customer_id;
-      console.log("[FC-SESSION] Using existing Stripe customer:", stripeCustomerId);
+      const existingStripeCustomerId = restaurant.stripe_customer_id;
+      console.log("[FC-SESSION] Found existing Stripe customer ID in database:", existingStripeCustomerId);
+      
+      try {
+        // Fetch the Stripe customer to verify ownership
+        const existingCustomer = await stripe.customers.retrieve(existingStripeCustomerId);
+        
+        if (existingCustomer.deleted) {
+          console.log("[FC-SESSION] Stripe customer was deleted, creating new customer");
+          // Customer was deleted in Stripe, create a new one
+          const newCustomer = await stripe.customers.create({
+            metadata: { restaurant_id: restaurantId },
+          });
+          stripeCustomerId = newCustomer.id;
+          
+          // Update database with new customer ID
+          await supabaseAdmin
+            .from("restaurants")
+            .update({ stripe_customer_id: stripeCustomerId })
+            .eq("id", restaurantId);
+          
+          console.log("[FC-SESSION] Created new Stripe customer after deletion:", stripeCustomerId);
+        } else {
+          // Check if this customer belongs to this restaurant
+          const existingRestaurantId = existingCustomer.metadata?.restaurant_id;
+          
+          if (existingRestaurantId === restaurantId) {
+            // Customer already belongs to this restaurant - safe to use
+            stripeCustomerId = existingStripeCustomerId;
+            console.log("[FC-SESSION] ✓ Verified: Stripe customer belongs to this restaurant:", stripeCustomerId);
+          } else if (!existingRestaurantId) {
+            // Customer exists but has no restaurant_id metadata - claim it for this restaurant
+            await stripe.customers.update(existingStripeCustomerId, {
+              metadata: { restaurant_id: restaurantId },
+            });
+            stripeCustomerId = existingStripeCustomerId;
+            console.log("[FC-SESSION] ✓ Claimed: Updated Stripe customer metadata for restaurant:", restaurantId);
+          } else {
+            // CONFLICT: Customer belongs to a different restaurant
+            // This is a multi-tenant isolation breach - create a new customer
+            console.warn("[FC-SESSION] ⚠️ CONFLICT: Stripe customer belongs to different restaurant:", {
+              existingCustomerId: existingStripeCustomerId,
+              existingRestaurantId,
+              currentRestaurantId: restaurantId,
+            });
+            
+            // Create a new Stripe customer for this restaurant
+            const newCustomer = await stripe.customers.create({
+              metadata: { restaurant_id: restaurantId },
+            });
+            stripeCustomerId = newCustomer.id;
+            
+            // Update database to point to the new customer
+            await supabaseAdmin
+              .from("restaurants")
+              .update({ stripe_customer_id: stripeCustomerId })
+              .eq("id", restaurantId);
+            
+            console.log("[FC-SESSION] ✓ Created new Stripe customer to prevent tenant conflict:", stripeCustomerId);
+          }
+        }
+      } catch (error) {
+        console.error("[FC-SESSION] Error verifying Stripe customer:", error);
+        
+        // If customer doesn't exist in Stripe (404), create a new one
+        if (error instanceof Stripe.errors.StripeError && error.statusCode === 404) {
+          console.log("[FC-SESSION] Stripe customer not found, creating new customer");
+          const newCustomer = await stripe.customers.create({
+            metadata: { restaurant_id: restaurantId },
+          });
+          stripeCustomerId = newCustomer.id;
+          
+          // Update database with new customer ID
+          await supabaseAdmin
+            .from("restaurants")
+            .update({ stripe_customer_id: stripeCustomerId })
+            .eq("id", restaurantId);
+          
+          console.log("[FC-SESSION] Created new Stripe customer after 404:", stripeCustomerId);
+        } else {
+          throw error;
+        }
+      }
     } else {
       // Create new Stripe customer
       const customer = await stripe.customers.create({
@@ -131,7 +212,7 @@ serve(async (req) => {
       filters: {
         countries: ["US"],
       },
-      return_url: `${origin}/accounting/banks?restaurant_id=${restaurantId}`,
+      return_url: `${origin}/banking?restaurant_id=${restaurantId}`,
     });
 
     console.log("[FC-SESSION] Session created successfully:", session.id);

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Check, ChevronsUpDown, Search } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { useState, useEffect } from "react";
+import { Check, ChevronsUpDown, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -9,13 +9,13 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from '@/components/ui/command';
+} from "@/components/ui/command";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
-import { POSItem } from '@/hooks/usePOSItems';
+} from "@/components/ui/popover";
+import { POSItem } from "@/hooks/usePOSItems";
 
 interface SearchablePOSItemSelectorProps {
   value?: string;
@@ -86,7 +86,10 @@ export function SearchablePOSItemSelector({
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <CommandList className="max-h-[300px] overflow-y-auto">
+          <CommandList 
+            className="max-h-72 overflow-y-auto overscroll-contain"
+            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+          >
             <CommandEmpty>
               <div className="py-6 text-center text-sm">
                 <p className="text-muted-foreground">No POS items found</p>

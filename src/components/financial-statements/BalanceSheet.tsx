@@ -1,10 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Download, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { ExportDropdown } from './shared/ExportDropdown';
+import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
 
 interface BalanceSheetProps {
   restaurantId: string;
@@ -13,6 +14,21 @@ interface BalanceSheetProps {
 
 export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
   const { toast } = useToast();
+
+  // Fetch restaurant name for exports
+  const { data: restaurant } = useQuery({
+    queryKey: ['restaurant', restaurantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('name')
+        .eq('id', restaurantId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!restaurantId,
+  });
 
   const { data: balanceData, isLoading } = useQuery({
     queryKey: ['balance-sheet', restaurantId, asOfDate],
@@ -73,7 +89,7 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
   const totalEquity = balanceData?.equity.reduce((sum, acc) => sum + Math.abs(acc.current_balance), 0) || 0;
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
 
-  const handleExport = () => {
+  const handleExportCSV = () => {
     const csvContent = [
       ['Balance Sheet'],
       [`As of: ${format(asOfDate, 'MMM dd, yyyy')}`],
@@ -96,8 +112,15 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const filename = generateStandardFilename(
+      'balance-sheet',
+      restaurant?.name || 'restaurant',
+      undefined,
+      undefined,
+      asOfDate
+    );
     a.href = url;
-    a.download = `balance-sheet-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.download = `${filename}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -106,6 +129,57 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
     toast({
       title: 'Export successful',
       description: 'Balance sheet exported to CSV',
+    });
+  };
+
+  const handleExportPDF = () => {
+    const data = [
+      { label: 'ASSETS', amount: undefined, isBold: true },
+      ...balanceData!.assets.map(acc => ({
+        label: `${acc.account_code} - ${acc.account_name}`,
+        amount: acc.current_balance,
+        indent: 1,
+      })),
+      { label: 'Total Assets', amount: totalAssets, isTotal: true },
+      { label: '', amount: undefined },
+      { label: 'LIABILITIES', amount: undefined, isBold: true },
+      ...balanceData!.liabilities.map(acc => ({
+        label: `${acc.account_code} - ${acc.account_name}`,
+        amount: Math.abs(acc.current_balance),
+        indent: 1,
+      })),
+      { label: 'Total Liabilities', amount: totalLiabilities, isSubtotal: true },
+      { label: '', amount: undefined },
+      { label: 'EQUITY', amount: undefined, isBold: true },
+      ...balanceData!.equity.map(acc => ({
+        label: `${acc.account_code} - ${acc.account_name}`,
+        amount: Math.abs(acc.current_balance),
+        indent: 1,
+      })),
+      { label: 'Total Equity', amount: totalEquity, isSubtotal: true },
+      { label: '', amount: undefined },
+      { label: 'Total Liabilities & Equity', amount: totalLiabilitiesAndEquity, isTotal: true },
+    ];
+
+    const filename = generateStandardFilename(
+      'balance-sheet',
+      restaurant?.name || 'restaurant',
+      undefined,
+      undefined,
+      asOfDate
+    );
+
+    generateFinancialReportPDF({
+      title: 'Balance Sheet',
+      restaurantName: restaurant?.name || 'Restaurant',
+      asOfDate: `As of ${format(asOfDate, 'MMM dd, yyyy')}`,
+      data,
+      filename: `${filename}.pdf`,
+    });
+
+    toast({
+      title: 'Export successful',
+      description: 'Balance sheet exported to PDF',
     });
   };
 
@@ -127,10 +201,7 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
             <CardTitle>Balance Sheet</CardTitle>
             <CardDescription>As of {format(asOfDate, 'MMM dd, yyyy')}</CardDescription>
           </div>
-          <Button onClick={handleExport} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
+          <ExportDropdown onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} />
         </div>
       </CardHeader>
       <CardContent>
@@ -203,8 +274,8 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
 
           {/* Balance Check */}
           {Math.abs(totalAssets - totalLiabilitiesAndEquity) > 0.01 && (
-            <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <p className="text-sm font-medium text-red-800 dark:text-red-200">
+            <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+              <p className="text-sm font-medium text-destructive">
                 ⚠️ Balance Sheet doesn't balance! Difference: {formatCurrency(totalAssets - totalLiabilitiesAndEquity)}
               </p>
             </div>

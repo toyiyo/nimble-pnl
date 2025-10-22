@@ -35,17 +35,20 @@ export function useSyncBankTransactions() {
     },
     onSuccess: (data: any) => {
       const syncData = data.sync;
+      const balanceData = data.balance;
+      
       if (syncData.synced > 0) {
         toast({
           title: "Sync complete",
-          description: `Imported ${syncData.synced} new transactions and refreshed balance`,
+          description: `Imported ${syncData.synced} new transactions across ${balanceData.refreshed || 0} account(s)`,
         });
       } else {
         toast({
           title: "Sync complete",
-          description: syncData.message || "Transactions and balance updated",
+          description: syncData.message || balanceData.message || "All accounts updated",
         });
       }
+      
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['connected-banks'] });
     },

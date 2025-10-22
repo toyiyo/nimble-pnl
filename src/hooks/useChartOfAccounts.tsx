@@ -91,8 +91,8 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
         { account_code: '1550', account_name: 'Vehicles', account_type: 'asset', account_subtype: 'fixed_assets', normal_balance: 'debit', description: 'Delivery or company vehicles' },
         { account_code: '1551', account_name: 'Accumulated Depreciation – Vehicles', account_type: 'asset', account_subtype: 'accumulated_depreciation', normal_balance: 'credit', description: 'Depreciation offset', parent_code: '1550' },
         { account_code: '1600', account_name: 'Security Deposits', account_type: 'asset', account_subtype: 'other_assets', normal_balance: 'debit', description: 'Rent and utility deposits' },
-        { account_code: '1700', account_name: 'Intangible Assets', account_type: 'asset', account_subtype: 'intangible_assets', normal_balance: 'debit', description: 'Franchise fees, permits' },
-        { account_code: '1701', account_name: 'Accumulated Amortization – Intangibles', account_type: 'asset', account_subtype: 'accumulated_amortization', normal_balance: 'credit', description: 'Amortization offset', parent_code: '1700' },
+        { account_code: '1700', account_name: 'Intangible Assets', account_type: 'asset', account_subtype: 'other_assets', normal_balance: 'debit', description: 'Franchise fees, permits' },
+        { account_code: '1701', account_name: 'Accumulated Amortization – Intangibles', account_type: 'asset', account_subtype: 'accumulated_depreciation', normal_balance: 'credit', description: 'Amortization offset', parent_code: '1700' },
         
         // LIABILITIES (2000-2999)
         { account_code: '2000', account_name: 'Accounts Payable', account_type: 'liability', account_subtype: 'accounts_payable', normal_balance: 'credit', description: 'Vendor bills outstanding' },

@@ -28,6 +28,8 @@ export interface BankTransaction {
   transfer_pair_id: string | null;
   excluded_reason: string | null;
   match_confidence: number | null;
+  ai_confidence: 'high' | 'medium' | 'low' | null;
+  ai_reasoning: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -58,16 +60,42 @@ export function useBankTransactions(status?: TransactionStatus) {
     queryFn: async () => {
       if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
 
-      // Use range to fetch all transactions with supplier info
+      // Base query with all relations
       let query = supabase
         .from('bank_transactions')
-        .select('*, supplier:suppliers(id, name)', { count: 'exact' })
+        .select(`
+          *,
+          connected_bank:connected_banks(
+            id,
+            institution_name,
+            bank_account_balances(id, account_mask, account_name, is_active)
+          ),
+          chart_account:chart_of_accounts!category_id(
+            id,
+            account_name
+          ),
+          supplier:suppliers(
+            id,
+            name
+          )
+        `, { count: 'exact' })
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .order('transaction_date', { ascending: false })
         .range(0, 9999);
 
-      if (status) {
-        query = query.eq('status', status as any);
+      // Filter based on logical status (not enum status)
+      if (status === 'for_review') {
+        // Uncategorized and not excluded
+        query = query.eq('is_categorized', false).is('excluded_reason', null);
+      } else if (status === 'categorized') {
+        // Categorized but not excluded
+        query = query.eq('is_categorized', true).is('excluded_reason', null);
+      } else if (status === 'excluded') {
+        // Has exclusion reason
+        query = query.not('excluded_reason', 'is', null);
+      } else if (status === 'reconciled') {
+        // Marked as reconciled
+        query = query.eq('is_reconciled', true);
       }
 
       const { data, error } = await query;
@@ -105,6 +133,7 @@ export function useBankTransactionsWithRelations(restaurantId: string | null | u
         `)
         .eq('restaurant_id', restaurantId)
         .order('transaction_date', { ascending: false })
+        .order('id', { ascending: false }) // Stable secondary sort
         .limit(1000);
 
       if (error) throw error;
@@ -136,9 +165,9 @@ export function useCategorizeTransaction() {
       const { data, error } = await supabase.rpc('categorize_bank_transaction', {
         p_transaction_id: transactionId,
         p_category_id: categoryId,
-        p_description: description,
-        p_normalized_payee: normalizedPayee,
-        p_supplier_id: supplierId,
+        p_description: description ?? null,
+        p_normalized_payee: normalizedPayee ?? null,
+        p_supplier_id: supplierId ?? null,
       });
 
       if (error) throw error;

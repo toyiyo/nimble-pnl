@@ -8,7 +8,7 @@ export const useCategorizeTransactions = () => {
   return useMutation({
     mutationFn: async (restaurantId: string) => {
       const { data, error } = await supabase.functions.invoke(
-        'categorize-uncategorized-transactions',
+        'ai-categorize-transactions',
         {
           body: { restaurantId }
         }
@@ -18,8 +18,17 @@ export const useCategorizeTransactions = () => {
       return data;
     },
     onSuccess: (data) => {
-      const result = data as { message: string; count: number };
-      toast.success(result?.message || 'Transactions categorized successfully');
+      const result = data as { 
+        message: string; 
+        count: number; 
+        categorized: number;
+        remaining?: number;
+        hasMore?: boolean;
+      };
+      
+      // Show success message
+      toast.success(result?.message || 'AI has suggested categories for your transactions.');
+      
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
       queryClient.invalidateQueries({ queryKey: ['income-statement'] });

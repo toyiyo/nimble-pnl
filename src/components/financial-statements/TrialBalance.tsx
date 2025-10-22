@@ -1,10 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Download, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { ExportDropdown } from './shared/ExportDropdown';
+import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
 
 interface TrialBalanceProps {
   restaurantId: string;
@@ -13,6 +14,21 @@ interface TrialBalanceProps {
 
 export function TrialBalance({ restaurantId, asOfDate }: TrialBalanceProps) {
   const { toast } = useToast();
+
+  // Fetch restaurant name for exports
+  const { data: restaurant } = useQuery({
+    queryKey: ['restaurant', restaurantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('name')
+        .eq('id', restaurantId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!restaurantId,
+  });
 
   const { data: accounts, isLoading } = useQuery({
     queryKey: ['trial-balance', restaurantId, asOfDate],
@@ -87,7 +103,7 @@ export function TrialBalance({ restaurantId, asOfDate }: TrialBalanceProps) {
     return sum + amounts.credit;
   }, 0) || 0;
 
-  const handleExport = () => {
+  const handleExportCSV = () => {
     const csvContent = [
       ['Trial Balance'],
       [`As of: ${format(asOfDate, 'MMM dd, yyyy')}`],
@@ -108,8 +124,15 @@ export function TrialBalance({ restaurantId, asOfDate }: TrialBalanceProps) {
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const filename = generateStandardFilename(
+      'trial-balance',
+      restaurant?.name || 'restaurant',
+      undefined,
+      undefined,
+      asOfDate
+    );
     a.href = url;
-    a.download = `trial-balance-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.download = `${filename}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -118,6 +141,50 @@ export function TrialBalance({ restaurantId, asOfDate }: TrialBalanceProps) {
     toast({
       title: 'Export successful',
       description: 'Trial balance exported to CSV',
+    });
+  };
+
+  const handleExportPDF = () => {
+    const data: Array<{
+      label: string;
+      amount?: number;
+      isTotal?: boolean;
+      indent?: number;
+    }> = accounts!.map(acc => {
+      const amounts = getTrialBalanceAmounts(acc.current_balance, acc.normal_balance);
+      const label = `${acc.account_code} - ${acc.account_name}`;
+      
+      // We'll show both debit and credit in the label for simplicity
+      if (amounts.debit > 0) {
+        return { label, amount: amounts.debit, indent: 0 };
+      } else {
+        return { label: `${label} (CR)`, amount: amounts.credit, indent: 0 };
+      }
+    });
+
+    data.push({ label: '', amount: undefined, indent: 0 });
+    data.push({ label: 'Total Debits', amount: totalDebits, isTotal: true, indent: 0 });
+    data.push({ label: 'Total Credits', amount: totalCredits, isTotal: true, indent: 0 });
+
+    const filename = generateStandardFilename(
+      'trial-balance',
+      restaurant?.name || 'restaurant',
+      undefined,
+      undefined,
+      asOfDate
+    );
+
+    generateFinancialReportPDF({
+      title: 'Trial Balance',
+      restaurantName: restaurant?.name || 'Restaurant',
+      asOfDate: `As of ${format(asOfDate, 'MMM dd, yyyy')}`,
+      data,
+      filename: `${filename}.pdf`,
+    });
+
+    toast({
+      title: 'Export successful',
+      description: 'Trial balance exported to PDF',
     });
   };
 
@@ -139,10 +206,7 @@ export function TrialBalance({ restaurantId, asOfDate }: TrialBalanceProps) {
             <CardTitle>Trial Balance</CardTitle>
             <CardDescription>As of {format(asOfDate, 'MMM dd, yyyy')}</CardDescription>
           </div>
-          <Button onClick={handleExport} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
+          <ExportDropdown onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} />
         </div>
       </CardHeader>
       <CardContent>
@@ -182,8 +246,8 @@ export function TrialBalance({ restaurantId, asOfDate }: TrialBalanceProps) {
 
           {/* Balance Check */}
           {Math.abs(totalDebits - totalCredits) > 0.01 && (
-            <div className="mt-4 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <p className="text-sm font-medium text-red-800 dark:text-red-200">
+            <div className="mt-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+              <p className="text-sm font-medium text-destructive">
                 ⚠️ Trial Balance doesn't balance! Difference: {formatCurrency(Math.abs(totalDebits - totalCredits))}
               </p>
             </div>

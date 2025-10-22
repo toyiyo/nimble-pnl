@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -14,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { MetricIcon } from '@/components/MetricIcon';
-import { Receipt, Search, Download, Building2, Filter, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import { Receipt, Search, Download, Building2, Filter, TrendingUp, TrendingDown, Wallet, ArrowUpDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { TransactionFiltersSheet, type TransactionFilters } from '@/components/TransactionFilters';
@@ -24,7 +25,7 @@ import { useCategorizeTransactions } from '@/hooks/useCategorizeTransactions';
 import { TransactionCard } from '@/components/banking/TransactionCard';
 import { TransactionSkeleton, TransactionTableSkeleton } from '@/components/banking/TransactionSkeleton';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { CategoryRulesDialog } from '@/components/banking/CategoryRulesDialog';
+
 import { ReconciliationDialog } from '@/components/banking/ReconciliationDialog';
 import { BankTransactionList } from '@/components/banking/BankTransactionList';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
@@ -42,9 +43,11 @@ const Transactions = () => {
   const isMobile = useIsMobile();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [showRulesDialog, setShowRulesDialog] = useState(false);
+  
   const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
   const { formatTransactionDate, timezone } = useDateFormat();
+  const [sortBy, setSortBy] = useState<'date' | 'payee' | 'amount' | 'category'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Fetch transactions
   const { data: transactions, isLoading, refetch } = useBankTransactionsWithRelations(selectedRestaurant?.restaurant_id);
@@ -97,7 +100,7 @@ const Transactions = () => {
     }
   };
 
-  const filteredTransactions = transactions?.filter(txn => {
+  const filteredAndSortedTransactions = transactions?.filter(txn => {
     // Search filter
     const matchesSearch = !searchTerm || 
       txn.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -134,13 +137,40 @@ const Transactions = () => {
     return matchesSearch && matchesDateFrom && matchesDateTo && 
            matchesMinAmount && matchesMaxAmount && matchesStatus && matchesType &&
            matchesCategory && matchesBankAccount && matchesUncategorized;
+  }).sort((a, b) => {
+    let comparison = 0;
+    
+    switch (sortBy) {
+      case 'date':
+        comparison = new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime();
+        // Stable secondary sort by id
+        if (comparison === 0) {
+          comparison = a.id.localeCompare(b.id);
+        }
+        break;
+      case 'payee':
+        const payeeA = a.normalized_payee || a.merchant_name || '';
+        const payeeB = b.normalized_payee || b.merchant_name || '';
+        comparison = payeeA.localeCompare(payeeB);
+        break;
+      case 'amount':
+        comparison = Math.abs(a.amount) - Math.abs(b.amount);
+        break;
+      case 'category':
+        const categoryA = a.chart_account?.account_name || '';
+        const categoryB = b.chart_account?.account_name || '';
+        comparison = categoryA.localeCompare(categoryB);
+        break;
+    }
+    
+    return sortDirection === 'asc' ? comparison : -comparison;
   }) || [];
 
-  const totalDebits = filteredTransactions
+  const totalDebits = filteredAndSortedTransactions
     .filter(t => t.amount < 0)
     .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
-  const totalCredits = filteredTransactions
+  const totalCredits = filteredAndSortedTransactions
     .filter(t => t.amount > 0)
     .reduce((sum, t) => sum + t.amount, 0);
 
@@ -172,12 +202,12 @@ const Transactions = () => {
       {/* Hero Section - More compact on mobile */}
       <div className="relative overflow-hidden rounded-xl md:rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-6 md:p-8 w-full max-w-full">
         <div className="relative z-10">
-          <div className="flex items-center gap-3 md:gap-4">
+            <div className="flex items-center gap-3 md:gap-4">
             <MetricIcon icon={Receipt} variant="blue" className="hidden sm:flex" />
             <div>
               <h1 className="text-xl md:text-2xl lg:text-3xl font-bold">Bank Transactions</h1>
               <p className="text-xs md:text-sm text-muted-foreground mt-1">
-                View and categorize your bank transactions
+                {filteredAndSortedTransactions.length} transactions
               </p>
             </div>
           </div>
@@ -190,9 +220,9 @@ const Transactions = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
         <Card className="transition-all hover:shadow-lg hover:scale-[1.02]">
           <CardContent className="pt-4 md:pt-6">
-            <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between">
               <div>
-                <div className="text-2xl md:text-3xl font-bold">{filteredTransactions.length}</div>
+                <div className="text-2xl md:text-3xl font-bold">{filteredAndSortedTransactions.length}</div>
                 <div className="text-xs md:text-sm text-muted-foreground mt-1">Total Transactions</div>
               </div>
               <Wallet className="h-8 w-8 md:h-10 md:w-10 text-primary/40" />
@@ -227,15 +257,40 @@ const Transactions = () => {
       <Card>
         <CardContent className="pt-4 md:pt-6">
           <div className="flex flex-col gap-3 md:gap-4">
-            {/* Search Bar */}
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search transactions..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 h-11"
-              />
+            {/* Search Bar and Sort Controls */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search transactions..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 h-11"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Select value={sortBy} onValueChange={(value: 'date' | 'payee' | 'amount' | 'category') => setSortBy(value)}>
+                  <SelectTrigger className="w-[160px] border-border/50 hover:border-primary/50 transition-colors h-11">
+                    <ArrowUpDown className="w-4 h-4 mr-2" />
+                    <SelectValue placeholder="Sort by..." />
+                  </SelectTrigger>
+                  <SelectContent className="z-50 bg-background">
+                    <SelectItem value="date">📅 Date</SelectItem>
+                    <SelectItem value="payee">🏢 Payee</SelectItem>
+                    <SelectItem value="amount">💰 Amount</SelectItem>
+                    <SelectItem value="category">📊 Category</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button 
+                  variant={sortDirection === 'desc' ? 'default' : 'outline'} 
+                  size="icon"
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  className="transition-all hover:scale-105 duration-200 h-11 w-11"
+                  title={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
+                >
+                  <ArrowUpDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />
+                </Button>
+              </div>
             </div>
             
             {/* Action Buttons */}
@@ -246,7 +301,8 @@ const Transactions = () => {
                 disabled={categorizeTransactions.isPending}
                 className="w-full md:w-auto h-11"
               >
-                {categorizeTransactions.isPending ? 'Categorizing...' : isMobile ? 'Auto' : 'Categorize All'}
+                <Sparkles className="w-4 h-4 mr-2" />
+                {categorizeTransactions.isPending ? 'AI Categorizing...' : isMobile ? 'AI Categorize' : 'AI Categorize All'}
               </Button>
               <div className="relative w-full md:w-auto">
                 <TransactionFiltersSheet 
@@ -264,14 +320,6 @@ const Transactions = () => {
                 )}
               </div>
               
-              <Button
-                variant="outline" 
-                className="w-full md:w-auto h-11 gap-2"
-                onClick={() => setShowRulesDialog(true)}
-              >
-                <Sparkles className="h-4 w-4" />
-                {!isMobile && <span>Rules</span>}
-              </Button>
               
               <Button
                 variant="outline" 
@@ -287,7 +335,7 @@ const Transactions = () => {
                 className="col-span-2 md:col-span-1 md:w-auto h-11 gap-2"
                 title={isMobile ? "Export to CSV" : "Export"}
                 onClick={() => {
-                  if (filteredTransactions.length === 0) {
+                  if (filteredAndSortedTransactions.length === 0) {
                     toast({
                       title: "No transactions to export",
                       description: "There are no transactions matching your filters.",
@@ -298,7 +346,7 @@ const Transactions = () => {
                   
                   // Create CSV content
                   const headers = ['Date', 'Description', 'Merchant', 'Bank', 'Amount', 'Status', 'Category'];
-                  const rows = filteredTransactions.map(txn => [
+                  const rows = filteredAndSortedTransactions.map(txn => [
                     formatDate(txn.transaction_date),
                     txn.description || '',
                     txn.merchant_name || '',
@@ -326,7 +374,7 @@ const Transactions = () => {
                   
                   toast({
                     title: "Export successful",
-                    description: `Exported ${filteredTransactions.length} transactions to CSV.`,
+                    description: `Exported ${filteredAndSortedTransactions.length} transactions to CSV.`,
                   });
                 }}
               >
@@ -361,7 +409,7 @@ const Transactions = () => {
           <TransactionSkeleton />
           <TransactionSkeleton />
         </div>
-      ) : filteredTransactions.length === 0 ? (
+      ) : filteredAndSortedTransactions.length === 0 ? (
         <Card>
           <CardContent className="pt-6">
             <div className="text-center p-8 md:p-12">
@@ -373,8 +421,8 @@ const Transactions = () => {
                   : 'Click "Sync Transactions" on your connected banks to import transactions'
                 }
               </p>
-              <Button onClick={() => window.location.href = '/accounting'}>
-                Go to Accounting
+              <Button onClick={() => window.location.href = '/banking'}>
+                Go to Banking
               </Button>
             </div>
           </CardContent>
@@ -382,7 +430,7 @@ const Transactions = () => {
       ) : isMobile ? (
         // Mobile Card View - Properly constrained
         <div className="space-y-3 w-full max-w-full overflow-x-hidden">
-          {filteredTransactions.map((txn) => (
+          {filteredAndSortedTransactions.map((txn) => (
             <TransactionCard
               key={txn.id}
               transaction={txn}
@@ -398,18 +446,13 @@ const Transactions = () => {
         <Card className="w-full max-w-full overflow-hidden">
           <CardContent className="p-0 w-full max-w-full">
             <BankTransactionList 
-              transactions={filteredTransactions as any} 
-              status={filteredTransactions.every(t => t.is_categorized) ? 'categorized' : 'for_review'} 
+              transactions={filteredAndSortedTransactions as any} 
+              status={filteredAndSortedTransactions.every(t => t.is_categorized) ? 'categorized' : 'for_review'} 
               accounts={accounts}
             />
           </CardContent>
         </Card>
       )}
-      
-      <CategoryRulesDialog
-        open={showRulesDialog}
-        onOpenChange={setShowRulesDialog}
-      />
       
       <ReconciliationDialog
         isOpen={showReconciliationDialog}

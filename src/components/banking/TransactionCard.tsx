@@ -2,10 +2,12 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Building2, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CategorySelector } from "@/components/CategorySelector";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
+import { BankAccountInfo } from "./BankAccountInfo";
+import { TransactionBadges } from "./TransactionBadges";
 
 interface Transaction {
   id: string;
@@ -88,28 +90,19 @@ export function TransactionCard({
           </div>
 
           {/* Bank Info */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0 overflow-hidden">
-            <Building2 className="h-4 w-4 flex-shrink-0" />
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <span className="truncate block">{transaction.connected_bank?.institution_name}</span>
-              {transaction.connected_bank?.bank_account_balances?.[0]?.account_mask && (
-                <span className="ml-2 whitespace-nowrap">
-                  ••••{transaction.connected_bank.bank_account_balances[0].account_mask}
-                </span>
-              )}
-            </div>
-          </div>
+          <BankAccountInfo
+            institutionName={transaction.connected_bank?.institution_name}
+            accountMask={transaction.connected_bank?.bank_account_balances?.[0]?.account_mask}
+            showIcon={true}
+            className="text-muted-foreground"
+          />
 
           {/* Category Selector or Split Indicator */}
           <div className="space-y-2 w-full">
-            {transaction.is_split ? (
-              <Badge 
-                variant="secondary" 
-                className="text-xs bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 border-blue-300 dark:border-blue-800 w-fit"
-              >
-                Split Transaction
-              </Badge>
-            ) : (
+            <TransactionBadges
+              isSplit={transaction.is_split}
+            />
+            {transaction.is_split ? null : (
               <CategorySelector
                 restaurantId={restaurantId}
                 value={transaction.category_id}

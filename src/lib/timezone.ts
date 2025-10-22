@@ -2,7 +2,7 @@ import { format, toZonedTime } from 'date-fns-tz';
 
 /**
  * Converts a UTC date to the restaurant's local timezone for display
- * If given a date-only string (YYYY-MM-DD), treats it as a local date without conversion
+ * Handles both date-only strings (YYYY-MM-DD) and full timestamps
  */
 export function formatDateInTimezone(date: Date | string, timezone: string, formatStr: string = 'yyyy-MM-dd'): string {
   // If it's a date-only string (YYYY-MM-DD), parse it as a local date without timezone conversion
@@ -13,10 +13,25 @@ export function formatDateInTimezone(date: Date | string, timezone: string, form
     return format(dateObj, formatStr);
   }
   
-  // For full timestamps, convert to the target timezone
+  // For timestamps stored as "2025-10-20 00:00:00+00" (date with time at midnight UTC),
+  // extract just the date portion to avoid timezone shift issues
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}\s+00:00:00/.test(date)) {
+    const datePart = date.substring(0, 10); // Extract YYYY-MM-DD
+    const [year, month, day] = datePart.split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
+    return format(dateObj, formatStr);
+  }
+  
+  // For full timestamps with actual time components,
+  // convert to the target timezone. The database stores dates in UTC, so we need
+  // to convert them to the restaurant's local timezone for display.
   const dateObj = typeof date === 'string' ? new Date(date) : date;
+  
+  // toZonedTime converts the UTC date to the target timezone's local representation
   const zonedDate = toZonedTime(dateObj, timezone);
-  return format(zonedDate, formatStr, { timeZone: timezone });
+  
+  // Format the zoned date - don't pass timeZone option as the date is already in the correct zone
+  return format(zonedDate, formatStr);
 }
 
 /**

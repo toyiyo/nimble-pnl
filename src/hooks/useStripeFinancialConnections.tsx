@@ -136,33 +136,63 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     }
   };
 
-  // Disconnect a bank
-  const disconnectBank = async (bankId: string) => {
+  // Disconnect a bank and optionally delete data
+  const disconnectBank = async (bankId: string, deleteData: boolean = false) => {
+    // Show loading toast
+    const loadingToast = toast({
+      title: deleteData ? "Disconnecting Bank..." : "Disconnecting...",
+      description: deleteData 
+        ? "This may take a moment as we prepare to delete all associated data." 
+        : "Removing bank connection...",
+      duration: Infinity, // Keep visible until we dismiss it
+    });
+
     try {
-      const { error } = await supabase
-        .from('connected_banks')
-        .update({
-          status: 'disconnected',
-          disconnected_at: new Date().toISOString(),
-        })
-        .eq('id', bankId);
+      const { data, error } = await supabase.functions.invoke(
+        'stripe-disconnect-bank',
+        {
+          body: { bankId, deleteData }
+        }
+      );
+
+      // Dismiss loading toast
+      loadingToast.dismiss();
 
       if (error) throw error;
 
-      toast({
-        title: "Bank Disconnected",
-        description: "The bank account has been disconnected successfully",
-      });
+      // Show success message based on whether it's background processing
+      if (data.background) {
+        toast({
+          title: "Bank Disconnected",
+          description: "Your bank has been disconnected. All associated data is being deleted in the background. This may take a few minutes.",
+          duration: 8000,
+        });
+      } else {
+        toast({
+          title: "Bank Disconnected",
+          description: data.message || "The bank account has been disconnected successfully",
+        });
+      }
 
       // Refresh the list
       queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] });
+      
+      // If data was deleted, also invalidate transactions queries
+      if (deleteData) {
+        queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+        queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      }
     } catch (error) {
+      // Dismiss loading toast
+      loadingToast.dismiss();
+      
       console.error('Error disconnecting bank:', error);
       toast({
         title: "Failed to Disconnect",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
+      throw error; // Re-throw to let dialog handle it
     }
   };
 
@@ -256,6 +286,62 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     }
   };
 
+  // Verify connection session and process linked accounts
+  const verifyConnectionSession = async (sessionId: string, currentRestaurantId?: string) => {
+    // Use passed restaurantId or fall back to hook parameter
+    const activeRestaurantId = currentRestaurantId || restaurantId;
+    
+    if (!activeRestaurantId) {
+      toast({
+        title: "No Restaurant Selected",
+        description: "Please select a restaurant first",
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    try {
+      console.log("[VERIFY-SESSION] Verifying session:", sessionId, "for restaurant:", activeRestaurantId);
+      
+      const { data, error } = await supabase.functions.invoke(
+        'stripe-verify-connection-session',
+        {
+          body: { sessionId, restaurantId: activeRestaurantId }
+        }
+      );
+
+      if (error) throw error;
+
+      console.log("[VERIFY-SESSION] Results:", data);
+
+      // Refresh the banks list
+      queryClient.invalidateQueries({ queryKey: ['connectedBanks', activeRestaurantId] });
+
+      if (data.success && data.accountsProcessed > 0) {
+        toast({
+          title: "Bank Connected Successfully",
+          description: data.message,
+        });
+      } else if (data.accountsProcessed === 0) {
+        toast({
+          title: "No Accounts Connected",
+          description: data.message || "No accounts were selected during the connection process",
+          variant: "destructive",
+        });
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[VERIFY-SESSION] Error:', error);
+      toast({
+        title: "Failed to Verify Connection",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+      return null;
+    }
+  };
+
   return {
     connectedBanks,
     loading,
@@ -265,5 +351,6 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     refreshBanks: () => queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] }),
     refreshBalance,
     syncTransactions,
+    verifyConnectionSession,
   };
 };

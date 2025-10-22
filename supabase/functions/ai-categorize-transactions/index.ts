@@ -234,14 +234,15 @@ serve(async (req) => {
 
     const uncategorizedIds = uncategorizedAccounts?.map(a => a.id) || [];
 
-    // Get transactions that need categorization
+    // Get transactions that need categorization (no AI suggestion yet)
     const { data: transactions, error: transactionsError } = await supabaseClient
       .from('bank_transactions')
-      .select('id, description, merchant_name, normalized_payee, amount, transaction_date, category_id')
+      .select('id, description, merchant_name, normalized_payee, amount, transaction_date, category_id, suggested_category_id')
       .eq('restaurant_id', restaurantId)
       .or(`category_id.is.null,category_id.in.(${uncategorizedIds.join(',')})`)
+      .is('suggested_category_id', null) // Skip transactions that already have AI suggestions
       .order('transaction_date', { ascending: false })
-      .limit(100); // Process max 100 at a time
+      .limit(100); // Process max 100 at a time per batch
 
     if (transactionsError) throw transactionsError;
 
@@ -249,12 +250,22 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: 'No transactions need AI categorization',
+          message: 'No transactions need AI categorization. All transactions either have categories or already have AI suggestions pending review.',
           categorized: 0 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Check if there are more transactions to process
+    const { count: remainingCount } = await supabaseClient
+      .from('bank_transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('restaurant_id', restaurantId)
+      .or(`category_id.is.null,category_id.in.(${uncategorizedIds.join(',')})`)
+      .is('suggested_category_id', null);
+
+    const hasMore = (remainingCount ?? 0) > transactions.length;
 
     // Get chart of accounts (excluding uncategorized ones)
     const { data: accounts, error: accountsError } = await supabaseClient
@@ -389,12 +400,18 @@ serve(async (req) => {
 
     console.log(`✅ Successfully suggested categories for ${updatedCount} transactions`);
 
+    const responseMessage = hasMore 
+      ? `AI suggested categories for ${updatedCount} transactions. ${(remainingCount ?? 0) - transactions.length} more need categorization - click again to continue.`
+      : `AI suggested categories for ${updatedCount} transactions. All transactions have been processed!`;
+
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: `AI suggested categories for ${updatedCount} transactions. Please review and validate.`,
+        message: responseMessage,
         categorized: updatedCount,
         total: transactions.length,
+        remaining: hasMore ? (remainingCount ?? 0) - transactions.length : 0,
+        hasMore,
         results
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

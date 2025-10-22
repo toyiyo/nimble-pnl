@@ -44,14 +44,17 @@ export function AIConfidenceBadge({ confidence, reasoning }: AIConfidenceBadgePr
     return (
       <Drawer>
         <DrawerTrigger asChild>
-          <button className="flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-primary rounded">
+          <button 
+            className="flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-primary rounded"
+            aria-label={`Confidence: ${confidenceLabels[confidence]}. Tap for AI reasoning details.`}
+          >
             <Badge 
               variant="outline"
               className={confidenceStyles[confidence]}
             >
               {confidenceLabels[confidence]}
             </Badge>
-            <Info className="h-3.5 w-3.5 text-muted-foreground" />
+            <Info className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           </button>
         </DrawerTrigger>
         <DrawerContent>
@@ -115,7 +118,10 @@ export function AIConfidenceBadge({ confidence, reasoning }: AIConfidenceBadgePr
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+              <Info 
+                className="h-3.5 w-3.5 text-muted-foreground cursor-help" 
+                aria-label="AI reasoning information"
+              />
             </TooltipTrigger>
             <TooltipContent 
               side="top" 

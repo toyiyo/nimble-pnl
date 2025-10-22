@@ -12,8 +12,9 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useBankTransactions, BankTransaction } from "@/hooks/useBankTransactions";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useConnectedBanks } from "@/hooks/useConnectedBanks";
+import { useOpeningBalance } from "@/hooks/useOpeningBalance";
+import { useReconcileTransactions } from "@/hooks/useReconcileTransactions";
 import { format } from "date-fns";
 import { CalendarIcon, CheckCircle2, AlertCircle, Loader2, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -28,7 +29,6 @@ type ReconciliationStep = 'setup' | 'matching' | 'complete';
 
 export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconciliationDialogProps) {
   const { selectedRestaurant } = useRestaurantContext();
-  const queryClient = useQueryClient();
   
   // Step state
   const [step, setStep] = useState<ReconciliationStep>('setup');
@@ -42,26 +42,9 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
   
   // Matching state
   const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
-  const [isFinishing, setIsFinishing] = useState(false);
 
   // Fetch connected bank accounts
-  const { data: connectedBanks } = useQuery({
-    queryKey: ['connected-banks', selectedRestaurant?.restaurant_id],
-    queryFn: async () => {
-      if (!selectedRestaurant?.restaurant_id) return [];
-      
-      const { data, error } = await supabase
-        .from('connected_banks')
-        .select('*, bank_account_balances(*)')
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('status', 'connected')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!selectedRestaurant?.restaurant_id && isOpen,
-  });
+  const { data: connectedBanks } = useConnectedBanks(selectedRestaurant?.restaurant_id, isOpen);
 
   // Fetch categorized (but not yet reconciled) transactions
   const { data: categorizedTransactions } = useBankTransactions('categorized');
@@ -133,27 +116,11 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
   }, [endingBalance, interestEarned, serviceCharges]);
 
   // Get the last reconciled balance for this account (opening balance)
-  const { data: accountBalance } = useQuery({
-    queryKey: ['account-balance', selectedAccountId, endingDate],
-    queryFn: async () => {
-      if (!selectedAccountId || !endingDate) return null;
-      
-      // Get the most recent balance BEFORE the ending date (this is our opening balance)
-      const { data, error } = await supabase
-        .from('bank_account_balances')
-        .select('current_balance, as_of_date')
-        .eq('connected_bank_id', selectedAccountId)
-        .lt('as_of_date', endingDate.toISOString())
-        .order('as_of_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      if (error) throw error;
-      console.log('[RECONCILIATION] Opening balance:', data);
-      return data?.current_balance || 0;
-    },
-    enabled: !!selectedAccountId && step === 'matching' && !!endingDate,
-  });
+  const { data: accountBalance } = useOpeningBalance(
+    selectedAccountId, 
+    endingDate, 
+    step === 'matching'
+  );
 
   const openingBalance = accountBalance || 0;
   const calculatedBalance = openingBalance + selectedBalance;
@@ -179,54 +146,30 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
     });
   };
 
+  const reconcileTransactionsMutation = useReconcileTransactions();
+
   const handleFinish = async () => {
     if (Math.abs(difference) > 0.01) {
       toast.error("Cannot finish reconciliation. The difference must be $0.00");
       return;
     }
 
-    setIsFinishing(true);
-    
+    if (!selectedAccountId || !endingDate) {
+      toast.error("Missing required information");
+      return;
+    }
+
     try {
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Mark all selected transactions as reconciled
-      const updates = Array.from(selectedTransactions).map(txnId => 
-        supabase
-          .from('bank_transactions')
-          .update({
-            is_reconciled: true,
-            reconciled_at: new Date().toISOString(),
-            reconciled_by: user?.id,
-          })
-          .eq('id', txnId)
-      );
-
-      await Promise.all(updates);
-
-      // Update account balance
-      if (selectedAccountId) {
-        await supabase
-          .from('bank_account_balances')
-          .update({
-            current_balance: adjustedStatementBalance,
-            as_of_date: endingDate?.toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('connected_bank_id', selectedAccountId);
-      }
-
-      toast.success(`Reconciled ${selectedTransactions.size} transactions successfully`);
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['account-balance'] });
+      await reconcileTransactionsMutation.mutateAsync({
+        transactionIds: Array.from(selectedTransactions),
+        connectedBankId: selectedAccountId,
+        adjustedStatementBalance,
+        endingDate,
+      });
       
       setStep('complete');
     } catch (error) {
-      console.error('Reconciliation error:', error);
-      toast.error('Failed to complete reconciliation');
-    } finally {
-      setIsFinishing(false);
+      // Error handling is done in the mutation hook
     }
   };
 
@@ -486,9 +429,9 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
               </Button>
               <Button 
                 onClick={handleFinish}
-                disabled={Math.abs(difference) > 0.01 || isFinishing || selectedTransactions.size === 0}
+                disabled={Math.abs(difference) > 0.01 || reconcileTransactionsMutation.isPending || selectedTransactions.size === 0}
               >
-                {isFinishing ? (
+                {reconcileTransactionsMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Finishing...

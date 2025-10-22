@@ -112,6 +112,19 @@ serve(async (req) => {
 
       // Only proceed with deletions if there are transactions
       if (transactionIds.length > 0) {
+        // Delete journal entries associated with bank transactions
+        const { error: journalDeleteError } = await supabaseClient
+          .from('journal_entries')
+          .delete()
+          .eq('reference_type', 'bank_transaction')
+          .in('reference_id', transactionIds);
+
+        if (journalDeleteError) {
+          logStep("Error deleting journal entries", { error: journalDeleteError.message });
+          throw new Error(`Failed to delete journal entries: ${journalDeleteError.message}`);
+        }
+        logStep("Journal entries deleted");
+
         // Delete transaction splits
         const { error: splitsDeleteError } = await supabaseClient
           .from('bank_transaction_splits')

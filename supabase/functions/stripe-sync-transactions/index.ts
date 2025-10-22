@@ -98,63 +98,114 @@ serve(async (req) => {
       apiVersion: "2025-08-27.basil" as any
     });
 
-    console.log("[SYNC-TRANSACTIONS] Checking account subscription status");
+    // Get all Stripe account IDs for this bank connection from balances table
+    const { data: balanceRecords } = await supabaseAdmin
+      .from("bank_account_balances")
+      .select("stripe_financial_account_id, account_name")
+      .eq("connected_bank_id", bankId)
+      .not("stripe_financial_account_id", "is", null);
 
-    // Get current account details to check subscription
-    const account = await stripe.financialConnections.accounts.retrieve(
-      bank.stripe_financial_account_id
-    );
+    // Extract unique account IDs
+    const accountIds = [...new Set(
+      balanceRecords?.map(b => b.stripe_financial_account_id).filter(Boolean) || []
+    )];
 
-    const hasTransactionsSub = account.subscriptions?.includes('transactions');
-    console.log("[SYNC-TRANSACTIONS] Has transactions subscription:", hasTransactionsSub);
+    // If no account IDs found in balances, fall back to primary one from connected_banks
+    if (accountIds.length === 0 && bank.stripe_financial_account_id) {
+      accountIds.push(bank.stripe_financial_account_id);
+    }
 
-    if (!hasTransactionsSub) {
-      console.log("[SYNC-TRANSACTIONS] Subscribing to transactions for first time");
+    console.log(`[SYNC-TRANSACTIONS] Found ${accountIds.length} account(s) to sync:`, accountIds);
+
+    let needsSubscriptionSetup = false;
+    let allTransactions: Stripe.FinancialConnections.Transaction[] = [];
+
+    // Process each account
+    for (const accountId of accountIds) {
+      console.log(`[SYNC-TRANSACTIONS] Processing account: ${accountId}`);
+
+      // Get current account details to check subscription
+      const account = await stripe.financialConnections.accounts.retrieve(accountId);
+      const hasTransactionsSub = account.subscriptions?.includes('transactions');
       
-      try {
-        await stripe.financialConnections.accounts.subscribe(
-          bank.stripe_financial_account_id,
-          {
-            features: ['transactions'],
-          }
-        );
-        console.log("[SYNC-TRANSACTIONS] Successfully subscribed - initial sync will take a few minutes");
+      console.log(`[SYNC-TRANSACTIONS] Account ${accountId} has transactions subscription:`, hasTransactionsSub);
+
+      if (!hasTransactionsSub) {
+        console.log(`[SYNC-TRANSACTIONS] Subscribing account ${accountId} to transactions for first time`);
+        needsSubscriptionSetup = true;
         
-        return new Response(
-          JSON.stringify({ 
-            success: true,
-            synced: 0,
-            skipped: 0,
-            total: 0,
-            message: "Transaction sync initiated. This will take a few minutes as we fetch your transaction history from the bank. You'll see transactions appear automatically once the sync completes."
-          }),
-          {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-            status: 200,
+        try {
+          await stripe.financialConnections.accounts.subscribe(
+            accountId,
+            { features: ['transactions'] }
+          );
+          console.log(`[SYNC-TRANSACTIONS] Successfully subscribed ${accountId}`);
+        } catch (subscribeError: any) {
+          console.error(`[SYNC-TRANSACTIONS] Subscribe error for ${accountId}:`, subscribeError.message);
+        }
+      } else {
+        // Trigger refresh for accounts already subscribed
+        try {
+          const refreshResult = await stripe.financialConnections.accounts.refresh(
+            accountId,
+            { features: ['transactions'] }
+          );
+          console.log(`[SYNC-TRANSACTIONS] Refresh status for ${accountId}:`, refreshResult.transaction_refresh?.status);
+        } catch (refreshError: any) {
+          console.log(`[SYNC-TRANSACTIONS] Refresh error for ${accountId} (may be normal):`, refreshError.message);
+        }
+
+        // Fetch transactions for this account
+        try {
+          let hasMore = true;
+          let startingAfter: string | undefined = undefined;
+          
+          while (hasMore) {
+            const params: any = {
+              account: accountId,
+              limit: 100,
+            };
+            
+            if (startingAfter) {
+              params.starting_after = startingAfter;
+            }
+            
+            const page = await stripe.financialConnections.transactions.list(params);
+            allTransactions = allTransactions.concat(page.data);
+            hasMore = page.has_more;
+            
+            if (hasMore && page.data.length > 0) {
+              startingAfter = page.data[page.data.length - 1].id;
+            }
+            
+            console.log(`[SYNC-TRANSACTIONS] Fetched ${page.data.length} transactions from ${accountId}, total so far: ${allTransactions.length}`);
           }
-        );
-      } catch (subscribeError: any) {
-        console.error("[SYNC-TRANSACTIONS] Subscribe error:", subscribeError.message);
-        throw new Error(`Failed to subscribe to transactions: ${subscribeError.message}`);
+        } catch (fetchError: any) {
+          console.log(`[SYNC-TRANSACTIONS] No transactions available yet for ${accountId}:`, fetchError.message);
+        }
       }
     }
 
-    console.log("[SYNC-TRANSACTIONS] Triggering transaction refresh");
-
-    // Refresh to get latest transactions and balance
-    try {
-      const refreshResult = await stripe.financialConnections.accounts.refresh(
-        bank.stripe_financial_account_id,
+    // If any accounts needed subscription setup, return early
+    if (needsSubscriptionSetup) {
+      console.log("[SYNC-TRANSACTIONS] One or more accounts needed subscription setup - initial sync will take a few minutes");
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          synced: 0,
+          skipped: 0,
+          total: 0,
+          message: "Transaction sync initiated. This will take a few minutes as we fetch your transaction history from the bank. You'll see transactions appear automatically once the sync completes."
+        }),
         {
-          features: ['transactions'],
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
         }
       );
-      console.log("[SYNC-TRANSACTIONS] Refresh status:", refreshResult.transaction_refresh?.status);
-    } catch (refreshError: any) {
-      console.log("[SYNC-TRANSACTIONS] Refresh error (may be normal):", refreshError.message);
     }
 
-    console.log("[SYNC-TRANSACTIONS] Fetching transactions from Stripe");
+    console.log(`[SYNC-TRANSACTIONS] Total transactions fetched across all accounts: ${allTransactions.length}`);
 
     // Get default uncategorized accounts
     const { data: uncategorizedAccounts } = await supabaseAdmin
@@ -174,54 +225,6 @@ serve(async (req) => {
       expenseId: uncategorizedExpenseId, 
       incomeId: uncategorizedIncomeId 
     });
-
-    // Fetch ALL transactions using pagination
-    let allTransactions: Stripe.FinancialConnections.Transaction[] = [];
-    let hasMore = true;
-    let startingAfter: string | undefined = undefined;
-    
-    console.log("[SYNC-TRANSACTIONS] Fetching all transactions (paginated)");
-    
-    try {
-      while (hasMore) {
-        const params: any = {
-          account: bank.stripe_financial_account_id,
-          limit: 100,
-        };
-        
-        if (startingAfter) {
-          params.starting_after = startingAfter;
-        }
-        
-        const page = await stripe.financialConnections.transactions.list(params);
-        allTransactions = allTransactions.concat(page.data);
-        hasMore = page.has_more;
-        
-        if (hasMore && page.data.length > 0) {
-          startingAfter = page.data[page.data.length - 1].id;
-        }
-        
-        console.log("[SYNC-TRANSACTIONS] Fetched page:", page.data.length, "transactions, total so far:", allTransactions.length);
-      }
-      
-      console.log("[SYNC-TRANSACTIONS] Total transactions found:", allTransactions.length);
-    } catch (fetchError: any) {
-      console.log("[SYNC-TRANSACTIONS] No transactions available yet:", fetchError.message);
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          synced: 0,
-          skipped: 0,
-          total: 0,
-          message: "Transaction sync in progress. Transactions are being fetched from your bank and will appear shortly."
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
-        }
-      );
-    }
 
     let syncedCount = 0;
     let skippedCount = 0;

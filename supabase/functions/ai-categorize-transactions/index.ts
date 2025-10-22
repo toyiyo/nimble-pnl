@@ -43,7 +43,7 @@ TRANSACTIONS TO CATEGORIZE:
 ${transactions.map((txn, idx) => `
 ${idx + 1}. ID: ${txn.id}
    Description: ${txn.description || 'N/A'}
-   Payee: ${txn.payee_name || 'N/A'}
+   Merchant: ${txn.merchant_name || txn.normalized_payee || 'N/A'}
    Amount: $${txn.amount}
    Date: ${txn.transaction_date}
 `).join('\n')}
@@ -193,7 +193,7 @@ serve(async (req) => {
     // Get transactions that need categorization
     const { data: transactions, error: transactionsError } = await supabaseClient
       .from('bank_transactions')
-      .select('id, description, payee_name, amount, transaction_date, category_id')
+      .select('id, description, merchant_name, normalized_payee, amount, transaction_date, category_id')
       .eq('restaurant_id', restaurantId)
       .or(`category_id.is.null,category_id.in.(${uncategorizedIds.join(',')})`)
       .order('transaction_date', { ascending: false })

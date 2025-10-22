@@ -7,7 +7,7 @@ export function useOpeningBalance(
   enabled: boolean = true
 ) {
   return useQuery({
-    queryKey: ['account-balance', accountBalanceId, endingDate],
+    queryKey: ['account-balance', accountBalanceId, endingDate?.toISOString()],
     queryFn: async () => {
       if (!accountBalanceId || !endingDate) return null;
       
@@ -22,9 +22,14 @@ export function useOpeningBalance(
         .maybeSingle();
       
       if (error) throw error;
-      console.log('[RECONCILIATION] Opening balance:', data);
+      
+      if (import.meta.env.DEV) {
+        console.log('[RECONCILIATION] Opening balance:', data);
+      }
+      
       return data?.current_balance || 0;
     },
     enabled: !!accountBalanceId && !!endingDate && enabled,
+    staleTime: 60_000, // 1 minute
   });
 }

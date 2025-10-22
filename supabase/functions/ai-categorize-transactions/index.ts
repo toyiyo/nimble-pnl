@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,31 +33,33 @@ ${idx + 1}. ID: ${txn.id}
 
 Categorize each transaction with the appropriate account code, confidence level, and reasoning.`;
 
-async function categorizeWithOpenAI(
+async function categorizeWithOpenRouter(
   transactions: any[],
   accounts: any[],
-  openAIApiKey: string
+  openRouterApiKey: string
 ) {
-  console.log('🤖 Calling OpenAI with structured output for guaranteed valid JSON...');
+  console.log('🤖 Calling OpenRouter with structured output for guaranteed valid JSON...');
   
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${openAIApiKey}`,
+      'Authorization': `Bearer ${openRouterApiKey}`,
       'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://ncdujvdgqtaunuyigflp.supabase.co',
+      'X-Title': 'Restaurant AI Categorization'
     },
     body: JSON.stringify({
-      model: 'gpt-5-mini-2025-08-07',
+      model: 'openai/gpt-4o-mini',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: buildUserPrompt(transactions, accounts) }
       ],
-      tools: [{
-        type: 'function',
-        function: {
-          name: 'categorize_transactions',
-          description: 'Categorize bank transactions with appropriate account codes',
-          parameters: {
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'transaction_categorizations',
+          strict: true,
+          schema: {
             type: 'object',
             properties: {
               categorizations: {
@@ -65,10 +67,23 @@ async function categorizeWithOpenAI(
                 items: {
                   type: 'object',
                   properties: {
-                    transaction_id: { type: 'string', description: 'UUID of the transaction' },
-                    account_code: { type: 'string', description: 'Account code from chart of accounts' },
-                    confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
-                    reasoning: { type: 'string', description: 'Brief explanation for categorization' }
+                    transaction_id: { 
+                      type: 'string', 
+                      description: 'UUID of the transaction' 
+                    },
+                    account_code: { 
+                      type: 'string', 
+                      description: 'Account code from chart of accounts' 
+                    },
+                    confidence: { 
+                      type: 'string', 
+                      enum: ['high', 'medium', 'low'],
+                      description: 'Confidence level of categorization'
+                    },
+                    reasoning: { 
+                      type: 'string', 
+                      description: 'Brief explanation for categorization' 
+                    }
                   },
                   required: ['transaction_id', 'account_code', 'confidence', 'reasoning'],
                   additionalProperties: false
@@ -79,26 +94,25 @@ async function categorizeWithOpenAI(
             additionalProperties: false
           }
         }
-      }],
-      tool_choice: { type: 'function', function: { name: 'categorize_transactions' } }
+      }
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('❌ OpenAI API error:', response.status, errorText);
-    throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
+    console.error('❌ OpenRouter API error:', response.status, errorText);
+    throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
   }
 
   const data = await response.json();
-  const toolCall = data.choices[0].message.tool_calls?.[0];
+  const content = data.choices[0].message.content;
   
-  if (!toolCall) {
-    throw new Error('No tool call in OpenAI response');
+  if (!content) {
+    throw new Error('No content in OpenRouter response');
   }
 
-  const result = JSON.parse(toolCall.function.arguments);
-  console.log('✅ OpenAI returned structured categorizations:', result.categorizations.length);
+  const result = JSON.parse(content);
+  console.log('✅ OpenRouter returned structured categorizations:', result.categorizations.length);
   
   return result.categorizations;
 }
@@ -142,10 +156,10 @@ serve(async (req) => {
       throw new Error('Access denied');
     }
 
-    if (!openAIApiKey) {
-      console.error('OpenAI API key not found');
+    if (!openRouterApiKey) {
+      console.error('OpenRouter API key not found');
       return new Response(
-        JSON.stringify({ error: 'AI service not configured. Please add your OpenAI API key.' }),
+        JSON.stringify({ error: 'AI service not configured. Please add your OpenRouter API key.' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
@@ -199,13 +213,13 @@ serve(async (req) => {
       throw new Error('No chart of accounts found');
     }
 
-    console.log(`🚀 Starting AI categorization for ${transactions.length} transactions using OpenAI...`);
+    console.log(`🚀 Starting AI categorization for ${transactions.length} transactions using OpenRouter...`);
 
     let categorizations;
     try {
-      categorizations = await categorizeWithOpenAI(transactions, accounts, openAIApiKey);
+      categorizations = await categorizeWithOpenRouter(transactions, accounts, openRouterApiKey);
     } catch (error) {
-      console.error('❌ OpenAI categorization failed:', error);
+      console.error('❌ OpenRouter categorization failed:', error);
       return new Response(
         JSON.stringify({ 
           error: 'AI categorization failed. Please try again later.',

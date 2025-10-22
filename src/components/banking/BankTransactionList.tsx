@@ -1,7 +1,9 @@
 import { BankTransaction } from "@/hooks/useBankTransactions";
 import { BankTransactionRow } from "./BankTransactionRow";
+import { BankTransactionCard } from "./BankTransactionCard";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface BankTransactionListProps {
   transactions: BankTransaction[];
@@ -10,6 +12,25 @@ interface BankTransactionListProps {
 }
 
 export function BankTransactionList({ transactions, status, accounts }: BankTransactionListProps) {
+  const isMobile = useIsMobile();
+
+  // Mobile card view
+  if (isMobile) {
+    return (
+      <div className="space-y-3 px-4">
+        {transactions.map((transaction) => (
+          <BankTransactionCard
+            key={transaction.id}
+            transaction={transaction}
+            status={status}
+            accounts={accounts}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // Desktop table view
   return (
     <div className="w-full overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
       <Table className="min-w-[700px] max-w-full">

@@ -3,7 +3,7 @@ import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2, Building2, MoreVertical } from "lucide-react";
+import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2, Building2, MoreVertical, Sparkles } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { SplitTransactionDialog } from "./SplitTransactionDialog";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
@@ -41,6 +41,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
 
   const suggestedCategory = accounts?.find(a => a.id === transaction.suggested_category_id);
   const currentCategory = accounts?.find(a => a.id === transaction.category_id);
+  const hasSuggestion = !transaction.is_categorized && suggestedCategory;
 
   const handleQuickAccept = () => {
     if (transaction.suggested_category_id) {
@@ -60,7 +61,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
 
   return (
     <>
-      <TableRow className="hover:bg-muted/50">
+      <TableRow className={`hover:bg-muted/50 ${hasSuggestion ? 'bg-amber-50/50 dark:bg-amber-950/20 border-l-4 border-l-amber-500' : ''}`}>
         <TableCell className="font-medium">
           {formatTransactionDate(transaction.transaction_date, 'MMM dd, yyyy')}
         </TableCell>
@@ -124,7 +125,12 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
             {transaction.is_categorized && currentCategory ? (
               <Badge variant="secondary">{currentCategory.account_name}</Badge>
             ) : suggestedCategory ? (
-              <Badge variant="outline">{suggestedCategory.account_name}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-100 border-amber-500">
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  {suggestedCategory.account_name}
+                </Badge>
+              </div>
             ) : (
               <span className="text-muted-foreground text-sm">Uncategorized</span>
             )}

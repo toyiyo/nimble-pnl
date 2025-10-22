@@ -93,26 +93,36 @@ export default function Banking() {
         icon={Building2} 
         title="Banking"
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             {reviewCount > 0 && (
               <Button 
                 onClick={handleCategorizeAll} 
                 disabled={categorizeAll.isPending}
                 variant="default"
+                className="w-full sm:w-auto"
               >
                 {categorizeAll.isPending ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <Wand2 className="h-4 w-4 mr-2" />
                 )}
-                Auto-Categorize All
+                <span className="hidden sm:inline">Auto-Categorize All</span>
+                <span className="sm:hidden">Categorize</span>
               </Button>
             )}
-            <Button onClick={() => setShowReconciliationDialog(true)} variant="outline">
+            <Button 
+              onClick={() => setShowReconciliationDialog(true)} 
+              variant="outline"
+              className="w-full sm:w-auto"
+            >
               <CheckCircle2 className="h-4 w-4 mr-2" />
               Reconcile
             </Button>
-            <Button onClick={() => setShowRulesDialog(true)} variant="outline">
+            <Button 
+              onClick={() => setShowRulesDialog(true)} 
+              variant="outline"
+              className="w-full sm:w-auto"
+            >
               <Sparkles className="h-4 w-4 mr-2" />
               Rules
             </Button>
@@ -167,9 +177,13 @@ export default function Banking() {
 
           {/* Connected Banks Section */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">Connected Banks</h2>
-              <Button onClick={handleConnectBank} disabled={isCreatingSession} className="gap-2">
+              <Button 
+                onClick={handleConnectBank} 
+                disabled={isCreatingSession} 
+                className="gap-2 w-full sm:w-auto"
+              >
                 <Plus className="h-4 w-4" />
                 {isCreatingSession ? "Connecting..." : "Connect Bank"}
               </Button>
@@ -209,34 +223,36 @@ export default function Banking() {
           </div>
           
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-            <TabsList className="grid w-full grid-cols-4 mb-6">
-            <TabsTrigger value="for_review" className="relative">
-              For Review
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6 h-auto">
+            <TabsTrigger value="for_review" className="relative py-2.5">
+              <span className="hidden sm:inline">For Review</span>
+              <span className="sm:hidden">Review</span>
               {reviewCount > 0 && (
-                <span className="ml-2 bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs">
+                <span className="ml-1 sm:ml-2 bg-primary text-primary-foreground rounded-full px-1.5 sm:px-2 py-0.5 text-xs">
                   {reviewCount}
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="categorized" className="relative">
-              Categorized
+            <TabsTrigger value="categorized" className="relative py-2.5">
+              <span className="hidden sm:inline">Categorized</span>
+              <span className="sm:hidden">Done</span>
               {categorizedCount > 0 && (
-                <span className="ml-2 bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs">
+                <span className="ml-1 sm:ml-2 bg-muted text-muted-foreground rounded-full px-1.5 sm:px-2 py-0.5 text-xs">
                   {categorizedCount}
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="excluded" className="relative">
+            <TabsTrigger value="excluded" className="relative py-2.5">
               Excluded
               {excludedCount > 0 && (
-                <span className="ml-2 bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs">
+                <span className="ml-1 sm:ml-2 bg-muted text-muted-foreground rounded-full px-1.5 sm:px-2 py-0.5 text-xs">
                   {excludedCount}
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="reconciliation">
-              <FileText className="h-4 w-4 mr-2" />
-              Reconciliation
+            <TabsTrigger value="reconciliation" className="py-2.5">
+              <FileText className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Reconciliation</span>
             </TabsTrigger>
           </TabsList>
 

@@ -109,6 +109,15 @@ const Accounting = () => {
         </div>
       ) : (
         <div className="space-y-6 md:space-y-8">
+          {/* Restaurant Selector */}
+          <RestaurantSelector 
+            selectedRestaurant={selectedRestaurant}
+            onSelectRestaurant={handleRestaurantSelect}
+            restaurants={restaurants}
+            loading={restaurantsLoading}
+            createRestaurant={createRestaurant}
+          />
+
           {/* Hero Section */}
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-8">
             <div className="relative z-10">

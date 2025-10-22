@@ -68,13 +68,51 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
   
   // Filter transactions for selected account and before ending date
   const eligibleTransactions = useMemo(() => {
-    if (!categorizedTransactions || !selectedAccountId || !endingDate) return [];
+    if (!categorizedTransactions || !selectedAccountId || !endingDate) {
+      console.log('[RECONCILIATION] No data to filter:', { 
+        hasCategorized: !!categorizedTransactions,
+        categorizedCount: categorizedTransactions?.length,
+        hasAccountId: !!selectedAccountId, 
+        hasEndingDate: !!endingDate 
+      });
+      return [];
+    }
     
-    return categorizedTransactions.filter(t => 
-      t.connected_bank_id === selectedAccountId &&
-      !t.is_reconciled &&
-      new Date(t.transaction_date) <= endingDate
-    );
+    console.log('[RECONCILIATION] Filtering transactions:', {
+      totalCategorized: categorizedTransactions.length,
+      selectedAccountId,
+      endingDate: endingDate.toISOString(),
+      sampleTransaction: categorizedTransactions[0],
+    });
+    
+    const filtered = categorizedTransactions.filter(t => {
+      const matchesBank = t.connected_bank_id === selectedAccountId;
+      const notReconciled = !t.is_reconciled;
+      const beforeDate = new Date(t.transaction_date) <= endingDate;
+      
+      if (!matchesBank || !notReconciled || !beforeDate) {
+        console.log('[RECONCILIATION] Transaction filtered out:', {
+          id: t.id,
+          description: t.description,
+          connected_bank_id: t.connected_bank_id,
+          selectedAccountId,
+          matchesBank,
+          is_reconciled: t.is_reconciled,
+          notReconciled,
+          transaction_date: t.transaction_date,
+          beforeDate
+        });
+      }
+      
+      return matchesBank && notReconciled && beforeDate;
+    });
+    
+    console.log('[RECONCILIATION] Filtered result:', {
+      eligibleCount: filtered.length,
+      sampleEligible: filtered[0]
+    });
+    
+    return filtered;
   }, [categorizedTransactions, selectedAccountId, endingDate]);
 
   // Calculate balances

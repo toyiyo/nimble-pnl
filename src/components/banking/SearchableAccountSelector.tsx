@@ -89,7 +89,7 @@ export function SearchableAccountSelector({
       <PopoverContent className="w-full p-0 bg-background z-50" align="start">
         <Command>
           <CommandInput placeholder="Search accounts..." />
-          <CommandList>
+          <CommandList className="max-h-[300px] overflow-y-auto">
             {isEmpty ? (
               <div className="py-6 px-4 text-center text-sm text-muted-foreground">
                 <p className="font-medium mb-1">No accounts found</p>

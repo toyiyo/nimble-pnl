@@ -58,7 +58,7 @@ export function useBankTransactions(status?: TransactionStatus) {
     queryFn: async () => {
       if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
 
-      // Use range to fetch all transactions with supplier info
+      // Base query with supplier info
       let query = supabase
         .from('bank_transactions')
         .select('*, supplier:suppliers(id, name)', { count: 'exact' })
@@ -66,8 +66,19 @@ export function useBankTransactions(status?: TransactionStatus) {
         .order('transaction_date', { ascending: false })
         .range(0, 9999);
 
-      if (status) {
-        query = query.eq('status', status as any);
+      // Filter based on logical status (not enum status)
+      if (status === 'for_review') {
+        // Uncategorized and not excluded
+        query = query.eq('is_categorized', false).is('excluded_reason', null);
+      } else if (status === 'categorized') {
+        // Categorized but not excluded
+        query = query.eq('is_categorized', true).is('excluded_reason', null);
+      } else if (status === 'excluded') {
+        // Has exclusion reason
+        query = query.not('excluded_reason', 'is', null);
+      } else if (status === 'reconciled') {
+        // Marked as reconciled
+        query = query.eq('is_reconciled', true);
       }
 
       const { data, error } = await query;

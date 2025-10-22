@@ -273,7 +273,8 @@ serve(async (req) => {
 
     console.log(`🚀 Starting AI categorization for ${transactions.length} transactions with multi-model fallback...`);
 
-    let finalResponse: Response | undefined;
+    let categorizations: any[] | undefined;
+    let successfulModel: string | undefined;
 
     // Try models in order: free models first, then paid fallbacks
     for (const modelConfig of MODELS) {
@@ -286,21 +287,55 @@ serve(async (req) => {
         openRouterApiKey
       );
       
-      if (response) {
-        finalResponse = response;
-        break;
+      if (!response || !response.ok) {
+        console.log(`⚠️ ${modelConfig.name} failed to return a valid response, trying next model...`);
+        continue;
       }
-      
-      console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
+
+      // Try to parse the response
+      try {
+        const data = await response.json();
+        
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+          console.error(`❌ ${modelConfig.name} returned invalid response structure`);
+          continue;
+        }
+
+        const content = data.choices[0].message.content;
+        
+        if (!content) {
+          console.error(`❌ ${modelConfig.name} returned empty content`);
+          continue;
+        }
+
+        // Parse the JSON content
+        const result = JSON.parse(content);
+        
+        if (!result.categorizations || !Array.isArray(result.categorizations)) {
+          console.error(`❌ ${modelConfig.name} returned invalid categorizations format`);
+          continue;
+        }
+
+        // Success! We have valid categorizations
+        categorizations = result.categorizations;
+        successfulModel = modelConfig.name;
+        console.log(`✅ ${modelConfig.name} successfully returned ${categorizations.length} categorizations`);
+        break;
+        
+      } catch (parseError) {
+        console.error(`❌ ${modelConfig.name} parsing error:`, parseError instanceof Error ? parseError.message : String(parseError));
+        console.log(`⚠️ Trying next model due to parsing failure...`);
+        continue;
+      }
     }
 
     // If all models failed
-    if (!finalResponse || !finalResponse.ok) {
-      console.error('❌ All models failed');
+    if (!categorizations || categorizations.length === 0) {
+      console.error('❌ All models failed to return valid categorizations');
       
       return new Response(
         JSON.stringify({ 
-          error: 'AI categorization temporarily unavailable. All AI models failed.',
+          error: 'AI categorization temporarily unavailable. All AI models failed to provide valid responses.',
           details: 'Please try again later'
         }),
         { 
@@ -310,26 +345,7 @@ serve(async (req) => {
       );
     }
 
-    const data = await finalResponse.json();
-    
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      throw new Error('Invalid response from AI model');
-    }
-
-    const content = data.choices[0].message.content;
-    
-    if (!content) {
-      throw new Error('No content in AI response');
-    }
-
-    const result = JSON.parse(content);
-    const categorizations = result.categorizations;
-    
-    if (!categorizations || !Array.isArray(categorizations)) {
-      throw new Error('Invalid categorizations format in AI response');
-    }
-
-    console.log(`✅ AI returned ${categorizations.length} categorizations`);
+    console.log(`✅ Successfully categorized using ${successfulModel}`);
 
     // Update transactions with AI suggestions
     let updatedCount = 0;

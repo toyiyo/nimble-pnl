@@ -301,7 +301,8 @@ const Transactions = () => {
                 disabled={categorizeTransactions.isPending}
                 className="w-full md:w-auto h-11"
               >
-                {categorizeTransactions.isPending ? 'Categorizing...' : isMobile ? 'Auto' : 'Categorize All'}
+                <Sparkles className="w-4 h-4 mr-2" />
+                {categorizeTransactions.isPending ? 'AI Categorizing...' : isMobile ? 'AI Categorize' : 'AI Categorize All'}
               </Button>
               <div className="relative w-full md:w-auto">
                 <TransactionFiltersSheet 

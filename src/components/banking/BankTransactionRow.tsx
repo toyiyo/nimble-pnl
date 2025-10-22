@@ -12,6 +12,7 @@ import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { AIConfidenceBadge } from "./AIConfidenceBadge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -118,7 +119,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
                 {currentCategory.account_name}
               </Badge>
             ) : suggestedCategory ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge 
                   variant="outline"
                   className="bg-amber-100 dark:bg-amber-900 text-amber-900 dark:text-amber-50 border-amber-400 dark:border-amber-600 hover:bg-amber-200 dark:hover:bg-amber-800"
@@ -126,6 +127,12 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
                   <Sparkles className="h-3 w-3 mr-1" />
                   {suggestedCategory.account_name}
                 </Badge>
+                {transaction.ai_confidence && (
+                  <AIConfidenceBadge 
+                    confidence={transaction.ai_confidence}
+                    reasoning={transaction.ai_reasoning}
+                  />
+                )}
               </div>
             ) : (
               <span className="text-muted-foreground text-sm">Uncategorized</span>

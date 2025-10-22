@@ -146,6 +146,8 @@ export type Database = {
       }
       bank_transactions: {
         Row: {
+          ai_confidence: string | null
+          ai_reasoning: string | null
           amount: number
           category_id: string | null
           connected_bank_id: string
@@ -182,6 +184,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_confidence?: string | null
+          ai_reasoning?: string | null
           amount: number
           category_id?: string | null
           connected_bank_id: string
@@ -218,6 +222,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_confidence?: string | null
+          ai_reasoning?: string | null
           amount?: number
           category_id?: string | null
           connected_bank_id?: string
@@ -1459,7 +1465,7 @@ export type Database = {
           receipt_item_names: string[] | null
           reorder_point: number | null
           restaurant_id: string
-          search_vector: unknown | null
+          search_vector: unknown
           searchable_text: string | null
           size_unit: string | null
           size_value: number | null
@@ -1495,7 +1501,7 @@ export type Database = {
           receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id: string
-          search_vector?: unknown | null
+          search_vector?: unknown
           searchable_text?: string | null
           size_unit?: string | null
           size_value?: number | null
@@ -1531,7 +1537,7 @@ export type Database = {
           receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id?: string
-          search_vector?: unknown | null
+          search_vector?: unknown
           searchable_text?: string | null
           size_unit?: string | null
           size_value?: number | null
@@ -1594,21 +1600,21 @@ export type Database = {
           action_type: string
           created_at: string | null
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           user_id: string
         }
         Insert: {
           action_type: string
           created_at?: string | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           user_id: string
         }
         Update: {
           action_type?: string
           created_at?: string | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           user_id?: string
         }
         Relationships: []
@@ -2131,7 +2137,7 @@ export type Database = {
           created_at: string
           event_type: string
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           metadata: Json | null
           restaurant_id: string | null
           user_agent: string | null
@@ -2141,7 +2147,7 @@ export type Database = {
           created_at?: string
           event_type: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           metadata?: Json | null
           restaurant_id?: string | null
           user_agent?: string | null
@@ -2151,7 +2157,7 @@ export type Database = {
           created_at?: string
           event_type?: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           metadata?: Json | null
           restaurant_id?: string | null
           user_agent?: string | null
@@ -2173,7 +2179,7 @@ export type Database = {
           details: Json | null
           event_type: string
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           restaurant_id: string | null
           severity: string | null
           user_agent: string | null
@@ -2184,7 +2190,7 @@ export type Database = {
           details?: Json | null
           event_type: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           restaurant_id?: string | null
           severity?: string | null
           user_agent?: string | null
@@ -2195,7 +2201,7 @@ export type Database = {
           details?: Json | null
           event_type?: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           restaurant_id?: string | null
           severity?: string | null
           user_agent?: string | null
@@ -3170,30 +3176,30 @@ export type Database = {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: string
       }
-      calculate_gs1_check_digit: {
-        Args: { base13: string }
-        Returns: string
-      }
+      calculate_gs1_check_digit: { Args: { base13: string }; Returns: string }
       calculate_square_daily_pnl: {
         Args: { p_restaurant_id: string; p_service_date: string }
         Returns: string
       }
-      categorize_bank_transaction: {
-        Args:
-          | {
+      categorize_bank_transaction:
+        | {
+            Args: {
               p_category_id: string
               p_description?: string
               p_normalized_payee?: string
               p_supplier_id?: string
               p_transaction_id: string
             }
-          | {
+            Returns: Json
+          }
+        | {
+            Args: {
               p_category_id: string
               p_restaurant_id: string
               p_transaction_id: string
             }
-        Returns: Json
-      }
+            Returns: Json
+          }
       categorize_bank_transaction_split: {
         Args: {
           p_restaurant_id: string
@@ -3216,51 +3222,36 @@ export type Database = {
         }
         Returns: boolean
       }
-      cleanup_expired_invitations: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      cleanup_old_audit_logs: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      cleanup_rate_limit_logs: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      cleanup_expired_invitations: { Args: never; Returns: undefined }
+      cleanup_old_audit_logs: { Args: never; Returns: undefined }
+      cleanup_rate_limit_logs: { Args: never; Returns: undefined }
       compute_account_balance: {
         Args: { p_account_id: string; p_as_of_date?: string }
         Returns: number
       }
-      create_restaurant_with_owner: {
-        Args:
-          | {
-              restaurant_address?: string
-              restaurant_cuisine_type?: string
-              restaurant_name: string
-              restaurant_phone?: string
-            }
-          | {
+      create_restaurant_with_owner:
+        | {
+            Args: {
               restaurant_address?: string
               restaurant_cuisine_type?: string
               restaurant_name: string
               restaurant_phone?: string
               restaurant_timezone?: string
             }
-        Returns: string
-      }
-      daitch_mokotoff: {
-        Args: { "": string }
-        Returns: string[]
-      }
-      dmetaphone: {
-        Args: { "": string }
-        Returns: string
-      }
-      dmetaphone_alt: {
-        Args: { "": string }
-        Returns: string
-      }
+            Returns: string
+          }
+        | {
+            Args: {
+              restaurant_address?: string
+              restaurant_cuisine_type?: string
+              restaurant_name: string
+              restaurant_phone?: string
+            }
+            Returns: string
+          }
+      daitch_mokotoff: { Args: { "": string }; Returns: string[] }
+      dmetaphone: { Args: { "": string }; Returns: string }
+      dmetaphone_alt: { Args: { "": string }; Returns: string }
       exclude_bank_transaction: {
         Args: { p_reason?: string; p_transaction_id: string }
         Returns: Json
@@ -3294,38 +3285,12 @@ export type Database = {
           uom_purchase: string
         }[]
       }
-      get_account_subtypes: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
+      get_account_subtypes: { Args: never; Returns: Json }
       get_product_cost_per_recipe_unit: {
         Args: { product_id: string }
         Returns: number
       }
-      gtrgm_compress: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      gtrgm_decompress: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      gtrgm_in: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      gtrgm_options: {
-        Args: { "": unknown }
-        Returns: undefined
-      }
-      gtrgm_out: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      hash_invitation_token: {
-        Args: { token: string }
-        Returns: string
-      }
+      hash_invitation_token: { Args: { token: string }; Returns: string }
       is_restaurant_owner: {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: boolean
@@ -3352,9 +3317,9 @@ export type Database = {
         }
         Returns: Json
       }
-      process_unified_inventory_deduction: {
-        Args:
-          | {
+      process_unified_inventory_deduction:
+        | {
+            Args: {
               p_external_order_id?: string
               p_pos_item_name: string
               p_quantity_sold: number
@@ -3363,7 +3328,10 @@ export type Database = {
               p_sale_date: string
               p_sale_time?: string
             }
-          | {
+            Returns: Json
+          }
+        | {
+            Args: {
               p_external_order_id?: string
               p_pos_item_name: string
               p_quantity_sold: number
@@ -3372,15 +3340,18 @@ export type Database = {
               p_sale_date: string
               p_sale_time?: string
             }
-          | {
+            Returns: Json
+          }
+        | {
+            Args: {
               p_external_order_id?: string
               p_pos_item_name: string
               p_quantity_sold: number
               p_restaurant_id: string
               p_sale_date: string
             }
-        Returns: Json
-      }
+            Returns: Json
+          }
       rebuild_account_balances: {
         Args: { p_restaurant_id: string }
         Returns: number
@@ -3396,10 +3367,6 @@ export type Database = {
           uom_purchase: string
         }[]
       }
-      set_limit: {
-        Args: { "": number }
-        Returns: number
-      }
       set_preferred_product_supplier: {
         Args: {
           p_product_id: string
@@ -3408,14 +3375,8 @@ export type Database = {
         }
         Returns: undefined
       }
-      show_limit: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
-      show_trgm: {
-        Args: { "": string }
-        Returns: string[]
-      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       simulate_inventory_deduction: {
         Args: {
           p_pos_item_name: string
@@ -3424,10 +3385,7 @@ export type Database = {
         }
         Returns: Json
       }
-      soundex: {
-        Args: { "": string }
-        Returns: string
-      }
+      soundex: { Args: { "": string }; Returns: string }
       split_bank_transaction: {
         Args: { p_splits: Json; p_transaction_id: string }
         Returns: Json
@@ -3449,22 +3407,9 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: number
       }
-      text_soundex: {
-        Args: { "": string }
-        Returns: string
-      }
-      trigger_square_periodic_sync: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      unaccent: {
-        Args: { "": string }
-        Returns: string
-      }
-      unaccent_init: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
+      text_soundex: { Args: { "": string }; Returns: string }
+      trigger_square_periodic_sync: { Args: never; Returns: undefined }
+      unaccent: { Args: { "": string }; Returns: string }
       upsert_product_supplier: {
         Args: {
           p_product_id: string

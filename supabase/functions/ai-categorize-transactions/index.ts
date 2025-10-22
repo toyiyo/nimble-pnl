@@ -371,11 +371,13 @@ serve(async (req) => {
           continue;
         }
 
-        // Update transaction with suggested category
+        // Update transaction with suggested category, confidence, and reasoning
         const { error: updateError } = await supabaseClient
           .from('bank_transactions')
           .update({ 
             suggested_category_id: account.id,
+            ai_confidence: cat.confidence,
+            ai_reasoning: cat.reasoning,
             is_categorized: false // Mark as not categorized yet (needs validation)
           })
           .eq('id', cat.transaction_id)

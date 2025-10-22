@@ -28,6 +28,8 @@ export interface BankTransaction {
   transfer_pair_id: string | null;
   excluded_reason: string | null;
   match_confidence: number | null;
+  ai_confidence: 'high' | 'medium' | 'low' | null;
+  ai_reasoning: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

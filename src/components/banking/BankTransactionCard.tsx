@@ -12,6 +12,7 @@ import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { AIConfidenceBadge } from "./AIConfidenceBadge";
 
 interface BankTransactionCardProps {
   transaction: BankTransaction;
@@ -110,9 +111,15 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
                   <div className="font-semibold text-amber-900 dark:text-amber-50 text-sm mb-1">
                     AI Suggestion - Needs Review
                   </div>
-                  <div className="text-sm text-amber-900 dark:text-amber-100">
+                  <div className="text-sm text-amber-900 dark:text-amber-100 mb-2">
                     Suggested category: <span className="font-semibold">{suggestedCategory.account_name}</span>
                   </div>
+                  {transaction.ai_confidence && (
+                    <AIConfidenceBadge 
+                      confidence={transaction.ai_confidence}
+                      reasoning={transaction.ai_reasoning}
+                    />
+                  )}
                 </div>
               </div>
               <Button

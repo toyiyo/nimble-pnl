@@ -11,7 +11,6 @@ import { AppHeader } from "@/components/AppHeader";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { InstallBanner } from "@/components/InstallBanner";
-import { lazy, Suspense } from "react";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Team from "./pages/Team";
@@ -32,9 +31,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Transactions from "./pages/Transactions";
 import ChartOfAccounts from "./pages/ChartOfAccounts";
 import FinancialStatements from "./pages/FinancialStatements";
-
-// Lazy load Accounting page to prevent Stripe from loading unnecessarily
-const Accounting = lazy(() => import("./pages/Accounting"));
+import Accounting from "./pages/Accounting";
 
 const queryClient = new QueryClient();
 
@@ -97,20 +94,8 @@ const App = () => (
             <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
             <Route path="/inventory-audit" element={<ProtectedRoute><InventoryAudit /></ProtectedRoute>} />
             <Route path="/receipt-import" element={<ProtectedRoute><ReceiptImport /></ProtectedRoute>} />
-          <Route path="/accounting" element={
-            <ProtectedRoute>
-              <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
-                <Accounting />
-              </Suspense>
-            </ProtectedRoute>
-          } />
-          <Route path="/accounting/banks" element={
-            <ProtectedRoute>
-              <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
-                <Accounting />
-              </Suspense>
-            </ProtectedRoute>
-          } />
+          <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
+          <Route path="/accounting/banks" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
           <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
           <Route path="/chart-of-accounts" element={<ProtectedRoute><ChartOfAccounts /></ProtectedRoute>} />
           <Route path="/financial-statements" element={<ProtectedRoute><FinancialStatements /></ProtectedRoute>} />

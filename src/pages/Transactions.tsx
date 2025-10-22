@@ -25,7 +25,7 @@ import { useCategorizeTransactions } from '@/hooks/useCategorizeTransactions';
 import { TransactionCard } from '@/components/banking/TransactionCard';
 import { TransactionSkeleton, TransactionTableSkeleton } from '@/components/banking/TransactionSkeleton';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { CategoryRulesDialog } from '@/components/banking/CategoryRulesDialog';
+
 import { ReconciliationDialog } from '@/components/banking/ReconciliationDialog';
 import { BankTransactionList } from '@/components/banking/BankTransactionList';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
@@ -43,7 +43,7 @@ const Transactions = () => {
   const isMobile = useIsMobile();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [showRulesDialog, setShowRulesDialog] = useState(false);
+  
   const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
   const { formatTransactionDate, timezone } = useDateFormat();
   const [sortBy, setSortBy] = useState<'date' | 'payee' | 'amount' | 'category'>('date');
@@ -319,14 +319,6 @@ const Transactions = () => {
                 )}
               </div>
               
-              <Button
-                variant="outline" 
-                className="w-full md:w-auto h-11 gap-2"
-                onClick={() => setShowRulesDialog(true)}
-              >
-                <Sparkles className="h-4 w-4" />
-                {!isMobile && <span>Rules</span>}
-              </Button>
               
               <Button
                 variant="outline" 
@@ -460,11 +452,6 @@ const Transactions = () => {
           </CardContent>
         </Card>
       )}
-      
-      <CategoryRulesDialog
-        open={showRulesDialog}
-        onOpenChange={setShowRulesDialog}
-      />
       
       <ReconciliationDialog
         isOpen={showReconciliationDialog}

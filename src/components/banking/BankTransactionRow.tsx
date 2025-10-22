@@ -3,13 +3,19 @@ import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2, Building2 } from "lucide-react";
+import { Check, Edit, XCircle, ArrowLeftRight, FileText, Split, CheckCircle2, Building2, MoreVertical } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { SplitTransactionDialog } from "./SplitTransactionDialog";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface BankTransactionRowProps {
   transaction: BankTransaction;
@@ -91,6 +97,17 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
           </div>
         </TableCell>
 
+        <TableCell className="hidden lg:table-cell">
+          <div className="flex flex-col gap-1">
+            <span className="text-sm">{transaction.connected_bank?.institution_name || '—'}</span>
+            {transaction.connected_bank?.bank_account_balances?.[0]?.account_mask && (
+              <span className="text-xs text-muted-foreground">
+                ••••{transaction.connected_bank.bank_account_balances[0].account_mask}
+              </span>
+            )}
+          </div>
+        </TableCell>
+
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-2">
             <span className={isNegative ? "text-destructive" : "text-success"}>
@@ -143,87 +160,75 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
         )}
 
         <TableCell className="text-right">
-          <div className="flex items-center justify-end gap-1 flex-wrap">
-            {status === 'for_review' && (
-              <>
-                {transaction.suggested_category_id && (
-                  <Button
-                    size="sm"
-                    variant="default"
-                    onClick={handleQuickAccept}
-                    disabled={categorize.isPending}
-                    className="whitespace-nowrap"
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 bg-background z-50">
+              {status === 'for_review' && (
+                <>
+                  {transaction.suggested_category_id && (
+                    <DropdownMenuItem
+                      onClick={handleQuickAccept}
+                      disabled={categorize.isPending}
+                    >
+                      <Check className="h-4 w-4 mr-2" />
+                      Accept Suggestion
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={() => setIsDetailOpen(true)}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setIsSplitOpen(true)}>
+                    <Split className="h-4 w-4 mr-2" />
+                    Split Transaction
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={handleExclude}
+                    disabled={exclude.isPending}
+                    className="text-destructive focus:text-destructive"
                   >
-                    <Check className="h-4 w-4 md:mr-1" />
-                    <span className="hidden md:inline">Accept</span>
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setIsSplitOpen(true)}
-                  title="Split transaction"
-                  className="whitespace-nowrap"
-                >
-                  <Split className="h-4 w-4 md:mr-1" />
-                  <span className="hidden md:inline">Split</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setIsDetailOpen(true)}
-                  className="whitespace-nowrap"
-                >
-                  <Edit className="h-4 w-4 md:mr-1" />
-                  <span className="hidden md:inline">Edit</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleExclude}
-                  disabled={exclude.isPending}
-                  className="whitespace-nowrap text-destructive hover:text-destructive"
-                >
-                  <XCircle className="h-4 w-4 md:mr-1" />
-                  <span className="hidden md:inline">Exclude</span>
-                </Button>
-              </>
-            )}
-            {status === 'categorized' && (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setIsDetailOpen(true)}
-                  className="whitespace-nowrap"
-                >
-                  <FileText className="h-4 w-4 md:mr-1" />
-                  <span className="hidden md:inline">View</span>
-                </Button>
-                {transaction.is_reconciled ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => unreconcile.mutate({ transactionId: transaction.id })}
-                    disabled={unreconcile.isPending}
-                    title="Unreconcile"
-                  >
-                    <CheckCircle2 className="h-4 w-4 text-success" />
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => reconcile.mutate({ transactionId: transaction.id })}
-                    disabled={reconcile.isPending}
-                    title="Mark as reconciled"
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Exclude
+                  </DropdownMenuItem>
+                </>
+              )}
+              {status === 'categorized' && (
+                <>
+                  <DropdownMenuItem onClick={() => setIsDetailOpen(true)}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    View Details
+                  </DropdownMenuItem>
+                  {transaction.is_reconciled ? (
+                    <DropdownMenuItem
+                      onClick={() => unreconcile.mutate({ transactionId: transaction.id })}
+                      disabled={unreconcile.isPending}
+                    >
+                      <CheckCircle2 className="h-4 w-4 mr-2 text-success" />
+                      Unreconcile
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onClick={() => reconcile.mutate({ transactionId: transaction.id })}
+                      disabled={reconcile.isPending}
+                    >
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      Mark as Reconciled
+                    </DropdownMenuItem>
+                  )}
+                </>
+              )}
+              {status === 'excluded' && (
+                <DropdownMenuItem onClick={() => setIsDetailOpen(true)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  View Details
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </TableCell>
       </TableRow>
 

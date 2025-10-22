@@ -286,6 +286,59 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     }
   };
 
+  // Verify connection session and process linked accounts
+  const verifyConnectionSession = async (sessionId: string) => {
+    if (!restaurantId) {
+      toast({
+        title: "No Restaurant Selected",
+        description: "Please select a restaurant first",
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    try {
+      console.log("[VERIFY-SESSION] Verifying session:", sessionId);
+      
+      const { data, error } = await supabase.functions.invoke(
+        'stripe-verify-connection-session',
+        {
+          body: { sessionId, restaurantId }
+        }
+      );
+
+      if (error) throw error;
+
+      console.log("[VERIFY-SESSION] Results:", data);
+
+      // Refresh the banks list
+      queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] });
+
+      if (data.success && data.accountsProcessed > 0) {
+        toast({
+          title: "Bank Connected Successfully",
+          description: data.message,
+        });
+      } else if (data.accountsProcessed === 0) {
+        toast({
+          title: "No Accounts Connected",
+          description: data.message || "No accounts were selected during the connection process",
+          variant: "destructive",
+        });
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[VERIFY-SESSION] Error:', error);
+      toast({
+        title: "Failed to Verify Connection",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+      return null;
+    }
+  };
+
   return {
     connectedBanks,
     loading,
@@ -295,5 +348,6 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     refreshBanks: () => queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] }),
     refreshBalance,
     syncTransactions,
+    verifyConnectionSession,
   };
 };

@@ -26,6 +26,7 @@ const Accounting = () => {
     refreshBalance,
     syncTransactions,
     disconnectBank,
+    verifyConnectionSession,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
 
@@ -51,7 +52,7 @@ const Accounting = () => {
     try {
       const sessionData = await createFinancialConnectionsSession();
 
-      if (sessionData?.clientSecret) {
+      if (sessionData?.clientSecret && sessionData?.sessionId) {
         // Load Stripe.js with your live publishable key
         const stripe = await loadStripe(
           "pk_live_51SFateD9w6YUNUOUMLCT8LY9rmy9LtNevR4nhGYdSZdVqsdH2wjtbrMrrAAUZKAWzZq74RflwZQYHYOHu2CheQSn00Ug36fXVY",
@@ -66,22 +67,13 @@ const Accounting = () => {
           clientSecret: sessionData.clientSecret,
         });
 
-        if (financialConnectionsSession.accounts && financialConnectionsSession.accounts.length > 0) {
-          toast({
-            title: "Bank Connected Successfully",
-            description: `Syncing transactions and balance in the background...`,
-          });
-
-          // Wait a moment for webhook to process, then refresh
-          setTimeout(() => {
-            window.location.reload();
-          }, 2000);
-        } else {
-          toast({
-            title: "Connection Cancelled",
-            description: "No accounts were connected",
-          });
-        }
+        // Always verify the session, even if Stripe reports no accounts
+        // This handles cases where webhooks fail or aren't sent (e.g., reconnections)
+        console.log("[ACCOUNTING] Session completed, verifying with backend...");
+        await verifyConnectionSession(sessionData.sessionId);
+        
+        // The verifyConnectionSession function will show appropriate toasts
+        // and refresh the banks list automatically
       }
     } catch (error) {
       toast({

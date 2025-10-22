@@ -125,3 +125,6 @@ verify_jwt = true
 
 [functions.ai-categorize-transactions]
 verify_jwt = true
+
+[functions.stripe-verify-connection-session]
+verify_jwt = true

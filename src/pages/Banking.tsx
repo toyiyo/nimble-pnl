@@ -49,6 +49,7 @@ export default function Banking() {
     refreshBalance,
     syncTransactions,
     disconnectBank,
+    verifyConnectionSession,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
   
   const handleCategorizeAll = () => {
@@ -63,7 +64,7 @@ export default function Banking() {
     try {
       const sessionData = await createFinancialConnectionsSession();
 
-      if (sessionData?.clientSecret) {
+      if (sessionData?.clientSecret && sessionData?.sessionId) {
         const stripe = await loadStripe(
           "pk_live_51SFateD9w6YUNUOUMLCT8LY9rmy9LtNevR4nhGYdSZdVqsdH2wjtbrMrrAAUZKAWzZq74RflwZQYHYOHu2CheQSn00Ug36fXVY",
         );
@@ -76,14 +77,13 @@ export default function Banking() {
           clientSecret: sessionData.clientSecret,
         });
 
-        if (financialConnectionsSession.accounts && financialConnectionsSession.accounts.length > 0) {
-          toast.success("Bank Connected Successfully - Syncing transactions...");
-          setTimeout(() => {
-            window.location.reload();
-          }, 2000);
-        } else {
-          toast.info("Connection Cancelled");
-        }
+        // Always verify the session, even if Stripe reports no accounts
+        // This handles cases where webhooks fail or aren't sent (e.g., reconnections)
+        console.log("[BANKING] Session completed, verifying with backend...");
+        await verifyConnectionSession(sessionData.sessionId);
+        
+        // The verifyConnectionSession function will show appropriate toasts
+        // and refresh the banks list automatically
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to connect bank");

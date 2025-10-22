@@ -137,9 +137,9 @@ export function useCategorizeTransaction() {
       const { data, error } = await supabase.rpc('categorize_bank_transaction', {
         p_transaction_id: transactionId,
         p_category_id: categoryId,
-        p_description: description,
-        p_normalized_payee: normalizedPayee,
-        p_supplier_id: supplierId,
+        p_description: description ?? null,
+        p_normalized_payee: normalizedPayee ?? null,
+        p_supplier_id: supplierId ?? null,
       });
 
       if (error) throw error;

@@ -2,40 +2,23 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
+const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Model configurations (free models first, then paid fallbacks)
-const MODELS = [
-  {
-    name: "Llama 4 Maverick Free",
-    id: "meta-llama/llama-4-maverick:free",
-    maxRetries: 2
-  },
-  {
-    name: "Gemma 3 27B Free",
-    id: "google/gemma-3-27b-it:free",
-    maxRetries: 2
-  },
-  {
-    name: "Gemini 2.5 Flash Lite",
-    id: "google/gemini-2.5-flash-lite",
-    maxRetries: 1
-  },
-  {
-    name: "GPT-4.1 Nano",
-    id: "openai/gpt-4.1-nano",
-    maxRetries: 1
-  }
-];
+const SYSTEM_PROMPT = `You are an expert accountant helping categorize bank transactions. Analyze each transaction and assign it to the most appropriate account from the Chart of Accounts provided.
 
-const CATEGORIZATION_PROMPT = (transactions: any[], accounts: any[]) => `
-You are an expert accountant helping categorize bank transactions. Analyze each transaction and assign it to the most appropriate account from the Chart of Accounts provided.
+RULES:
+- Match transaction descriptions and payees to appropriate accounts
+- Positive amounts are typically income/revenue
+- Negative amounts are typically expenses
+- Use confidence: "high" for obvious matches, "medium" for likely matches, "low" for uncertain
+- Always provide brief reasoning for each categorization`;
 
+const buildUserPrompt = (transactions: any[], accounts: any[]) => `
 CHART OF ACCOUNTS:
 ${accounts.map(acc => `- ${acc.account_code}: ${acc.account_name} (${acc.account_type})`).join('\n')}
 
@@ -48,87 +31,76 @@ ${idx + 1}. ID: ${txn.id}
    Date: ${txn.transaction_date}
 `).join('\n')}
 
-Return ONLY valid JSON (no markdown, no explanations) in this exact format:
-{
-  "categorizations": [
-    {
-      "transaction_id": "uuid-here",
-      "account_code": "1234",
-      "confidence": "high|medium|low",
-      "reasoning": "brief explanation"
-    }
-  ]
-}
+Categorize each transaction with the appropriate account code, confidence level, and reasoning.`;
 
-RULES:
-- Match transaction descriptions and payees to appropriate accounts
-- Positive amounts are typically income/revenue
-- Negative amounts are typically expenses
-- Use confidence: "high" for obvious matches, "medium" for likely matches, "low" for uncertain
-- Always provide brief reasoning for each categorization
-- Return valid JSON only
-`;
-
-async function callModel(
-  modelConfig: typeof MODELS[0],
-  prompt: string,
-  openRouterApiKey: string
-): Promise<Response | null> {
-  let retryCount = 0;
+async function categorizeWithOpenAI(
+  transactions: any[],
+  accounts: any[],
+  openAIApiKey: string
+) {
+  console.log('🤖 Calling OpenAI with structured output for guaranteed valid JSON...');
   
-  while (retryCount < modelConfig.maxRetries) {
-    try {
-      console.log(`🔄 ${modelConfig.name} attempt ${retryCount + 1}/${modelConfig.maxRetries}...`);
-      
-      const requestBody = {
-        model: modelConfig.id,
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert accountant. Analyze transactions and categorize them accurately. Return only valid JSON."
-          },
-          {
-            role: "user",
-            content: prompt
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${openAIApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-5-mini-2025-08-07',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: buildUserPrompt(transactions, accounts) }
+      ],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'categorize_transactions',
+          description: 'Categorize bank transactions with appropriate account codes',
+          parameters: {
+            type: 'object',
+            properties: {
+              categorizations: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    transaction_id: { type: 'string', description: 'UUID of the transaction' },
+                    account_code: { type: 'string', description: 'Account code from chart of accounts' },
+                    confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+                    reasoning: { type: 'string', description: 'Brief explanation for categorization' }
+                  },
+                  required: ['transaction_id', 'account_code', 'confidence', 'reasoning'],
+                  additionalProperties: false
+                }
+              }
+            },
+            required: ['categorizations'],
+            additionalProperties: false
           }
-        ]
-      };
+        }
+      }],
+      tool_choice: { type: 'function', function: { name: 'categorize_transactions' } }
+    }),
+  });
 
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${openRouterApiKey}`,
-          "HTTP-Referer": "https://app.easyshifthq.com",
-          "X-Title": "EasyShiftHQ Transaction Categorization",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      if (response.ok) {
-        console.log(`✅ ${modelConfig.name} succeeded`);
-        return response;
-      }
-
-      if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
-        console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
-        retryCount++;
-      } else {
-        const errorText = await response.text();
-        console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
-        break;
-      }
-    } catch (error) {
-      console.error(`❌ ${modelConfig.name} error:`, error);
-      retryCount++;
-      if (retryCount < modelConfig.maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
-      }
-    }
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ OpenAI API error:', response.status, errorText);
+    throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
   }
+
+  const data = await response.json();
+  const toolCall = data.choices[0].message.tool_calls?.[0];
   
-  return null;
+  if (!toolCall) {
+    throw new Error('No tool call in OpenAI response');
+  }
+
+  const result = JSON.parse(toolCall.function.arguments);
+  console.log('✅ OpenAI returned structured categorizations:', result.categorizations.length);
+  
+  return result.categorizations;
 }
 
 serve(async (req) => {
@@ -170,10 +142,10 @@ serve(async (req) => {
       throw new Error('Access denied');
     }
 
-    if (!openRouterApiKey) {
-      console.error('OpenRouter API key not found');
+    if (!openAIApiKey) {
+      console.error('OpenAI API key not found');
       return new Response(
-        JSON.stringify({ error: 'AI service not configured' }),
+        JSON.stringify({ error: 'AI service not configured. Please add your OpenAI API key.' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
@@ -227,70 +199,23 @@ serve(async (req) => {
       throw new Error('No chart of accounts found');
     }
 
-    console.log(`🚀 Starting AI categorization for ${transactions.length} transactions...`);
+    console.log(`🚀 Starting AI categorization for ${transactions.length} transactions using OpenAI...`);
 
-    const prompt = CATEGORIZATION_PROMPT(transactions, accounts);
-
-    let finalResponse: Response | undefined;
-
-    // Try models in order
-    for (const modelConfig of MODELS) {
-      console.log(`🚀 Trying ${modelConfig.name}...`);
-      
-      const response = await callModel(
-        modelConfig,
-        prompt,
-        openRouterApiKey
-      );
-      
-      if (response) {
-        finalResponse = response;
-        break;
-      }
-      
-      console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
-    }
-
-    if (!finalResponse || !finalResponse.ok) {
-      console.error('❌ All AI models failed');
-      
+    let categorizations;
+    try {
+      categorizations = await categorizeWithOpenAI(transactions, accounts, openAIApiKey);
+    } catch (error) {
+      console.error('❌ OpenAI categorization failed:', error);
       return new Response(
         JSON.stringify({ 
-          error: 'AI categorization temporarily unavailable. Please try again later.',
-          details: 'All AI models are currently unavailable'
+          error: 'AI categorization failed. Please try again later.',
+          details: error.message
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 503 
         }
       );
-    }
-
-    const data = await finalResponse.json();
-    let aiResponse = data.choices[0].message.content;
-
-    // Strip markdown code blocks if present
-    aiResponse = aiResponse.trim();
-    if (aiResponse.startsWith('```json')) {
-      aiResponse = aiResponse.slice(7); // Remove ```json
-    } else if (aiResponse.startsWith('```')) {
-      aiResponse = aiResponse.slice(3); // Remove ```
-    }
-    if (aiResponse.endsWith('```')) {
-      aiResponse = aiResponse.slice(0, -3); // Remove trailing ```
-    }
-    aiResponse = aiResponse.trim();
-
-    let categorizations;
-    try {
-      const parsed = JSON.parse(aiResponse);
-      categorizations = parsed.categorizations;
-    } catch (parseError) {
-      console.error('Failed to parse AI response:', aiResponse);
-      return new Response(JSON.stringify({ error: 'Invalid AI response format' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
     }
 
     // Update transactions with AI suggestions

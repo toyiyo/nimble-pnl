@@ -97,27 +97,64 @@ serve(async (req) => {
 
         console.log("[FC-WEBHOOK] Restaurant ID from customer metadata:", restaurantId);
 
-        // Store connected bank info using upsert to handle duplicate events
-        const { data: bankData, error: bankError } = await supabaseClient
+        // Check if there's an existing disconnected bank for this restaurant/institution
+        // When reconnecting, Stripe assigns a new financial_account_id, so we need to update the old record
+        const { data: existingBank } = await supabaseClient
           .from("connected_banks")
-          .upsert({
-            restaurant_id: restaurantId,
-            stripe_financial_account_id: account.id,
-            institution_name: account.institution_name,
-            institution_logo_url: null,
-            status: "connected",
-            connected_at: new Date().toISOString(),
-            last_sync_at: new Date().toISOString(),
-          }, {
-            onConflict: "stripe_financial_account_id",
-            ignoreDuplicates: false, // Update existing record
-          })
-          .select()
-          .single();
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("institution_name", account.institution_name)
+          .eq("status", "disconnected")
+          .order("disconnected_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-        if (bankError) {
-          console.error("[FC-WEBHOOK] Error storing/updating bank:", bankError);
-          throw bankError;
+        let bankData;
+        
+        if (existingBank) {
+          // Update existing disconnected record with new Stripe account ID
+          console.log("[FC-WEBHOOK] Updating existing disconnected bank:", existingBank.id);
+          const { data, error: updateError } = await supabaseClient
+            .from("connected_banks")
+            .update({
+              stripe_financial_account_id: account.id,
+              status: "connected",
+              connected_at: new Date().toISOString(),
+              disconnected_at: null,
+              last_sync_at: new Date().toISOString(),
+              sync_error: null,
+            })
+            .eq("id", existingBank.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            console.error("[FC-WEBHOOK] Error updating bank:", updateError);
+            throw updateError;
+          }
+          bankData = data;
+        } else {
+          // Create new bank connection
+          console.log("[FC-WEBHOOK] Creating new bank connection");
+          const { data, error: insertError } = await supabaseClient
+            .from("connected_banks")
+            .insert({
+              restaurant_id: restaurantId,
+              stripe_financial_account_id: account.id,
+              institution_name: account.institution_name,
+              institution_logo_url: null,
+              status: "connected",
+              connected_at: new Date().toISOString(),
+              last_sync_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          if (insertError) {
+            console.error("[FC-WEBHOOK] Error creating bank:", insertError);
+            throw insertError;
+          }
+          bankData = data;
         }
 
         console.log("[FC-WEBHOOK] Bank stored/updated with ID:", bankData.id);

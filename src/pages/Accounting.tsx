@@ -1,25 +1,31 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useStripeFinancialConnections } from '@/hooks/useStripeFinancialConnections';
-import { BankConnectionCard } from '@/components/BankConnectionCard';
-import { RestaurantSelector } from '@/components/RestaurantSelector';
-import { MetricIcon } from '@/components/MetricIcon';
-import { Building2, Plus, Wallet, TrendingUp } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { loadStripe } from '@stripe/stripe-js';
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
+import { BankConnectionCard } from "@/components/BankConnectionCard";
+import { RestaurantSelector } from "@/components/RestaurantSelector";
+import { MetricIcon } from "@/components/MetricIcon";
+import { Building2, Plus, Wallet, TrendingUp } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { loadStripe } from "@stripe/stripe-js";
 
 const Accounting = () => {
-  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
-  const { 
-    connectedBanks, 
-    loading, 
+  const {
+    selectedRestaurant,
+    setSelectedRestaurant,
+    restaurants,
+    loading: restaurantsLoading,
+    createRestaurant,
+  } = useRestaurantContext();
+  const {
+    connectedBanks,
+    loading,
     createFinancialConnectionsSession,
     isCreatingSession,
     refreshBalance,
     syncTransactions,
-    disconnectBank
+    disconnectBank,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
 
@@ -28,10 +34,10 @@ const Accounting = () => {
     return () => {
       // Remove all Stripe iframes on component unmount
       const stripeIframes = document.querySelectorAll('iframe[src*="stripe.com"], iframe[name^="__privateStripe"]');
-      stripeIframes.forEach(iframe => {
+      stripeIframes.forEach((iframe) => {
         iframe.remove();
       });
-      console.log('[ACCOUNTING] Cleaned up Stripe iframes');
+      console.log("[ACCOUNTING] Cleaned up Stripe iframes");
     };
   }, []);
 
@@ -44,13 +50,15 @@ const Accounting = () => {
 
     try {
       const sessionData = await createFinancialConnectionsSession();
-      
+
       if (sessionData?.clientSecret) {
         // Load Stripe.js with your live publishable key
-        const stripe = await loadStripe('pk_live_51SFateD9w6YUNUOUMLCT8LY9rmy9LtNevR4nhGYdSZdVqsdH2wjtbrMrrAAUZKAWzZq74RflwZQYHYOHu2CheQSn00Ug36fXVY');
-        
+        const stripe = await loadStripe(
+          "pk_live_51SFateD9w6YUNUOUMLCT8LY9rmy9LtNevR4nhGYdSZdVqsdH2wjtbrMrrAAUZKAWzZq74RflwZQYHYOHu2CheQSn00Ug36fXVY",
+        );
+
         if (!stripe) {
-          throw new Error('Failed to load Stripe');
+          throw new Error("Failed to load Stripe");
         }
 
         // Use Stripe Financial Connections to collect the account
@@ -63,7 +71,7 @@ const Accounting = () => {
             title: "Bank Connected Successfully",
             description: `Syncing transactions and balance in the background...`,
           });
-          
+
           // Wait a moment for webhook to process, then refresh
           setTimeout(() => {
             window.location.reload();
@@ -85,7 +93,7 @@ const Accounting = () => {
   };
 
   const totalBalance = connectedBanks
-    .flatMap(bank => bank.balances || [])
+    .flatMap((bank) => bank.balances || [])
     .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
 
   return (
@@ -99,7 +107,7 @@ const Accounting = () => {
               Please select a restaurant to manage accounting
             </p>
           </div>
-          <RestaurantSelector 
+          <RestaurantSelector
             selectedRestaurant={selectedRestaurant}
             onSelectRestaurant={handleRestaurantSelect}
             restaurants={restaurants}
@@ -109,15 +117,6 @@ const Accounting = () => {
         </div>
       ) : (
         <div className="space-y-6 md:space-y-8">
-          {/* Restaurant Selector */}
-          <RestaurantSelector 
-            selectedRestaurant={selectedRestaurant}
-            onSelectRestaurant={handleRestaurantSelect}
-            restaurants={restaurants}
-            loading={restaurantsLoading}
-            createRestaurant={createRestaurant}
-          />
-
           {/* Hero Section */}
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-8">
             <div className="relative z-10">
@@ -143,14 +142,14 @@ const Accounting = () => {
                   <MetricIcon icon={Wallet} variant="emerald" />
                   <div>
                     <div className="text-3xl font-bold">
-                      ${totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ${totalBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                     <div className="text-sm text-muted-foreground">Total Balance</div>
                   </div>
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
@@ -162,7 +161,7 @@ const Accounting = () => {
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
@@ -182,27 +181,22 @@ const Accounting = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="text-xl font-semibold">Connected Banks</h2>
-              <Button 
-                onClick={handleConnectBank}
-                disabled={isCreatingSession}
-                className="gap-2"
-              >
+              <Button onClick={handleConnectBank} disabled={isCreatingSession} className="gap-2">
                 <Plus className="h-4 w-4" />
-                {isCreatingSession ? 'Connecting...' : 'Connect Bank'}
+                {isCreatingSession ? "Connecting..." : "Connect Bank"}
               </Button>
             </div>
 
             {loading ? (
-              <div className="text-center p-8 text-muted-foreground">
-                Loading connected banks...
-              </div>
+              <div className="text-center p-8 text-muted-foreground">Loading connected banks...</div>
             ) : connectedBanks.length === 0 ? (
               <Card className="border-dashed">
                 <CardContent className="flex flex-col items-center justify-center p-12 text-center">
                   <MetricIcon icon={Building2} variant="blue" className="mb-4" />
                   <h3 className="text-lg font-semibold mb-2">No Banks Connected</h3>
                   <p className="text-sm text-muted-foreground mb-6 max-w-md">
-                    Connect your bank accounts to automatically track transactions, reconcile expenses, and gain real-time financial insights.
+                    Connect your bank accounts to automatically track transactions, reconcile expenses, and gain
+                    real-time financial insights.
                   </p>
                   <Button onClick={handleConnectBank} disabled={isCreatingSession}>
                     <Plus className="h-4 w-4 mr-2" />

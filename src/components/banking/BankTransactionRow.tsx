@@ -121,17 +121,12 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
 
         {status === 'for_review' && (
           <TableCell className="hidden lg:table-cell">
-            {suggestedCategory ? (
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">{suggestedCategory.account_name}</Badge>
-                {transaction.match_confidence && transaction.match_confidence > 0.8 && (
-                  <Badge variant="secondary" className="text-xs">
-                    {Math.round(transaction.match_confidence * 100)}%
-                  </Badge>
-                )}
-              </div>
+            {transaction.is_categorized && currentCategory ? (
+              <Badge variant="secondary">{currentCategory.account_name}</Badge>
+            ) : suggestedCategory ? (
+              <Badge variant="outline">{suggestedCategory.account_name}</Badge>
             ) : (
-              <span className="text-muted-foreground text-sm">No suggestion</span>
+              <span className="text-muted-foreground text-sm">Uncategorized</span>
             )}
           </TableCell>
         )}

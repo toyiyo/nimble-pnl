@@ -179,6 +179,17 @@ serve(async (req) => {
             logStep("Bank account balances deleted");
           }
 
+          // Rebuild account balances to reflect deleted journal entries
+          const { error: rebuildError } = await supabaseClient.rpc('rebuild_account_balances', {
+            p_restaurant_id: bank.restaurant_id
+          });
+
+          if (rebuildError) {
+            logStep("Error rebuilding account balances", { error: rebuildError.message });
+          } else {
+            logStep("Account balances rebuilt");
+          }
+
           logStep("Background deletion completed successfully");
         } catch (error) {
           logStep("Background deletion failed", { error: error instanceof Error ? error.message : 'Unknown error' });

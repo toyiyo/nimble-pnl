@@ -103,14 +103,14 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
 
           {/* AI Suggestion Section - Prominent */}
           {hasSuggestion && (
-            <div className="bg-amber-100 dark:bg-amber-950/50 border-2 border-amber-500 dark:border-amber-600 rounded-lg p-3 mb-3">
+            <div className="bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-400 dark:border-amber-600 rounded-lg p-3 mb-3">
               <div className="flex items-start gap-2 mb-2">
                 <Sparkles className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <div className="font-semibold text-amber-900 dark:text-amber-100 text-sm mb-1">
+                  <div className="font-semibold text-amber-900 dark:text-amber-50 text-sm mb-1">
                     AI Suggestion - Needs Review
                   </div>
-                  <div className="text-sm text-amber-800 dark:text-amber-200">
+                  <div className="text-sm text-amber-900 dark:text-amber-100">
                     Suggested category: <span className="font-semibold">{suggestedCategory.account_name}</span>
                   </div>
                 </div>
@@ -119,7 +119,7 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
                 onClick={handleQuickAccept}
                 disabled={categorize.isPending}
                 size="sm"
-                className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                className="w-full bg-amber-600 hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-500 text-white font-semibold"
               >
                 <Check className="h-4 w-4 mr-2" />
                 Accept AI Suggestion

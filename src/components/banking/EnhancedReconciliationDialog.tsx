@@ -73,28 +73,32 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
   // Filter transactions for selected account and before ending date
   const eligibleTransactions = useMemo(() => {
     if (!categorizedTransactions || !selectedAccountBalanceId || !selectedAccount || !endingDate) {
-      console.log('[RECONCILIATION] No data to filter:', { 
-        hasCategorized: !!categorizedTransactions,
-        categorizedCount: categorizedTransactions?.length,
-        hasAccountBalanceId: !!selectedAccountBalanceId,
-        hasSelectedAccount: !!selectedAccount,
-        hasEndingDate: !!endingDate 
-      });
+      if (import.meta.env.DEV) {
+        console.log('[RECONCILIATION] No data to filter:', { 
+          hasCategorized: !!categorizedTransactions,
+          categorizedCount: categorizedTransactions?.length,
+          hasAccountBalanceId: !!selectedAccountBalanceId,
+          hasSelectedAccount: !!selectedAccount,
+          hasEndingDate: !!endingDate 
+        });
+      }
       return [];
     }
     
     const timezone = selectedRestaurant?.restaurant?.timezone || 'America/Chicago';
     const endingDateStr = formatDateInTimezone(endingDate, timezone, 'yyyy-MM-dd');
     
-    console.log('[RECONCILIATION] Filtering transactions:', {
-      totalCategorized: categorizedTransactions.length,
-      selectedAccountBalanceId,
-      connectedBankId: selectedAccount.connectedBankId,
-      endingDate: endingDate.toISOString(),
-      endingDateStr,
-      timezone,
-      sampleTransaction: categorizedTransactions[0],
-    });
+    if (import.meta.env.DEV) {
+      console.log('[RECONCILIATION] Filtering transactions:', {
+        totalCategorized: categorizedTransactions.length,
+        selectedAccountBalanceId,
+        connectedBankId: selectedAccount.connectedBankId,
+        endingDate: endingDate.toISOString(),
+        endingDateStr,
+        timezone,
+        sampleTransaction: categorizedTransactions[0],
+      });
+    }
     
     const filtered = categorizedTransactions.filter(t => {
       const matchesBank = t.connected_bank_id === selectedAccount.connectedBankId;
@@ -103,28 +107,32 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
       const beforeDate = txnDateStr <= endingDateStr;
       
       if (!matchesBank || !notReconciled || !beforeDate) {
-        console.log('[RECONCILIATION] Transaction filtered out:', {
-          id: t.id,
-          description: t.description,
-          connected_bank_id: t.connected_bank_id,
-          selectedConnectedBankId: selectedAccount.connectedBankId,
-          matchesBank,
-          is_reconciled: t.is_reconciled,
-          notReconciled,
-          transaction_date: t.transaction_date,
-          txnDateStr,
-          endingDateStr,
-          beforeDate
-        });
+        if (import.meta.env.DEV) {
+          console.log('[RECONCILIATION] Transaction filtered out:', {
+            id: t.id,
+            description: t.description,
+            connected_bank_id: t.connected_bank_id,
+            selectedConnectedBankId: selectedAccount.connectedBankId,
+            matchesBank,
+            is_reconciled: t.is_reconciled,
+            notReconciled,
+            transaction_date: t.transaction_date,
+            txnDateStr,
+            endingDateStr,
+            beforeDate
+          });
+        }
       }
       
       return matchesBank && notReconciled && beforeDate;
     });
     
-    console.log('[RECONCILIATION] Filtered result:', {
-      eligibleCount: filtered.length,
-      sampleEligible: filtered[0]
-    });
+    if (import.meta.env.DEV) {
+      console.log('[RECONCILIATION] Filtered result:', {
+        eligibleCount: filtered.length,
+        sampleEligible: filtered[0]
+      });
+    }
     
     return filtered;
   }, [categorizedTransactions, selectedAccountBalanceId, selectedAccount, endingDate, selectedRestaurant]);
@@ -194,6 +202,8 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
       await reconcileTransactionsMutation.mutateAsync({
         transactionIds: Array.from(selectedTransactions),
         accountBalanceId: selectedAccountBalanceId,
+        connectedBankId: selectedAccount.connectedBankId,
+        accountName: selectedAccount.accountName,
         adjustedStatementBalance,
         endingDate,
       });

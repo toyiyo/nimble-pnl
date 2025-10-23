@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Minus, LucideIcon, Sparkles } from 'lucide-react';
 import { MetricIcon } from './MetricIcon';
+import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 interface DashboardMetricCardProps {
   title: string;
@@ -13,6 +14,8 @@ interface DashboardMetricCardProps {
   icon: LucideIcon;
   variant?: 'default' | 'success' | 'warning' | 'danger';
   subtitle?: string;
+  sparklineData?: Array<{ value: number }>;
+  periodLabel?: string;
 }
 
 export function DashboardMetricCard({ 
@@ -21,7 +24,9 @@ export function DashboardMetricCard({
   trend, 
   icon, 
   variant = 'default',
-  subtitle 
+  subtitle,
+  sparklineData,
+  periodLabel
 }: DashboardMetricCardProps) {
   const getTrendIcon = () => {
     if (!trend) return null;
@@ -85,6 +90,23 @@ export function DashboardMetricCard({
             )}
           </div>
         </div>
+        
+        {sparklineData && sparklineData.length > 0 && (
+          <div className="mt-4 h-12 -mb-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={sparklineData}>
+                <Line 
+                  type="monotone" 
+                  dataKey="value" 
+                  stroke="hsl(var(--primary))" 
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+        
         {trend && (
           <div className={`flex items-center gap-1.5 text-xs mt-3 pt-3 border-t ${getTrendColor()}`}>
             <div className="flex items-center gap-1">
@@ -92,6 +114,12 @@ export function DashboardMetricCard({
               <span className="font-semibold">{Math.abs(trend.value).toFixed(1)}%</span>
             </div>
             <span className="text-muted-foreground">{trend.label}</span>
+          </div>
+        )}
+        
+        {periodLabel && (
+          <div className="text-xs text-muted-foreground mt-2">
+            {periodLabel}
           </div>
         )}
       </CardContent>

@@ -14,6 +14,8 @@ import { DashboardInsights } from '@/components/DashboardInsights';
 import { DashboardMiniChart } from '@/components/DashboardMiniChart';
 import { DashboardSkeleton } from '@/components/DashboardSkeleton';
 import { DataInputDialog } from '@/components/DataInputDialog';
+import { PeriodSelector, Period } from '@/components/PeriodSelector';
+import { format, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import {
   DollarSign, 
   TrendingUp, 
@@ -37,9 +39,80 @@ const Index = () => {
   const { lowStockItems, reorderAlerts, loading: alertsLoading } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
 
+  const [selectedPeriod, setSelectedPeriod] = useState<Period>({
+    type: 'today',
+    from: startOfDay(new Date()),
+    to: endOfDay(new Date()),
+    label: 'Today',
+  });
+
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
   };
+
+  // Calculate period data
+  const periodData = useMemo(() => {
+    const allData = getGroupedPnLData();
+    const fromStr = format(selectedPeriod.from, 'yyyy-MM-dd');
+    const toStr = format(selectedPeriod.to, 'yyyy-MM-dd');
+    
+    const filtered = allData.filter(day => day.date >= fromStr && day.date <= toStr);
+    
+    if (filtered.length === 0) {
+      return null;
+    }
+
+    // Aggregate totals
+    const totalRevenue = filtered.reduce((sum, day) => sum + day.net_revenue, 0);
+    const totalFoodCost = filtered.reduce((sum, day) => sum + day.food_cost, 0);
+    const totalLaborCost = filtered.reduce((sum, day) => sum + day.labor_cost, 0);
+    
+    const avgFoodCostPercentage = filtered.reduce((sum, day) => sum + day.food_cost_percentage, 0) / filtered.length;
+    const avgLaborCostPercentage = filtered.reduce((sum, day) => sum + day.labor_cost_percentage, 0) / filtered.length;
+    const avgPrimeCostPercentage = filtered.reduce((sum, day) => sum + day.prime_cost_percentage, 0) / filtered.length;
+
+    return {
+      net_revenue: totalRevenue,
+      food_cost: totalFoodCost,
+      labor_cost: totalLaborCost,
+      food_cost_percentage: avgFoodCostPercentage,
+      labor_cost_percentage: avgLaborCostPercentage,
+      prime_cost_percentage: avgPrimeCostPercentage,
+      daily_data: filtered,
+    };
+  }, [getGroupedPnLData, selectedPeriod]);
+
+  // Calculate previous period data for comparison
+  const previousPeriodData = useMemo(() => {
+    const allData = getGroupedPnLData();
+    const periodLength = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;
+    
+    const prevTo = new Date(selectedPeriod.from);
+    prevTo.setDate(prevTo.getDate() - 1);
+    const prevFrom = new Date(prevTo);
+    prevFrom.setDate(prevFrom.getDate() - periodLength + 1);
+    
+    const fromStr = format(prevFrom, 'yyyy-MM-dd');
+    const toStr = format(prevTo, 'yyyy-MM-dd');
+    
+    const filtered = allData.filter(day => day.date >= fromStr && day.date <= toStr);
+    
+    if (filtered.length === 0) {
+      return null;
+    }
+
+    const totalRevenue = filtered.reduce((sum, day) => sum + day.net_revenue, 0);
+    const avgFoodCostPercentage = filtered.reduce((sum, day) => sum + day.food_cost_percentage, 0) / filtered.length;
+    const avgLaborCostPercentage = filtered.reduce((sum, day) => sum + day.labor_cost_percentage, 0) / filtered.length;
+    const avgPrimeCostPercentage = filtered.reduce((sum, day) => sum + day.prime_cost_percentage, 0) / filtered.length;
+
+    return {
+      net_revenue: totalRevenue,
+      food_cost_percentage: avgFoodCostPercentage,
+      labor_cost_percentage: avgLaborCostPercentage,
+      prime_cost_percentage: avgPrimeCostPercentage,
+    };
+  }, [getGroupedPnLData, selectedPeriod]);
 
   const todaysData = getTodaysData();
   const averages = getAverages(7);
@@ -211,56 +284,70 @@ const Index = () => {
               {/* AI Insights */}
               <DashboardInsights insights={insights} />
 
+              {/* Period Selector */}
+              <PeriodSelector
+                selectedPeriod={selectedPeriod}
+                onPeriodChange={setSelectedPeriod}
+              />
+
               {/* Key Metrics */}
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <div className="h-1 w-8 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
-                  <h2 className="text-2xl font-bold tracking-tight">Today's Performance</h2>
+                  <h2 className="text-2xl font-bold tracking-tight">Performance Overview</h2>
                   <Sparkles className="h-5 w-5 text-primary/60" />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" role="region" aria-label="Performance metrics">
                   <DashboardMetricCard
                     title="Net Revenue"
-                    value={todaysData ? `$${todaysData.net_revenue.toFixed(0)}` : '--'}
-                    trend={todaysData && averages ? {
-                      value: getTrendValue(todaysData.net_revenue, averages.avgRevenue),
-                      label: 'vs 7-day avg'
+                    value={periodData ? `$${periodData.net_revenue.toFixed(0)}` : '--'}
+                    trend={periodData && previousPeriodData ? {
+                      value: getTrendValue(periodData.net_revenue, previousPeriodData.net_revenue),
+                      label: 'vs previous period'
                     } : undefined}
                     icon={DollarSign}
-                    variant={todaysData && averages && todaysData.net_revenue > averages.avgRevenue ? 'success' : 'default'}
+                    variant={periodData && previousPeriodData && periodData.net_revenue > previousPeriodData.net_revenue ? 'success' : 'default'}
+                    sparklineData={periodData?.daily_data.map(d => ({ value: d.net_revenue }))}
+                    periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
                     title="Food Cost %"
-                    value={todaysData ? `${todaysData.food_cost_percentage.toFixed(1)}%` : '--'}
-                    trend={todaysData && averages ? {
-                      value: getTrendValue(todaysData.food_cost_percentage, averages.avgFoodCostPercentage),
-                      label: 'vs 7-day avg'
+                    value={periodData ? `${periodData.food_cost_percentage.toFixed(1)}%` : '--'}
+                    trend={periodData && previousPeriodData ? {
+                      value: getTrendValue(periodData.food_cost_percentage, previousPeriodData.food_cost_percentage),
+                      label: 'vs previous period'
                     } : undefined}
                     icon={ShoppingCart}
-                    variant={todaysData && todaysData.food_cost_percentage > 35 ? 'warning' : 'default'}
+                    variant={periodData && periodData.food_cost_percentage > 35 ? 'warning' : 'default'}
                     subtitle={averages ? `Target: 28-32% | Avg: ${averages.avgFoodCostPercentage.toFixed(1)}%` : undefined}
+                    sparklineData={periodData?.daily_data.map(d => ({ value: d.food_cost_percentage }))}
+                    periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
                     title="Labor Cost %"
-                    value={todaysData ? `${todaysData.labor_cost_percentage.toFixed(1)}%` : '--'}
-                    trend={todaysData && averages ? {
-                      value: getTrendValue(todaysData.labor_cost_percentage, averages.avgLaborCostPercentage),
-                      label: 'vs 7-day avg'
+                    value={periodData ? `${periodData.labor_cost_percentage.toFixed(1)}%` : '--'}
+                    trend={periodData && previousPeriodData ? {
+                      value: getTrendValue(periodData.labor_cost_percentage, previousPeriodData.labor_cost_percentage),
+                      label: 'vs previous period'
                     } : undefined}
                     icon={Clock}
-                    variant={todaysData && todaysData.labor_cost_percentage > 35 ? 'warning' : 'default'}
+                    variant={periodData && periodData.labor_cost_percentage > 35 ? 'warning' : 'default'}
                     subtitle={averages ? `Target: 25-30% | Avg: ${averages.avgLaborCostPercentage.toFixed(1)}%` : undefined}
+                    sparklineData={periodData?.daily_data.map(d => ({ value: d.labor_cost_percentage }))}
+                    periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
                     title="Prime Cost %"
-                    value={todaysData ? `${todaysData.prime_cost_percentage.toFixed(1)}%` : '--'}
-                    trend={todaysData && averages ? {
-                      value: getTrendValue(todaysData.prime_cost_percentage, averages.avgPrimeCostPercentage),
-                      label: 'vs 7-day avg'
+                    value={periodData ? `${periodData.prime_cost_percentage.toFixed(1)}%` : '--'}
+                    trend={periodData && previousPeriodData ? {
+                      value: getTrendValue(periodData.prime_cost_percentage, previousPeriodData.prime_cost_percentage),
+                      label: 'vs previous period'
                     } : undefined}
                     icon={Target}
-                    variant={todaysData && todaysData.prime_cost_percentage > 65 ? 'danger' : todaysData && todaysData.prime_cost_percentage < 60 ? 'success' : 'default'}
+                    variant={periodData && periodData.prime_cost_percentage > 65 ? 'danger' : periodData && periodData.prime_cost_percentage < 60 ? 'success' : 'default'}
                     subtitle={averages ? `Target: 60-65% | Avg: ${averages.avgPrimeCostPercentage.toFixed(1)}%` : undefined}
+                    sparklineData={periodData?.daily_data.map(d => ({ value: d.prime_cost_percentage }))}
+                    periodLabel={selectedPeriod.label}
                   />
                 </div>
               </div>

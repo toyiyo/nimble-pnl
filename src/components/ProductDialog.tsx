@@ -310,7 +310,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   <FormItem>
                     <FormLabel>SKU *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., BEEF-001" />
+                      <Input {...field} placeholder="e.g., BEEF-001" value={field.value || ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -324,7 +324,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   <FormItem>
                     <FormLabel>Product Name *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., Ground Beef 80/20" />
+                      <Input {...field} placeholder="e.g., Ground Beef 80/20" value={field.value || ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -420,7 +420,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Category</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value || ''}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select category" />
@@ -494,12 +494,16 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                         Cost per {form.watch('uom_purchase') || 'Purchase Unit'} ($)
                       </FormLabel>
                       <FormControl>
-                        <Input
+                       <Input
                           {...field}
                           type="number"
                           step="0.01"
                           placeholder="0.00"
-                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                          value={field.value || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            field.onChange(value ? parseFloat(value) : undefined);
+                          }}
                         />
                       </FormControl>
                       <FormMessage />

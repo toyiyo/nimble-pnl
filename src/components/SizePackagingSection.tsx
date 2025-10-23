@@ -148,14 +148,44 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <FormField
+          control={form.control}
+          name="package_qty"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="flex items-center gap-2">
+                <span className="text-base font-medium">Qty per Case</span>
+                <span className="text-xs text-muted-foreground font-normal">#</span>
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  type="number"
+                  step="1"
+                  min="1"
+                  placeholder="1"
+                  className="text-center text-lg font-mono"
+                  value={field.value || ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    field.onChange(value ? parseInt(value) : undefined);
+                  }}
+                />
+              </FormControl>
+              <p className="text-xs text-muted-foreground">Units per case/box</p>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        
         <FormField
           control={form.control}
           name="size_value"
           render={({ field }) => (
             <FormItem>
               <FormLabel className="flex items-center gap-2">
-                <span className="text-base font-medium">Amount per Package</span>
+                <span className="text-base font-medium">Amount per Unit</span>
                 <span className="text-xs text-muted-foreground font-normal">📦</span>
               </FormLabel>
               <FormControl>
@@ -165,10 +195,14 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
                   step="0.01"
                   placeholder="750"
                   className="text-center text-lg font-mono"
-                  onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                  value={field.value || ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    field.onChange(value ? parseFloat(value) : undefined);
+                  }}
                 />
               </FormControl>
-              <p className="text-xs text-muted-foreground">How much is in one single package</p>
+              <p className="text-xs text-muted-foreground">Amount in each unit</p>
               <FormMessage />
             </FormItem>
           )}
@@ -206,7 +240,7 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
                 <span className="text-base font-medium">Package Type</span>
                 <span className="text-xs text-muted-foreground font-normal">📦</span>
               </FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
+              <Select onValueChange={field.onChange} value={field.value || ''}>
                 <FormControl>
                   <SelectTrigger className="text-center">
                     <SelectValue placeholder="Select type" />
@@ -243,8 +277,13 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
             <Label className="text-base font-semibold text-green-800">Your Package Definition:</Label>
           </div>
           <div className="text-lg font-medium text-green-800">
-            1 {purchaseUnit} containing <span className="bg-green-200 px-2 py-1 rounded">{sizeValue} {sizeUnit}</span>
+            1 {purchaseUnit} containing {form.watch('package_qty') || 1} × <span className="bg-green-200 px-2 py-1 rounded">{sizeValue} {sizeUnit}</span>
           </div>
+          {form.watch('package_qty') > 1 && (
+            <div className="text-sm text-green-700 mt-2">
+              Total per {purchaseUnit}: {(sizeValue * form.watch('package_qty')).toFixed(2)} {sizeUnit}
+            </div>
+          )}
         </div>
       )}
 

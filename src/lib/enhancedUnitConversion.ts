@@ -359,6 +359,42 @@ export function calculateInventoryImpact(
       throw new Error(`Cannot convert ${recipeUnit} to ${purchaseUnit} for ${productName}. This product needs size information (e.g., "16 oz per each") to calculate costs. Please update the product's size_value and size_unit fields.`);
     }
     
+    // CRITICAL FIX: Check if this is a volume context where 'oz' means fluid ounces
+    const sizeUnitLower = productSizeUnit.toLowerCase();
+    const recipeUnitLower = recipeUnit.toLowerCase();
+    const volumeUnits = ['gal', 'l', 'ml', 'qt', 'pint', 'cup'];
+    
+    // If size is in volume units (gal, L, etc.) and recipe uses 'oz', treat as fluid oz
+    if (volumeUnits.includes(sizeUnitLower) && recipeUnitLower === 'oz') {
+      // Convert recipe amount to ml (1 fl oz = 29.5735 ml)
+      const recipeInMl = recipeQuantity * 29.5735;
+      
+      // Convert product size to ml
+      let sizeInMl = productSizeValue;
+      if (sizeUnitLower === 'l') sizeInMl = productSizeValue * 1000;
+      else if (sizeUnitLower === 'gal') sizeInMl = productSizeValue * 3785.41;
+      else if (sizeUnitLower === 'qt') sizeInMl = productSizeValue * 946.353;
+      else if (sizeUnitLower === 'pint') sizeInMl = productSizeValue * 473.176;
+      else if (sizeUnitLower === 'cup') sizeInMl = productSizeValue * 236.588;
+      // else ml, already correct
+      
+      const containersNeeded = recipeInMl / sizeInMl;
+      
+      return {
+        inventoryDeduction: containersNeeded,
+        inventoryDeductionUnit: purchaseUnit,
+        costImpact: containersNeeded * costPerPackage,
+        percentageOfPackage: containersNeeded * 100,
+        conversionDetails: {
+          value: containersNeeded,
+          fromUnit: recipeUnit,
+          toUnit: purchaseUnit,
+          productSpecific: true,
+          conversionPath: [`${recipeUnit} (fluid)`, 'ml', productSizeUnit, purchaseUnit]
+        }
+      };
+    }
+    
     // Convert recipe quantity to the same unit as product size
     const recipeInSizeUnit = convertUnits(recipeQuantity, recipeUnit, productSizeUnit, productName);
     if (!recipeInSizeUnit) {

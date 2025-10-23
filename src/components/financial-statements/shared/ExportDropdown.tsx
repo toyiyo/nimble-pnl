@@ -46,7 +46,7 @@ export const ExportDropdown = ({ onExportCSV, onExportPDF, isExporting = false }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" disabled={isDisabled}>
+        <Button variant="outline" disabled={isDisabled} className="w-full">
           {showSpinner ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

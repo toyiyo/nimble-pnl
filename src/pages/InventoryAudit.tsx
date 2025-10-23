@@ -320,11 +320,13 @@ export default function InventoryAudit() {
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Export</label>
-              <ExportDropdown
-                onExportCSV={handleExportCSV}
-                onExportPDF={handleExportPDF}
-                isExporting={isExporting}
-              />
+              <div className="w-full">
+                <ExportDropdown
+                  onExportCSV={handleExportCSV}
+                  onExportPDF={handleExportPDF}
+                  isExporting={isExporting}
+                />
+              </div>
             </div>
           </div>
         </CardContent>

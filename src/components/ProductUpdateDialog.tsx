@@ -121,6 +121,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const [showAddSupplier, setShowAddSupplier] = useState(false);
   const [newSupplier, setNewSupplier] = useState({ supplier_id: '', cost: 0, supplier_sku: '' });
   const [isNewSupplier, setIsNewSupplier] = useState(false);
+  const [savingSupplier, setSavingSupplier] = useState(false);
   const [priceUpdateDialog, setPriceUpdateDialog] = useState<{ open: boolean; supplier: any; price: string }>({
     open: false,
     supplier: null,
@@ -799,20 +800,52 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                         <Button
                           type="button"
                           size="sm"
+                          disabled={savingSupplier}
                           onClick={async () => {
-                            if (!newSupplier.supplier_id || !restaurantId) return;
+                            // Validate inputs
+                            if (!newSupplier.supplier_id || newSupplier.supplier_id.trim() === '') {
+                              toast({
+                                title: 'Error',
+                                description: 'Please select a supplier',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
+
+                            if (!restaurantId) {
+                              toast({
+                                title: 'Error',
+                                description: 'Restaurant context is required',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
+
+                            if (savingSupplier) return; // Prevent double-clicks
                             
+                            setSavingSupplier(true);
                             try {
-                              let supplierIdToUse = newSupplier.supplier_id;
+                              let supplierIdToUse: string;
                               
                               // Create new supplier if needed
                               if (isNewSupplier) {
                                 const createdSupplier = await createSupplier({ name: newSupplier.supplier_id });
-                                if (createdSupplier) {
-                                  supplierIdToUse = createdSupplier.id;
-                                } else {
-                                  throw new Error('Failed to create supplier');
+                                if (!createdSupplier?.id) {
+                                  throw new Error('Failed to create supplier - no ID returned');
                                 }
+                                supplierIdToUse = createdSupplier.id;
+                              } else {
+                                // Validate UUID format for existing supplier
+                                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                                if (!uuidRegex.test(newSupplier.supplier_id)) {
+                                  throw new Error('Invalid supplier ID format');
+                                }
+                                supplierIdToUse = newSupplier.supplier_id;
+                              }
+                              
+                              // Final validation before insert
+                              if (!supplierIdToUse || supplierIdToUse.trim() === '') {
+                                throw new Error('Supplier ID is empty after processing');
                               }
                               
                               const isFirstSupplier = productSuppliers.length === 0;
@@ -828,7 +861,10 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                                   is_preferred: isFirstSupplier,
                                 });
 
-                              if (error) throw error;
+                              if (error) {
+                                console.error('Database insert error:', error);
+                                throw error;
+                              }
 
                               // Update product cost_per_unit when adding supplier
                               if (newSupplier.cost > 0) {
@@ -862,17 +898,27 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                               setIsNewSupplier(false);
                               setShowAddSupplier(false);
                               fetchSuppliers();
-                            } catch (error) {
+                            } catch (error: any) {
                               console.error('Error adding supplier:', error);
+                              const errorMessage = error?.message || 'Failed to add supplier';
                               toast({
                                 title: 'Error',
-                                description: 'Failed to add supplier',
+                                description: errorMessage,
                                 variant: 'destructive',
                               });
+                            } finally {
+                              setSavingSupplier(false);
                             }
                           }}
                         >
-                          Save Supplier
+                          {savingSupplier ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            'Save Supplier'
+                          )}
                         </Button>
                         <Button
                           type="button"

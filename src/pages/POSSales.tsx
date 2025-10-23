@@ -409,15 +409,6 @@ export default function POSSales() {
         unmappedCount={dashboardMetrics.unmappedCount}
       />
 
-      {/* POS System Status Cards */}
-      {integrationStatuses.length > 0 && (
-        <POSSystemStatus
-          integrationStatuses={integrationStatuses}
-          onSync={handleSyncSales}
-          isSyncing={isSyncing}
-        />
-      )}
-
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "manual" | "import")} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="manual">View Sales</TabsTrigger>

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useUnifiedSales } from "@/hooks/useUnifiedSales";
 import { usePOSIntegrations } from "@/hooks/usePOSIntegrations";
@@ -43,6 +44,8 @@ export default function POSSales() {
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [sortBy, setSortBy] = useState<'date' | 'name' | 'quantity' | 'amount'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showSaleDialog, setShowSaleDialog] = useState(false);
   const [editingSale, setEditingSale] = useState<{
     id: string;
@@ -111,8 +114,33 @@ export default function POSSales() {
       filtered = filtered.filter((sale) => sale.saleDate <= endDate);
     }
     
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'date':
+          comparison = a.saleDate.localeCompare(b.saleDate);
+          if (comparison === 0 && a.saleTime && b.saleTime) {
+            comparison = a.saleTime.localeCompare(b.saleTime);
+          }
+          break;
+        case 'name':
+          comparison = a.itemName.localeCompare(b.itemName);
+          break;
+        case 'quantity':
+          comparison = a.quantity - b.quantity;
+          break;
+        case 'amount':
+          comparison = (a.totalPrice || 0) - (b.totalPrice || 0);
+          break;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+    
     return filtered;
-  }, [sales, searchTerm, startDate, endDate]);
+  }, [sales, searchTerm, startDate, endDate, sortBy, sortDirection]);
 
   const dateFilteredSales = filteredSales;
 
@@ -190,7 +218,12 @@ export default function POSSales() {
     };
   }, [filteredSales, unmappedItems]);
 
-  const activeFiltersCount = [searchTerm, startDate, endDate].filter(Boolean).length;
+  const activeFiltersCount = [
+    searchTerm, 
+    startDate, 
+    endDate,
+    sortBy !== 'date' || sortDirection !== 'desc' ? 'sort' : ''
+  ].filter(Boolean).length;
 
   const handleExportCSV = async () => {
     setIsExporting(true);
@@ -426,15 +459,17 @@ export default function POSSales() {
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        setSearchTerm("");
-                        setStartDate("");
-                        setEndDate("");
-                      }}
-                      className="text-xs"
-                    >
-                      <X className="h-3 w-3 mr-1" />
-                      Clear {activeFiltersCount} filter{activeFiltersCount !== 1 ? 's' : ''}
-                    </Button>
+                      setSearchTerm("");
+                      setStartDate("");
+                      setEndDate("");
+                      setSortBy('date');
+                      setSortDirection('desc');
+                    }}
+                    className="text-xs"
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Clear {activeFiltersCount} filter{activeFiltersCount !== 1 ? 's' : ''}
+                  </Button>
                   )}
                 </div>
               </CardHeader>
@@ -476,6 +511,33 @@ export default function POSSales() {
                         className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20"
                       />
                     </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Sort By</label>
+                  <div className="flex gap-2">
+                    <Select value={sortBy} onValueChange={(value: 'date' | 'name' | 'quantity' | 'amount') => setSortBy(value)}>
+                      <SelectTrigger className="w-[160px] border-border/50 hover:border-primary/50 transition-colors">
+                        <ArrowUpDown className="w-4 h-4 mr-2" />
+                        <SelectValue placeholder="Sort by..." />
+                      </SelectTrigger>
+                      <SelectContent className="z-50 bg-background">
+                        <SelectItem value="date">Date</SelectItem>
+                        <SelectItem value="name">Item Name</SelectItem>
+                        <SelectItem value="quantity">Quantity</SelectItem>
+                        <SelectItem value="amount">Amount</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                      className="transition-all hover:scale-105 duration-200"
+                      title={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
+                    >
+                      <ArrowUpDown className={`w-4 h-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
+                    </Button>
                   </div>
                 </div>
 

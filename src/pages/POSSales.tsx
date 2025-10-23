@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Download, Search, Calendar, RefreshCw, Upload as UploadIcon, X } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,10 @@ import { format } from "date-fns";
 import { InventoryDeductionDialog } from "@/components/InventoryDeductionDialog";
 import { MapPOSItemDialog } from "@/components/MapPOSItemDialog";
 import { UnifiedSaleItem } from "@/types/pos";
+import { ExportDropdown } from "@/components/financial-statements/shared/ExportDropdown";
+import { generateTablePDF } from "@/utils/pdfExport";
+import Papa from "papaparse";
+import { useToast } from "@/hooks/use-toast";
 
 export default function POSSales() {
   const {
@@ -58,6 +62,8 @@ export default function POSSales() {
   const [activeTab, setActiveTab] = useState<"manual" | "import">("manual");
   const [mapPOSItemDialogOpen, setMapPOSItemDialogOpen] = useState(false);
   const [selectedPOSItemForMapping, setSelectedPOSItemForMapping] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const { toast } = useToast();
 
   const handleMapPOSItem = (itemName: string) => {
     setSelectedPOSItemForMapping(itemName);
@@ -186,6 +192,136 @@ export default function POSSales() {
 
   const activeFiltersCount = [searchTerm, startDate, endDate].filter(Boolean).length;
 
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      const dataToExport = selectedView === "sales" ? filteredSales : groupedSales;
+      
+      let csvData;
+      if (selectedView === "sales") {
+        csvData = dataToExport.map((sale) => ({
+          "Sale Date": sale.saleDate,
+          "Sale Time": sale.saleTime || "",
+          "Item Name": sale.itemName,
+          "Quantity": sale.quantity,
+          "Unit Price": sale.unitPrice ? `$${sale.unitPrice.toFixed(2)}` : "",
+          "Total Price": sale.totalPrice ? `$${sale.totalPrice.toFixed(2)}` : "",
+          "Source": sale.source || "",
+        }));
+      } else {
+        csvData = dataToExport.map((item) => ({
+          "Item Name": item.itemName,
+          "Total Quantity Sold": item.totalQuantity,
+          "Total Revenue": `$${item.totalRevenue.toFixed(2)}`,
+          "Average Price": `$${item.averagePrice.toFixed(2)}`,
+        }));
+      }
+
+      const csv = Papa.unparse(csvData);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      
+      const dateRange = startDate && endDate 
+        ? `_${startDate}_to_${endDate}` 
+        : startDate 
+        ? `_from_${startDate}`
+        : endDate 
+        ? `_to_${endDate}`
+        : "";
+      
+      link.setAttribute("href", url);
+      link.setAttribute("download", `pos_sales_${selectedView}${dateRange}_${format(new Date(), "yyyyMMdd_HHmmss")}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast({
+        title: "Export Successful",
+        description: "POS sales data exported to CSV",
+      });
+    } catch (error) {
+      console.error("Error exporting CSV:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export POS sales data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    setIsExporting(true);
+    try {
+      const dataToExport = selectedView === "sales" ? filteredSales : groupedSales;
+      
+      let tableData;
+      let columns;
+      
+      if (selectedView === "sales") {
+        columns = ["Date", "Time", "Item", "Qty", "Unit Price", "Total", "Source"];
+        tableData = dataToExport.map((sale) => [
+          sale.saleDate,
+          sale.saleTime || "",
+          sale.itemName,
+          sale.quantity.toString(),
+          sale.unitPrice ? `$${sale.unitPrice.toFixed(2)}` : "",
+          sale.totalPrice ? `$${sale.totalPrice.toFixed(2)}` : "",
+          sale.source || "",
+        ]);
+      } else {
+        columns = ["Item Name", "Total Qty", "Total Revenue", "Avg Price"];
+        tableData = dataToExport.map((item) => [
+          item.itemName,
+          item.totalQuantity.toString(),
+          `$${item.totalRevenue.toFixed(2)}`,
+          `$${item.averagePrice.toFixed(2)}`,
+        ]);
+      }
+
+      const dateRange = startDate && endDate 
+        ? `${startDate} to ${endDate}` 
+        : startDate 
+        ? `From ${startDate}`
+        : endDate 
+        ? `To ${endDate}`
+        : "All Time";
+
+      const metrics = [
+        { label: "Total Sales", value: dashboardMetrics.totalSales.toString() },
+        { label: "Total Revenue", value: `$${dashboardMetrics.totalRevenue.toFixed(2)}` },
+        { label: "Unique Items", value: dashboardMetrics.uniqueItems.toString() },
+      ];
+
+      generateTablePDF({
+        title: `POS Sales Report - ${selectedView === "sales" ? "Individual Sales" : "Grouped by Item"}`,
+        restaurantName: selectedRestaurant?.restaurant.name || "",
+        dateRange,
+        columns,
+        rows: tableData,
+        metrics,
+        filename: `pos_sales_${selectedView}_${format(new Date(), "yyyyMMdd_HHmmss")}.pdf`,
+      });
+
+      toast({
+        title: "Export Successful",
+        description: "POS sales report exported to PDF",
+      });
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export POS sales report",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (!selectedRestaurant) {
     return (
       <div className="space-y-6">
@@ -255,14 +391,11 @@ export default function POSSales() {
                   {isSyncing ? "Syncing..." : "Sync Sales"}
                 </Button>
               )}
-              <Button 
-                variant="outline" 
-                className="flex items-center gap-2 hover:bg-background/80 transition-all duration-300"
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Export Data</span>
-                <span className="sm:hidden">Export</span>
-              </Button>
+              <ExportDropdown
+                onExportCSV={handleExportCSV}
+                onExportPDF={handleExportPDF}
+                isExporting={isExporting}
+              />
             </div>
           </div>
         </div>

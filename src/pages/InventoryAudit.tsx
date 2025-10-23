@@ -8,12 +8,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Download, TrendingDown, TrendingUp, Package, AlertTriangle, Info, X, ClipboardList, Calendar, DollarSign, Activity } from 'lucide-react';
+import { TrendingDown, TrendingUp, Package, AlertTriangle, Info, X, ClipboardList, Calendar, DollarSign, Activity } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatDateInTimezone } from '@/lib/timezone';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { MetricIcon } from '@/components/MetricIcon';
+import { ExportDropdown } from '@/components/financial-statements/shared/ExportDropdown';
+import { generateTablePDF } from '@/utils/pdfExport';
+import { useToast } from '@/hooks/use-toast';
 
 const TRANSACTION_TYPES = [
   { 
@@ -91,8 +94,10 @@ export default function InventoryAudit() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const { toast } = useToast();
 
-  const { transactions, loading, summary, exportToCSV } = useInventoryTransactions({
+  const { transactions, loading, summary, exportToCSV: exportTransactionsToCSV } = useInventoryTransactions({
     restaurantId: selectedRestaurant?.restaurant_id || null,
     typeFilter,
     startDate,
@@ -115,6 +120,77 @@ export default function InventoryAudit() {
     setTypeFilter('all');
     setStartDate('');
     setEndDate('');
+  };
+
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      await exportTransactionsToCSV();
+      toast({
+        title: "Export Successful",
+        description: "Inventory audit data exported to CSV",
+      });
+    } catch (error) {
+      console.error("Error exporting CSV:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export audit data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    setIsExporting(true);
+    try {
+      const columns = ["Date", "Product", "Type", "Quantity", "Unit Cost", "Total Cost", "Reason"];
+      const rows = filteredTransactions.map((transaction) => [
+        formatDateInTimezone(transaction.created_at, selectedRestaurant?.restaurant.timezone || 'UTC', 'MMM dd, yyyy'),
+        transaction.product_name,
+        transaction.transaction_type.charAt(0).toUpperCase() + transaction.transaction_type.slice(1),
+        transaction.quantity.toFixed(2),
+        `$${(transaction.unit_cost || 0).toFixed(2)}`,
+        `$${(transaction.total_cost || 0).toFixed(2)}`,
+        transaction.reason || '-',
+      ]);
+
+      const dateRange = startDate && endDate 
+        ? `${startDate} to ${endDate}` 
+        : startDate 
+        ? `From ${startDate}`
+        : endDate 
+        ? `To ${endDate}`
+        : "All Time";
+
+      const filterLabel = typeFilter !== 'all' 
+        ? ` - ${TRANSACTION_TYPES.find(t => t.value === typeFilter)?.label || 'Filtered'}`
+        : '';
+
+      generateTablePDF({
+        title: `Inventory Audit Trail${filterLabel}`,
+        restaurantName: selectedRestaurant?.restaurant.name || "",
+        dateRange,
+        columns,
+        rows,
+        filename: `inventory_audit_${format(new Date(), "yyyyMMdd_HHmmss")}.pdf`,
+      });
+
+      toast({
+        title: "Export Successful",
+        description: "Inventory audit report exported to PDF",
+      });
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export audit report",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (!user) {
@@ -244,10 +320,11 @@ export default function InventoryAudit() {
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Export</label>
-              <Button onClick={exportToCSV} variant="outline" className="w-full flex items-center gap-2">
-                <Download className="h-4 w-4" />
-                Export CSV
-              </Button>
+              <ExportDropdown
+                onExportCSV={handleExportCSV}
+                onExportPDF={handleExportPDF}
+                isExporting={isExporting}
+              />
             </div>
           </div>
         </CardContent>

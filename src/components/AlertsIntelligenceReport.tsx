@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricIcon } from '@/components/MetricIcon';
 import { useAlertsIntelligence } from '@/hooks/useAlertsIntelligence';
+import { ExportDropdown } from '@/components/financial-statements/shared/ExportDropdown';
+import { generateTablePDF } from '@/utils/pdfExport';
+import { exportToCSV as exportCSV, generateCSVFilename } from '@/utils/csvExport';
+import { useToast } from '@/hooks/use-toast';
 import {
-  AlertTriangle, Download, AlertCircle, CheckCircle, Info,
+  AlertTriangle, AlertCircle, CheckCircle, Info,
   Package, Clock, TrendingUp, Shield, Calendar
 } from 'lucide-react';
 import {
@@ -24,33 +27,81 @@ interface AlertsIntelligenceReportProps {
 
 export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> = ({ restaurantId }) => {
   const { data, loading, refetch } = useAlertsIntelligence(restaurantId);
+  const [isExporting, setIsExporting] = useState(false);
+  const { toast } = useToast();
 
-  const exportToCSV = () => {
+  const handleExportCSV = async () => {
     if (!data) return;
+    setIsExporting(true);
+    try {
+      const csvData = data.alert_items.map(item => ({
+        'Item': item.name,
+        'Category': item.category,
+        'Current Stock': item.current_stock,
+        'Reorder Point': item.reorder_point,
+        'Days Until Stockout': item.days_until_stockout || 'N/A',
+        'Risk Level': item.stockout_risk,
+        'Supplier': item.supplier_name || 'N/A',
+      }));
 
-    const csvData = [
-      ['Alerts Intelligence Report'],
-      ['Generated:', new Date().toLocaleDateString()],
-      [''],
-      ['Item', 'Category', 'Current Stock', 'Reorder Point', 'Days Until Stockout', 'Risk Level', 'Supplier'],
-      ...data.alert_items.map(i => [
-        i.name,
-        i.category,
-        i.current_stock,
-        i.reorder_point,
-        i.days_until_stockout,
-        i.stockout_risk,
-        i.supplier_name
-      ])
-    ];
+      exportCSV({
+        data: csvData,
+        filename: generateCSVFilename('alerts_intelligence'),
+      });
 
-    const csvContent = csvData.map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `alerts-intelligence-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+      toast({
+        title: "Export Successful",
+        description: "Alerts intelligence data exported to CSV",
+      });
+    } catch (error) {
+      console.error("Error exporting CSV:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export alerts data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!data) return;
+    setIsExporting(true);
+    try {
+      const columns = ["Item", "Category", "Current Stock", "Reorder Point", "Days Until Stockout", "Risk Level", "Supplier"];
+      const rows = data.alert_items.map(item => [
+        item.name,
+        item.category,
+        item.current_stock.toString(),
+        item.reorder_point?.toString() || 'N/A',
+        item.days_until_stockout?.toString() || 'N/A',
+        item.stockout_risk,
+        item.supplier_name || 'N/A',
+      ]);
+
+      generateTablePDF({
+        title: "Alerts Intelligence Report",
+        restaurantName: "",
+        columns,
+        rows,
+        filename: generateCSVFilename('alerts_intelligence').replace('.csv', '.pdf'),
+      });
+
+      toast({
+        title: "Export Successful",
+        description: "Alerts intelligence report exported to PDF",
+      });
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export alerts report",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (loading) {
@@ -133,10 +184,11 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
                 </p>
               </div>
             </div>
-            <Button onClick={exportToCSV} variant="outline" size="sm" aria-label="Export alerts data to CSV">
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
+            <ExportDropdown 
+              onExportCSV={handleExportCSV}
+              onExportPDF={handleExportPDF}
+              isExporting={isExporting}
+            />
           </div>
         </CardHeader>
       </Card>

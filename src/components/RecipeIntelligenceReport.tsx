@@ -1,14 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricIcon } from '@/components/MetricIcon';
 import { useRecipeIntelligence } from '@/hooks/useRecipeIntelligence';
+import { ExportDropdown } from '@/components/financial-statements/shared/ExportDropdown';
+import { generateTablePDF } from '@/utils/pdfExport';
+import { exportToCSV as exportCSV, generateCSVFilename } from '@/utils/csvExport';
+import { useToast } from '@/hooks/use-toast';
 import { 
-  TrendingUp, TrendingDown, Minus, Download, AlertCircle, 
+  TrendingUp, TrendingDown, Minus, AlertCircle, 
   CheckCircle, Info, DollarSign, Target, Zap, Award
 } from 'lucide-react';
 import {
@@ -25,33 +28,44 @@ interface RecipeIntelligenceReportProps {
 
 export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> = ({ restaurantId }) => {
   const { data, loading, refetch } = useRecipeIntelligence(restaurantId);
+  const [isExporting, setIsExporting] = useState(false);
+  const { toast } = useToast();
 
-  const exportToCSV = () => {
+  const handleExportCSV = async () => {
     if (!data) return;
+    setIsExporting(true);
+    try {
+      const csvData = data.performance.map(recipe => ({
+        'Recipe': recipe.name,
+        'Margin %': `${recipe.margin.toFixed(1)}%`,
+        'Food Cost %': `${recipe.food_cost_percentage.toFixed(1)}%`,
+        'Revenue': `$${recipe.total_sales.toFixed(2)}`,
+        'Units Sold': recipe.total_quantity_sold,
+        'Efficiency': recipe.efficiency_score.toFixed(0),
+        'Trend': recipe.trend,
+      }));
+      exportCSV({ data: csvData, filename: generateCSVFilename('recipe_intelligence') });
+      toast({ title: "Export Successful", description: "Recipe data exported to CSV" });
+    } catch (error) {
+      toast({ title: "Export Failed", description: "Failed to export recipe data", variant: "destructive" });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
-    const csvData = [
-      ['Recipe Performance Report'],
-      ['Generated:', new Date().toLocaleDateString()],
-      [''],
-      ['Recipe Name', 'Margin %', 'Food Cost %', 'Revenue', 'Units Sold', 'Efficiency Score', 'Trend'],
-      ...data.performance.map(r => [
-        r.name,
-        r.margin.toFixed(1),
-        r.food_cost_percentage.toFixed(1),
-        r.total_sales.toFixed(2),
-        r.total_quantity_sold,
-        r.efficiency_score.toFixed(0),
-        r.trend
-      ])
-    ];
-
-    const csvContent = csvData.map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `recipe-intelligence-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+  const handleExportPDF = async () => {
+    if (!data) return;
+    setIsExporting(true);
+    try {
+      const columns = ["Recipe", "Margin %", "Food Cost %", "Revenue", "Units Sold", "Efficiency", "Trend"];
+      const rows = data.performance.map(r => [r.name, `${r.margin.toFixed(1)}%`, `${r.food_cost_percentage.toFixed(1)}%`, `$${r.total_sales.toFixed(2)}`, r.total_quantity_sold.toString(), r.efficiency_score.toFixed(0), r.trend]);
+      generateTablePDF({ title: "Recipe Intelligence Report", restaurantName: "", columns, rows, filename: generateCSVFilename('recipe_intelligence').replace('.csv', '.pdf') });
+      toast({ title: "Export Successful", description: "Recipe report exported to PDF" });
+    } catch (error) {
+      toast({ title: "Export Failed", description: "Failed to export recipe report", variant: "destructive" });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (loading) {
@@ -124,10 +138,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
                 </p>
               </div>
             </div>
-            <Button onClick={exportToCSV} variant="outline" size="sm" aria-label="Export recipe data to CSV">
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
+            <ExportDropdown onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} isExporting={isExporting} />
           </div>
         </CardHeader>
       </Card>

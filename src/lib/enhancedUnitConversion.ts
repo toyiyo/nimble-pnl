@@ -374,7 +374,8 @@ export function calculateInventoryImpact(
       
       // Convert product size to ml
       let sizeInMl = productSizeValue;
-      if (sizeUnitLower === 'l') sizeInMl = productSizeValue * 1000;
+      if (sizeUnitLower === 'fl oz') sizeInMl = productSizeValue * 29.5735;
+      else if (sizeUnitLower === 'l') sizeInMl = productSizeValue * 1000;
       else if (sizeUnitLower === 'gal') sizeInMl = productSizeValue * 3785.41;
       else if (sizeUnitLower === 'qt') sizeInMl = productSizeValue * 946.353;
       else if (sizeUnitLower === 'pint') sizeInMl = productSizeValue * 473.176;

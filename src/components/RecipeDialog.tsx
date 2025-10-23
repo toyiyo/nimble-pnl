@@ -41,7 +41,7 @@ import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
 import { calculateInventoryImpact, getProductUnitInfo } from "@/lib/enhancedUnitConversion";
 
 const measurementUnits = [
-  'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 
+  'oz', 'fl oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 
   'bottle', 'can', 'bag', 'box', 'piece', 'serving'
 ];
 

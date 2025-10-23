@@ -97,8 +97,12 @@ export default function POSSales() {
   const filteredSales = useMemo(() => {
     let filtered = sales.filter((sale) => sale.itemName.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    if (startDate && endDate) {
-      filtered = filtered.filter((sale) => sale.saleDate >= startDate && sale.saleDate <= endDate);
+    if (startDate) {
+      filtered = filtered.filter((sale) => sale.saleDate >= startDate);
+    }
+    
+    if (endDate) {
+      filtered = filtered.filter((sale) => sale.saleDate <= endDate);
     }
     
     return filtered;

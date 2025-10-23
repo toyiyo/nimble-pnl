@@ -165,10 +165,10 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
                   step="0.01"
                   placeholder="750"
                   className="text-center text-lg font-mono"
-                  value={field.value ?? ''}
+                  value={field.value !== undefined && field.value !== null ? String(field.value) : ''}
                   onChange={(e) => {
                     const value = e.target.value;
-                    field.onChange(value ? parseFloat(value) : undefined);
+                    field.onChange(value === '' ? undefined : parseFloat(value));
                   }}
                 />
               </FormControl>

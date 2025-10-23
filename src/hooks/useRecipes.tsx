@@ -53,7 +53,7 @@ export interface CreateRecipeData {
   ingredients: {
     product_id: string;
     quantity: number;
-    unit: 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+    unit: 'oz' | 'fl oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
     notes?: string;
   }[];
 }
@@ -275,7 +275,7 @@ export const useRecipes = (restaurantId: string | null) => {
   const updateRecipeIngredients = async (recipeId: string, ingredients: {
     product_id: string;
     quantity: number;
-    unit: 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+    unit: 'oz' | 'fl oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
     notes?: string;
   }[]): Promise<boolean> => {
     try {

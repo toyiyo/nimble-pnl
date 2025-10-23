@@ -54,7 +54,7 @@ const formSchema = z.object({
   ingredients: z.array(z.object({
     product_id: z.string().min(1, 'Product is required'),
     quantity: z.number().min(0.001, 'Quantity must be greater than 0'),
-    unit: z.enum(['oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 'bottle', 'can', 'bag', 'box', 'piece', 'serving']),
+    unit: z.enum(['oz', 'fl oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 'bottle', 'can', 'bag', 'box', 'piece', 'serving']),
     notes: z.string().optional(),
   })).min(1, 'At least one ingredient is required'),
 });
@@ -117,7 +117,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
               ? ingredients.map(ing => ({
                   product_id: ing.product_id,
                   quantity: ing.quantity,
-                  unit: (measurementUnits.includes(ing.unit as any) ? ing.unit : 'oz') as 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving',
+                  unit: (measurementUnits.includes(ing.unit as any) ? ing.unit : 'oz') as 'oz' | 'fl oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving',
                   notes: ing.notes || '',
                 }))
               : [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
@@ -245,7 +245,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
           ) as {
             product_id: string;
             quantity: number;
-            unit: 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+            unit: 'oz' | 'fl oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
             notes?: string;
           }[];
           await updateRecipeIngredients(recipe.id, validIngredients);
@@ -270,7 +270,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
           ) as {
             product_id: string;
             quantity: number;
-            unit: 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+            unit: 'oz' | 'fl oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
             notes?: string;
           }[],
         };

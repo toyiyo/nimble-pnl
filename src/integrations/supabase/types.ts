@@ -3518,6 +3518,7 @@ export type Database = {
         | "mm"
         | "ft"
         | "meter"
+        | "fl oz"
       transaction_review_status:
         | "for_review"
         | "categorized"
@@ -3739,6 +3740,7 @@ export const Constants = {
         "mm",
         "ft",
         "meter",
+        "fl oz",
       ],
       transaction_review_status: [
         "for_review",

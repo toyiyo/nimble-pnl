@@ -30,20 +30,16 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
 import { useRecipes, Recipe, CreateRecipeData } from '@/hooks/useRecipes';
 import { useProducts } from '@/hooks/useProducts';
 import { usePOSItems } from '@/hooks/usePOSItems';
 import { useUnitConversion } from '@/hooks/useUnitConversion';
 import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
 import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelector';
-import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
 import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
 import { calculateInventoryImpact, getProductUnitInfo } from "@/lib/enhancedUnitConversion";
-
-const measurementUnits = [
-  'oz', 'fl oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 
-  'bottle', 'can', 'bag', 'box', 'piece', 'serving'
-];
+import { MEASUREMENT_UNITS, IngredientUnit, toIngredientUnit } from '@/lib/recipeUnits';
 
 const formSchema = z.object({
   name: z.string().min(1, 'Recipe name is required'),
@@ -54,7 +50,7 @@ const formSchema = z.object({
   ingredients: z.array(z.object({
     product_id: z.string().min(1, 'Product is required'),
     quantity: z.number().min(0.001, 'Quantity must be greater than 0'),
-    unit: z.enum(['oz', 'fl oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 'bottle', 'can', 'bag', 'box', 'piece', 'serving']),
+    unit: z.enum(MEASUREMENT_UNITS),
     notes: z.string().optional(),
   })).min(1, 'At least one ingredient is required'),
 });
@@ -101,11 +97,15 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
   // Load recipe data for editing
   useEffect(() => {
     if (recipe && isOpen) {
-      console.log('Loading recipe data for recipe:', recipe.id);
+      if (import.meta.env.DEV) {
+        console.log('Loading recipe data for recipe:', recipe.id);
+      }
       const loadRecipeData = async () => {
         try {
           const ingredients = await fetchRecipeIngredients(recipe.id);
-          console.log('Loaded ingredients:', ingredients);
+          if (import.meta.env.DEV) {
+            console.log('Loaded ingredients:', ingredients);
+          }
           
           form.reset({
             name: recipe.name,
@@ -117,19 +117,23 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
               ? ingredients.map(ing => ({
                   product_id: ing.product_id,
                   quantity: ing.quantity,
-                  unit: (measurementUnits.includes(ing.unit as any) ? ing.unit : 'oz') as 'oz' | 'fl oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving',
+                  unit: toIngredientUnit(ing.unit),
                   notes: ing.notes || '',
                 }))
               : [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
           });
         } catch (error) {
-          console.error('Error loading recipe data:', error);
+          if (import.meta.env.DEV) {
+            console.error('Error loading recipe data:', error);
+          }
         }
       };
 
       loadRecipeData();
     } else if (!recipe && isOpen) {
-      console.log('Resetting form for new recipe with initialPosItemName:', initialPosItemName);
+      if (import.meta.env.DEV) {
+        console.log('Resetting form for new recipe with initialPosItemName:', initialPosItemName);
+      }
       
       // Check if we're returning from creating a product
       const recipeStateJson = sessionStorage.getItem('recipeFormState');
@@ -148,7 +152,9 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
             ingredients: recipeState.ingredients || [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
           });
         } catch (error) {
-          console.error('Error restoring recipe state:', error);
+          if (import.meta.env.DEV) {
+            console.error('Error restoring recipe state:', error);
+          }
           // Fall back to default behavior
           form.reset({
             name: initialPosItemName || '',
@@ -245,7 +251,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
           ) as {
             product_id: string;
             quantity: number;
-            unit: 'oz' | 'fl oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+            unit: IngredientUnit;
             notes?: string;
           }[];
           await updateRecipeIngredients(recipe.id, validIngredients);
@@ -270,7 +276,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
           ) as {
             product_id: string;
             quantity: number;
-            unit: 'oz' | 'fl oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+            unit: IngredientUnit;
             notes?: string;
           }[],
         };
@@ -507,7 +513,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                         onRemove={() => removeIngredient(index)}
                         showConversionDetails={!!expandedIngredients[index]}
                         toggleConversionDetails={() => toggleConversionDetails(index)}
-                        measurementUnits={measurementUnits}
+                        measurementUnits={MEASUREMENT_UNITS}
                         onCreateNewProduct={handleCreateNewProduct}
                       />
                     ))}

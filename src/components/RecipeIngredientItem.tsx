@@ -18,7 +18,7 @@ interface RecipeIngredientItemProps {
   onRemove: () => void;
   showConversionDetails: boolean;
   toggleConversionDetails: () => void;
-  measurementUnits: string[];
+  measurementUnits: readonly string[];
   onCreateNewProduct?: () => void;
 }
 

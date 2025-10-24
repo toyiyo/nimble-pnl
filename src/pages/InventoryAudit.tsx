@@ -1,7 +1,3 @@
-import { useState, useMemo } from 'react';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useAuth } from '@/hooks/useAuth';
-import { useInventoryTransactions } from '@/hooks/useInventoryTransactions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,6 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { TrendingDown, TrendingUp, Package, AlertTriangle, Info, X, ClipboardList, Calendar, DollarSign, Activity } from 'lucide-react';
 import { format } from 'date-fns';
+import { useState, useMemo } from 'react';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useAuth } from '@/hooks/useAuth';
+import { useInventoryTransactions } from '@/hooks/useInventoryTransactions';
 import { formatDateInTimezone } from '@/lib/timezone';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -97,7 +97,7 @@ export default function InventoryAudit() {
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
-  const { transactions, loading, summary, exportToCSV: exportTransactionsToCSV } = useInventoryTransactions({
+  const { transactions, loading, error, summary, exportToCSV: exportTransactionsToCSV } = useInventoryTransactions({
     restaurantId: selectedRestaurant?.restaurant_id || null,
     typeFilter,
     startDate,
@@ -123,6 +123,16 @@ export default function InventoryAudit() {
   };
 
   const handleExportCSV = async () => {
+    // Validate date range
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      toast({
+        title: 'Invalid date range',
+        description: 'Start date must be before end date.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     setIsExporting(true);
     try {
       await exportTransactionsToCSV();
@@ -131,7 +141,9 @@ export default function InventoryAudit() {
         description: "Inventory audit data exported to CSV",
       });
     } catch (error) {
-      console.error("Error exporting CSV:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error exporting CSV:", error);
+      }
       toast({
         title: "Export Failed",
         description: "Failed to export audit data",
@@ -143,6 +155,16 @@ export default function InventoryAudit() {
   };
 
   const handleExportPDF = async () => {
+    // Validate date range
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      toast({
+        title: 'Invalid date range',
+        description: 'Start date must be before end date.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     setIsExporting(true);
     try {
       const columns = ["Date", "Product", "Type", "Quantity", "Unit Cost", "Total Cost", "Reason"];
@@ -350,7 +372,7 @@ export default function InventoryAudit() {
                 onClick={() => setTypeFilter(type.value)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && setTypeFilter(type.value)}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setTypeFilter(type.value)}
                 aria-pressed={isActive}
                 aria-label={`Filter by ${type.label}`}
               >
@@ -404,6 +426,11 @@ export default function InventoryAudit() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          {error && (
+            <div role="alert" className="text-sm text-destructive px-4 py-3 bg-destructive/10 border-b border-destructive/20">
+              {error}
+            </div>
+          )}
           {loading ? (
             <div className="p-6 space-y-4" role="status" aria-live="polite">
               <div className="space-y-3">

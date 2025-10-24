@@ -37,8 +37,8 @@ export function DashboardMetricCard({
 
   const getTrendColor = () => {
     if (!trend) return '';
-    if (trend.value > 0) return 'text-green-600 dark:text-green-400';
-    if (trend.value < 0) return 'text-red-600 dark:text-red-400';
+    if (trend.value > 0) return 'text-success';
+    if (trend.value < 0) return 'text-destructive';
     return 'text-muted-foreground';
   };
 
@@ -82,7 +82,7 @@ export function DashboardMetricCard({
             <div className="text-3xl font-bold tracking-tight flex items-center gap-2">
               {value}
               {isExcellent && (
-                <Sparkles className="h-5 w-5 text-yellow-500 animate-pulse" aria-label="Excellent performance" />
+                <Sparkles className="h-5 w-5 text-warning animate-pulse" aria-label="Excellent performance" />
               )}
             </div>
             {subtitle && (

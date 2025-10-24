@@ -104,8 +104,8 @@ Deno.serve(async (req) => {
             'Square-Version': '2024-12-18',
           },
           body: JSON.stringify({
-            client_id: Deno.env.get('SQUARE_CLIENT_ID'),
-            client_secret: Deno.env.get('SQUARE_CLIENT_SECRET'),
+            client_id: Deno.env.get('SQUARE_APPLICATION_ID'),
+            client_secret: Deno.env.get('SQUARE_APPLICATION_SECRET'),
             grant_type: 'refresh_token',
             refresh_token: decryptedRefreshToken,
           }),

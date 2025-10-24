@@ -70,51 +70,63 @@ Deno.serve(async (req) => {
       }
     });
 
-    // Find restaurant by merchant ID and decrypt access token
-    const { data: connection, error: connectionError } = await supabase
+    // Find all restaurants connected to this merchant ID (supports multiple restaurants per merchant)
+    const { data: connections, error: connectionError } = await supabase
       .from('square_connections')
-      .select('restaurant_id, access_token')
-      .eq('merchant_id', merchant_id)
-      .single();
+      .select('id, restaurant_id, access_token')
+      .eq('merchant_id', merchant_id);
 
-    if (connectionError || !connection) {
-      console.error('No connection found for merchant:', merchant_id);
+    if (connectionError || !connections || connections.length === 0) {
+      console.error('No connection found for merchant:', merchant_id, connectionError);
       return new Response('Connection not found', { status: 404 });
     }
 
-    // Decrypt the access token
+    console.log(`Found ${connections.length} restaurant(s) connected to merchant ${merchant_id}`);
+
+    // Decrypt access token (same token for all connections of this merchant)
     const encryption = await getEncryptionService();
-    const decryptedAccessToken = await encryption.decrypt(connection.access_token);
-    
-    const restaurantId = connection.restaurant_id;
+    const decryptedAccessToken = await encryption.decrypt(connections[0].access_token);
 
-    // Log security event for webhook processing
-    await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_PROCESSED', undefined, restaurantId, {
-      webhookType: type,
-      merchantId: merchant_id,
-      eventId: data?.id
-    });
+    // Process webhook for each connected restaurant
+    for (const connection of connections) {
+      const restaurantId = connection.restaurant_id;
 
-    // Process different webhook types
-    switch (type) {
-      case 'order.updated':
-        await handleOrderUpdated(data, restaurantId, decryptedAccessToken, supabase);
-        break;
-      
-      case 'payment.updated':
-        await handlePaymentUpdated(data, restaurantId, decryptedAccessToken, supabase);
-        break;
-      
-      case 'refund.updated':
-        await handleRefundUpdated(data, restaurantId, decryptedAccessToken, supabase);
-        break;
-      
-      case 'inventory.count.updated':
-        await handleInventoryUpdated(data, restaurantId, decryptedAccessToken, supabase);
-        break;
-      
-      default:
-        console.log('Unhandled webhook type:', type);
+      console.log(`Processing webhook for restaurant ${restaurantId}`);
+
+      // Log security event for webhook processing
+      await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_PROCESSED', undefined, restaurantId, {
+        webhookType: type,
+        merchantId: merchant_id,
+        eventId: data?.id
+      });
+
+      // Process different webhook types
+      try {
+        switch (type) {
+          case 'order.updated':
+            await handleOrderUpdated(data, restaurantId, decryptedAccessToken, supabase);
+            break;
+          
+          case 'payment.updated':
+            await handlePaymentUpdated(data, restaurantId, decryptedAccessToken, supabase);
+            break;
+          
+          case 'refund.updated':
+            await handleRefundUpdated(data, restaurantId, decryptedAccessToken, supabase);
+            break;
+          
+          case 'inventory.count.updated':
+            await handleInventoryUpdated(data, restaurantId, decryptedAccessToken, supabase);
+            break;
+          
+          default:
+            console.log('Unhandled webhook type:', type);
+        }
+        console.log(`Successfully processed webhook for restaurant ${restaurantId}`);
+      } catch (error) {
+        console.error(`Error processing webhook for restaurant ${restaurantId}:`, error);
+        // Continue processing other restaurants even if one fails
+      }
     }
 
     return new Response('OK', { 

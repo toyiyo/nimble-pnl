@@ -311,42 +311,42 @@ const Index = () => {
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
-                    title="Food Cost %"
-                    value={periodData ? `${periodData.food_cost_percentage.toFixed(1)}%` : '--'}
+                    title="Food Cost"
+                    value={periodData ? `$${periodData.food_cost.toFixed(0)}` : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.food_cost_percentage, previousPeriodData.food_cost_percentage),
                       label: 'vs previous period'
                     } : undefined}
                     icon={ShoppingCart}
                     variant={periodData && periodData.food_cost_percentage > 35 ? 'warning' : 'default'}
-                    subtitle={averages ? `Target: 28-32% | Avg: ${averages.avgFoodCostPercentage.toFixed(1)}%` : undefined}
-                    sparklineData={periodData?.daily_data.map(d => ({ value: d.food_cost_percentage }))}
+                    subtitle={periodData ? `${periodData.food_cost_percentage.toFixed(1)}% of revenue | Target: 28-32%${averages && averages.avgFoodCostPercentage > 0 ? ` | Avg: ${averages.avgFoodCostPercentage.toFixed(1)}%` : ''}` : undefined}
+                    sparklineData={periodData?.daily_data.map(d => ({ value: d.food_cost }))}
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
-                    title="Labor Cost %"
-                    value={periodData ? `${periodData.labor_cost_percentage.toFixed(1)}%` : '--'}
+                    title="Labor Cost"
+                    value={periodData ? `$${periodData.labor_cost.toFixed(0)}` : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.labor_cost_percentage, previousPeriodData.labor_cost_percentage),
                       label: 'vs previous period'
                     } : undefined}
                     icon={Clock}
                     variant={periodData && periodData.labor_cost_percentage > 35 ? 'warning' : 'default'}
-                    subtitle={averages ? `Target: 25-30% | Avg: ${averages.avgLaborCostPercentage.toFixed(1)}%` : undefined}
-                    sparklineData={periodData?.daily_data.map(d => ({ value: d.labor_cost_percentage }))}
+                    subtitle={periodData ? `${periodData.labor_cost_percentage.toFixed(1)}% of revenue | Target: 25-30%${averages && averages.avgLaborCostPercentage > 0 ? ` | Avg: ${averages.avgLaborCostPercentage.toFixed(1)}%` : ''}` : undefined}
+                    sparklineData={periodData?.daily_data.map(d => ({ value: d.labor_cost }))}
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
-                    title="Prime Cost %"
-                    value={periodData ? `${periodData.prime_cost_percentage.toFixed(1)}%` : '--'}
+                    title="Prime Cost"
+                    value={periodData ? `$${(periodData.food_cost + periodData.labor_cost).toFixed(0)}` : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.prime_cost_percentage, previousPeriodData.prime_cost_percentage),
                       label: 'vs previous period'
                     } : undefined}
                     icon={Target}
                     variant={periodData && periodData.prime_cost_percentage > 65 ? 'danger' : periodData && periodData.prime_cost_percentage < 60 ? 'success' : 'default'}
-                    subtitle={averages ? `Target: 60-65% | Avg: ${averages.avgPrimeCostPercentage.toFixed(1)}%` : undefined}
-                    sparklineData={periodData?.daily_data.map(d => ({ value: d.prime_cost_percentage }))}
+                    subtitle={periodData ? `${periodData.prime_cost_percentage.toFixed(1)}% of revenue | Target: 60-65%${averages && averages.avgPrimeCostPercentage > 0 ? ` | Avg: ${averages.avgPrimeCostPercentage.toFixed(1)}%` : ''}` : undefined}
+                    sparklineData={periodData?.daily_data.map(d => ({ value: d.food_cost + d.labor_cost }))}
                     periodLabel={selectedPeriod.label}
                   />
                 </div>

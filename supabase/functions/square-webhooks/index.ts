@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
     // Find all restaurants connected to this merchant ID (supports multiple restaurants per merchant)
     const { data: connections, error: connectionError } = await supabase
       .from('square_connections')
-      .select('id, restaurant_id, access_token')
+      .select('id, restaurant_id, access_token, refresh_token, expires_at')
       .eq('merchant_id', merchant_id);
 
     if (connectionError || !connections || connections.length === 0) {
@@ -85,7 +85,70 @@ Deno.serve(async (req) => {
 
     // Decrypt access token (same token for all connections of this merchant)
     const encryption = await getEncryptionService();
-    const decryptedAccessToken = await encryption.decrypt(connections[0].access_token);
+    let decryptedAccessToken = await encryption.decrypt(connections[0].access_token);
+
+    // Check if token is expired and refresh if needed
+    const expiresAt = new Date(connections[0].expires_at);
+    const now = new Date();
+    const isExpired = expiresAt <= now;
+
+    if (isExpired) {
+      console.log('Access token expired, refreshing...');
+      try {
+        const decryptedRefreshToken = await encryption.decrypt(connections[0].refresh_token);
+        
+        const refreshResponse = await fetch('https://connect.squareup.com/oauth2/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Square-Version': '2024-12-18',
+          },
+          body: JSON.stringify({
+            client_id: Deno.env.get('SQUARE_CLIENT_ID'),
+            client_secret: Deno.env.get('SQUARE_CLIENT_SECRET'),
+            grant_type: 'refresh_token',
+            refresh_token: decryptedRefreshToken,
+          }),
+        });
+
+        if (!refreshResponse.ok) {
+          const errorText = await refreshResponse.text();
+          console.error('Token refresh failed:', refreshResponse.status, errorText);
+          throw new Error(`Token refresh failed: ${refreshResponse.status}`);
+        }
+
+        const tokenData = await refreshResponse.json();
+        decryptedAccessToken = tokenData.access_token;
+
+        // Encrypt new tokens
+        const newAccessToken = await encryption.encrypt(tokenData.access_token);
+        const newRefreshToken = tokenData.refresh_token 
+          ? await encryption.encrypt(tokenData.refresh_token)
+          : connections[0].refresh_token; // Keep old refresh token if not provided
+
+        // Calculate new expiry (30 days from now)
+        const newExpiresAt = new Date();
+        newExpiresAt.setDate(newExpiresAt.getDate() + 30);
+
+        // Update all connections for this merchant with new tokens
+        for (const connection of connections) {
+          await supabase
+            .from('square_connections')
+            .update({
+              access_token: newAccessToken,
+              refresh_token: newRefreshToken,
+              expires_at: newExpiresAt.toISOString(),
+              last_refreshed_at: new Date().toISOString(),
+            })
+            .eq('id', connection.id);
+        }
+
+        console.log('Access token refreshed successfully');
+      } catch (error) {
+        console.error('Error refreshing access token:', error);
+        return new Response('Token refresh failed', { status: 401 });
+      }
+    }
 
     // Process webhook for each connected restaurant
     for (const connection of connections) {

@@ -6,38 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Package, Scale } from 'lucide-react';
 import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
+import { convertUnits, WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 
 interface SizePackagingSectionProps {
   form: any;
 }
-
-// Unit conversion utility functions
-const convertUnits = (value: number, fromUnit: string, toUnit: string): number => {
-  const conversions: { [key: string]: { [key: string]: number } } = {
-    'oz': {
-      'lb': 1/16,
-      'g': 28.3495,
-      'kg': 0.0283495
-    },
-    'lb': {
-      'oz': 16,
-      'g': 453.592,
-      'kg': 0.453592
-    },
-    'kg': {
-      'lb': 2.20462,
-      'oz': 35.274,
-      'g': 1000
-    },
-    'g': {
-      'kg': 0.001,
-      'oz': 0.035274,
-      'lb': 0.00220462
-    }
-  };
-
-  return conversions[fromUnit]?.[toUnit] ? value * conversions[fromUnit][toUnit] : value;
-};
 
 // Product-specific conversions for common ingredients
 const getProductSpecificConversions = (productName: string, sizeValue: number, sizeUnit: string) => {
@@ -84,37 +57,104 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
   const alternativeUnits = useMemo(() => {
     if (!sizeValue || !sizeUnit) return [];
 
-    const alternatives = [];
-    const totalValue = sizeValue; // Just the size per package
+    const alternatives: { unit: string; value: number }[] = [];
+    const totalValue = sizeValue;
 
     // Weight conversions
     if (sizeUnit === 'oz') {
       if (totalValue >= 16) {
-        alternatives.push({ unit: 'lb', value: convertUnits(totalValue, 'oz', 'lb') });
+        const converted = convertUnits(totalValue, 'oz', 'lb');
+        if (converted) alternatives.push({ unit: 'lb', value: converted.value });
       }
-      alternatives.push({ unit: 'g', value: convertUnits(totalValue, 'oz', 'g') });
+      const grams = convertUnits(totalValue, 'oz', 'g');
+      if (grams) alternatives.push({ unit: 'g', value: grams.value });
       if (totalValue * 28.3495 >= 1000) {
-        alternatives.push({ unit: 'kg', value: convertUnits(totalValue, 'oz', 'kg') });
+        const kg = convertUnits(totalValue, 'oz', 'kg');
+        if (kg) alternatives.push({ unit: 'kg', value: kg.value });
       }
     } 
     else if (sizeUnit === 'lb') {
-      alternatives.push({ unit: 'oz', value: convertUnits(totalValue, 'lb', 'oz') });
-      alternatives.push({ unit: 'g', value: convertUnits(totalValue, 'lb', 'g') });
-      alternatives.push({ unit: 'kg', value: convertUnits(totalValue, 'lb', 'kg') });
+      const oz = convertUnits(totalValue, 'lb', 'oz');
+      if (oz) alternatives.push({ unit: 'oz', value: oz.value });
+      const grams = convertUnits(totalValue, 'lb', 'g');
+      if (grams) alternatives.push({ unit: 'g', value: grams.value });
+      const kg = convertUnits(totalValue, 'lb', 'kg');
+      if (kg) alternatives.push({ unit: 'kg', value: kg.value });
     }
     else if (sizeUnit === 'kg') {
-      alternatives.push({ unit: 'lb', value: convertUnits(totalValue, 'kg', 'lb') });
-      alternatives.push({ unit: 'oz', value: convertUnits(totalValue, 'kg', 'oz') });
-      alternatives.push({ unit: 'g', value: convertUnits(totalValue, 'kg', 'g') });
+      const lb = convertUnits(totalValue, 'kg', 'lb');
+      if (lb) alternatives.push({ unit: 'lb', value: lb.value });
+      const oz = convertUnits(totalValue, 'kg', 'oz');
+      if (oz) alternatives.push({ unit: 'oz', value: oz.value });
+      const grams = convertUnits(totalValue, 'kg', 'g');
+      if (grams) alternatives.push({ unit: 'g', value: grams.value });
     }
     else if (sizeUnit === 'g') {
       if (totalValue >= 1000) {
-        alternatives.push({ unit: 'kg', value: convertUnits(totalValue, 'g', 'kg') });
+        const kg = convertUnits(totalValue, 'g', 'kg');
+        if (kg) alternatives.push({ unit: 'kg', value: kg.value });
       }
-      alternatives.push({ unit: 'oz', value: convertUnits(totalValue, 'g', 'oz') });
+      const oz = convertUnits(totalValue, 'g', 'oz');
+      if (oz) alternatives.push({ unit: 'oz', value: oz.value });
       if (totalValue * 0.035274 >= 16) {
-        alternatives.push({ unit: 'lb', value: convertUnits(totalValue, 'g', 'lb') });
+        const lb = convertUnits(totalValue, 'g', 'lb');
+        if (lb) alternatives.push({ unit: 'lb', value: lb.value });
       }
+    }
+    // Volume conversions
+    else if (sizeUnit === 'fl oz') {
+      const ml = convertUnits(totalValue, 'fl oz', 'ml');
+      if (ml) alternatives.push({ unit: 'ml', value: ml.value });
+      if (totalValue >= 8) {
+        const cups = convertUnits(totalValue, 'fl oz', 'cup');
+        if (cups) alternatives.push({ unit: 'cup', value: cups.value });
+      }
+      if (totalValue * 29.5735 >= 1000) {
+        const liters = convertUnits(totalValue, 'fl oz', 'L');
+        if (liters) alternatives.push({ unit: 'L', value: liters.value });
+      }
+      if (totalValue >= 128) {
+        const gal = convertUnits(totalValue, 'fl oz', 'gal');
+        if (gal) alternatives.push({ unit: 'gal', value: gal.value });
+      }
+    }
+    else if (sizeUnit === 'ml') {
+      const floz = convertUnits(totalValue, 'ml', 'fl oz');
+      if (floz) alternatives.push({ unit: 'fl oz', value: floz.value });
+      if (totalValue >= 1000) {
+        const liters = convertUnits(totalValue, 'ml', 'L');
+        if (liters) alternatives.push({ unit: 'L', value: liters.value });
+      }
+      if (totalValue >= 236.588) {
+        const cups = convertUnits(totalValue, 'ml', 'cup');
+        if (cups) alternatives.push({ unit: 'cup', value: cups.value });
+      }
+    }
+    else if (sizeUnit === 'L') {
+      const ml = convertUnits(totalValue, 'L', 'ml');
+      if (ml) alternatives.push({ unit: 'ml', value: ml.value });
+      const floz = convertUnits(totalValue, 'L', 'fl oz');
+      if (floz) alternatives.push({ unit: 'fl oz', value: floz.value });
+      const cups = convertUnits(totalValue, 'L', 'cup');
+      if (cups) alternatives.push({ unit: 'cup', value: cups.value });
+      const gal = convertUnits(totalValue, 'L', 'gal');
+      if (gal) alternatives.push({ unit: 'gal', value: gal.value });
+    }
+    else if (sizeUnit === 'gal') {
+      const liters = convertUnits(totalValue, 'gal', 'L');
+      if (liters) alternatives.push({ unit: 'L', value: liters.value });
+      const floz = convertUnits(totalValue, 'gal', 'fl oz');
+      if (floz) alternatives.push({ unit: 'fl oz', value: floz.value });
+      const qt = convertUnits(totalValue, 'gal', 'qt');
+      if (qt) alternatives.push({ unit: 'qt', value: qt.value });
+    }
+    else if (sizeUnit === 'cup') {
+      const ml = convertUnits(totalValue, 'cup', 'ml');
+      if (ml) alternatives.push({ unit: 'ml', value: ml.value });
+      const floz = convertUnits(totalValue, 'cup', 'fl oz');
+      if (floz) alternatives.push({ unit: 'fl oz', value: floz.value });
+      const tbsp = convertUnits(totalValue, 'cup', 'tbsp');
+      if (tbsp) alternatives.push({ unit: 'tbsp', value: tbsp.value });
     }
 
     return alternatives;

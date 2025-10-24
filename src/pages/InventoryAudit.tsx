@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingDown, TrendingUp, Package, AlertTriangle, Info, X, ClipboardList, Calendar, DollarSign, Activity } from 'lucide-react';
+import { TrendingDown, TrendingUp, Package, AlertTriangle, Info, X, ClipboardList, Calendar, DollarSign, Activity, ArrowUpDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { useState, useMemo } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -94,6 +94,8 @@ export default function InventoryAudit() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [sortBy, setSortBy] = useState<'date' | 'product' | 'quantity' | 'cost' | 'type'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
@@ -106,12 +108,52 @@ export default function InventoryAudit() {
 
   // ✅ SAFE MEMOIZATION: Only recalculate when dependencies change
   const filteredTransactions = useMemo(() => {
-    return transactions.filter(transaction =>
+    const filtered = transactions.filter(transaction =>
       transaction.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (transaction.reason || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (transaction.reference_id || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [transactions, searchTerm]);
+
+    // Apply sorting
+    return filtered.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case 'date':
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          if (comparison === 0) {
+            comparison = a.id.localeCompare(b.id);
+          }
+          break;
+        case 'product':
+          comparison = a.product_name.localeCompare(b.product_name);
+          if (comparison === 0) {
+            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          }
+          break;
+        case 'quantity':
+          comparison = Math.abs(a.quantity) - Math.abs(b.quantity);
+          if (comparison === 0) {
+            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          }
+          break;
+        case 'cost':
+          comparison = Math.abs(a.total_cost || 0) - Math.abs(b.total_cost || 0);
+          if (comparison === 0) {
+            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          }
+          break;
+        case 'type':
+          comparison = a.transaction_type.localeCompare(b.transaction_type);
+          if (comparison === 0) {
+            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          }
+          break;
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [transactions, searchTerm, sortBy, sortDirection]);
 
   const activeFiltersCount = [typeFilter !== 'all', startDate, endDate, searchTerm].filter(Boolean).length;
 
@@ -120,6 +162,8 @@ export default function InventoryAudit() {
     setTypeFilter('all');
     setStartDate('');
     setEndDate('');
+    setSortBy('date');
+    setSortDirection('desc');
   };
 
   const handleExportCSV = async () => {
@@ -274,7 +318,7 @@ export default function InventoryAudit() {
       <Card className="mb-6 shadow-sm">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold">Filters</CardTitle>
+            <CardTitle className="text-lg font-semibold">Filters & Sorting</CardTitle>
             {activeFiltersCount > 0 && (
               <Button 
                 variant="ghost" 
@@ -289,7 +333,7 @@ export default function InventoryAudit() {
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
             <div className="space-y-2">
               <label htmlFor="search-input" className="text-sm font-medium text-muted-foreground">Search</label>
               <Input
@@ -338,6 +382,34 @@ export default function InventoryAudit() {
                 onChange={(e) => setEndDate(e.target.value)}
                 aria-label="Filter transactions to date"
               />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Sort By</label>
+              <div className="flex gap-2">
+                <Select value={sortBy} onValueChange={(value: 'date' | 'product' | 'quantity' | 'cost' | 'type') => setSortBy(value)}>
+                  <SelectTrigger className="flex-1 border-border/50 hover:border-primary/50 transition-colors" aria-label="Sort transactions by">
+                    <SelectValue placeholder="Sort by..." />
+                  </SelectTrigger>
+                  <SelectContent className="z-50 bg-background">
+                    <SelectItem value="date">📅 Date</SelectItem>
+                    <SelectItem value="product">📦 Product</SelectItem>
+                    <SelectItem value="quantity">🔢 Quantity</SelectItem>
+                    <SelectItem value="cost">💰 Total Cost</SelectItem>
+                    <SelectItem value="type">📋 Type</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant={sortDirection === 'desc' ? 'default' : 'outline'}
+                  size="icon"
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  className="shrink-0"
+                  title={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
+                  aria-label={`Sort direction: ${sortDirection === 'desc' ? 'Descending' : 'Ascending'}`}
+                >
+                  <ArrowUpDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-2">

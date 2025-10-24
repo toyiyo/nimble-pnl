@@ -51,7 +51,6 @@ import {
   PolarRadiusAxis,
   Radar
 } from 'recharts';
-import { format } from 'date-fns';
 
 interface PnLIntelligenceReportProps {
   restaurantId: string;

@@ -20,7 +20,6 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart
 } from 'recharts';
-import { format } from 'date-fns';
 
 interface ConsumptionIntelligenceReportProps {
   restaurantId: string;

@@ -66,10 +66,12 @@ const Index = () => {
     const totalRevenue = filtered.reduce((sum, day) => sum + day.net_revenue, 0);
     const totalFoodCost = filtered.reduce((sum, day) => sum + day.food_cost, 0);
     const totalLaborCost = filtered.reduce((sum, day) => sum + day.labor_cost, 0);
+    const totalPrimeCost = filtered.reduce((sum, day) => sum + day.prime_cost, 0);
     
-    const avgFoodCostPercentage = filtered.reduce((sum, day) => sum + day.food_cost_percentage, 0) / filtered.length;
-    const avgLaborCostPercentage = filtered.reduce((sum, day) => sum + day.labor_cost_percentage, 0) / filtered.length;
-    const avgPrimeCostPercentage = filtered.reduce((sum, day) => sum + day.prime_cost_percentage, 0) / filtered.length;
+    // Calculate percentages from aggregated totals (guard against division by zero)
+    const avgFoodCostPercentage = totalRevenue > 0 ? (totalFoodCost / totalRevenue) * 100 : 0;
+    const avgLaborCostPercentage = totalRevenue > 0 ? (totalLaborCost / totalRevenue) * 100 : 0;
+    const avgPrimeCostPercentage = totalRevenue > 0 ? (totalPrimeCost / totalRevenue) * 100 : 0;
 
     return {
       net_revenue: totalRevenue,
@@ -102,9 +104,14 @@ const Index = () => {
     }
 
     const totalRevenue = filtered.reduce((sum, day) => sum + day.net_revenue, 0);
-    const avgFoodCostPercentage = filtered.reduce((sum, day) => sum + day.food_cost_percentage, 0) / filtered.length;
-    const avgLaborCostPercentage = filtered.reduce((sum, day) => sum + day.labor_cost_percentage, 0) / filtered.length;
-    const avgPrimeCostPercentage = filtered.reduce((sum, day) => sum + day.prime_cost_percentage, 0) / filtered.length;
+    const totalFoodCost = filtered.reduce((sum, day) => sum + day.food_cost, 0);
+    const totalLaborCost = filtered.reduce((sum, day) => sum + day.labor_cost, 0);
+    const totalPrimeCost = filtered.reduce((sum, day) => sum + day.prime_cost, 0);
+    
+    // Calculate percentages from aggregated totals (guard against division by zero)
+    const avgFoodCostPercentage = totalRevenue > 0 ? (totalFoodCost / totalRevenue) * 100 : 0;
+    const avgLaborCostPercentage = totalRevenue > 0 ? (totalLaborCost / totalRevenue) * 100 : 0;
+    const avgPrimeCostPercentage = totalRevenue > 0 ? (totalPrimeCost / totalRevenue) * 100 : 0;
 
     return {
       net_revenue: totalRevenue,
@@ -319,7 +326,7 @@ const Index = () => {
                     } : undefined}
                     icon={ShoppingCart}
                     variant={periodData && periodData.food_cost_percentage > 35 ? 'warning' : 'default'}
-                    subtitle={periodData ? `${periodData.food_cost_percentage.toFixed(1)}% of revenue | Target: 28-32%${averages && averages.avgFoodCostPercentage > 0 ? ` | Avg: ${averages.avgFoodCostPercentage.toFixed(1)}%` : ''}` : undefined}
+                    subtitle={periodData ? `${periodData.food_cost_percentage.toFixed(1)}% of revenue | Target: 28-32%` : undefined}
                     sparklineData={periodData?.daily_data.map(d => ({ value: d.food_cost }))}
                     periodLabel={selectedPeriod.label}
                   />
@@ -332,7 +339,7 @@ const Index = () => {
                     } : undefined}
                     icon={Clock}
                     variant={periodData && periodData.labor_cost_percentage > 35 ? 'warning' : 'default'}
-                    subtitle={periodData ? `${periodData.labor_cost_percentage.toFixed(1)}% of revenue | Target: 25-30%${averages && averages.avgLaborCostPercentage > 0 ? ` | Avg: ${averages.avgLaborCostPercentage.toFixed(1)}%` : ''}` : undefined}
+                    subtitle={periodData ? `${periodData.labor_cost_percentage.toFixed(1)}% of revenue | Target: 25-30%` : undefined}
                     sparklineData={periodData?.daily_data.map(d => ({ value: d.labor_cost }))}
                     periodLabel={selectedPeriod.label}
                   />
@@ -345,7 +352,7 @@ const Index = () => {
                     } : undefined}
                     icon={Target}
                     variant={periodData && periodData.prime_cost_percentage > 65 ? 'danger' : periodData && periodData.prime_cost_percentage < 60 ? 'success' : 'default'}
-                    subtitle={periodData ? `${periodData.prime_cost_percentage.toFixed(1)}% of revenue | Target: 60-65%${averages && averages.avgPrimeCostPercentage > 0 ? ` | Avg: ${averages.avgPrimeCostPercentage.toFixed(1)}%` : ''}` : undefined}
+                    subtitle={periodData ? `${periodData.prime_cost_percentage.toFixed(1)}% of revenue | Target: 60-65%` : undefined}
                     sparklineData={periodData?.daily_data.map(d => ({ value: d.food_cost + d.labor_cost }))}
                     periodLabel={selectedPeriod.label}
                   />

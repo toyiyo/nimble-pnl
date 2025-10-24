@@ -74,7 +74,11 @@ export interface ConsumptionIntelligenceData {
   };
 }
 
-export const useConsumptionIntelligence = (restaurantId: string | null) => {
+export const useConsumptionIntelligence = (
+  restaurantId: string | null,
+  dateFrom?: Date,
+  dateTo?: Date
+) => {
   const [data, setData] = useState<ConsumptionIntelligenceData | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -85,8 +89,14 @@ export const useConsumptionIntelligence = (restaurantId: string | null) => {
     try {
       setLoading(true);
 
-      const thirtyDaysAgo = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-      const sixtyDaysAgo = format(subDays(new Date(), 60), 'yyyy-MM-dd');
+      // Use provided dates or default to 30/60 days
+      const endDate = dateTo || new Date();
+      const startDate = dateFrom || subDays(endDate, 30);
+      const periodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const previousPeriodStart = subDays(startDate, periodDays);
+
+      const thirtyDaysAgo = format(startDate, 'yyyy-MM-dd');
+      const sixtyDaysAgo = format(previousPeriodStart, 'yyyy-MM-dd');
 
       // Fetch current period transactions
       const { data: currentTransactions, error: currentError } = await supabase
@@ -100,7 +110,8 @@ export const useConsumptionIntelligence = (restaurantId: string | null) => {
           product:products(name, category, cost_per_unit, uom_purchase)
         `)
         .eq('restaurant_id', restaurantId)
-        .gte('created_at', subDays(new Date(), 30).toISOString())
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
         .in('transaction_type', ['usage', 'waste', 'transfer']);
 
       if (currentError) throw currentError;
@@ -110,8 +121,8 @@ export const useConsumptionIntelligence = (restaurantId: string | null) => {
         .from('inventory_transactions')
         .select('total_cost, quantity, created_at, product:products(name)')
         .eq('restaurant_id', restaurantId)
-        .gte('created_at', subDays(new Date(), 60).toISOString())
-        .lt('created_at', subDays(new Date(), 30).toISOString())
+        .gte('created_at', previousPeriodStart.toISOString())
+        .lt('created_at', startDate.toISOString())
         .in('transaction_type', ['usage', 'waste']);
 
       if (previousError) throw previousError;
@@ -189,7 +200,7 @@ export const useConsumptionIntelligence = (restaurantId: string | null) => {
       ingredientMap.forEach((data, name) => {
         const totalUsage = data.usage.reduce((sum, u) => sum + u, 0);
         const totalCost = data.costs.length > 0 ? data.costs.reduce((sum, c) => sum + c, 0) : 0;
-        const avgDailyUsage = totalUsage / 30;
+        const avgDailyUsage = totalUsage / periodDays;
         
         // Calculate variance
         const mean = avgDailyUsage;
@@ -280,7 +291,7 @@ export const useConsumptionIntelligence = (restaurantId: string | null) => {
       
       daysOrder.forEach(day => {
         const data = dayOfWeekMap.get(day) || { usage: 0, cost: 0, count: 0 };
-        const weeks = 4; // Approximate weeks in 30 days
+        const weeks = Math.max(1, Math.floor(periodDays / 7)); // Calculate weeks in period
         seasonalPatterns.push({
           day_of_week: day,
           avg_usage: data.usage / weeks,
@@ -426,7 +437,7 @@ export const useConsumptionIntelligence = (restaurantId: string | null) => {
       const summary = {
         total_consumption_cost: totalCost,
         total_items_tracked: ingredientPatterns.length,
-        avg_daily_cost: ingredientPatterns.length ? totalCost / 30 : 0,
+        avg_daily_cost: ingredientPatterns.length ? totalCost / periodDays : 0,
         waste_percentage: avgWaste,
         efficiency_score: avgEfficiency,
         top_cost_drivers: topCostDrivers,
@@ -459,7 +470,7 @@ export const useConsumptionIntelligence = (restaurantId: string | null) => {
     if (restaurantId) {
       fetchIntelligence();
     }
-  }, [restaurantId]);
+  }, [restaurantId, dateFrom, dateTo]);
 
   return { data, loading, refetch: fetchIntelligence };
 };

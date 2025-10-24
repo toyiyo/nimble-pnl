@@ -24,10 +24,12 @@ import { format } from 'date-fns';
 
 interface RecipeIntelligenceReportProps {
   restaurantId: string;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
-export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> = ({ restaurantId }) => {
-  const { data, loading, refetch } = useRecipeIntelligence(restaurantId);
+export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> = ({ restaurantId, dateFrom, dateTo }) => {
+  const { data, loading, refetch } = useRecipeIntelligence(restaurantId, dateFrom, dateTo);
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 

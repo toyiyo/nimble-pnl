@@ -25,6 +25,8 @@ import { format } from 'date-fns';
 interface DetailedPnLBreakdownProps {
   restaurantId: string;
   days?: number;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
 interface PnLRow {
@@ -43,8 +45,13 @@ interface PnLRow {
   trend?: number[];
 }
 
-export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBreakdownProps) {
-  const { data, loading } = usePnLAnalytics(restaurantId, days);
+export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo }: DetailedPnLBreakdownProps) {
+  const { data, loading } = usePnLAnalytics(restaurantId, { days, dateFrom, dateTo });
+  
+  // Calculate actual days if dates are provided
+  const actualDays = dateFrom && dateTo 
+    ? Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24)) 
+    : days;
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['sales', 'cogs', 'labor', 'prime', 'controllable'])
   );
@@ -108,7 +115,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
         type: 'header',
         level: 0,
         trend: getTrend('net_revenue'),
-        insight: `Revenue ${data.comparison.change.revenue_pct >= 0 ? 'up' : 'down'} ${Math.abs(data.comparison.change.revenue_pct).toFixed(1)}% vs previous ${days} days`,
+        insight: `Revenue ${data.comparison.change.revenue_pct >= 0 ? 'up' : 'down'} ${Math.abs(data.comparison.change.revenue_pct).toFixed(1)}% vs previous ${actualDays} days`,
         status: data.comparison.change.revenue_pct >= 0 ? 'good' : 'warning',
       },
       
@@ -196,11 +203,11 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
         previousPercentage: 100 - previous.avg_prime_cost_pct,
         type: 'total',
         level: 0,
-        insight: `$${((current.revenue - current.prime_cost) / days).toFixed(0)} average daily contribution`,
+        insight: `$${((current.revenue - current.prime_cost) / actualDays).toFixed(0)} average daily contribution`,
         status: 'neutral',
       },
     ];
-  }, [data, days]);
+  }, [data, actualDays]);
 
   const getStatusIcon = (status?: PnLRow['status']) => {
     switch (status) {
@@ -253,7 +260,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
     
     const rows = [
       ['Detailed P&L Breakdown'],
-      ['Period:', `Last ${days} days`, `vs Previous ${days} days`],
+      ['Period:', `Last ${actualDays} days`, `vs Previous ${actualDays} days`],
       ['Generated:', format(new Date(), 'MMM dd, yyyy')],
       [],
       ['Category', 'Amount', '% of Sales', 'Previous Amount', 'Previous %', 'Change', 'Benchmark', 'Status', 'Insight'],
@@ -320,7 +327,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
                 Detailed P&L Breakdown
               </CardTitle>
               <CardDescription className="text-sm">
-                Last {days} days • Inline insights & benchmarks
+                Last {actualDays} days • Inline insights & benchmarks
               </CardDescription>
             </div>
           </div>

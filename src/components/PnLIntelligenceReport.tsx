@@ -53,11 +53,12 @@ import { format } from 'date-fns';
 
 interface PnLIntelligenceReportProps {
   restaurantId: string;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
-export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportProps) {
-  const [timeframe, setTimeframe] = useState<30 | 60 | 90>(30);
-  const { data, loading } = usePnLAnalytics(restaurantId, timeframe);
+export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLIntelligenceReportProps) {
+  const { data, loading } = usePnLAnalytics(restaurantId, { dateFrom, dateTo });
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
@@ -131,7 +132,7 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
       ];
 
       generateTablePDF({
-        title: `P&L Intelligence Report - Last ${timeframe} Days`,
+        title: `P&L Intelligence Report`,
         restaurantName: "",
         columns,
         rows,
@@ -229,14 +230,7 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Tabs value={timeframe.toString()} onValueChange={(v) => setTimeframe(Number(v) as 30 | 60 | 90)}>
-                <TabsList role="tablist">
-                  <TabsTrigger value="30" className="text-xs" aria-label="View 30 day data">30 Days</TabsTrigger>
-                  <TabsTrigger value="60" className="text-xs" aria-label="View 60 day data">60 Days</TabsTrigger>
-                  <TabsTrigger value="90" className="text-xs" aria-label="View 90 day data">90 Days</TabsTrigger>
-                </TabsList>
-              </Tabs>
-              <ExportDropdown 
+              <ExportDropdown
                 onExportCSV={handleExportCSV}
                 onExportPDF={handleExportPDF}
                 isExporting={isExporting}
@@ -417,7 +411,7 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
             <Card>
               <CardHeader>
                 <CardTitle>Period Over Period</CardTitle>
-                <CardDescription>Current vs Previous {timeframe} days</CardDescription>
+                <CardDescription>Current vs Previous period</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">

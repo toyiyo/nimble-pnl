@@ -88,16 +88,21 @@ export interface PnLAnalytics {
   };
 }
 
-export function usePnLAnalytics(restaurantId: string | null, days: number = 30) {
+export function usePnLAnalytics(
+  restaurantId: string | null, 
+  options: { days?: number; dateFrom?: Date; dateTo?: Date } = { days: 30 }
+) {
   const [data, setData] = useState<PnLAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+
+  const { days = 30, dateFrom, dateTo } = options;
 
   useEffect(() => {
     if (restaurantId) {
       fetchPnLAnalytics();
     }
-  }, [restaurantId, days]);
+  }, [restaurantId, days, dateFrom, dateTo]);
 
   const fetchPnLAnalytics = async () => {
     if (!restaurantId) return;
@@ -105,9 +110,11 @@ export function usePnLAnalytics(restaurantId: string | null, days: number = 30) 
     try {
       setLoading(true);
 
-      const endDate = new Date();
-      const startDate = subDays(endDate, days);
-      const previousPeriodStart = subDays(startDate, days);
+      // Use provided dates or calculate from days
+      const endDate = dateTo || new Date();
+      const startDate = dateFrom || subDays(endDate, days);
+      const periodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const previousPeriodStart = subDays(startDate, periodDays);
 
       // Fetch current period data
       const { data: currentPnL, error: currentError } = await supabase

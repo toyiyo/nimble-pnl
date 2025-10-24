@@ -27,6 +27,8 @@ import { format } from 'date-fns';
 
 interface ReconciliationVarianceReportProps {
   restaurantId: string;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
 export function ReconciliationVarianceReport({ restaurantId }: ReconciliationVarianceReportProps) {

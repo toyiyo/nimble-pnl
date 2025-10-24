@@ -17,9 +17,18 @@ import { DetailedPnLBreakdown } from '@/components/DetailedPnLBreakdown';
 import { PnLTrendChart } from '@/components/PnLTrendChart';
 import { CostBreakdownChart } from '@/components/CostBreakdownChart';
 import { SupplierPriceAnalysisReport } from '@/components/SupplierPriceAnalysisReport';
+import { PeriodSelector, type Period } from '@/components/PeriodSelector';
+import { subDays } from 'date-fns';
 
 export default function Reports() {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
+  
+  const [selectedPeriod, setSelectedPeriod] = useState<Period>({
+    type: 'last30',
+    from: subDays(new Date(), 30),
+    to: new Date(),
+    label: 'Last 30 Days'
+  });
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -63,6 +72,12 @@ export default function Reports() {
         restaurantName={selectedRestaurant?.restaurant?.name}
       />
 
+      {/* Period Selector */}
+      <PeriodSelector 
+        selectedPeriod={selectedPeriod}
+        onPeriodChange={setSelectedPeriod}
+      />
+
       <Tabs defaultValue="pnl-trends" className="space-y-4 md:space-y-6">
         <TabsList className="grid w-full grid-cols-3 md:grid-cols-7 h-auto md:h-10" role="tablist">
           <TabsTrigger value="pnl-trends" className="text-xs md:text-sm" aria-label="P&L Trends report">
@@ -87,31 +102,57 @@ export default function Reports() {
         </TabsList>
 
       <TabsContent value="pnl-trends" className="space-y-6">
-        <PnLIntelligenceReport restaurantId={selectedRestaurant.restaurant_id} />
+        <PnLIntelligenceReport 
+          restaurantId={selectedRestaurant.restaurant_id}
+          dateFrom={selectedPeriod.from}
+          dateTo={selectedPeriod.to}
+        />
       </TabsContent>
 
       <TabsContent value="pnl-breakdown" className="space-y-6">
-        <DetailedPnLBreakdown restaurantId={selectedRestaurant.restaurant_id} days={30} />
+        <DetailedPnLBreakdown 
+          restaurantId={selectedRestaurant.restaurant_id}
+          dateFrom={selectedPeriod.from}
+          dateTo={selectedPeriod.to}
+        />
       </TabsContent>
 
       <TabsContent value="profitability" className="space-y-6">
-        <RecipeIntelligenceReport restaurantId={selectedRestaurant.restaurant_id} />
+        <RecipeIntelligenceReport 
+          restaurantId={selectedRestaurant.restaurant_id}
+          dateFrom={selectedPeriod.from}
+          dateTo={selectedPeriod.to}
+        />
       </TabsContent>
 
       <TabsContent value="consumption" className="space-y-6">
-        <ConsumptionIntelligenceReport restaurantId={selectedRestaurant.restaurant_id} />
+        <ConsumptionIntelligenceReport 
+          restaurantId={selectedRestaurant.restaurant_id}
+          dateFrom={selectedPeriod.from}
+          dateTo={selectedPeriod.to}
+        />
       </TabsContent>
 
       <TabsContent value="alerts" className="space-y-6">
-        <AlertsIntelligenceReport restaurantId={selectedRestaurant.restaurant_id} />
+        <AlertsIntelligenceReport 
+          restaurantId={selectedRestaurant.restaurant_id}
+        />
       </TabsContent>
 
       <TabsContent value="variance" className="space-y-6">
-        <ReconciliationVarianceReport restaurantId={selectedRestaurant.restaurant_id} />
+        <ReconciliationVarianceReport 
+          restaurantId={selectedRestaurant.restaurant_id}
+          dateFrom={selectedPeriod.from}
+          dateTo={selectedPeriod.to}
+        />
       </TabsContent>
 
       <TabsContent value="pricing" className="space-y-6">
-        <SupplierPriceAnalysisReport restaurantId={selectedRestaurant.restaurant_id} />
+        <SupplierPriceAnalysisReport 
+          restaurantId={selectedRestaurant.restaurant_id}
+          dateFrom={selectedPeriod.from}
+          dateTo={selectedPeriod.to}
+        />
       </TabsContent>
     </Tabs>
     </div>

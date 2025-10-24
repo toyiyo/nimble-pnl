@@ -33,7 +33,11 @@ interface SupplierMetrics {
   total_purchases: number;
 }
 
-export function useSupplierPriceAnalytics(restaurantId: string | null) {
+export function useSupplierPriceAnalytics(
+  restaurantId: string | null,
+  dateFrom?: Date,
+  dateTo?: Date
+) {
   const [productPricing, setProductPricing] = useState<ProductPricing[]>([]);
   const [supplierMetrics, setSupplierMetrics] = useState<SupplierMetrics[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +47,7 @@ export function useSupplierPriceAnalytics(restaurantId: string | null) {
   useEffect(() => {
     if (!restaurantId) return;
     fetchPriceAnalytics();
-  }, [restaurantId]);
+  }, [restaurantId, dateFrom, dateTo]);
 
   const fetchPriceAnalytics = async () => {
     if (!restaurantId) return;
@@ -79,8 +83,13 @@ export function useSupplierPriceAnalytics(restaurantId: string | null) {
       if (productsError) throw productsError;
 
       // Fetch historical pricing from inventory transactions
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      // Use provided dates or default to 90 days
+      const endDate = dateTo || new Date();
+      const startDate = dateFrom || (() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 90);
+        return d;
+      })();
 
       const { data: transactions, error: transError } = await supabase
         .from('inventory_transactions')
@@ -97,7 +106,8 @@ export function useSupplierPriceAnalytics(restaurantId: string | null) {
         `)
         .eq('restaurant_id', restaurantId)
         .eq('transaction_type', 'purchase')
-        .gte('created_at', ninetyDaysAgo.toISOString())
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
         .order('created_at', { ascending: true });
 
       if (transError) throw transError;

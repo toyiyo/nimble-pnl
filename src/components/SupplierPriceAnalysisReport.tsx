@@ -10,10 +10,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 interface SupplierPriceAnalysisReportProps {
   restaurantId: string;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
-export function SupplierPriceAnalysisReport({ restaurantId }: SupplierPriceAnalysisReportProps) {
-  const { productPricing, supplierMetrics, loading } = useSupplierPriceAnalytics(restaurantId);
+export function SupplierPriceAnalysisReport({ restaurantId, dateFrom, dateTo }: SupplierPriceAnalysisReportProps) {
+  const { productPricing, supplierMetrics, loading } = useSupplierPriceAnalytics(restaurantId, dateFrom, dateTo);
 
   const insights = useMemo(() => {
     if (!productPricing.length) return null;

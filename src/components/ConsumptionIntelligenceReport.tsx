@@ -22,10 +22,12 @@ import { format } from 'date-fns';
 
 interface ConsumptionIntelligenceReportProps {
   restaurantId: string;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
-export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceReportProps> = ({ restaurantId }) => {
-  const { data, loading, refetch } = useConsumptionIntelligence(restaurantId);
+export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceReportProps> = ({ restaurantId, dateFrom, dateTo }) => {
+  const { data, loading, refetch } = useConsumptionIntelligence(restaurantId, dateFrom, dateTo);
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 

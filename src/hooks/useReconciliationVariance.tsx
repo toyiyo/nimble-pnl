@@ -60,7 +60,11 @@ export interface ReconciliationVarianceData {
   };
 }
 
-export function useReconciliationVariance(restaurantId: string | null) {
+export function useReconciliationVariance(
+  restaurantId: string | null,
+  dateFrom?: Date,
+  dateTo?: Date
+) {
   const [data, setData] = useState<ReconciliationVarianceData | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -69,7 +73,7 @@ export function useReconciliationVariance(restaurantId: string | null) {
     if (restaurantId) {
       fetchVarianceData();
     }
-  }, [restaurantId]);
+  }, [restaurantId, dateFrom, dateTo]);
 
   const fetchVarianceData = async () => {
     if (!restaurantId) return;
@@ -77,9 +81,13 @@ export function useReconciliationVariance(restaurantId: string | null) {
     try {
       setLoading(true);
 
-      // Fetch completed reconciliations from the last 90 days
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      // Fetch completed reconciliations from the specified period or last 90 days
+      const endDate = dateTo || new Date();
+      const startDate = dateFrom || (() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 90);
+        return d;
+      })();
 
       const { data: reconciliations, error: recsError } = await supabase
         .from('inventory_reconciliations')
@@ -104,7 +112,8 @@ export function useReconciliationVariance(restaurantId: string | null) {
         `)
         .eq('restaurant_id', restaurantId)
         .eq('status', 'submitted')
-        .gte('reconciliation_date', ninetyDaysAgo.toISOString().split('T')[0])
+        .gte('reconciliation_date', startDate.toISOString().split('T')[0])
+        .lte('reconciliation_date', endDate.toISOString().split('T')[0])
         .order('reconciliation_date', { ascending: true });
 
       if (recsError) throw recsError;

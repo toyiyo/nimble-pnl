@@ -77,7 +77,11 @@ export interface RecipeIntelligenceData {
   };
 }
 
-export const useRecipeIntelligence = (restaurantId: string | null) => {
+export const useRecipeIntelligence = (
+  restaurantId: string | null,
+  dateFrom?: Date,
+  dateTo?: Date
+) => {
   const [data, setData] = useState<RecipeIntelligenceData | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -88,8 +92,14 @@ export const useRecipeIntelligence = (restaurantId: string | null) => {
     try {
       setLoading(true);
 
-      const thirtyDaysAgo = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-      const sixtyDaysAgo = format(subDays(new Date(), 60), 'yyyy-MM-dd');
+      // Use provided dates or default to 30/60 days
+      const endDate = dateTo || new Date();
+      const startDate = dateFrom || subDays(endDate, 30);
+      const periodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const previousPeriodStart = subDays(startDate, periodDays);
+
+      const thirtyDaysAgo = format(startDate, 'yyyy-MM-dd');
+      const sixtyDaysAgo = format(previousPeriodStart, 'yyyy-MM-dd');
 
       // Fetch recipes with ingredients
       const { data: recipes, error: recipesError } = await supabase
@@ -421,7 +431,7 @@ export const useRecipeIntelligence = (restaurantId: string | null) => {
     if (restaurantId) {
       fetchIntelligence();
     }
-  }, [restaurantId]);
+  }, [restaurantId, dateFrom, dateTo]);
 
   return { data, loading, refetch: fetchIntelligence };
 };

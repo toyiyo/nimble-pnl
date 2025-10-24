@@ -115,7 +115,8 @@ export const useRecipeIntelligence = (
             product:products(name, cost_per_unit, category)
           )
         `)
-        .eq('restaurant_id', restaurantId);
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true);
 
       if (recipesError) throw recipesError;
 

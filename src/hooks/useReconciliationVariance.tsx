@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -323,14 +324,16 @@ export function useReconciliationVariance(
     refetchOnMount: true,
   });
 
-  // Handle errors with toast
-  if (query.error) {
-    toast({
-      title: 'Error loading variance analysis',
-      description: (query.error as Error).message,
-      variant: 'destructive',
-    });
-  }
+  // Show toast on error (only once per error change)
+  useEffect(() => {
+    if (query.error) {
+      toast({
+        title: 'Error loading variance analysis',
+        description: (query.error as Error).message,
+        variant: 'destructive',
+      });
+    }
+  }, [query.error, toast]);
 
   return {
     data: query.data || null,

@@ -87,12 +87,17 @@ export function useSupplierPriceAnalytics(
 
       // Fetch historical pricing from inventory transactions
       // Use provided dates or default to 90 days
-      const endDate = dateTo || new Date();
-      const startDate = dateFrom || (() => {
-        const d = new Date();
+      let endDate = dateTo || new Date();
+      let startDate = dateFrom || (() => {
+        const d = new Date(endDate);
         d.setDate(d.getDate() - 90);
         return d;
       })();
+      
+      // Normalize date range: swap if startDate > endDate
+      if (startDate > endDate) {
+        [startDate, endDate] = [endDate, startDate];
+      }
 
       const { data: transactions, error: transError } = await supabase
         .from('inventory_transactions')
@@ -127,8 +132,8 @@ export function useSupplierPriceAnalytics(
           quantity: t.quantity || 0,
         }));
 
-        // Calculate price changes
-        const thirtyDaysAgo = new Date();
+        // Calculate price changes relative to endDate
+        const thirtyDaysAgo = new Date(endDate);
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         
         const recent30d = priceHistory.filter(p => new Date(p.date) >= thirtyDaysAgo);

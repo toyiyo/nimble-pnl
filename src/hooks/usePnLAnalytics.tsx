@@ -111,9 +111,16 @@ export function usePnLAnalytics(
       setLoading(true);
 
       // Use provided dates or calculate from days
-      const endDate = dateTo || new Date();
-      const startDate = dateFrom || subDays(endDate, days);
-      const periodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      let endDate = dateTo || new Date();
+      let startDate = dateFrom || subDays(endDate, days);
+      
+      // Normalize date range: swap if startDate > endDate
+      if (startDate > endDate) {
+        [startDate, endDate] = [endDate, startDate];
+      }
+      
+      const rawPeriodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const periodDays = Math.max(1, rawPeriodDays);
       const previousPeriodStart = subDays(startDate, periodDays);
 
       // Fetch current period data

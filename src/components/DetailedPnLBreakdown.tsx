@@ -48,9 +48,9 @@ interface PnLRow {
 export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo }: DetailedPnLBreakdownProps) {
   const { data, loading } = usePnLAnalytics(restaurantId, { days, dateFrom, dateTo });
   
-  // Calculate actual days if dates are provided
+  // Calculate actual days if dates are provided (inclusive, minimum 1)
   const actualDays = dateFrom && dateTo 
-    ? Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24)) 
+    ? Math.max(1, Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24)) + 1)
     : days;
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['sales', 'cogs', 'labor', 'prime', 'controllable'])

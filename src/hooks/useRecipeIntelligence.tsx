@@ -93,8 +93,14 @@ export const useRecipeIntelligence = (
       setLoading(true);
 
       // Use provided dates or default to 30/60 days
-      const endDate = dateTo || new Date();
-      const startDate = dateFrom || subDays(endDate, 30);
+      let endDate = dateTo || new Date();
+      let startDate = dateFrom || subDays(endDate, 30);
+      
+      // Normalize date range: swap if dateFrom > dateTo
+      if (startDate > endDate) {
+        [startDate, endDate] = [endDate, startDate];
+      }
+      
       const rawPeriodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
       const periodDays = Math.max(1, rawPeriodDays);
       const previousPeriodStart = subDays(startDate, periodDays);

@@ -156,6 +156,24 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Sync Square orders to unified_sales table (for POS Sales page)
+    try {
+      console.log('Syncing Square orders to unified_sales...');
+      const { error: unifiedSyncError } = await supabase.rpc('sync_square_to_unified_sales', {
+        p_restaurant_id: restaurantId
+      });
+      
+      if (unifiedSyncError) {
+        console.error('Error syncing to unified_sales:', unifiedSyncError);
+        results.errors.push(`Failed to sync to POS Sales: ${unifiedSyncError.message}`);
+      } else {
+        console.log('Successfully synced Square orders to unified_sales');
+      }
+    } catch (error: any) {
+      console.error('Unified sales sync error:', error);
+      results.errors.push(`Unified sales sync failed: ${error.message}`);
+    }
+
     // Calculate P&L for synced dates
     try {
       const dateRangeArray = getDateRange(startDate, endDate);

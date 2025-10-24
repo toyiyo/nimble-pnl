@@ -95,31 +95,6 @@ export const SquareSync = ({ restaurantId, isConnected }: SquareSyncProps) => {
     handleSync('daily_sync');
   };
 
-  const handleSyncToPOSSales = async () => {
-    setIsLoading(true);
-    try {
-      const { error } = await supabase.rpc('sync_square_to_unified_sales', {
-        p_restaurant_id: restaurantId
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Sync Complete",
-        description: "Square data has been synced to POS Sales successfully",
-      });
-    } catch (error: any) {
-      console.error('POS Sales sync error:', error);
-      toast({
-        title: "Sync Failed",
-        description: error.message || "Failed to sync Square data to POS Sales",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
 
   if (!isConnected) {
     return (
@@ -215,23 +190,6 @@ export const SquareSync = ({ restaurantId, isConnected }: SquareSyncProps) => {
             >
               {isLoading ? 'Syncing...' : 'Sync Last 7 Days'}
             </Button>
-          </div>
-          
-          {/* Manual Sync to POS Sales */}
-          <div className="pt-4 border-t">
-            <Button
-              onClick={handleSyncToPOSSales}
-              disabled={isLoading}
-              variant="secondary"
-              className="w-full"
-              size="sm"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Sync to POS Sales
-            </Button>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              Manually sync Square orders to the POS Sales page
-            </p>
           </div>
         </div>
 

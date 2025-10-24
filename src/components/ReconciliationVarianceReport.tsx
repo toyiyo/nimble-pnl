@@ -31,8 +31,8 @@ interface ReconciliationVarianceReportProps {
   dateTo?: Date;
 }
 
-export function ReconciliationVarianceReport({ restaurantId }: ReconciliationVarianceReportProps) {
-  const { data, loading } = useReconciliationVariance(restaurantId);
+export function ReconciliationVarianceReport({ restaurantId, dateFrom, dateTo }: ReconciliationVarianceReportProps) {
+  const { data, loading } = useReconciliationVariance(restaurantId, dateFrom, dateTo);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];

@@ -42,9 +42,9 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
         'Category': item.category,
         'Current Stock': item.current_stock,
         'Reorder Point': item.reorder_point,
-        'Days Until Stockout': item.days_until_stockout || 'N/A',
+        'Days Until Stockout': item.days_until_stockout != null ? String(item.days_until_stockout) : 'N/A',
         'Risk Level': item.stockout_risk,
-        'Supplier': item.supplier_name || 'N/A',
+        'Supplier': item.supplier_name ?? 'N/A',
       }));
 
       exportCSV({
@@ -77,10 +77,10 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
         item.name,
         item.category,
         item.current_stock.toString(),
-        item.reorder_point?.toString() || 'N/A',
-        item.days_until_stockout?.toString() || 'N/A',
+        item.reorder_point != null ? String(item.reorder_point) : 'N/A',
+        item.days_until_stockout != null ? String(item.days_until_stockout) : 'N/A',
         item.stockout_risk,
-        item.supplier_name || 'N/A',
+        item.supplier_name ?? 'N/A',
       ]);
 
       generateTablePDF({

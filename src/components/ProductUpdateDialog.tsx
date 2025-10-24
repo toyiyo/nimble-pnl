@@ -1073,10 +1073,10 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                     💡 <strong>Inventory levels are measured in your package size units</strong>
                   </p>
                   <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                    {product.size_value && product.size_unit 
-                      ? `Since you purchase this as "${product.uom_purchase}" containing ${product.size_value} ${product.size_unit}, 
-                         enter your desired levels in ${product.size_unit} (e.g., gallons, ounces).`
-                      : `Set your reorder and par levels in ${product.uom_purchase || 'purchase units'}.`}
+                    {form.watch('size_value') && form.watch('size_unit')
+                      ? `Since you purchase this as "${form.watch('uom_purchase')}" containing ${form.watch('size_value')} ${form.watch('size_unit')}, 
+                         enter your desired levels in ${form.watch('size_unit')} (e.g., gallons, ounces).`
+                      : `Set your reorder and par levels in ${form.watch('uom_purchase') || 'purchase units'}.`}
                   </p>
                 </div>
 
@@ -1084,7 +1084,12 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                   label="Reorder Point"
                   value={form.watch('reorder_point') || 0}
                   onChange={(val) => form.setValue('reorder_point', val)}
-                  product={product}
+                  product={{
+                    uom_purchase: form.watch('uom_purchase'),
+                    size_value: form.watch('size_value'),
+                    size_unit: form.watch('size_unit'),
+                    name: form.watch('name')
+                  }}
                   helpText="When stock falls to this level, you'll get an alert to reorder"
                 />
                 
@@ -1093,7 +1098,12 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                     label="Minimum Par Level"
                     value={form.watch('par_level_min') || 0}
                     onChange={(val) => form.setValue('par_level_min', val)}
-                    product={product}
+                    product={{
+                      uom_purchase: form.watch('uom_purchase'),
+                      size_value: form.watch('size_value'),
+                      size_unit: form.watch('size_unit'),
+                      name: form.watch('name')
+                    }}
                     helpText="Minimum stock you want to maintain"
                   />
                   
@@ -1101,7 +1111,12 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                     label="Maximum Par Level"
                     value={form.watch('par_level_max') || 0}
                     onChange={(val) => form.setValue('par_level_max', val)}
-                    product={product}
+                    product={{
+                      uom_purchase: form.watch('uom_purchase'),
+                      size_value: form.watch('size_value'),
+                      size_unit: form.watch('size_unit'),
+                      name: form.watch('name')
+                    }}
                     helpText="Maximum stock level (useful for space management)"
                   />
                 </div>

@@ -21,7 +21,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   Area, AreaChart, ComposedChart
 } from 'recharts';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
 
 interface RecipeIntelligenceReportProps {
   restaurantId: string;
@@ -34,6 +34,10 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
   const { selectedRestaurant } = useRestaurantContext();
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
+
+  // Compute effective date range to match hook's default behavior
+  const effectiveDateFrom = dateFrom ?? subDays(dateTo ?? new Date(), 30);
+  const effectiveDateTo = dateTo ?? new Date();
 
   const handleExportCSV = async () => {
     if (!data) return;
@@ -49,7 +53,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
         'Trend': recipe.trend,
       }));
       const suffix = (dateFrom || dateTo)
-        ? `${format(dateFrom ?? new Date(), 'yyyyMMdd')}-${format(dateTo ?? new Date(), 'yyyyMMdd')}`
+        ? `${format(effectiveDateFrom, 'yyyyMMdd')}-${format(effectiveDateTo, 'yyyyMMdd')}`
         : undefined;
       exportCSV({ data: csvData, filename: generateCSVFilename('recipe_intelligence', suffix) });
       toast({ title: "Export Successful", description: "Recipe data exported to CSV" });
@@ -67,7 +71,7 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
       const columns = ["Recipe", "Margin %", "Food Cost %", "Revenue", "Units Sold", "Efficiency", "Trend"];
       const rows = data.performance.map(r => [r.name, `${r.margin.toFixed(1)}%`, `${r.food_cost_percentage.toFixed(1)}%`, `$${r.total_sales.toFixed(2)}`, r.total_quantity_sold.toString(), r.efficiency_score.toFixed(0), r.trend]);
       const suffix = (dateFrom || dateTo)
-        ? `${format(dateFrom ?? new Date(), 'yyyyMMdd')}-${format(dateTo ?? new Date(), 'yyyyMMdd')}`
+        ? `${format(effectiveDateFrom, 'yyyyMMdd')}-${format(effectiveDateTo, 'yyyyMMdd')}`
         : undefined;
       generateTablePDF({
         title: "Recipe Intelligence Report",

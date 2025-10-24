@@ -211,8 +211,8 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
 
   const getStatusIcon = (status?: PnLRow['status']) => {
     switch (status) {
-      case 'good': return <CheckCircle className="h-4 w-4 text-foreground" />;
-      case 'warning': return <AlertCircle className="h-4 w-4 text-foreground/80" />;
+      case 'good': return <CheckCircle className="h-4 w-4 text-emerald-600" />;
+      case 'warning': return <AlertCircle className="h-4 w-4 text-amber-600" />;
       case 'critical': return <AlertCircle className="h-4 w-4 text-destructive" />;
       default: return <Minus className="h-4 w-4 text-muted-foreground" />;
     }
@@ -223,7 +223,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
     const change = ((current - previous) / previous) * 100;
     if (Math.abs(change) < 1) return <Minus className="h-3 w-3 text-muted-foreground" />;
     return change > 0 
-      ? <TrendingUp className="h-3 w-3 text-foreground" />
+      ? <TrendingUp className="h-3 w-3 text-emerald-600" />
       : <TrendingDown className="h-3 w-3 text-destructive" />;
   };
 

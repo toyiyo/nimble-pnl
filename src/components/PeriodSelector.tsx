@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from 'lucide-react';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Badge } from '@/components/ui/badge';
-import { startOfWeek, endOfDay, startOfMonth, startOfQuarter, subDays, format } from 'date-fns';
+import { startOfWeek, endOfDay, startOfMonth, startOfQuarter, subDays, format, startOfDay } from 'date-fns';
 
 export type PeriodType = 'today' | 'week' | 'month' | 'quarter' | 'last30' | 'last90' | 'custom';
 
@@ -26,12 +26,12 @@ export function PeriodSelector({ selectedPeriod, onPeriodChange }: PeriodSelecto
   const endToday = endOfDay(today);
 
   const periods: Array<{ type: PeriodType; label: string; from: Date; to: Date }> = [
-    { type: 'today', label: 'Today', from: today, to: endToday },
-    { type: 'week', label: 'This Week', from: startOfWeek(today, { weekStartsOn: 1 }), to: endToday },
-    { type: 'month', label: 'This Month', from: startOfMonth(today), to: endToday },
-    { type: 'quarter', label: 'This Quarter', from: startOfQuarter(today), to: endToday },
-    { type: 'last30', label: 'Last 30 Days', from: subDays(today, 30), to: endToday },
-    { type: 'last90', label: 'Last 90 Days', from: subDays(today, 90), to: endToday },
+    { type: 'today', label: 'Today', from: startOfDay(today), to: endToday },
+    { type: 'week', label: 'This Week', from: startOfDay(startOfWeek(today, { weekStartsOn: 1 })), to: endToday },
+    { type: 'month', label: 'This Month', from: startOfDay(startOfMonth(today)), to: endToday },
+    { type: 'quarter', label: 'This Quarter', from: startOfDay(startOfQuarter(today)), to: endToday },
+    { type: 'last30', label: 'Last 30 Days', from: startOfDay(subDays(endToday, 29)), to: endToday },
+    { type: 'last90', label: 'Last 90 Days', from: startOfDay(subDays(endToday, 89)), to: endToday },
   ];
 
   const handlePeriodSelect = (period: typeof periods[0]) => {
@@ -57,8 +57,18 @@ export function PeriodSelector({ selectedPeriod, onPeriodChange }: PeriodSelecto
   };
 
   const getDayCount = () => {
-    const diffTime = Math.abs(selectedPeriod.to.getTime() - selectedPeriod.from.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const from = selectedPeriod.from;
+    const to = selectedPeriod.to;
+    
+    // Handle invalid range defensively
+    if (to < from) return 0;
+    
+    // Create UTC-only dates for calendar day difference
+    const fromUTC = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
+    const toUTC = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
+    
+    // Calculate inclusive day count
+    const diffDays = Math.floor((toUTC - fromUTC) / (1000 * 60 * 60 * 24));
     return diffDays + 1;
   };
 

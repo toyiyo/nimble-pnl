@@ -813,6 +813,16 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                               return;
                             }
 
+                            // Validate cost
+                            if (!Number.isFinite(newSupplier.cost) || newSupplier.cost < 0) {
+                              toast({
+                                title: 'Error',
+                                description: 'Enter a valid non-negative cost',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
+
                             if (!restaurantId) {
                               toast({
                                 title: 'Error',

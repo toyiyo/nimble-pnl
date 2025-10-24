@@ -45,7 +45,10 @@ export function useSupplierPriceAnalytics(
   const requestIdRef = useRef(0);
 
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!restaurantId) {
+      setLoading(false);
+      return;
+    }
     fetchPriceAnalytics();
   }, [restaurantId, dateFrom, dateTo]);
 

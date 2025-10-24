@@ -408,11 +408,11 @@ export const useConsumptionIntelligence = (
 
       // Generate predictions
       const recentWeekCost = currentTransactions
-        ?.filter(t => new Date(t.created_at) >= subDays(new Date(), 7))
+        ?.filter(t => new Date(t.created_at) >= subDays(endDate, 7))
         .reduce((sum, t) => sum + Math.abs(t.total_cost || 0), 0) || 0;
 
       const recentWeekUsage = currentTransactions
-        ?.filter(t => new Date(t.created_at) >= subDays(new Date(), 7))
+        ?.filter(t => new Date(t.created_at) >= subDays(endDate, 7))
         .reduce((sum, t) => sum + Math.abs(t.quantity || 0), 0) || 0;
 
       const trendMultiplier = costChange > 0 ? 1 + (costChange / 100) : 1;

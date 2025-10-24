@@ -51,6 +51,26 @@ export interface TablePDFExportOptions {
   filename: string;
 }
 
+/**
+ * Add footer with timestamp and page numbers to PDF
+ */
+const addFooter = (doc: jsPDF, opts?: { centered?: boolean }) => {
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    const genText = `Generated on ${format(new Date(), "MMM dd, yyyy 'at' h:mm a")}`;
+    
+    if (opts?.centered) {
+      doc.text(`${genText} | Page ${i} of ${pageCount}`, 105, 285, { align: 'center' });
+    } else {
+      doc.text(genText, 14, doc.internal.pageSize.height - 10);
+      doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 10);
+    }
+  }
+};
+
 export const generateTablePDF = (options: TablePDFExportOptions) => {
   const doc = new jsPDF();
   let yPosition = 20;
@@ -122,24 +142,7 @@ export const generateTablePDF = (options: TablePDFExportOptions) => {
     margin: { top: 10, left: 14, right: 14 },
   });
 
-  // Footer
-  const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.text(
-      `Generated on ${format(new Date(), "MMM dd, yyyy 'at' h:mm a")}`,
-      14,
-      doc.internal.pageSize.height - 10
-    );
-    doc.text(
-      `Page ${i} of ${pageCount}`,
-      doc.internal.pageSize.width - 30,
-      doc.internal.pageSize.height - 10
-    );
-  }
-
+  addFooter(doc);
   doc.save(options.filename);
 };
 
@@ -279,18 +282,7 @@ export const generateFinancialReportPDF = (options: PDFExportOptions) => {
     });
   }
 
-  // Footer - Generation timestamp
-  const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Generated on ${format(new Date(), "MMM dd, yyyy h:mm a")} | Page ${i} of ${pageCount}`, 105, 285, {
-      align: "center",
-    });
-  }
-
-  // Save the PDF
+  addFooter(doc, { centered: true });
   doc.save(options.filename);
 };
 

@@ -14,6 +14,11 @@ export interface CSVExportOptions {
 export const exportToCSV = (options: CSVExportOptions): void => {
   const { data, filename, headers } = options;
   
+  // No-op in SSR or non-DOM environments
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return;
+  }
+  
   // If headers are provided, ensure they're in the correct order
   let csvData = data;
   if (headers && headers.length > 0) {
@@ -26,8 +31,14 @@ export const exportToCSV = (options: CSVExportOptions): void => {
     });
   }
   
-  const csv = Papa.unparse(csvData);
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  // Ensure headers are emitted even when data is empty
+  const csv = headers && headers.length > 0
+    ? Papa.unparse({ fields: headers, data: (csvData as Record<string, any>[]).map(r => headers.map(h => r[h])) })
+    : Papa.unparse(csvData);
+  
+  // Add BOM for better Excel compatibility
+  const csvWithBOM = '\uFEFF' + csv;
+  const blob = new Blob([csvWithBOM], { type: "text/csv;charset=utf-8;" });
   const link = document.createElement("a");
   const url = URL.createObjectURL(blob);
   
@@ -48,6 +59,7 @@ export const exportToCSV = (options: CSVExportOptions): void => {
  */
 export const generateCSVFilename = (prefix: string, suffix?: string): string => {
   const timestamp = format(new Date(), "yyyyMMdd_HHmmss");
-  const suffixPart = suffix ? `_${suffix}` : "";
-  return `${prefix}${suffixPart}_${timestamp}.csv`;
+  const sanitize = (s: string) => s.replace(/[^\w.-]+/g, "_");
+  const suffixPart = suffix ? `_${sanitize(suffix)}` : "";
+  return `${sanitize(prefix)}${suffixPart}_${timestamp}.csv`;
 };

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricIcon } from '@/components/MetricIcon';
 import { useAlertsIntelligence } from '@/hooks/useAlertsIntelligence';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { ExportDropdown } from '@/components/financial-statements/shared/ExportDropdown';
 import { generateTablePDF } from '@/utils/pdfExport';
 import { exportToCSV as exportCSV, generateCSVFilename } from '@/utils/csvExport';
@@ -28,6 +29,7 @@ interface AlertsIntelligenceReportProps {
 
 export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> = ({ restaurantId }) => {
   const { data, loading, refetch } = useAlertsIntelligence(restaurantId);
+  const { selectedRestaurant } = useRestaurantContext();
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
@@ -83,7 +85,7 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
 
       generateTablePDF({
         title: "Alerts Intelligence Report",
-        restaurantName: "",
+        restaurantName: selectedRestaurant?.restaurant?.name ?? 'Restaurant',
         columns,
         rows,
         filename: generateCSVFilename('alerts_intelligence').replace('.csv', '.pdf'),

@@ -191,7 +191,8 @@ export const useRecipeIntelligence = (
 
           // Calculate efficiency score (0-100) with proper clamping
           const marginScore = Math.max(0, Math.min((margin / 70) * 40, 40));
-          const velocityScore = Math.max(0, Math.min((totalQuantitySold / 30) * 30, 30));
+          const daysInPeriod = Math.max(1, periodDays);
+          const velocityScore = Math.max(0, Math.min((totalQuantitySold / daysInPeriod) * 30, 30));
           const costScore = Math.max(0, Math.min((1 - (foodCostPct / 35)) * 30, 30));
           const efficiencyScore = marginScore + velocityScore + costScore;
 
@@ -208,7 +209,7 @@ export const useRecipeIntelligence = (
             profit_contribution: totalProfit,
             efficiency_score: efficiencyScore,
             trend,
-            velocity: totalQuantitySold / 30
+            velocity: totalQuantitySold / daysInPeriod
           });
 
           totalRevenue += totalSales;
@@ -379,7 +380,7 @@ export const useRecipeIntelligence = (
 
       // Generate predictions
       const recentWeekSales = performance.reduce((sum, r) => {
-        const lastWeekStart = format(subDays(new Date(), 7), 'yyyy-MM-dd');
+        const lastWeekStart = format(subDays(endDate, 7), 'yyyy-MM-dd');
         const lastWeekSales = currentSales?.filter(s => 
           (s.item_name === r.name || s.item_name === (recipes?.find(rec => rec.id === r.id)?.pos_item_name)) &&
           s.sale_date >= lastWeekStart

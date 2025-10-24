@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricIcon } from '@/components/MetricIcon';
 import { useRecipeIntelligence } from '@/hooks/useRecipeIntelligence';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { ExportDropdown } from '@/components/financial-statements/shared/ExportDropdown';
 import { generateTablePDF } from '@/utils/pdfExport';
 import { exportToCSV as exportCSV, generateCSVFilename } from '@/utils/csvExport';
@@ -30,6 +31,7 @@ interface RecipeIntelligenceReportProps {
 
 export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> = ({ restaurantId, dateFrom, dateTo }) => {
   const { data, loading, refetch } = useRecipeIntelligence(restaurantId, dateFrom, dateTo);
+  const { selectedRestaurant } = useRestaurantContext();
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
@@ -46,7 +48,10 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
         'Efficiency': recipe.efficiency_score.toFixed(0),
         'Trend': recipe.trend,
       }));
-      exportCSV({ data: csvData, filename: generateCSVFilename('recipe_intelligence') });
+      const suffix = (dateFrom || dateTo)
+        ? `${format(dateFrom ?? new Date(), 'yyyyMMdd')}-${format(dateTo ?? new Date(), 'yyyyMMdd')}`
+        : undefined;
+      exportCSV({ data: csvData, filename: generateCSVFilename('recipe_intelligence', suffix) });
       toast({ title: "Export Successful", description: "Recipe data exported to CSV" });
     } catch (error) {
       toast({ title: "Export Failed", description: "Failed to export recipe data", variant: "destructive" });
@@ -61,7 +66,16 @@ export const RecipeIntelligenceReport: React.FC<RecipeIntelligenceReportProps> =
     try {
       const columns = ["Recipe", "Margin %", "Food Cost %", "Revenue", "Units Sold", "Efficiency", "Trend"];
       const rows = data.performance.map(r => [r.name, `${r.margin.toFixed(1)}%`, `${r.food_cost_percentage.toFixed(1)}%`, `$${r.total_sales.toFixed(2)}`, r.total_quantity_sold.toString(), r.efficiency_score.toFixed(0), r.trend]);
-      generateTablePDF({ title: "Recipe Intelligence Report", restaurantName: "", columns, rows, filename: generateCSVFilename('recipe_intelligence').replace('.csv', '.pdf') });
+      const suffix = (dateFrom || dateTo)
+        ? `${format(dateFrom ?? new Date(), 'yyyyMMdd')}-${format(dateTo ?? new Date(), 'yyyyMMdd')}`
+        : undefined;
+      generateTablePDF({
+        title: "Recipe Intelligence Report",
+        restaurantName: selectedRestaurant?.restaurant?.name ?? 'Restaurant',
+        columns,
+        rows,
+        filename: generateCSVFilename('recipe_intelligence', suffix).replace('.csv', '.pdf'),
+      });
       toast({ title: "Export Successful", description: "Recipe report exported to PDF" });
     } catch (error) {
       toast({ title: "Export Failed", description: "Failed to export recipe report", variant: "destructive" });

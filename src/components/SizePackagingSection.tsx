@@ -208,7 +208,12 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
                   value={field.value !== undefined && field.value !== null ? String(field.value) : ''}
                   onChange={(e) => {
                     const value = e.target.value;
-                    field.onChange(value === '' ? undefined : parseFloat(value));
+                    if (value === '') {
+                      field.onChange(undefined);
+                    } else {
+                      const parsed = parseFloat(value);
+                      field.onChange(isNaN(parsed) ? undefined : parsed);
+                    }
                   }}
                 />
               </FormControl>

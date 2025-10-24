@@ -83,7 +83,8 @@ async function fetchConsumptionIntelligence(
   // Use provided dates or default to 30/60 days
   const endDate = dateTo || new Date();
   const startDate = dateFrom || subDays(endDate, 30);
-  const periodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const rawDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const periodDays = Math.max(1, rawDays);
   const previousPeriodStart = subDays(startDate, periodDays);
 
   const thirtyDaysAgo = format(startDate, 'yyyy-MM-dd');

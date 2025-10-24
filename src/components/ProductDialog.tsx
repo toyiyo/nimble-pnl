@@ -97,7 +97,7 @@ const PURCHASE_UNITS = [
 ];
 
 const RECIPE_UNITS = [
-  'fl oz', 'oz' 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'g', 'each', 'piece', 'serving'
+  'fl oz', 'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'g', 'each', 'piece', 'serving'
 ];
 
 export const ProductDialog: React.FC<ProductDialogProps> = ({

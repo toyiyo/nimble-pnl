@@ -237,7 +237,9 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       setImageUrl(data.publicUrl);
       form.setValue('image_url', data.publicUrl);
     } catch (error) {
-      console.error('Error uploading image:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error uploading image:', error);
+      }
     } finally {
       setUploading(false);
     }

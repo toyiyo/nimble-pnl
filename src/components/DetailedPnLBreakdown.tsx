@@ -277,7 +277,16 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         ]),
     ];
 
-    const csv = rows.map(row => row.join(',')).join('\n');
+    // Escape CSV cells to prevent formula injection and handle special characters
+    const escapeCSV = (cell: any) => {
+      const s = String(cell ?? '');
+      // Prevent formula injection by prefixing with single quote if starts with =, +, -, @
+      const prefixed = /^[=+\-@]/.test(s) ? "'" + s : s;
+      // RFC4180 compliant: quote and escape internal quotes
+      return `"${prefixed.replace(/"/g, '""')}"`;
+    };
+    
+    const csv = rows.map(row => row.map(escapeCSV).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

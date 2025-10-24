@@ -151,7 +151,8 @@ export const useRecipeIntelligence = (
         `)
         .eq('restaurant_id', restaurantId)
         .eq('transaction_type', 'usage')
-        .gte('created_at', subDays(new Date(), 30).toISOString());
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString());
 
       if (transactionsError) throw transactionsError;
 

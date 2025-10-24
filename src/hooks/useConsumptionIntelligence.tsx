@@ -123,7 +123,7 @@ export const useConsumptionIntelligence = (
         .eq('restaurant_id', restaurantId)
         .gte('created_at', previousPeriodStart.toISOString())
         .lt('created_at', startDate.toISOString())
-        .in('transaction_type', ['usage', 'waste']);
+        .in('transaction_type', ['usage', 'waste', 'transfer']);
 
       if (previousError) throw previousError;
 

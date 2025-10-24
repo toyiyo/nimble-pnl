@@ -307,11 +307,19 @@ export default function POSSales() {
         ]);
       } else {
         columns = ["Item Name", "Total Qty", "Total Revenue", "Avg Price"];
-        tableData = dataToExport.map((item) => [
-          item.itemName,
-          item.totalQuantity.toString(),
-          `$${item.totalRevenue.toFixed(2)}`,
-          `$${item.averagePrice.toFixed(2)}`,
+        // Re-group from filtered sales to respect date filters
+        const byItem = new Map<string, { totalQuantity: number; totalRevenue: number }>();
+        for (const s of filteredSales) {
+          const g = byItem.get(s.itemName) ?? { totalQuantity: 0, totalRevenue: 0 };
+          g.totalQuantity += s.quantity;
+          g.totalRevenue += s.totalPrice ?? 0;
+          byItem.set(s.itemName, g);
+        }
+        tableData = Array.from(byItem.entries()).map(([itemName, g]) => [
+          itemName,
+          g.totalQuantity.toString(),
+          `$${g.totalRevenue.toFixed(2)}`,
+          `$${(g.totalRevenue / Math.max(1, g.totalQuantity)).toFixed(2)}`,
         ]);
       }
 
@@ -344,7 +352,7 @@ export default function POSSales() {
         description: "POS sales report exported to PDF",
       });
     } catch (error) {
-      console.error("Error exporting PDF:", error);
+      if (import.meta?.env?.DEV) console.error("Error exporting PDF:", error);
       toast({
         title: "Export Failed",
         description: "Failed to export POS sales report",
@@ -535,6 +543,7 @@ export default function POSSales() {
                       onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
                       className="transition-all hover:scale-105 duration-200"
                       title={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
+                      aria-label={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
                     >
                       <ArrowUpDown className={`w-4 h-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
                     </Button>

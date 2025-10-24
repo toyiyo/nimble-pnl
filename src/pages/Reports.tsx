@@ -26,7 +26,7 @@ export default function Reports() {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
     type: 'last30',
     from: subDays(new Date(), 30),
-    to: new Date(),
+    to: new Date(new Date().setHours(23, 59, 59, 999)),
     label: 'Last 30 Days'
   });
 

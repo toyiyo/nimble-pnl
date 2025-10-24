@@ -104,7 +104,7 @@ export function PeriodSelector({ selectedPeriod, onPeriodChange }: PeriodSelecto
             onClick={() => setShowDatePicker(true)}
             className="transition-all"
           >
-            <Calendar className="h-4 w-4 mr-2" />
+            <Calendar className="h-4 w-4 mr-2" aria-hidden="true" />
             Custom Range
           </Button>
         )}
@@ -112,7 +112,7 @@ export function PeriodSelector({ selectedPeriod, onPeriodChange }: PeriodSelecto
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <Badge variant="secondary" className="gap-2 px-3 py-1.5">
-          <Calendar className="h-3.5 w-3.5" />
+          <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
           {selectedPeriod.label}
         </Badge>
         <span className="text-muted-foreground">

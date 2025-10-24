@@ -8,11 +8,13 @@ import { ExportDropdown } from '@/components/financial-statements/shared/ExportD
 import { generateTablePDF } from '@/utils/pdfExport';
 import { exportToCSV as exportCSV, generateCSVFilename } from '@/utils/csvExport';
 import { useToast } from '@/hooks/use-toast';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { format } from 'date-fns';
 import { 
   TrendingUp, 
   TrendingDown, 
   DollarSign, 
-  Target, 
+  Target,
   AlertCircle,
   CheckCircle2,
   AlertTriangle,
@@ -70,6 +72,8 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
     profit: '#3b82f6',
   };
 
+  const { selectedRestaurant } = useRestaurantContext();
+
   const handleExportCSV = async () => {
     if (!data) return;
     setIsExporting(true);
@@ -85,9 +89,14 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
         'Prime Cost %': `${day.prime_cost_percentage.toFixed(1)}%`,
       }));
 
+      const suffix =
+        dateFrom && dateTo
+          ? `${format(dateFrom, 'yyyyMMdd')}_to_${format(dateTo, 'yyyyMMdd')}`
+          : undefined;
+
       exportCSV({
         data: csvData,
-        filename: generateCSVFilename('pnl_intelligence'),
+        filename: generateCSVFilename('pnl_intelligence', suffix),
       });
 
       toast({
@@ -95,7 +104,7 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
         description: "P&L intelligence data exported to CSV",
       });
     } catch (error) {
-      console.error("Error exporting CSV:", error);
+      if (import.meta?.env?.DEV) console.error("Error exporting CSV:", error);
       toast({
         title: "Export Failed",
         description: "Failed to export P&L data",
@@ -131,13 +140,21 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
         { label: "Avg Labor Cost %", value: `${data.comparison.current_period.avg_labor_cost_pct.toFixed(1)}%` },
       ];
 
+      const dateRange =
+        dateFrom && dateTo
+          ? `${format(dateFrom, 'MMM d, yyyy')} to ${format(dateTo, 'MMM d, yyyy')}`
+          : undefined;
+
+      const suffix = dateRange?.replace(/\W+/g, '_');
+
       generateTablePDF({
         title: `P&L Intelligence Report`,
-        restaurantName: "",
+        restaurantName: selectedRestaurant?.restaurant.name ?? "",
+        dateRange,
         columns,
         rows,
         metrics,
-        filename: generateCSVFilename('pnl_intelligence').replace('.csv', '.pdf'),
+        filename: generateCSVFilename('pnl_intelligence', suffix).replace('.csv', '.pdf'),
       });
 
       toast({
@@ -145,7 +162,7 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
         description: "P&L intelligence report exported to PDF",
       });
     } catch (error) {
-      console.error("Error exporting PDF:", error);
+      if (import.meta?.env?.DEV) console.error("Error exporting PDF:", error);
       toast({
         title: "Export Failed",
         description: "Failed to export P&L report",

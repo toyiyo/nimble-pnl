@@ -211,9 +211,9 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
 
   const getStatusIcon = (status?: PnLRow['status']) => {
     switch (status) {
-      case 'good': return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'warning': return <AlertCircle className="h-4 w-4 text-orange-500" />;
-      case 'critical': return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case 'good': return <CheckCircle className="h-4 w-4 text-foreground" />;
+      case 'warning': return <AlertCircle className="h-4 w-4 text-foreground/80" />;
+      case 'critical': return <AlertCircle className="h-4 w-4 text-destructive" />;
       default: return <Minus className="h-4 w-4 text-muted-foreground" />;
     }
   };
@@ -223,8 +223,8 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
     const change = ((current - previous) / previous) * 100;
     if (Math.abs(change) < 1) return <Minus className="h-3 w-3 text-muted-foreground" />;
     return change > 0 
-      ? <TrendingUp className="h-3 w-3 text-green-500" />
-      : <TrendingDown className="h-3 w-3 text-red-500" />;
+      ? <TrendingUp className="h-3 w-3 text-foreground" />
+      : <TrendingDown className="h-3 w-3 text-destructive" />;
   };
 
   const MiniSparkline = ({ data }: { data: number[] }) => {
@@ -364,7 +364,9 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
 
               {/* Data Rows */}
               <TooltipProvider>
-                {pnlStructure.map((row) => (
+                {pnlStructure.map((row) => {
+                  const levelIndentClass = ['pl-0','pl-4','pl-8','pl-12','pl-16'][Math.min(row.level, 4)];
+                  return (
                   <div
                     key={row.id}
                     className={cn(
@@ -375,8 +377,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
                     )}
                   >
                     <div 
-                      className="col-span-4 flex items-center gap-2"
-                      style={{ paddingLeft: `${row.level * 16}px` }}
+                      className={cn("col-span-4 flex items-center gap-2", levelIndentClass)}
                     >
                       {row.children && row.children.length > 0 && (
                         <button
@@ -484,7 +485,8 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
                       </Tooltip>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </TooltipProvider>
             </div>
           </div>

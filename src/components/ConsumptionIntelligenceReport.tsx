@@ -9,6 +9,8 @@ import { ExportDropdown } from '@/components/financial-statements/shared/ExportD
 import { generateTablePDF } from '@/utils/pdfExport';
 import { exportToCSV as exportCSV, generateCSVFilename } from '@/utils/csvExport';
 import { useToast } from '@/hooks/use-toast';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { format } from 'date-fns';
 import {
   TrendingUp, TrendingDown, Minus, AlertCircle,
   CheckCircle, Info, Activity, Target, Zap, Award, AlertTriangle
@@ -30,6 +32,7 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
   const { data, loading, refetch } = useConsumptionIntelligence(restaurantId, dateFrom, dateTo);
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
+  const { selectedRestaurant } = useRestaurantContext();
 
   const handleExportCSV = async () => {
     if (!data) return;
@@ -46,9 +49,14 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
         'Trend': item.trend,
       }));
 
+      const suffix =
+        dateFrom && dateTo
+          ? `${format(dateFrom, 'yyyyMMdd')}_to_${format(dateTo, 'yyyyMMdd')}`
+          : undefined;
+
       exportCSV({
         data: csvData,
-        filename: generateCSVFilename('consumption_intelligence'),
+        filename: generateCSVFilename('consumption_intelligence', suffix),
       });
 
       toast({
@@ -56,7 +64,7 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
         description: "Consumption intelligence data exported to CSV",
       });
     } catch (error) {
-      console.error("Error exporting CSV:", error);
+      if (import.meta?.env?.DEV) console.error("Error exporting CSV:", error);
       toast({
         title: "Export Failed",
         description: "Failed to export consumption data",
@@ -83,12 +91,20 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
         item.trend,
       ]);
 
+      const dateRange =
+        dateFrom && dateTo
+          ? `${format(dateFrom, 'MMM d, yyyy')} to ${format(dateTo, 'MMM d, yyyy')}`
+          : undefined;
+
+      const suffix = dateRange?.replace(/\W+/g, '_');
+
       generateTablePDF({
         title: "Consumption Intelligence Report",
-        restaurantName: "",
+        restaurantName: selectedRestaurant?.restaurant.name ?? "",
+        dateRange,
         columns,
         rows,
-        filename: generateCSVFilename('consumption_intelligence').replace('.csv', '.pdf'),
+        filename: generateCSVFilename('consumption_intelligence', suffix).replace('.csv', '.pdf'),
       });
 
       toast({
@@ -96,7 +112,7 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
         description: "Consumption intelligence report exported to PDF",
       });
     } catch (error) {
-      console.error("Error exporting PDF:", error);
+      if (import.meta?.env?.DEV) console.error("Error exporting PDF:", error);
       toast({
         title: "Export Failed",
         description: "Failed to export consumption report",

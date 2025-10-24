@@ -585,21 +585,21 @@ export function calculateRecipePortions(
   
   if (!recipeToWeight) {
     // If direct conversion fails, try common conversions
-    // For liquids, try converting through oz
+    // For liquids, try converting through fl oz
     if (!COUNT_UNITS.includes(purchaseUnit.toLowerCase())) {
-      const recipeToOz = convertUnits(recipeQuantity, recipeUnit, 'oz', productName);
-      if (recipeToOz) {
-        const purchaseToOz = convertUnits(purchaseQuantity, purchaseUnit, 'oz', productName);
-        if (purchaseToOz) {
-          const totalPortions = purchaseToOz.value / recipeToOz.value;
+      const recipeToFlOz = convertUnits(recipeQuantity, recipeUnit, 'fl oz', productName);
+      if (recipeToFlOz) {
+        const purchaseToFlOz = convertUnits(purchaseQuantity, purchaseUnit, 'fl oz', productName);
+        if (purchaseToFlOz) {
+          const totalPortions = purchaseToFlOz.value / recipeToFlOz.value;
           return {
             totalPortions,
             costPerPortion: 0,
             conversionDetails: {
-              value: recipeToOz.value,
+              value: recipeToFlOz.value,
               fromUnit: recipeUnit,
-              toUnit: 'oz',
-              conversionPath: [recipeUnit, 'oz', purchaseUnit]
+              toUnit: 'fl oz',
+              conversionPath: [recipeUnit, 'fl oz', purchaseUnit]
             }
           };
         }

@@ -405,7 +405,7 @@ export function calculateInventoryImpact(
       // Determine the appropriate unit type suggestion
       const recipeUnitCategory = VOLUME_UNITS.includes(recipeUnit.toLowerCase()) ? 'volume' : 'weight';
       const suggestedUnits = recipeUnitCategory === 'volume' 
-        ? 'oz, ml, cup, L' 
+        ? 'fl oz, ml, cup, L' 
         : 'oz, lb, g, kg';
       
       throw new Error(
@@ -492,7 +492,7 @@ export function calculateInventoryImpact(
             fromUnit: recipeUnit,
             toUnit: purchaseUnit,
             productSpecific: false,
-            conversionPath: ['ml', 'oz']
+            conversionPath: ['ml', 'fl oz']
           }
         };
     }

@@ -151,8 +151,23 @@ export default function POSSales() {
   };
 
   const groupedSales = useMemo(() => {
-    return getSalesGroupedByItem();
-  }, [getSalesGroupedByItem]);
+    // Group filtered sales by item name
+    const byItem = new Map<string, { total_quantity: number; total_revenue: number; sale_count: number }>();
+    for (const sale of filteredSales) {
+      const existing = byItem.get(sale.itemName) ?? { total_quantity: 0, total_revenue: 0, sale_count: 0 };
+      existing.total_quantity += sale.quantity;
+      existing.total_revenue += sale.totalPrice ?? 0;
+      existing.sale_count += 1;
+      byItem.set(sale.itemName, existing);
+    }
+    
+    return Array.from(byItem.entries()).map(([itemName, data]) => ({
+      item_name: itemName,
+      total_quantity: data.total_quantity,
+      total_revenue: data.total_revenue,
+      sale_count: data.sale_count,
+    }));
+  }, [filteredSales]);
 
   const handleSimulateDeduction = async (itemName: string, quantity: number) => {
     if (!selectedRestaurant?.restaurant_id) return;
@@ -243,10 +258,11 @@ export default function POSSales() {
         }));
       } else {
         csvData = dataToExport.map((item) => ({
-          "Item Name": item.itemName,
-          "Total Quantity Sold": item.totalQuantity,
-          "Total Revenue": `$${item.totalRevenue.toFixed(2)}`,
-          "Average Price": `$${item.averagePrice.toFixed(2)}`,
+          "Item Name": item.item_name,
+          "Total Quantity Sold": item.total_quantity,
+          "Total Revenue": `$${item.total_revenue.toFixed(2)}`,
+          "Sales Count": item.sale_count,
+          "Average Price": `$${(item.total_revenue / Math.max(1, item.total_quantity)).toFixed(2)}`,
         }));
       }
 
@@ -269,13 +285,14 @@ export default function POSSales() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
       toast({
         title: "Export Successful",
         description: "POS sales data exported to CSV",
       });
     } catch (error) {
-      console.error("Error exporting CSV:", error);
+      if (import.meta?.env?.DEV) console.error("Error exporting CSV:", error);
       toast({
         title: "Export Failed",
         description: "Failed to export POS sales data",
@@ -306,20 +323,13 @@ export default function POSSales() {
           sale.source || "",
         ]);
       } else {
-        columns = ["Item Name", "Total Qty", "Total Revenue", "Avg Price"];
-        // Re-group from filtered sales to respect date filters
-        const byItem = new Map<string, { totalQuantity: number; totalRevenue: number }>();
-        for (const s of filteredSales) {
-          const g = byItem.get(s.itemName) ?? { totalQuantity: 0, totalRevenue: 0 };
-          g.totalQuantity += s.quantity;
-          g.totalRevenue += s.totalPrice ?? 0;
-          byItem.set(s.itemName, g);
-        }
-        tableData = Array.from(byItem.entries()).map(([itemName, g]) => [
-          itemName,
-          g.totalQuantity.toString(),
-          `$${g.totalRevenue.toFixed(2)}`,
-          `$${(g.totalRevenue / Math.max(1, g.totalQuantity)).toFixed(2)}`,
+        columns = ["Item Name", "Total Qty", "Sales Count", "Total Revenue", "Avg Price"];
+        tableData = dataToExport.map((item) => [
+          item.item_name,
+          item.total_quantity.toString(),
+          item.sale_count.toString(),
+          `$${item.total_revenue.toFixed(2)}`,
+          `$${(item.total_revenue / Math.max(1, item.total_quantity)).toFixed(2)}`,
         ]);
       }
 

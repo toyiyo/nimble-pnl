@@ -56,17 +56,23 @@ export interface TablePDFExportOptions {
  */
 const addFooter = (doc: jsPDF, opts?: { centered?: boolean }) => {
   const pageCount = doc.getNumberOfPages();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 10;
+  
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     const genText = `Generated on ${format(new Date(), "MMM dd, yyyy 'at' h:mm a")}`;
+    const footerY = pageHeight - margin;
     
     if (opts?.centered) {
-      doc.text(`${genText} | Page ${i} of ${pageCount}`, 105, 285, { align: 'center' });
+      const centerX = pageWidth / 2;
+      doc.text(`${genText} | Page ${i} of ${pageCount}`, centerX, footerY, { align: 'center' });
     } else {
-      doc.text(genText, 14, doc.internal.pageSize.height - 10);
-      doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 10);
+      doc.text(genText, 14, footerY);
+      doc.text(`Page ${i} of ${pageCount}`, pageWidth - 30, footerY, { align: 'right' });
     }
   }
 };

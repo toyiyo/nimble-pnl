@@ -142,8 +142,6 @@ export default function Reports() {
       <TabsContent value="variance" className="space-y-6">
         <ReconciliationVarianceReport 
           restaurantId={selectedRestaurant.restaurant_id}
-          dateFrom={selectedPeriod.from}
-          dateTo={selectedPeriod.to}
         />
       </TabsContent>
 

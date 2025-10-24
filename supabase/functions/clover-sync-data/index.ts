@@ -72,19 +72,16 @@ Deno.serve(async (req) => {
         const encryption = await getEncryptionService();
         const decryptedRefreshToken = await encryption.decrypt(connection.refresh_token);
         
-        const isSandbox = connection.environment === 'sandbox';
-        const CLOVER_APP_ID = isSandbox
-          ? Deno.env.get('CLOVER_SANDBOX_APP_ID')
-          : Deno.env.get('CLOVER_APP_ID');
-        const CLOVER_APP_SECRET = isSandbox
-          ? Deno.env.get('CLOVER_SANDBOX_APP_SECRET')
-          : Deno.env.get('CLOVER_APP_SECRET');
+        // Use production credentials only
+        const CLOVER_APP_ID = Deno.env.get('CLOVER_APP_ID');
+        const CLOVER_APP_SECRET = Deno.env.get('CLOVER_APP_SECRET');
           
+        // Use production API domains
         const regionAPIDomains = {
-          na: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com',
-          eu: isSandbox ? 'apisandbox.dev.clover.com' : 'api.eu.clover.com',
-          latam: isSandbox ? 'apisandbox.dev.clover.com' : 'api.la.clover.com',
-          apac: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com'
+          na: 'api.clover.com',
+          eu: 'api.eu.clover.com',
+          latam: 'api.la.clover.com',
+          apac: 'api.clover.com'
         };
         
         const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as keyof typeof regionAPIDomains] || regionAPIDomains.na;
@@ -163,20 +160,18 @@ Deno.serve(async (req) => {
       isExpired: connection.expires_at ? new Date(connection.expires_at) < new Date() : 'unknown'
     });
 
-    // Determine if this is a sandbox or production connection
-    const isSandbox = connection.environment === 'sandbox';
-
+    // Use production API domains
     const regionAPIDomains = {
-      na: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com',
-      eu: isSandbox ? 'apisandbox.dev.clover.com' : 'api.eu.clover.com',
-      latam: isSandbox ? 'apisandbox.dev.clover.com' : 'api.la.clover.com',
-      apac: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com'
+      na: 'api.clover.com',
+      eu: 'api.eu.clover.com',
+      latam: 'api.la.clover.com',
+      apac: 'api.clover.com'
     };
 
-    const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as keyof typeof regionAPIDomains] || (isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com');
+    const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as keyof typeof regionAPIDomains] || 'api.clover.com';
     const BASE_URL = `https://${CLOVER_API_DOMAIN}/v3/merchants/${connection.merchant_id}`;
     
-    console.log('Using Clover API:', { environment: isSandbox ? 'sandbox' : 'production', domain: CLOVER_API_DOMAIN, region: connection.region });
+    console.log('Using Clover API:', { environment: 'production', domain: CLOVER_API_DOMAIN, region: connection.region });
 
     // Calculate date range
     let startDate: Date, endDate: Date;

@@ -1,9 +1,9 @@
 // Enhanced unit conversion system for recipe calculations
 
 // Exported unit constants to avoid duplication across the codebase
-// Note: 'oz' appears in both WEIGHT_UNITS and VOLUME_UNITS because it can represent both weight ounces and fluid ounces
+// Note: 'fl oz' is used for fluid ounces (volume) and 'oz' is used for weight ounces
 export const WEIGHT_UNITS = ['lb', 'kg', 'g', 'oz'];
-export const VOLUME_UNITS = ['oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
+export const VOLUME_UNITS = ['fl oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
 export const COUNT_UNITS = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen', 'jar'];
 
 export interface ProductUnitInfo {
@@ -80,15 +80,15 @@ const STANDARD_CONVERSIONS: { [key: string]: { [key: string]: number } } = {
   'g': { 'kg': 0.001, 'oz': 0.035274, 'lb': 0.00220462 },
   
   // Volume conversions (all to ml)
-  // Note: 'oz' for liquids (fluid ounces) - placed in volume section to prioritize liquid conversions
-  'oz': { 'ml': 29.5735, 'L': 0.0295735, 'cup': 0.125, 'tbsp': 2, 'tsp': 6, 'gal': 1/128, 'qt': 1/32 },
-  'cup': { 'ml': 236.588, 'oz': 8, 'tbsp': 16, 'tsp': 48, 'L': 0.236588 },
-  'tbsp': { 'ml': 14.7868, 'oz': 0.5, 'cup': 1/16, 'tsp': 3, 'L': 0.0147868 },
-  'tsp': { 'ml': 4.92892, 'oz': 1/6, 'tbsp': 1/3, 'cup': 1/48, 'L': 0.00492892 },
-  'ml': { 'L': 0.001, 'cup': 1/236.588, 'tbsp': 1/14.7868, 'tsp': 1/4.92892, 'oz': 1/29.5735 },
-  'L': { 'ml': 1000, 'cup': 1/0.236588, 'gal': 1/3.78541, 'oz': 33.814, 'tbsp': 67.628, 'tsp': 202.884 },
-  'gal': { 'L': 3.78541, 'qt': 4, 'cup': 16, 'oz': 128 },
-  'qt': { 'gal': 0.25, 'cup': 4, 'L': 0.946353, 'oz': 32 },
+  // Note: 'fl oz' for fluid ounces (volume), 'oz' in weight section for weight ounces
+  'fl oz': { 'ml': 29.5735, 'L': 0.0295735, 'cup': 0.125, 'tbsp': 2, 'tsp': 6, 'gal': 1/128, 'qt': 1/32 },
+  'cup': { 'ml': 236.588, 'fl oz': 8, 'tbsp': 16, 'tsp': 48, 'L': 0.236588 },
+  'tbsp': { 'ml': 14.7868, 'fl oz': 0.5, 'cup': 1/16, 'tsp': 3, 'L': 0.0147868 },
+  'tsp': { 'ml': 4.92892, 'fl oz': 1/6, 'tbsp': 1/3, 'cup': 1/48, 'L': 0.00492892 },
+  'ml': { 'L': 0.001, 'cup': 1/236.588, 'tbsp': 1/14.7868, 'tsp': 1/4.92892, 'fl oz': 1/29.5735 },
+  'L': { 'ml': 1000, 'cup': 1/0.236588, 'gal': 1/3.78541, 'fl oz': 33.814, 'tbsp': 67.628, 'tsp': 202.884 },
+  'gal': { 'L': 3.78541, 'qt': 4, 'cup': 16, 'fl oz': 128 },
+  'qt': { 'gal': 0.25, 'cup': 4, 'L': 0.946353, 'fl oz': 32 },
 };
 
 // Product-specific conversions (ingredient name -> unit conversions)
@@ -162,7 +162,10 @@ export function convertUnits(
   const unitNormalizations: Record<string, string> = {
     'lbs': 'lb',
     'pounds': 'lb',
-    'ounces': 'oz',
+    'ounces': 'oz',  // Weight ounces
+    'fluid ounces': 'fl oz',
+    'fluid oz': 'fl oz',
+    'floz': 'fl oz',
     'cups': 'cup',
     'tablespoons': 'tbsp',
     'teaspoons': 'tsp',
@@ -359,13 +362,50 @@ export function calculateInventoryImpact(
       throw new Error(`Cannot convert ${recipeUnit} to ${purchaseUnit} for ${productName}. This product needs size information (e.g., "16 oz per each") to calculate costs. Please update the product's size_value and size_unit fields.`);
     }
     
+    // Handle fluid ounces for volume-based products
+    const sizeUnitLower = productSizeUnit.toLowerCase();
+    const recipeUnitLower = recipeUnit.toLowerCase();
+    const volumeUnits = ['gal', 'l', 'ml', 'qt', 'pint', 'cup', 'fl oz'];
+    
+    // If size is in volume units and recipe uses 'fl oz', convert to ml
+    if (volumeUnits.includes(sizeUnitLower) && recipeUnitLower === 'fl oz') {
+      // Convert recipe amount to ml (1 fl oz = 29.5735 ml)
+      const recipeInMl = recipeQuantity * 29.5735;
+      
+      // Convert product size to ml
+      let sizeInMl = productSizeValue;
+      if (sizeUnitLower === 'fl oz') sizeInMl = productSizeValue * 29.5735;
+      else if (sizeUnitLower === 'l') sizeInMl = productSizeValue * 1000;
+      else if (sizeUnitLower === 'gal') sizeInMl = productSizeValue * 3785.41;
+      else if (sizeUnitLower === 'qt') sizeInMl = productSizeValue * 946.353;
+      else if (sizeUnitLower === 'pint') sizeInMl = productSizeValue * 473.176;
+      else if (sizeUnitLower === 'cup') sizeInMl = productSizeValue * 236.588;
+      // else ml, already correct
+      
+      const containersNeeded = recipeInMl / sizeInMl;
+      
+      return {
+        inventoryDeduction: containersNeeded,
+        inventoryDeductionUnit: purchaseUnit,
+        costImpact: containersNeeded * costPerPackage,
+        percentageOfPackage: containersNeeded * 100,
+        conversionDetails: {
+          value: containersNeeded,
+          fromUnit: recipeUnit,
+          toUnit: purchaseUnit,
+          productSpecific: true,
+          conversionPath: [`${recipeUnit} (fluid)`, 'ml', productSizeUnit, purchaseUnit]
+        }
+      };
+    }
+    
     // Convert recipe quantity to the same unit as product size
     const recipeInSizeUnit = convertUnits(recipeQuantity, recipeUnit, productSizeUnit, productName);
     if (!recipeInSizeUnit) {
       // Determine the appropriate unit type suggestion
       const recipeUnitCategory = VOLUME_UNITS.includes(recipeUnit.toLowerCase()) ? 'volume' : 'weight';
       const suggestedUnits = recipeUnitCategory === 'volume' 
-        ? 'oz, ml, cup, L' 
+        ? 'fl oz, ml, cup, L' 
         : 'oz, lb, g, kg';
       
       throw new Error(
@@ -421,7 +461,7 @@ export function calculateInventoryImpact(
     console.warn(`Direct conversion from ${recipeUnit} to ${purchaseUnit} failed for ${productName}. Attempting fallback conversions.`);
     
     // Try common liquid conversions first
-    if (recipeUnit === 'oz' && purchaseUnit === 'ml') {
+    if (recipeUnit === 'fl oz' && purchaseUnit === 'ml') {
       // 1 fl oz = 29.5735 ml
         const convertedValue = recipeQuantity * 29.5735;
         return {
@@ -434,13 +474,13 @@ export function calculateInventoryImpact(
             fromUnit: recipeUnit,
             toUnit: purchaseUnit,
             productSpecific: false,
-            conversionPath: ['oz', 'ml']
+            conversionPath: ['fl oz', 'ml']
           }
         };
     }
     
-    // Try ml to oz conversion
-    if (recipeUnit === 'ml' && purchaseUnit === 'oz') {
+    // Try ml to fl oz conversion
+    if (recipeUnit === 'ml' && purchaseUnit === 'fl oz') {
         const convertedValue = recipeQuantity / 29.5735;
         return {
           inventoryDeduction: convertedValue,
@@ -452,7 +492,7 @@ export function calculateInventoryImpact(
             fromUnit: recipeUnit,
             toUnit: purchaseUnit,
             productSpecific: false,
-            conversionPath: ['ml', 'oz']
+            conversionPath: ['ml', 'fl oz']
           }
         };
     }
@@ -545,21 +585,21 @@ export function calculateRecipePortions(
   
   if (!recipeToWeight) {
     // If direct conversion fails, try common conversions
-    // For liquids, try converting through oz
+    // For liquids, try converting through fl oz
     if (!COUNT_UNITS.includes(purchaseUnit.toLowerCase())) {
-      const recipeToOz = convertUnits(recipeQuantity, recipeUnit, 'oz', productName);
-      if (recipeToOz) {
-        const purchaseToOz = convertUnits(purchaseQuantity, purchaseUnit, 'oz', productName);
-        if (purchaseToOz) {
-          const totalPortions = purchaseToOz.value / recipeToOz.value;
+      const recipeToFlOz = convertUnits(recipeQuantity, recipeUnit, 'fl oz', productName);
+      if (recipeToFlOz) {
+        const purchaseToFlOz = convertUnits(purchaseQuantity, purchaseUnit, 'fl oz', productName);
+        if (purchaseToFlOz) {
+          const totalPortions = purchaseToFlOz.value / recipeToFlOz.value;
           return {
             totalPortions,
             costPerPortion: 0,
             conversionDetails: {
-              value: recipeToOz.value,
+              value: recipeToFlOz.value,
               fromUnit: recipeUnit,
-              toUnit: 'oz',
-              conversionPath: [recipeUnit, 'oz', purchaseUnit]
+              toUnit: 'fl oz',
+              conversionPath: [recipeUnit, 'fl oz', purchaseUnit]
             }
           };
         }

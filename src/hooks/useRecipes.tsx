@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { MEASUREMENT_UNITS, type IngredientUnit } from '@/lib/recipeUnits';
 
 export interface Recipe {
   id: string;
@@ -53,7 +54,7 @@ export interface CreateRecipeData {
   ingredients: {
     product_id: string;
     quantity: number;
-    unit: 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+    unit: IngredientUnit;
     notes?: string;
   }[];
 }
@@ -275,7 +276,7 @@ export const useRecipes = (restaurantId: string | null) => {
   const updateRecipeIngredients = async (recipeId: string, ingredients: {
     product_id: string;
     quantity: number;
-    unit: 'oz' | 'ml' | 'cup' | 'tbsp' | 'tsp' | 'lb' | 'kg' | 'g' | 'bottle' | 'can' | 'bag' | 'box' | 'piece' | 'serving';
+    unit: IngredientUnit;
     notes?: string;
   }[]): Promise<boolean> => {
     try {

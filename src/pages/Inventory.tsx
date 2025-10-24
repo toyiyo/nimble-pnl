@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash, Download } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash, Download, X, ArrowUpDown, FileSpreadsheet, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -39,6 +41,9 @@ import { productLookupService, ProductLookupResult } from '@/services/productLoo
 import { ProductEnhancementService } from '@/services/productEnhancementService';
 import { ocrService } from '@/services/ocrService';
 import { cn } from '@/lib/utils';
+import { formatInventoryLevel } from '@/lib/inventoryDisplay';
+import { exportToCSV, generateCSVFilename } from '@/utils/csvExport';
+import { generateTablePDF } from '@/utils/pdfExport';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
@@ -73,6 +78,13 @@ export const Inventory: React.FC = () => {
   const [quickInventoryProduct, setQuickInventoryProduct] = useState<Product | null>(null);
   const [scanMode, setScanMode] = useState<'add' | 'reconcile'>('add');
   
+  // Filter and sorting state
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [stockStatusFilter, setStockStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'name' | 'stock' | 'cost' | 'inventoryCost' | 'inventoryValue' | 'category' | 'updated'>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [isExporting, setIsExporting] = useState(false);
+  
   // Check for ?create=true query parameter to open product dialog from recipes
   useEffect(() => {
     if (searchParams.get('create') === 'true') {
@@ -95,17 +107,114 @@ export const Inventory: React.FC = () => {
 
   // Check if user has permission to delete products
   const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
-
-  // Memoize filtered products for performance
-  const filteredProducts = useMemo(() => 
-    products.filter(product =>
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.category?.toLowerCase().includes(searchTerm.toLowerCase())
-    ),
-    [products, searchTerm]
+  
+  // Get unique categories from products
+  const categories = useMemo(() => 
+    ['all', ...new Set(products.map(p => p.category).filter(Boolean))].sort(),
+    [products]
   );
+  
+  // Calculate active filters count
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (searchTerm) count++;
+    if (categoryFilter !== 'all') count++;
+    if (stockStatusFilter !== 'all') count++;
+    if (sortBy !== 'name') count++;
+    if (sortDirection !== 'asc') count++;
+    return count;
+  }, [searchTerm, categoryFilter, stockStatusFilter, sortBy, sortDirection]);
+  
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchTerm('');
+    setCategoryFilter('all');
+    setStockStatusFilter('all');
+    setSortBy('name');
+    setSortDirection('asc');
+  };
+
+  // Memoize filtered and sorted products for performance
+  const filteredProducts = useMemo(() => {
+    let filtered = products;
+    
+    // Text search
+    if (searchTerm) {
+      filtered = filtered.filter(product =>
+        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.category?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    // Category filter
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter(product => product.category === categoryFilter);
+    }
+    
+    // Stock status filter
+    if (stockStatusFilter !== 'all') {
+      filtered = filtered.filter(product => {
+        const stock = product.current_stock || 0;
+        const reorder = product.reorder_point || 0;
+        const parMax = product.par_level_max || 0;
+        
+        switch (stockStatusFilter) {
+          case 'in-stock':
+            return stock > reorder;
+          case 'low-stock':
+            return stock > 0 && stock <= reorder;
+          case 'out-of-stock':
+            return stock === 0;
+          case 'overstock':
+            return parMax > 0 && stock > parMax;
+          default:
+            return true;
+        }
+      });
+    }
+    
+    // Sorting
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'stock':
+          comparison = (a.current_stock || 0) - (b.current_stock || 0);
+          break;
+        case 'cost':
+          comparison = (a.cost_per_unit || 0) - (b.cost_per_unit || 0);
+          break;
+        case 'inventoryCost':
+          const aCost = inventoryMetrics.productMetrics[a.id]?.inventoryCost || 0;
+          const bCost = inventoryMetrics.productMetrics[b.id]?.inventoryCost || 0;
+          comparison = aCost - bCost;
+          break;
+        case 'inventoryValue':
+          const aValue = inventoryMetrics.productMetrics[a.id]?.inventoryValue || 0;
+          const bValue = inventoryMetrics.productMetrics[b.id]?.inventoryValue || 0;
+          comparison = aValue - bValue;
+          break;
+        case 'category':
+          comparison = (a.category || '').localeCompare(b.category || '');
+          if (comparison === 0) {
+            comparison = a.name.localeCompare(b.name);
+          }
+          break;
+        case 'updated':
+          comparison = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
+          break;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+    
+    return filtered;
+  }, [products, searchTerm, categoryFilter, stockStatusFilter, sortBy, sortDirection, inventoryMetrics]);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -1101,18 +1210,233 @@ export const Inventory: React.FC = () => {
                 </Card>
               </div>
 
-              <div className="flex items-center gap-4">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search products..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                    aria-label="Search products by name, SKU, brand, or category"
-                  />
-                </div>
-              </div>
+              {/* Filters & Sorting Card */}
+              <Card>
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">Filters & Sorting</CardTitle>
+                    <div className="flex items-center gap-2">
+                      {activeFiltersCount > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={clearFilters}
+                          className="h-8 px-2 text-xs"
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Clear {activeFiltersCount} filter{activeFiltersCount > 1 ? 's' : ''}
+                        </Button>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" disabled={isExporting || filteredProducts.length === 0}>
+                            {isExporting ? (
+                              <>
+                                <Download className="mr-2 h-4 w-4 animate-pulse" />
+                                Exporting...
+                              </>
+                            ) : (
+                              <>
+                                <Download className="mr-2 h-4 w-4" />
+                                Export
+                              </>
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-background z-50">
+                          <DropdownMenuItem 
+                            onClick={async () => {
+                              setIsExporting(true);
+                              try {
+                                const csvData = filteredProducts.map(p => ({
+                                  Name: p.name,
+                                  SKU: p.sku,
+                                  Brand: p.brand || '',
+                                  Category: p.category || '',
+                                  'Current Stock': p.current_stock || 0,
+                                  'Unit Cost': p.cost_per_unit ? `$${p.cost_per_unit.toFixed(2)}` : '',
+                                  'Inventory Cost': inventoryMetrics.productMetrics[p.id]?.inventoryCost.toFixed(2) || '0.00',
+                                  'Inventory Value': inventoryMetrics.productMetrics[p.id]?.inventoryValue.toFixed(2) || '0.00',
+                                  Status: (p.current_stock || 0) === 0 ? 'Out of Stock' : 
+                                          (p.current_stock || 0) <= (p.reorder_point || 0) ? 'Low Stock' : 
+                                          (p.par_level_max && (p.current_stock || 0) > p.par_level_max) ? 'Overstock' : 'In Stock'
+                                }));
+                                
+                                exportToCSV({
+                                  data: csvData,
+                                  filename: generateCSVFilename('inventory_products'),
+                                });
+                                
+                                toast({
+                                  title: "Export Complete",
+                                  description: `Exported ${filteredProducts.length} products to CSV`,
+                                });
+                              } catch (error) {
+                                if (import.meta?.env?.DEV) console.error("Error exporting CSV:", error);
+                                toast({
+                                  title: "Export Failed",
+                                  description: "Failed to export products",
+                                  variant: "destructive",
+                                });
+                              } finally {
+                                setIsExporting(false);
+                              }
+                            }}
+                            className="cursor-pointer"
+                            disabled={isExporting}
+                          >
+                            <FileSpreadsheet className="mr-2 h-4 w-4" />
+                            Export as CSV
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={async () => {
+                              setIsExporting(true);
+                              try {
+                                const columns = ["Name", "SKU", "Category", "Stock", "Unit Cost", "Inventory Cost", "Status"];
+                                const rows = filteredProducts.map(p => [
+                                  p.name,
+                                  p.sku,
+                                  p.category || '',
+                                  `${(p.current_stock || 0).toFixed(2)} ${p.uom_purchase || 'units'}`,
+                                  p.cost_per_unit ? `$${p.cost_per_unit.toFixed(2)}` : '',
+                                  `$${(inventoryMetrics.productMetrics[p.id]?.inventoryCost || 0).toFixed(2)}`,
+                                  (p.current_stock || 0) === 0 ? 'Out of Stock' : 
+                                  (p.current_stock || 0) <= (p.reorder_point || 0) ? 'Low Stock' : 
+                                  (p.par_level_max && (p.current_stock || 0) > p.par_level_max) ? 'Overstock' : 'In Stock'
+                                ]);
+                                
+                                generateTablePDF({
+                                  title: "Inventory Products Report",
+                                  restaurantName: selectedRestaurant?.restaurant.name || "",
+                                  columns,
+                                  rows,
+                                  filename: generateCSVFilename('inventory_products').replace('.csv', '.pdf'),
+                                });
+                                
+                                toast({
+                                  title: "Export Complete",
+                                  description: `Exported ${filteredProducts.length} products to PDF`,
+                                });
+                              } catch (error) {
+                                if (import.meta?.env?.DEV) console.error("Error exporting PDF:", error);
+                                toast({
+                                  title: "Export Failed",
+                                  description: "Failed to export products",
+                                  variant: "destructive",
+                                });
+                              } finally {
+                                setIsExporting(false);
+                              }
+                            }}
+                            className="cursor-pointer"
+                            disabled={isExporting}
+                          >
+                            <FileText className="mr-2 h-4 w-4" />
+                            Export as PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                    {/* Search */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Search</label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Name, SKU, brand..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-10"
+                          aria-label="Search products by name, SKU, brand, or category"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Category Filter */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Category</label>
+                      <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                        <SelectTrigger aria-label="Filter by category">
+                          <SelectValue placeholder="All Categories" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-background z-50">
+                          <SelectItem value="all">📁 All Categories</SelectItem>
+                          {categories.filter(c => c !== 'all').map(category => (
+                            <SelectItem key={category} value={category}>
+                              {category}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    {/* Stock Status Filter */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Stock Status</label>
+                      <Select value={stockStatusFilter} onValueChange={setStockStatusFilter}>
+                        <SelectTrigger aria-label="Filter by stock status">
+                          <SelectValue placeholder="All Products" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-background z-50">
+                          <SelectItem value="all">⚪ All Products</SelectItem>
+                          <SelectItem value="in-stock">🟢 In Stock</SelectItem>
+                          <SelectItem value="low-stock">🟡 Low Stock</SelectItem>
+                          <SelectItem value="out-of-stock">🔴 Out of Stock</SelectItem>
+                          <SelectItem value="overstock">🔵 Overstock</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    {/* Sort By */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Sort By</label>
+                      <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+                        <SelectTrigger aria-label="Sort products by">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-background z-50">
+                          <SelectItem value="name">📝 Name (A-Z)</SelectItem>
+                          <SelectItem value="stock">📦 Stock Level</SelectItem>
+                          <SelectItem value="cost">💰 Unit Cost</SelectItem>
+                          <SelectItem value="inventoryCost">🏷️ Inventory Cost</SelectItem>
+                          <SelectItem value="inventoryValue">💎 Inventory Value</SelectItem>
+                          <SelectItem value="category">📊 Category</SelectItem>
+                          <SelectItem value="updated">📅 Last Updated</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    {/* Sort Direction */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Direction</label>
+                      <Button
+                        variant="outline"
+                        onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                        className="w-full transition-all hover:scale-105 duration-200"
+                        aria-label={sortDirection === 'asc' ? 'Ascending order' : 'Descending order'}
+                        title={sortDirection === 'asc' ? 'Ascending order' : 'Descending order'}
+                      >
+                        <ArrowUpDown 
+                          className={cn(
+                            "h-4 w-4 mr-2 transition-transform duration-200",
+                            sortDirection === 'desc' && "rotate-180"
+                          )} 
+                        />
+                        {sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {/* Results Count */}
+                  <div className="mt-4 text-sm text-muted-foreground" role="status" aria-live="polite">
+                    Showing {filteredProducts.length} of {products.length} products
+                  </div>
+                </CardContent>
+              </Card>
 
               {loading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" role="status" aria-live="polite">
@@ -1133,14 +1457,28 @@ export const Inventory: React.FC = () => {
                 <div className="text-center py-8">
                   <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <p className="text-muted-foreground">
-                    {searchTerm ? 'No products found matching your search.' : 'No products in inventory yet.'}
+                    {activeFiltersCount > 0 
+                      ? 'No products found matching your filters.' 
+                      : searchTerm 
+                      ? 'No products found matching your search.' 
+                      : 'No products in inventory yet.'}
                   </p>
-                  <Button 
-                    className="mt-4" 
-                    onClick={() => setShowProductDialog(true)}
-                  >
-                    Add Your First Product
-                  </Button>
+                  {activeFiltersCount > 0 ? (
+                    <Button 
+                      className="mt-4" 
+                      variant="outline"
+                      onClick={clearFilters}
+                    >
+                      Clear Filters
+                    </Button>
+                  ) : (
+                    <Button 
+                      className="mt-4" 
+                      onClick={() => setShowProductDialog(true)}
+                    >
+                      Add Your First Product
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1372,19 +1710,19 @@ export const Inventory: React.FC = () => {
                          </div>
                        </CardHeader>
                        <CardContent>
-                         <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm">Current Stock:</span>
-                                <div className="font-medium text-destructive text-right">
-                                  <span>{Number(product.current_stock || 0).toFixed(2)} {product.uom_purchase || 'units'}</span>
-                                </div>
-                              </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm">Reorder Point:</span>
-                              <span className="font-medium">
-                                {Number(product.reorder_point || 0).toFixed(2)} {product.size_unit || 'units'}
-                              </span>
-                            </div>
+                          <div className="space-y-2">
+                               <div className="flex justify-between items-center">
+                                 <span className="text-sm">Current Stock:</span>
+                                 <div className="font-medium text-destructive text-right">
+                                   <span>{formatInventoryLevel(product.current_stock || 0, product, { showBothUnits: false })}</span>
+                                 </div>
+                               </div>
+                             <div className="flex justify-between items-center">
+                               <span className="text-sm">Reorder Point:</span>
+                               <span className="font-medium">
+                                 {formatInventoryLevel(product.reorder_point || 0, product, { showBothUnits: false })}
+                               </span>
+                             </div>
                             {product.cost_per_unit && (
                               <div className="flex justify-between items-center">
                                 <span className="text-sm">Unit Cost:</span>

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -60,70 +61,66 @@ export interface ReconciliationVarianceData {
   };
 }
 
-export function useReconciliationVariance(restaurantId: string | null) {
-  const [data, setData] = useState<ReconciliationVarianceData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
+async function fetchVarianceData(
+  restaurantId: string | null,
+  dateFrom?: Date,
+  dateTo?: Date
+): Promise<ReconciliationVarianceData | null> {
+  if (!restaurantId) return null;
 
-  useEffect(() => {
-    if (restaurantId) {
-      fetchVarianceData();
-    }
-  }, [restaurantId]);
+  try {
 
-  const fetchVarianceData = async () => {
-    if (!restaurantId) return;
+    // Fetch completed reconciliations from the specified period or last 90 days
+    const endDate = dateTo || new Date();
+    const startDate = dateFrom || (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 90);
+      return d;
+    })();
 
-    try {
-      setLoading(true);
-
-      // Fetch completed reconciliations from the last 90 days
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-
-      const { data: reconciliations, error: recsError } = await supabase
-        .from('inventory_reconciliations')
-        .select(`
+    const { data: reconciliations, error: recsError } = await supabase
+      .from('inventory_reconciliations')
+      .select(`
+        id,
+        reconciliation_date,
+        total_items_counted,
+        items_with_variance,
+        total_shrinkage_value,
+        reconciliation_items!inner(
           id,
-          reconciliation_date,
-          total_items_counted,
-          items_with_variance,
-          total_shrinkage_value,
-          reconciliation_items!inner(
-            id,
-            product_id,
-            expected_quantity,
-            actual_quantity,
-            variance,
-            variance_value,
-            product:products(
-              name,
-              category
-            )
+          product_id,
+          expected_quantity,
+          actual_quantity,
+          variance,
+          variance_value,
+          product:products(
+            name,
+            category
           )
-        `)
-        .eq('restaurant_id', restaurantId)
-        .eq('status', 'submitted')
-        .gte('reconciliation_date', ninetyDaysAgo.toISOString().split('T')[0])
-        .order('reconciliation_date', { ascending: true });
+        )
+      `)
+      .eq('restaurant_id', restaurantId)
+      .eq('status', 'submitted')
+      .gte('reconciliation_date', startDate.toISOString().split('T')[0])
+      .lte('reconciliation_date', endDate.toISOString().split('T')[0])
+      .order('reconciliation_date', { ascending: true });
 
-      if (recsError) throw recsError;
-      if (!reconciliations || reconciliations.length === 0) {
-        setData({
-          trends: [],
-          categoryBreakdown: [],
-          topVariances: [],
-          insights: [],
-          summary: {
-            total_reconciliations: 0,
-            avg_shrinkage_per_count: 0,
-            total_shrinkage: 0,
-            most_problematic_category: '',
-            improvement_rate: 0,
-          },
-        });
-        return;
-      }
+    if (recsError) throw recsError;
+    if (!reconciliations || reconciliations.length === 0) {
+      return {
+        trends: [],
+        categoryBreakdown: [],
+        topVariances: [],
+        insights: [],
+        summary: {
+          total_reconciliations: 0,
+          avg_shrinkage_per_count: 0,
+          total_shrinkage: 0,
+          most_problematic_category: '',
+          improvement_rate: 0,
+        },
+      };
+    }
 
       // Calculate trends
       const trends: VarianceTrend[] = reconciliations.map((rec: any) => ({
@@ -286,38 +283,61 @@ export function useReconciliationVariance(restaurantId: string | null) {
       if (trends.length >= 6) {
         const recentAvg = trends.slice(-3).reduce((sum, t) => sum + t.variance_rate, 0) / 3;
         const previousAvg = trends.slice(-6, -3).reduce((sum, t) => sum + t.variance_rate, 0) / 3;
-        improvement_rate = previousAvg > 0 ? ((previousAvg - recentAvg) / previousAvg) * 100 : 0;
-      }
+      improvement_rate = previousAvg > 0 ? ((previousAvg - recentAvg) / previousAvg) * 100 : 0;
+    }
 
-      setData({
-        trends,
-        categoryBreakdown,
-        topVariances,
-        insights,
-        summary: {
-          total_reconciliations,
-          avg_shrinkage_per_count,
-          total_shrinkage,
-          most_problematic_category: categoryBreakdown[0]?.category || '',
-          improvement_rate,
-        },
-      });
+    return {
+      trends,
+      categoryBreakdown,
+      topVariances,
+      insights,
+      summary: {
+        total_reconciliations,
+        avg_shrinkage_per_count,
+        total_shrinkage,
+        most_problematic_category: categoryBreakdown[0]?.category || '',
+        improvement_rate,
+      },
+    };
 
-    } catch (error: any) {
+  } catch (error: any) {
+    if (import.meta.env.DEV) {
       console.error('Error fetching variance data:', error);
+    }
+    throw error;
+  }
+}
+
+export function useReconciliationVariance(
+  restaurantId: string | null,
+  dateFrom?: Date,
+  dateTo?: Date
+) {
+  const { toast } = useToast();
+
+  const query = useQuery({
+    queryKey: ['reconciliation-variance', restaurantId, dateFrom, dateTo],
+    queryFn: () => fetchVarianceData(restaurantId, dateFrom, dateTo),
+    enabled: !!restaurantId,
+    staleTime: 60000, // 60 seconds
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  // Show toast on error (only once per error change)
+  useEffect(() => {
+    if (query.error) {
       toast({
         title: 'Error loading variance analysis',
-        description: error.message,
+        description: (query.error as Error).message,
         variant: 'destructive',
       });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [query.error, toast]);
 
   return {
-    data,
-    loading,
-    refetch: fetchVarianceData,
+    data: query.data || null,
+    loading: query.isLoading,
+    refetch: query.refetch,
   };
 }

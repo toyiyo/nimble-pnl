@@ -77,7 +77,11 @@ export interface RecipeIntelligenceData {
   };
 }
 
-export const useRecipeIntelligence = (restaurantId: string | null) => {
+export const useRecipeIntelligence = (
+  restaurantId: string | null,
+  dateFrom?: Date,
+  dateTo?: Date
+) => {
   const [data, setData] = useState<RecipeIntelligenceData | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -88,8 +92,21 @@ export const useRecipeIntelligence = (restaurantId: string | null) => {
     try {
       setLoading(true);
 
-      const thirtyDaysAgo = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-      const sixtyDaysAgo = format(subDays(new Date(), 60), 'yyyy-MM-dd');
+      // Use provided dates or default to 30/60 days
+      let endDate = dateTo || new Date();
+      let startDate = dateFrom || subDays(endDate, 30);
+      
+      // Normalize date range: swap if dateFrom > dateTo
+      if (startDate > endDate) {
+        [startDate, endDate] = [endDate, startDate];
+      }
+      
+      const rawPeriodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const periodDays = Math.max(1, rawPeriodDays);
+      const previousPeriodStart = subDays(startDate, periodDays);
+
+      const thirtyDaysAgo = format(startDate, 'yyyy-MM-dd');
+      const sixtyDaysAgo = format(previousPeriodStart, 'yyyy-MM-dd');
 
       // Fetch recipes with ingredients
       const { data: recipes, error: recipesError } = await supabase
@@ -105,7 +122,8 @@ export const useRecipeIntelligence = (restaurantId: string | null) => {
             product:products(name, cost_per_unit, category)
           )
         `)
-        .eq('restaurant_id', restaurantId);
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true);
 
       if (recipesError) throw recipesError;
 
@@ -140,7 +158,8 @@ export const useRecipeIntelligence = (restaurantId: string | null) => {
         `)
         .eq('restaurant_id', restaurantId)
         .eq('transaction_type', 'usage')
-        .gte('created_at', subDays(new Date(), 30).toISOString());
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString());
 
       if (transactionsError) throw transactionsError;
 
@@ -179,7 +198,8 @@ export const useRecipeIntelligence = (restaurantId: string | null) => {
 
           // Calculate efficiency score (0-100) with proper clamping
           const marginScore = Math.max(0, Math.min((margin / 70) * 40, 40));
-          const velocityScore = Math.max(0, Math.min((totalQuantitySold / 30) * 30, 30));
+          const daysInPeriod = Math.max(1, periodDays);
+          const velocityScore = Math.max(0, Math.min((totalQuantitySold / daysInPeriod) * 30, 30));
           const costScore = Math.max(0, Math.min((1 - (foodCostPct / 35)) * 30, 30));
           const efficiencyScore = marginScore + velocityScore + costScore;
 
@@ -196,7 +216,7 @@ export const useRecipeIntelligence = (restaurantId: string | null) => {
             profit_contribution: totalProfit,
             efficiency_score: efficiencyScore,
             trend,
-            velocity: totalQuantitySold / 30
+            velocity: totalQuantitySold / daysInPeriod
           });
 
           totalRevenue += totalSales;
@@ -367,7 +387,7 @@ export const useRecipeIntelligence = (restaurantId: string | null) => {
 
       // Generate predictions
       const recentWeekSales = performance.reduce((sum, r) => {
-        const lastWeekStart = format(subDays(new Date(), 7), 'yyyy-MM-dd');
+        const lastWeekStart = format(subDays(endDate, 7), 'yyyy-MM-dd');
         const lastWeekSales = currentSales?.filter(s => 
           (s.item_name === r.name || s.item_name === (recipes?.find(rec => rec.id === r.id)?.pos_item_name)) &&
           s.sale_date >= lastWeekStart
@@ -421,7 +441,7 @@ export const useRecipeIntelligence = (restaurantId: string | null) => {
     if (restaurantId) {
       fetchIntelligence();
     }
-  }, [restaurantId]);
+  }, [restaurantId, dateFrom, dateTo]);
 
   return { data, loading, refetch: fetchIntelligence };
 };

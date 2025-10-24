@@ -1,13 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricIcon } from '@/components/MetricIcon';
 import { useConsumptionIntelligence } from '@/hooks/useConsumptionIntelligence';
+import { ExportDropdown } from '@/components/financial-statements/shared/ExportDropdown';
+import { generateTablePDF } from '@/utils/pdfExport';
+import { exportToCSV as exportCSV, generateCSVFilename } from '@/utils/csvExport';
+import { useToast } from '@/hooks/use-toast';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { format } from 'date-fns';
 import {
-  TrendingUp, TrendingDown, Minus, Download, AlertCircle,
+  TrendingUp, TrendingDown, Minus, AlertCircle,
   CheckCircle, Info, Activity, Target, Zap, Award, AlertTriangle
 } from 'lucide-react';
 import {
@@ -15,42 +20,106 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart
 } from 'recharts';
-import { format } from 'date-fns';
 
 interface ConsumptionIntelligenceReportProps {
   restaurantId: string;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
-export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceReportProps> = ({ restaurantId }) => {
-  const { data, loading, refetch } = useConsumptionIntelligence(restaurantId);
+export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceReportProps> = ({ restaurantId, dateFrom, dateTo }) => {
+  const { data, loading, refetch } = useConsumptionIntelligence(restaurantId, dateFrom, dateTo);
+  const [isExporting, setIsExporting] = useState(false);
+  const { toast } = useToast();
+  const { selectedRestaurant } = useRestaurantContext();
 
-  const exportToCSV = () => {
+  const handleExportCSV = async () => {
     if (!data) return;
+    setIsExporting(true);
+    try {
+      const csvData = data.ingredient_patterns.map(item => ({
+        'Ingredient': item.ingredient_name,
+        'Category': item.category,
+        'Total Usage': item.total_usage.toFixed(2),
+        'Total Cost': `$${item.total_cost.toFixed(2)}`,
+        'Avg Daily Usage': item.avg_daily_usage.toFixed(2),
+        'Waste %': `${item.waste_percentage.toFixed(1)}%`,
+        'Efficiency Score': item.efficiency_score.toFixed(0),
+        'Trend': item.trend,
+      }));
 
-    const csvData = [
-      ['Consumption Intelligence Report'],
-      ['Generated:', new Date().toLocaleDateString()],
-      [''],
-      ['Ingredient', 'Category', 'Total Usage', 'Total Cost', 'Avg Daily Usage', 'Waste %', 'Efficiency Score', 'Trend'],
-      ...data.ingredient_patterns.map(i => [
-        i.ingredient_name,
-        i.category,
-        i.total_usage.toFixed(2),
-        i.total_cost.toFixed(2),
-        i.avg_daily_usage.toFixed(2),
-        i.waste_percentage.toFixed(1),
-        i.efficiency_score.toFixed(0),
-        i.trend
-      ])
-    ];
+      const suffix =
+        dateFrom && dateTo
+          ? `${format(dateFrom, 'yyyyMMdd')}_to_${format(dateTo, 'yyyyMMdd')}`
+          : undefined;
 
-    const csvContent = csvData.map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `consumption-intelligence-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+      exportCSV({
+        data: csvData,
+        filename: generateCSVFilename('consumption_intelligence', suffix),
+      });
+
+      toast({
+        title: "Export Successful",
+        description: "Consumption intelligence data exported to CSV",
+      });
+    } catch (error) {
+      if (import.meta?.env?.DEV) console.error("Error exporting CSV:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export consumption data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!data) return;
+    setIsExporting(true);
+    try {
+      const columns = ["Ingredient", "Category", "Total Usage", "Total Cost", "Avg Daily Usage", "Waste %", "Efficiency", "Trend"];
+      const rows = data.ingredient_patterns.map(item => [
+        item.ingredient_name,
+        item.category,
+        item.total_usage.toFixed(2),
+        `$${item.total_cost.toFixed(2)}`,
+        item.avg_daily_usage.toFixed(2),
+        `${item.waste_percentage.toFixed(1)}%`,
+        item.efficiency_score.toFixed(0),
+        item.trend,
+      ]);
+
+      const dateRange =
+        dateFrom && dateTo
+          ? `${format(dateFrom, 'MMM d, yyyy')} to ${format(dateTo, 'MMM d, yyyy')}`
+          : undefined;
+
+      const suffix = dateRange?.replace(/\W+/g, '_');
+
+      generateTablePDF({
+        title: "Consumption Intelligence Report",
+        restaurantName: selectedRestaurant?.restaurant.name ?? "",
+        dateRange,
+        columns,
+        rows,
+        filename: generateCSVFilename('consumption_intelligence', suffix).replace('.csv', '.pdf'),
+      });
+
+      toast({
+        title: "Export Successful",
+        description: "Consumption intelligence report exported to PDF",
+      });
+    } catch (error) {
+      if (import.meta?.env?.DEV) console.error("Error exporting PDF:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export consumption report",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (loading) {
@@ -122,10 +191,11 @@ export const ConsumptionIntelligenceReport: React.FC<ConsumptionIntelligenceRepo
                 </p>
               </div>
             </div>
-            <Button onClick={exportToCSV} variant="outline" size="sm" aria-label="Export consumption data to CSV">
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
+            <ExportDropdown 
+              onExportCSV={handleExportCSV}
+              onExportPDF={handleExportPDF}
+              isExporting={isExporting}
+            />
           </div>
         </CardHeader>
       </Card>

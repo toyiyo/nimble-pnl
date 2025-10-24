@@ -23,7 +23,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Loader2, Sparkles, CheckCircle, X, Upload } from 'lucide-react';
+import { Loader2, Sparkles, CheckCircle, X, Upload, Package } from 'lucide-react';
+import { InventoryLevelInput } from '@/components/InventoryLevelInput';
 import { 
   Select,
   SelectContent,
@@ -121,6 +122,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const [showAddSupplier, setShowAddSupplier] = useState(false);
   const [newSupplier, setNewSupplier] = useState({ supplier_id: '', cost: 0, supplier_sku: '' });
   const [isNewSupplier, setIsNewSupplier] = useState(false);
+  const [savingSupplier, setSavingSupplier] = useState(false);
   const [priceUpdateDialog, setPriceUpdateDialog] = useState<{ open: boolean; supplier: any; price: string }>({
     open: false,
     supplier: null,
@@ -799,20 +801,62 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                         <Button
                           type="button"
                           size="sm"
+                          disabled={savingSupplier}
                           onClick={async () => {
-                            if (!newSupplier.supplier_id || !restaurantId) return;
+                            // Validate inputs
+                            if (!newSupplier.supplier_id || newSupplier.supplier_id.trim() === '') {
+                              toast({
+                                title: 'Error',
+                                description: 'Please select a supplier',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
+
+                            // Validate cost
+                            if (!Number.isFinite(newSupplier.cost) || newSupplier.cost < 0) {
+                              toast({
+                                title: 'Error',
+                                description: 'Enter a valid non-negative cost',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
+
+                            if (!restaurantId) {
+                              toast({
+                                title: 'Error',
+                                description: 'Restaurant context is required',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
+
+                            if (savingSupplier) return; // Prevent double-clicks
                             
+                            setSavingSupplier(true);
                             try {
-                              let supplierIdToUse = newSupplier.supplier_id;
+                              let supplierIdToUse: string;
                               
                               // Create new supplier if needed
                               if (isNewSupplier) {
                                 const createdSupplier = await createSupplier({ name: newSupplier.supplier_id });
-                                if (createdSupplier) {
-                                  supplierIdToUse = createdSupplier.id;
-                                } else {
-                                  throw new Error('Failed to create supplier');
+                                if (!createdSupplier?.id) {
+                                  throw new Error('Failed to create supplier - no ID returned');
                                 }
+                                supplierIdToUse = createdSupplier.id;
+                              } else {
+                                // Validate UUID format for existing supplier
+                                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                                if (!uuidRegex.test(newSupplier.supplier_id)) {
+                                  throw new Error('Invalid supplier ID format');
+                                }
+                                supplierIdToUse = newSupplier.supplier_id;
+                              }
+                              
+                              // Final validation before insert
+                              if (!supplierIdToUse || supplierIdToUse.trim() === '') {
+                                throw new Error('Supplier ID is empty after processing');
                               }
                               
                               const isFirstSupplier = productSuppliers.length === 0;
@@ -828,7 +872,10 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                                   is_preferred: isFirstSupplier,
                                 });
 
-                              if (error) throw error;
+                              if (error) {
+                                console.error('Database insert error:', error);
+                                throw error;
+                              }
 
                               // Update product cost_per_unit when adding supplier
                               if (newSupplier.cost > 0) {
@@ -862,17 +909,27 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                               setIsNewSupplier(false);
                               setShowAddSupplier(false);
                               fetchSuppliers();
-                            } catch (error) {
+                            } catch (error: any) {
                               console.error('Error adding supplier:', error);
+                              const errorMessage = error?.message || 'Failed to add supplier';
                               toast({
                                 title: 'Error',
-                                description: 'Failed to add supplier',
+                                description: errorMessage,
                                 variant: 'destructive',
                               });
+                            } finally {
+                              setSavingSupplier(false);
                             }
                           }}
                         >
-                          Save Supplier
+                          {savingSupplier ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            'Save Supplier'
+                          )}
                         </Button>
                         <Button
                           type="button"
@@ -1004,83 +1061,63 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
             {/* Inventory Levels */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Inventory Levels</CardTitle>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Inventory Levels
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="par_level_min"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Min Par Level</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            placeholder="0"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                {/* Info box explaining units */}
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                  <p className="text-sm text-blue-800 dark:text-blue-200">
+                    💡 <strong>Inventory levels are measured in your package size units</strong>
+                  </p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                    {form.watch('size_value') && form.watch('size_unit')
+                      ? `Since you purchase this as "${form.watch('uom_purchase')}" containing ${form.watch('size_value')} ${form.watch('size_unit')}, 
+                         enter your desired levels in ${form.watch('size_unit')} (e.g., gallons, ounces).`
+                      : `Set your reorder and par levels in ${form.watch('uom_purchase') || 'purchase units'}.`}
+                  </p>
+                </div>
 
-                  <FormField
-                    control={form.control}
-                    name="par_level_max"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Max Par Level</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            placeholder="0"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                <InventoryLevelInput
+                  label="Reorder Point"
+                  value={form.watch('reorder_point') || 0}
+                  onChange={(val) => form.setValue('reorder_point', val)}
+                  product={{
+                    uom_purchase: form.watch('uom_purchase'),
+                    size_value: form.watch('size_value'),
+                    size_unit: form.watch('size_unit'),
+                    name: form.watch('name')
+                  }}
+                  helpText="When stock falls to this level, you'll get an alert to reorder"
+                />
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <InventoryLevelInput
+                    label="Minimum Par Level"
+                    value={form.watch('par_level_min') || 0}
+                    onChange={(val) => form.setValue('par_level_min', val)}
+                    product={{
+                      uom_purchase: form.watch('uom_purchase'),
+                      size_value: form.watch('size_value'),
+                      size_unit: form.watch('size_unit'),
+                      name: form.watch('name')
+                    }}
+                    helpText="Minimum stock you want to maintain"
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="reorder_point"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Reorder Point</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            placeholder="0"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                  
+                  <InventoryLevelInput
+                    label="Maximum Par Level"
+                    value={form.watch('par_level_max') || 0}
+                    onChange={(val) => form.setValue('par_level_max', val)}
+                    product={{
+                      uom_purchase: form.watch('uom_purchase'),
+                      size_value: form.watch('size_value'),
+                      size_unit: form.watch('size_unit'),
+                      name: form.watch('name')
+                    }}
+                    helpText="Maximum stock level (useful for space management)"
                   />
                 </div>
               </CardContent>

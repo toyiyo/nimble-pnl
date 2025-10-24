@@ -25,6 +25,8 @@ import { format } from 'date-fns';
 interface DetailedPnLBreakdownProps {
   restaurantId: string;
   days?: number;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
 interface PnLRow {
@@ -43,8 +45,13 @@ interface PnLRow {
   trend?: number[];
 }
 
-export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBreakdownProps) {
-  const { data, loading } = usePnLAnalytics(restaurantId, days);
+export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo }: DetailedPnLBreakdownProps) {
+  const { data, loading } = usePnLAnalytics(restaurantId, { days, dateFrom, dateTo });
+  
+  // Calculate actual days if dates are provided (inclusive, minimum 1)
+  const actualDays = dateFrom && dateTo 
+    ? Math.max(1, Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24)) + 1)
+    : days;
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['sales', 'cogs', 'labor', 'prime', 'controllable'])
   );
@@ -108,7 +115,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
         type: 'header',
         level: 0,
         trend: getTrend('net_revenue'),
-        insight: `Revenue ${data.comparison.change.revenue_pct >= 0 ? 'up' : 'down'} ${Math.abs(data.comparison.change.revenue_pct).toFixed(1)}% vs previous ${days} days`,
+        insight: `Revenue ${data.comparison.change.revenue_pct >= 0 ? 'up' : 'down'} ${Math.abs(data.comparison.change.revenue_pct).toFixed(1)}% vs previous ${actualDays} days`,
         status: data.comparison.change.revenue_pct >= 0 ? 'good' : 'warning',
       },
       
@@ -196,17 +203,17 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
         previousPercentage: 100 - previous.avg_prime_cost_pct,
         type: 'total',
         level: 0,
-        insight: `$${((current.revenue - current.prime_cost) / days).toFixed(0)} average daily contribution`,
+        insight: `$${((current.revenue - current.prime_cost) / actualDays).toFixed(0)} average daily contribution`,
         status: 'neutral',
       },
     ];
-  }, [data, days]);
+  }, [data, actualDays]);
 
   const getStatusIcon = (status?: PnLRow['status']) => {
     switch (status) {
-      case 'good': return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'warning': return <AlertCircle className="h-4 w-4 text-orange-500" />;
-      case 'critical': return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case 'good': return <CheckCircle className="h-4 w-4 text-emerald-600" />;
+      case 'warning': return <AlertCircle className="h-4 w-4 text-amber-600" />;
+      case 'critical': return <AlertCircle className="h-4 w-4 text-destructive" />;
       default: return <Minus className="h-4 w-4 text-muted-foreground" />;
     }
   };
@@ -216,8 +223,8 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
     const change = ((current - previous) / previous) * 100;
     if (Math.abs(change) < 1) return <Minus className="h-3 w-3 text-muted-foreground" />;
     return change > 0 
-      ? <TrendingUp className="h-3 w-3 text-green-500" />
-      : <TrendingDown className="h-3 w-3 text-red-500" />;
+      ? <TrendingUp className="h-3 w-3 text-emerald-600" />
+      : <TrendingDown className="h-3 w-3 text-destructive" />;
   };
 
   const MiniSparkline = ({ data }: { data: number[] }) => {
@@ -253,7 +260,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
     
     const rows = [
       ['Detailed P&L Breakdown'],
-      ['Period:', `Last ${days} days`, `vs Previous ${days} days`],
+      ['Period:', `Last ${actualDays} days`, `vs Previous ${actualDays} days`],
       ['Generated:', format(new Date(), 'MMM dd, yyyy')],
       [],
       ['Category', 'Amount', '% of Sales', 'Previous Amount', 'Previous %', 'Change', 'Benchmark', 'Status', 'Insight'],
@@ -270,7 +277,16 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
         ]),
     ];
 
-    const csv = rows.map(row => row.join(',')).join('\n');
+    // Escape CSV cells to prevent formula injection and handle special characters
+    const escapeCSV = (cell: any) => {
+      const s = String(cell ?? '');
+      // Prevent formula injection by prefixing with single quote if starts with =, +, -, @
+      const prefixed = /^[=+\-@]/.test(s) ? "'" + s : s;
+      // RFC4180 compliant: quote and escape internal quotes
+      return `"${prefixed.replace(/"/g, '""')}"`;
+    };
+    
+    const csv = rows.map(row => row.map(escapeCSV).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -320,7 +336,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
                 Detailed P&L Breakdown
               </CardTitle>
               <CardDescription className="text-sm">
-                Last {days} days • Inline insights & benchmarks
+                Last {actualDays} days • Inline insights & benchmarks
               </CardDescription>
             </div>
           </div>
@@ -348,7 +364,9 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
 
               {/* Data Rows */}
               <TooltipProvider>
-                {pnlStructure.map((row) => (
+                {pnlStructure.map((row) => {
+                  const levelIndentClass = ['pl-0','pl-4','pl-8','pl-12','pl-16'][Math.min(row.level, 4)];
+                  return (
                   <div
                     key={row.id}
                     className={cn(
@@ -359,8 +377,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
                     )}
                   >
                     <div 
-                      className="col-span-4 flex items-center gap-2"
-                      style={{ paddingLeft: `${row.level * 16}px` }}
+                      className={cn("col-span-4 flex items-center gap-2", levelIndentClass)}
                     >
                       {row.children && row.children.length > 0 && (
                         <button
@@ -468,7 +485,8 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30 }: DetailedPnLBre
                       </Tooltip>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </TooltipProvider>
             </div>
           </div>

@@ -38,6 +38,120 @@ export const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
+export interface TablePDFExportOptions {
+  title: string;
+  restaurantName: string;
+  dateRange?: string;
+  columns: string[];
+  rows: string[][];
+  metrics?: Array<{
+    label: string;
+    value: string;
+  }>;
+  filename: string;
+}
+
+/**
+ * Add footer with timestamp and page numbers to PDF
+ */
+const addFooter = (doc: jsPDF, opts?: { centered?: boolean }) => {
+  const pageCount = doc.getNumberOfPages();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 10;
+  
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    const genText = `Generated on ${format(new Date(), "MMM dd, yyyy 'at' h:mm a")}`;
+    const footerY = pageHeight - margin;
+    
+    if (opts?.centered) {
+      const centerX = pageWidth / 2;
+      doc.text(`${genText} | Page ${i} of ${pageCount}`, centerX, footerY, { align: 'center' });
+    } else {
+      doc.text(genText, 14, footerY);
+      doc.text(`Page ${i} of ${pageCount}`, pageWidth - 30, footerY, { align: 'right' });
+    }
+  }
+};
+
+export const generateTablePDF = (options: TablePDFExportOptions) => {
+  const doc = new jsPDF();
+  let yPosition = 20;
+
+  // Header - Restaurant Name
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text(options.restaurantName, 105, yPosition, { align: "center" });
+  yPosition += 8;
+
+  // Report Title
+  doc.setFontSize(14);
+  doc.text(options.title, 105, yPosition, { align: "center" });
+  yPosition += 6;
+
+  // Date Range
+  if (options.dateRange) {
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(options.dateRange, 105, yPosition, { align: "center" });
+    yPosition += 10;
+  } else {
+    yPosition += 5;
+  }
+
+  // Metrics Section (if provided)
+  if (options.metrics && options.metrics.length > 0) {
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    
+    const metricsPerRow = 3;
+    const startX = 20;
+    const columnWidth = 60;
+    
+    options.metrics.forEach((metric, index) => {
+      const col = index % metricsPerRow;
+      const row = Math.floor(index / metricsPerRow);
+      const x = startX + (col * columnWidth);
+      const y = yPosition + (row * 10);
+      
+      doc.setFont("helvetica", "normal");
+      doc.text(`${metric.label}:`, x, y);
+      doc.setFont("helvetica", "bold");
+      doc.text(metric.value, x + 35, y);
+    });
+    
+    yPosition += Math.ceil(options.metrics.length / metricsPerRow) * 10 + 5;
+  }
+
+  // Main Table
+  autoTable(doc, {
+    startY: yPosition,
+    head: [options.columns],
+    body: options.rows,
+    theme: "grid",
+    headStyles: {
+      fillColor: [59, 130, 246],
+      textColor: 255,
+      fontStyle: "bold",
+      halign: "center",
+    },
+    styles: {
+      fontSize: 9,
+      cellPadding: 3,
+    },
+    columnStyles: {
+      0: { cellWidth: "auto" },
+    },
+    margin: { top: 10, left: 14, right: 14 },
+  });
+
+  addFooter(doc);
+  doc.save(options.filename);
+};
+
 export const generateFinancialReportPDF = (options: PDFExportOptions) => {
   const doc = new jsPDF();
   let yPosition = 20;
@@ -174,18 +288,7 @@ export const generateFinancialReportPDF = (options: PDFExportOptions) => {
     });
   }
 
-  // Footer - Generation timestamp
-  const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Generated on ${format(new Date(), "MMM dd, yyyy h:mm a")} | Page ${i} of ${pageCount}`, 105, 285, {
-      align: "center",
-    });
-  }
-
-  // Save the PDF
+  addFooter(doc, { centered: true });
   doc.save(options.filename);
 };
 

@@ -30,6 +30,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Upload, Calculator, Package } from 'lucide-react';
+import { InventoryLevelInput } from '@/components/InventoryLevelInput';
 import { CreateProductData, Product } from '@/hooks/useProducts';
 import { useUnitConversion } from '@/hooks/useUnitConversion';
 import { normalizeUnitName, suggestRecipeUnits } from '@/lib/unitConversion';
@@ -96,7 +97,7 @@ const PURCHASE_UNITS = [
 ];
 
 const RECIPE_UNITS = [
-  'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'g', 'each', 'piece', 'serving'
+  'fl oz', 'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'g', 'each', 'piece', 'serving'
 ];
 
 export const ProductDialog: React.FC<ProductDialogProps> = ({
@@ -236,7 +237,9 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       setImageUrl(data.publicUrl);
       form.setValue('image_url', data.publicUrl);
     } catch (error) {
-      console.error('Error uploading image:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error uploading image:', error);
+      }
     } finally {
       setUploading(false);
     }
@@ -310,7 +313,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   <FormItem>
                     <FormLabel>SKU *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., BEEF-001" />
+                      <Input {...field} placeholder="e.g., BEEF-001" value={field.value || ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -324,7 +327,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   <FormItem>
                     <FormLabel>Product Name *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., Ground Beef 80/20" />
+                      <Input {...field} placeholder="e.g., Ground Beef 80/20" value={field.value || ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -420,7 +423,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Category</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value || ''}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select category" />
@@ -494,12 +497,16 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                         Cost per {form.watch('uom_purchase') || 'Purchase Unit'} ($)
                       </FormLabel>
                       <FormControl>
-                        <Input
+                       <Input
                           {...field}
                           type="number"
                           step="0.01"
                           placeholder="0.00"
-                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                          value={field.value || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            field.onChange(value ? parseFloat(value) : undefined);
+                          }}
                         />
                       </FormControl>
                       <FormMessage />
@@ -550,91 +557,78 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                 Inventory Levels
               </h4>
 
+              {/* Info box explaining units */}
+              {form.watch('size_value') && form.watch('size_unit') && (
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                  <p className="text-sm text-blue-800 dark:text-blue-200">
+                    💡 <strong>Inventory levels are measured in your package size units</strong>
+                  </p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                    Since you purchase this as "{form.watch('uom_purchase')}" containing {form.watch('size_value')} {form.watch('size_unit')}, 
+                    enter your desired levels in {form.watch('size_unit')} (e.g., gallons, ounces).
+                  </p>
+                </div>
+              )}
+
+              <FormField
+                control={form.control}
+                name="current_stock"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Current Stock</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <InventoryLevelInput
+                label="Reorder Point"
+                value={form.watch('reorder_point') || 0}
+                onChange={(val) => form.setValue('reorder_point', val)}
+                product={{
+                  uom_purchase: form.watch('uom_purchase'),
+                  size_value: form.watch('size_value'),
+                  size_unit: form.watch('size_unit'),
+                  name: form.watch('name')
+                }}
+                helpText="When stock falls to this level, you'll get an alert to reorder"
+              />
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="current_stock"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Current Stock</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0"
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                <InventoryLevelInput
+                  label="Minimum Par Level"
+                  value={form.watch('par_level_min') || 0}
+                  onChange={(val) => form.setValue('par_level_min', val)}
+                  product={{
+                    uom_purchase: form.watch('uom_purchase'),
+                    size_value: form.watch('size_value'),
+                    size_unit: form.watch('size_unit'),
+                    name: form.watch('name')
+                  }}
+                  helpText="Minimum stock you want to maintain"
                 />
-
-                <FormField
-                  control={form.control}
-                  name="reorder_point"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Reorder Point</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0"
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="par_level_min"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Min Par Level</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0"
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="par_level_max"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Max Par Level</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0"
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                
+                <InventoryLevelInput
+                  label="Maximum Par Level"
+                  value={form.watch('par_level_max') || 0}
+                  onChange={(val) => form.setValue('par_level_max', val)}
+                  product={{
+                    uom_purchase: form.watch('uom_purchase'),
+                    size_value: form.watch('size_value'),
+                    size_unit: form.watch('size_unit'),
+                    name: form.watch('name')
+                  }}
+                  helpText="Maximum stock level (useful for space management)"
                 />
               </div>
             </div>

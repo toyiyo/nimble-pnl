@@ -1,19 +1,22 @@
-import { useState, useMemo } from 'react';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useAuth } from '@/hooks/useAuth';
-import { useInventoryTransactions } from '@/hooks/useInventoryTransactions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Download, TrendingDown, TrendingUp, Package, AlertTriangle, Info, X, ClipboardList, Calendar, DollarSign, Activity } from 'lucide-react';
+import { TrendingDown, TrendingUp, Package, AlertTriangle, Info, X, ClipboardList, Calendar, DollarSign, Activity, ArrowUpDown } from 'lucide-react';
 import { format } from 'date-fns';
+import { useState, useMemo } from 'react';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useAuth } from '@/hooks/useAuth';
+import { useInventoryTransactions } from '@/hooks/useInventoryTransactions';
 import { formatDateInTimezone } from '@/lib/timezone';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { MetricIcon } from '@/components/MetricIcon';
+import { ExportDropdown } from '@/components/financial-statements/shared/ExportDropdown';
+import { generateTablePDF } from '@/utils/pdfExport';
+import { useToast } from '@/hooks/use-toast';
 
 const TRANSACTION_TYPES = [
   { 
@@ -91,8 +94,12 @@ export default function InventoryAudit() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [sortBy, setSortBy] = useState<'date' | 'product' | 'quantity' | 'cost' | 'type'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [isExporting, setIsExporting] = useState(false);
+  const { toast } = useToast();
 
-  const { transactions, loading, summary, exportToCSV } = useInventoryTransactions({
+  const { transactions, loading, error, summary, exportToCSV: exportTransactionsToCSV } = useInventoryTransactions({
     restaurantId: selectedRestaurant?.restaurant_id || null,
     typeFilter,
     startDate,
@@ -101,12 +108,52 @@ export default function InventoryAudit() {
 
   // ✅ SAFE MEMOIZATION: Only recalculate when dependencies change
   const filteredTransactions = useMemo(() => {
-    return transactions.filter(transaction =>
+    const filtered = transactions.filter(transaction =>
       transaction.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (transaction.reason || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (transaction.reference_id || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [transactions, searchTerm]);
+
+    // Apply sorting
+    return filtered.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case 'date':
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          if (comparison === 0) {
+            comparison = a.id.localeCompare(b.id);
+          }
+          break;
+        case 'product':
+          comparison = a.product_name.localeCompare(b.product_name);
+          if (comparison === 0) {
+            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          }
+          break;
+        case 'quantity':
+          comparison = Math.abs(a.quantity) - Math.abs(b.quantity);
+          if (comparison === 0) {
+            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          }
+          break;
+        case 'cost':
+          comparison = Math.abs(a.total_cost || 0) - Math.abs(b.total_cost || 0);
+          if (comparison === 0) {
+            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          }
+          break;
+        case 'type':
+          comparison = a.transaction_type.localeCompare(b.transaction_type);
+          if (comparison === 0) {
+            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          }
+          break;
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [transactions, searchTerm, sortBy, sortDirection]);
 
   const activeFiltersCount = [typeFilter !== 'all', startDate, endDate, searchTerm].filter(Boolean).length;
 
@@ -115,6 +162,101 @@ export default function InventoryAudit() {
     setTypeFilter('all');
     setStartDate('');
     setEndDate('');
+    setSortBy('date');
+    setSortDirection('desc');
+  };
+
+  const handleExportCSV = async () => {
+    // Validate date range
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      toast({
+        title: 'Invalid date range',
+        description: 'Start date must be before end date.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    setIsExporting(true);
+    try {
+      await exportTransactionsToCSV();
+      toast({
+        title: "Export Successful",
+        description: "Inventory audit data exported to CSV",
+      });
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error("Error exporting CSV:", error);
+      }
+      toast({
+        title: "Export Failed",
+        description: "Failed to export audit data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    // Validate date range
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      toast({
+        title: 'Invalid date range',
+        description: 'Start date must be before end date.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    setIsExporting(true);
+    try {
+      const columns = ["Date", "Product", "Type", "Quantity", "Unit Cost", "Total Cost", "Reason"];
+      const rows = filteredTransactions.map((transaction) => [
+        formatDateInTimezone(transaction.created_at, selectedRestaurant?.restaurant.timezone || 'UTC', 'MMM dd, yyyy'),
+        transaction.product_name,
+        transaction.transaction_type.charAt(0).toUpperCase() + transaction.transaction_type.slice(1),
+        transaction.quantity.toFixed(2),
+        `$${(transaction.unit_cost || 0).toFixed(2)}`,
+        `$${(transaction.total_cost || 0).toFixed(2)}`,
+        transaction.reason || '-',
+      ]);
+
+      const dateRange = startDate && endDate 
+        ? `${startDate} to ${endDate}` 
+        : startDate 
+        ? `From ${startDate}`
+        : endDate 
+        ? `To ${endDate}`
+        : "All Time";
+
+      const filterLabel = typeFilter !== 'all' 
+        ? ` - ${TRANSACTION_TYPES.find(t => t.value === typeFilter)?.label || 'Filtered'}`
+        : '';
+
+      generateTablePDF({
+        title: `Inventory Audit Trail${filterLabel}`,
+        restaurantName: selectedRestaurant?.restaurant.name || "",
+        dateRange,
+        columns,
+        rows,
+        filename: `inventory_audit_${format(new Date(), "yyyyMMdd_HHmmss")}.pdf`,
+      });
+
+      toast({
+        title: "Export Successful",
+        description: "Inventory audit report exported to PDF",
+      });
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export audit report",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (!user) {
@@ -176,7 +318,7 @@ export default function InventoryAudit() {
       <Card className="mb-6 shadow-sm">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold">Filters</CardTitle>
+            <CardTitle className="text-lg font-semibold">Filters & Sorting</CardTitle>
             {activeFiltersCount > 0 && (
               <Button 
                 variant="ghost" 
@@ -191,7 +333,7 @@ export default function InventoryAudit() {
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
             <div className="space-y-2">
               <label htmlFor="search-input" className="text-sm font-medium text-muted-foreground">Search</label>
               <Input
@@ -243,11 +385,42 @@ export default function InventoryAudit() {
             </div>
 
             <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Sort By</label>
+              <div className="flex gap-2">
+                <Select value={sortBy} onValueChange={(value: 'date' | 'product' | 'quantity' | 'cost' | 'type') => setSortBy(value)}>
+                  <SelectTrigger className="flex-1 border-border/50 hover:border-primary/50 transition-colors" aria-label="Sort transactions by">
+                    <SelectValue placeholder="Sort by..." />
+                  </SelectTrigger>
+                  <SelectContent className="z-50 bg-background">
+                    <SelectItem value="date">📅 Date</SelectItem>
+                    <SelectItem value="product">📦 Product</SelectItem>
+                    <SelectItem value="quantity">🔢 Quantity</SelectItem>
+                    <SelectItem value="cost">💰 Total Cost</SelectItem>
+                    <SelectItem value="type">📋 Type</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant={sortDirection === 'desc' ? 'default' : 'outline'}
+                  size="icon"
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  className="shrink-0"
+                  title={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
+                  aria-label={`Sort direction: ${sortDirection === 'desc' ? 'Descending' : 'Ascending'}`}
+                >
+                  <ArrowUpDown className={`w-4 h-4 transition-transform ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Export</label>
-              <Button onClick={exportToCSV} variant="outline" className="w-full flex items-center gap-2">
-                <Download className="h-4 w-4" />
-                Export CSV
-              </Button>
+              <div className="w-full">
+                <ExportDropdown
+                  onExportCSV={handleExportCSV}
+                  onExportPDF={handleExportPDF}
+                  isExporting={isExporting}
+                />
+              </div>
             </div>
           </div>
         </CardContent>
@@ -271,7 +444,7 @@ export default function InventoryAudit() {
                 onClick={() => setTypeFilter(type.value)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && setTypeFilter(type.value)}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setTypeFilter(type.value)}
                 aria-pressed={isActive}
                 aria-label={`Filter by ${type.label}`}
               >
@@ -325,6 +498,11 @@ export default function InventoryAudit() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          {error && (
+            <div role="alert" className="text-sm text-destructive px-4 py-3 bg-destructive/10 border-b border-destructive/20">
+              {error}
+            </div>
+          )}
           {loading ? (
             <div className="p-6 space-y-4" role="status" aria-live="polite">
               <div className="space-y-3">

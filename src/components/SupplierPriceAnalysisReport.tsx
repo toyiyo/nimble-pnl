@@ -10,10 +10,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 interface SupplierPriceAnalysisReportProps {
   restaurantId: string;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
-export function SupplierPriceAnalysisReport({ restaurantId }: SupplierPriceAnalysisReportProps) {
-  const { productPricing, supplierMetrics, loading } = useSupplierPriceAnalytics(restaurantId);
+export function SupplierPriceAnalysisReport({ restaurantId, dateFrom, dateTo }: SupplierPriceAnalysisReportProps) {
+  const { productPricing, supplierMetrics, loading } = useSupplierPriceAnalytics(restaurantId, dateFrom, dateTo);
+  
+  // Calculate dynamic date range text
+  const dateRangeText = useMemo(() => {
+    if (dateFrom && dateTo) {
+      const days = Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24));
+      return `Tracked in last ${days} days`;
+    }
+    return 'Tracked in last 90 days';
+  }, [dateFrom, dateTo]);
 
   const insights = useMemo(() => {
     if (!productPricing.length) return null;
@@ -148,7 +159,7 @@ export function SupplierPriceAnalysisReport({ restaurantId }: SupplierPriceAnaly
           <CardContent>
             <div className="text-2xl font-bold">{supplierMetrics.length}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              Tracked in last 90 days
+              {dateRangeText}
             </p>
           </CardContent>
         </Card>

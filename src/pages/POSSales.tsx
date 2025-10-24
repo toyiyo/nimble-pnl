@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Download, Search, Calendar, RefreshCw, Upload as UploadIcon, X } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useUnifiedSales } from "@/hooks/useUnifiedSales";
 import { usePOSIntegrations } from "@/hooks/usePOSIntegrations";
@@ -20,6 +21,10 @@ import { format } from "date-fns";
 import { InventoryDeductionDialog } from "@/components/InventoryDeductionDialog";
 import { MapPOSItemDialog } from "@/components/MapPOSItemDialog";
 import { UnifiedSaleItem } from "@/types/pos";
+import { ExportDropdown } from "@/components/financial-statements/shared/ExportDropdown";
+import { generateTablePDF } from "@/utils/pdfExport";
+import Papa from "papaparse";
+import { useToast } from "@/hooks/use-toast";
 
 export default function POSSales() {
   const {
@@ -39,6 +44,8 @@ export default function POSSales() {
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [sortBy, setSortBy] = useState<'date' | 'name' | 'quantity' | 'amount'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showSaleDialog, setShowSaleDialog] = useState(false);
   const [editingSale, setEditingSale] = useState<{
     id: string;
@@ -58,6 +65,8 @@ export default function POSSales() {
   const [activeTab, setActiveTab] = useState<"manual" | "import">("manual");
   const [mapPOSItemDialogOpen, setMapPOSItemDialogOpen] = useState(false);
   const [selectedPOSItemForMapping, setSelectedPOSItemForMapping] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const { toast } = useToast();
 
   const handleMapPOSItem = (itemName: string) => {
     setSelectedPOSItemForMapping(itemName);
@@ -97,12 +106,41 @@ export default function POSSales() {
   const filteredSales = useMemo(() => {
     let filtered = sales.filter((sale) => sale.itemName.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    if (startDate && endDate) {
-      filtered = filtered.filter((sale) => sale.saleDate >= startDate && sale.saleDate <= endDate);
+    if (startDate) {
+      filtered = filtered.filter((sale) => sale.saleDate >= startDate);
     }
     
+    if (endDate) {
+      filtered = filtered.filter((sale) => sale.saleDate <= endDate);
+    }
+    
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'date':
+          comparison = a.saleDate.localeCompare(b.saleDate);
+          if (comparison === 0 && a.saleTime && b.saleTime) {
+            comparison = a.saleTime.localeCompare(b.saleTime);
+          }
+          break;
+        case 'name':
+          comparison = a.itemName.localeCompare(b.itemName);
+          break;
+        case 'quantity':
+          comparison = a.quantity - b.quantity;
+          break;
+        case 'amount':
+          comparison = (a.totalPrice || 0) - (b.totalPrice || 0);
+          break;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+    
     return filtered;
-  }, [sales, searchTerm, startDate, endDate]);
+  }, [sales, searchTerm, startDate, endDate, sortBy, sortDirection]);
 
   const dateFilteredSales = filteredSales;
 
@@ -113,8 +151,23 @@ export default function POSSales() {
   };
 
   const groupedSales = useMemo(() => {
-    return getSalesGroupedByItem();
-  }, [getSalesGroupedByItem]);
+    // Group filtered sales by item name
+    const byItem = new Map<string, { total_quantity: number; total_revenue: number; sale_count: number }>();
+    for (const sale of filteredSales) {
+      const existing = byItem.get(sale.itemName) ?? { total_quantity: 0, total_revenue: 0, sale_count: 0 };
+      existing.total_quantity += sale.quantity;
+      existing.total_revenue += sale.totalPrice ?? 0;
+      existing.sale_count += 1;
+      byItem.set(sale.itemName, existing);
+    }
+    
+    return Array.from(byItem.entries()).map(([itemName, data]) => ({
+      item_name: itemName,
+      total_quantity: data.total_quantity,
+      total_revenue: data.total_revenue,
+      sale_count: data.sale_count,
+    }));
+  }, [filteredSales]);
 
   const handleSimulateDeduction = async (itemName: string, quantity: number) => {
     if (!selectedRestaurant?.restaurant_id) return;
@@ -180,7 +233,145 @@ export default function POSSales() {
     };
   }, [filteredSales, unmappedItems]);
 
-  const activeFiltersCount = [searchTerm, startDate, endDate].filter(Boolean).length;
+  const activeFiltersCount = [
+    searchTerm, 
+    startDate, 
+    endDate,
+    sortBy !== 'date' || sortDirection !== 'desc' ? 'sort' : ''
+  ].filter(Boolean).length;
+
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      const dataToExport = selectedView === "sales" ? filteredSales : groupedSales;
+      
+      let csvData;
+      if (selectedView === "sales") {
+        csvData = dataToExport.map((sale) => ({
+          "Sale Date": sale.saleDate,
+          "Sale Time": sale.saleTime || "",
+          "Item Name": sale.itemName,
+          "Quantity": sale.quantity,
+          "Unit Price": sale.unitPrice ? `$${sale.unitPrice.toFixed(2)}` : "",
+          "Total Price": sale.totalPrice ? `$${sale.totalPrice.toFixed(2)}` : "",
+          "Source": sale.source || "",
+        }));
+      } else {
+        csvData = dataToExport.map((item) => ({
+          "Item Name": item.item_name,
+          "Total Quantity Sold": item.total_quantity,
+          "Total Revenue": `$${item.total_revenue.toFixed(2)}`,
+          "Sales Count": item.sale_count,
+          "Average Price": `$${(item.total_revenue / Math.max(1, item.total_quantity)).toFixed(2)}`,
+        }));
+      }
+
+      const csv = Papa.unparse(csvData);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      
+      const dateRange = startDate && endDate 
+        ? `_${startDate}_to_${endDate}` 
+        : startDate 
+        ? `_from_${startDate}`
+        : endDate 
+        ? `_to_${endDate}`
+        : "";
+      
+      link.setAttribute("href", url);
+      link.setAttribute("download", `pos_sales_${selectedView}${dateRange}_${format(new Date(), "yyyyMMdd_HHmmss")}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Successful",
+        description: "POS sales data exported to CSV",
+      });
+    } catch (error) {
+      if (import.meta?.env?.DEV) console.error("Error exporting CSV:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export POS sales data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    setIsExporting(true);
+    try {
+      const dataToExport = selectedView === "sales" ? filteredSales : groupedSales;
+      
+      let tableData;
+      let columns;
+      
+      if (selectedView === "sales") {
+        columns = ["Date", "Time", "Item", "Qty", "Unit Price", "Total", "Source"];
+        tableData = dataToExport.map((sale) => [
+          sale.saleDate,
+          sale.saleTime || "",
+          sale.itemName,
+          sale.quantity.toString(),
+          sale.unitPrice ? `$${sale.unitPrice.toFixed(2)}` : "",
+          sale.totalPrice ? `$${sale.totalPrice.toFixed(2)}` : "",
+          sale.source || "",
+        ]);
+      } else {
+        columns = ["Item Name", "Total Qty", "Sales Count", "Total Revenue", "Avg Price"];
+        tableData = dataToExport.map((item) => [
+          item.item_name,
+          item.total_quantity.toString(),
+          item.sale_count.toString(),
+          `$${item.total_revenue.toFixed(2)}`,
+          `$${(item.total_revenue / Math.max(1, item.total_quantity)).toFixed(2)}`,
+        ]);
+      }
+
+      const dateRange = startDate && endDate 
+        ? `${startDate} to ${endDate}` 
+        : startDate 
+        ? `From ${startDate}`
+        : endDate 
+        ? `To ${endDate}`
+        : "All Time";
+
+      const metrics = [
+        { label: "Total Sales", value: dashboardMetrics.totalSales.toString() },
+        { label: "Total Revenue", value: `$${dashboardMetrics.totalRevenue.toFixed(2)}` },
+        { label: "Unique Items", value: dashboardMetrics.uniqueItems.toString() },
+      ];
+
+      generateTablePDF({
+        title: `POS Sales Report - ${selectedView === "sales" ? "Individual Sales" : "Grouped by Item"}`,
+        restaurantName: selectedRestaurant?.restaurant.name || "",
+        dateRange,
+        columns,
+        rows: tableData,
+        metrics,
+        filename: `pos_sales_${selectedView}_${format(new Date(), "yyyyMMdd_HHmmss")}.pdf`,
+      });
+
+      toast({
+        title: "Export Successful",
+        description: "POS sales report exported to PDF",
+      });
+    } catch (error) {
+      if (import.meta?.env?.DEV) console.error("Error exporting PDF:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export POS sales report",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   if (!selectedRestaurant) {
     return (
@@ -251,14 +442,11 @@ export default function POSSales() {
                   {isSyncing ? "Syncing..." : "Sync Sales"}
                 </Button>
               )}
-              <Button 
-                variant="outline" 
-                className="flex items-center gap-2 hover:bg-background/80 transition-all duration-300"
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Export Data</span>
-                <span className="sm:hidden">Export</span>
-              </Button>
+              <ExportDropdown
+                onExportCSV={handleExportCSV}
+                onExportPDF={handleExportPDF}
+                isExporting={isExporting}
+              />
             </div>
           </div>
         </div>
@@ -271,15 +459,6 @@ export default function POSSales() {
         uniqueItems={dashboardMetrics.uniqueItems}
         unmappedCount={dashboardMetrics.unmappedCount}
       />
-
-      {/* POS System Status Cards */}
-      {integrationStatuses.length > 0 && (
-        <POSSystemStatus
-          integrationStatuses={integrationStatuses}
-          onSync={handleSyncSales}
-          isSyncing={isSyncing}
-        />
-      )}
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "manual" | "import")} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
@@ -298,15 +477,17 @@ export default function POSSales() {
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        setSearchTerm("");
-                        setStartDate("");
-                        setEndDate("");
-                      }}
-                      className="text-xs"
-                    >
-                      <X className="h-3 w-3 mr-1" />
-                      Clear {activeFiltersCount} filter{activeFiltersCount !== 1 ? 's' : ''}
-                    </Button>
+                      setSearchTerm("");
+                      setStartDate("");
+                      setEndDate("");
+                      setSortBy('date');
+                      setSortDirection('desc');
+                    }}
+                    className="text-xs"
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Clear {activeFiltersCount} filter{activeFiltersCount !== 1 ? 's' : ''}
+                  </Button>
                   )}
                 </div>
               </CardHeader>
@@ -348,6 +529,34 @@ export default function POSSales() {
                         className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20"
                       />
                     </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Sort By</label>
+                  <div className="flex gap-2">
+                    <Select value={sortBy} onValueChange={(value: 'date' | 'name' | 'quantity' | 'amount') => setSortBy(value)}>
+                      <SelectTrigger className="w-[160px] border-border/50 hover:border-primary/50 transition-colors">
+                        <ArrowUpDown className="w-4 h-4 mr-2" />
+                        <SelectValue placeholder="Sort by..." />
+                      </SelectTrigger>
+                      <SelectContent className="z-50 bg-background">
+                        <SelectItem value="date">Date</SelectItem>
+                        <SelectItem value="name">Item Name</SelectItem>
+                        <SelectItem value="quantity">Quantity</SelectItem>
+                        <SelectItem value="amount">Amount</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                      className="transition-all hover:scale-105 duration-200"
+                      title={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
+                      aria-label={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
+                    >
+                      <ArrowUpDown className={`w-4 h-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
+                    </Button>
                   </div>
                 </div>
 

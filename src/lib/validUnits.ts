@@ -1,10 +1,10 @@
 // Valid units for receipts and inventory that work with our conversion system
 
 export const VALID_UNITS = {
-  // Volume units
-  volume: ['ml', 'L', 'oz', 'cup', 'tbsp', 'tsp', 'gal', 'qt', 'pint'],
+  // Volume units (fl oz = fluid ounces)
+  volume: ['ml', 'L', 'fl oz', 'cup', 'tbsp', 'tsp', 'gal', 'qt', 'pint'],
   
-  // Weight units  
+  // Weight units (oz = weight ounces)
   weight: ['g', 'kg', 'oz', 'lb'],
   
   // Count/discrete units

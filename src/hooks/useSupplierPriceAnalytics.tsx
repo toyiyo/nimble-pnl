@@ -33,7 +33,11 @@ interface SupplierMetrics {
   total_purchases: number;
 }
 
-export function useSupplierPriceAnalytics(restaurantId: string | null) {
+export function useSupplierPriceAnalytics(
+  restaurantId: string | null,
+  dateFrom?: Date,
+  dateTo?: Date
+) {
   const [productPricing, setProductPricing] = useState<ProductPricing[]>([]);
   const [supplierMetrics, setSupplierMetrics] = useState<SupplierMetrics[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,9 +45,12 @@ export function useSupplierPriceAnalytics(restaurantId: string | null) {
   const requestIdRef = useRef(0);
 
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!restaurantId) {
+      setLoading(false);
+      return;
+    }
     fetchPriceAnalytics();
-  }, [restaurantId]);
+  }, [restaurantId, dateFrom, dateTo]);
 
   const fetchPriceAnalytics = async () => {
     if (!restaurantId) return;
@@ -79,8 +86,18 @@ export function useSupplierPriceAnalytics(restaurantId: string | null) {
       if (productsError) throw productsError;
 
       // Fetch historical pricing from inventory transactions
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      // Use provided dates or default to 90 days
+      let endDate = dateTo || new Date();
+      let startDate = dateFrom || (() => {
+        const d = new Date(endDate);
+        d.setDate(d.getDate() - 90);
+        return d;
+      })();
+      
+      // Normalize date range: swap if startDate > endDate
+      if (startDate > endDate) {
+        [startDate, endDate] = [endDate, startDate];
+      }
 
       const { data: transactions, error: transError } = await supabase
         .from('inventory_transactions')
@@ -97,7 +114,8 @@ export function useSupplierPriceAnalytics(restaurantId: string | null) {
         `)
         .eq('restaurant_id', restaurantId)
         .eq('transaction_type', 'purchase')
-        .gte('created_at', ninetyDaysAgo.toISOString())
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
         .order('created_at', { ascending: true });
 
       if (transError) throw transError;
@@ -114,8 +132,8 @@ export function useSupplierPriceAnalytics(restaurantId: string | null) {
           quantity: t.quantity || 0,
         }));
 
-        // Calculate price changes
-        const thirtyDaysAgo = new Date();
+        // Calculate price changes relative to endDate
+        const thirtyDaysAgo = new Date(endDate);
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         
         const recent30d = priceHistory.filter(p => new Date(p.date) >= thirtyDaysAgo);

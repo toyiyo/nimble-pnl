@@ -1,16 +1,20 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricIcon } from '@/components/MetricIcon';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ExportDropdown } from '@/components/financial-statements/shared/ExportDropdown';
+import { generateTablePDF } from '@/utils/pdfExport';
+import { exportToCSV as exportCSV, generateCSVFilename } from '@/utils/csvExport';
+import { useToast } from '@/hooks/use-toast';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { format } from 'date-fns';
 import { 
   TrendingUp, 
   TrendingDown, 
   DollarSign, 
-  Target, 
-  Download, 
+  Target,
   AlertCircle,
   CheckCircle2,
   AlertTriangle,
@@ -47,15 +51,17 @@ import {
   PolarRadiusAxis,
   Radar
 } from 'recharts';
-import { format } from 'date-fns';
 
 interface PnLIntelligenceReportProps {
   restaurantId: string;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
-export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportProps) {
-  const [timeframe, setTimeframe] = useState<30 | 60 | 90>(30);
-  const { data, loading } = usePnLAnalytics(restaurantId, timeframe);
+export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLIntelligenceReportProps) {
+  const { data, loading } = usePnLAnalytics(restaurantId, { dateFrom, dateTo });
+  const [isExporting, setIsExporting] = useState(false);
+  const { toast } = useToast();
 
   const COLORS = {
     revenue: '#10b981',
@@ -65,50 +71,105 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
     profit: '#3b82f6',
   };
 
-  const exportToCSV = () => {
+  const { selectedRestaurant } = useRestaurantContext();
+
+  const handleExportCSV = async () => {
     if (!data) return;
+    setIsExporting(true);
+    try {
+      const csvData = data.dailyData.map(day => ({
+        'Date': day.date,
+        'Revenue': `$${day.net_revenue.toFixed(2)}`,
+        'Food Cost': `$${day.food_cost.toFixed(2)}`,
+        'Labor Cost': `$${day.labor_cost.toFixed(2)}`,
+        'Prime Cost': `$${day.prime_cost.toFixed(2)}`,
+        'Food Cost %': `${day.food_cost_percentage.toFixed(1)}%`,
+        'Labor Cost %': `${day.labor_cost_percentage.toFixed(1)}%`,
+        'Prime Cost %': `${day.prime_cost_percentage.toFixed(1)}%`,
+      }));
 
-    const rows = [
-      ['P&L Intelligence Report'],
-      ['Generated:', new Date().toISOString()],
-      ['Period:', `Last ${timeframe} days`],
-      [],
-      ['Summary Metrics'],
-      ['Total Revenue:', `$${data.comparison.current_period.revenue.toFixed(2)}`],
-      ['Total Food Cost:', `$${data.comparison.current_period.food_cost.toFixed(2)}`],
-      ['Total Labor Cost:', `$${data.comparison.current_period.labor_cost.toFixed(2)}`],
-      ['Prime Cost:', `$${data.comparison.current_period.prime_cost.toFixed(2)}`],
-      ['Avg Food Cost %:', `${data.comparison.current_period.avg_food_cost_pct.toFixed(1)}%`],
-      ['Avg Labor Cost %:', `${data.comparison.current_period.avg_labor_cost_pct.toFixed(1)}%`],
-      ['Avg Prime Cost %:', `${data.comparison.current_period.avg_prime_cost_pct.toFixed(1)}%`],
-      [],
-      ['Period Comparison'],
-      ['Revenue Change:', `${data.comparison.change.revenue_pct.toFixed(1)}%`],
-      ['Food Cost Change:', `${data.comparison.change.food_cost_pct.toFixed(1)}%`],
-      ['Labor Cost Change:', `${data.comparison.change.labor_cost_pct.toFixed(1)}%`],
-      [],
-      ['Daily Data'],
-      ['Date', 'Revenue', 'Food Cost', 'Labor Cost', 'Prime Cost', 'Food %', 'Labor %', 'Prime %'],
-      ...data.dailyData.map(day => [
+      const suffix =
+        dateFrom && dateTo
+          ? `${format(dateFrom, 'yyyyMMdd')}_to_${format(dateTo, 'yyyyMMdd')}`
+          : undefined;
+
+      exportCSV({
+        data: csvData,
+        filename: generateCSVFilename('pnl_intelligence', suffix),
+      });
+
+      toast({
+        title: "Export Successful",
+        description: "P&L intelligence data exported to CSV",
+      });
+    } catch (error) {
+      if (import.meta?.env?.DEV) console.error("Error exporting CSV:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export P&L data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!data) return;
+    setIsExporting(true);
+    try {
+      const columns = ["Date", "Revenue", "Food Cost", "Labor Cost", "Prime Cost", "Food %", "Labor %", "Prime %"];
+      const rows = data.dailyData.map(day => [
         day.date,
-        day.net_revenue.toFixed(2),
-        day.food_cost.toFixed(2),
-        day.labor_cost.toFixed(2),
-        day.prime_cost.toFixed(2),
-        day.food_cost_percentage.toFixed(1),
-        day.labor_cost_percentage.toFixed(1),
-        day.prime_cost_percentage.toFixed(1),
-      ]),
-    ];
+        `$${day.net_revenue.toFixed(2)}`,
+        `$${day.food_cost.toFixed(2)}`,
+        `$${day.labor_cost.toFixed(2)}`,
+        `$${day.prime_cost.toFixed(2)}`,
+        `${day.food_cost_percentage.toFixed(1)}%`,
+        `${day.labor_cost_percentage.toFixed(1)}%`,
+        `${day.prime_cost_percentage.toFixed(1)}%`,
+      ]);
 
-    const csv = rows.map(row => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pnl-intelligence-${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+      const metrics = [
+        { label: "Total Revenue", value: `$${data.comparison.current_period.revenue.toFixed(2)}` },
+        { label: "Total Food Cost", value: `$${data.comparison.current_period.food_cost.toFixed(2)}` },
+        { label: "Total Labor Cost", value: `$${data.comparison.current_period.labor_cost.toFixed(2)}` },
+        { label: "Prime Cost", value: `$${data.comparison.current_period.prime_cost.toFixed(2)}` },
+        { label: "Avg Food Cost %", value: `${data.comparison.current_period.avg_food_cost_pct.toFixed(1)}%` },
+        { label: "Avg Labor Cost %", value: `${data.comparison.current_period.avg_labor_cost_pct.toFixed(1)}%` },
+      ];
+
+      const dateRange =
+        dateFrom && dateTo
+          ? `${format(dateFrom, 'MMM d, yyyy')} to ${format(dateTo, 'MMM d, yyyy')}`
+          : undefined;
+
+      const suffix = dateRange?.replace(/\W+/g, '_');
+
+      generateTablePDF({
+        title: `P&L Intelligence Report`,
+        restaurantName: selectedRestaurant?.restaurant.name ?? "",
+        dateRange,
+        columns,
+        rows,
+        metrics,
+        filename: generateCSVFilename('pnl_intelligence', suffix).replace('.csv', '.pdf'),
+      });
+
+      toast({
+        title: "Export Successful",
+        description: "P&L intelligence report exported to PDF",
+      });
+    } catch (error) {
+      if (import.meta?.env?.DEV) console.error("Error exporting PDF:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export P&L report",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const getInsightIcon = (type: string) => {
@@ -185,17 +246,11 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Tabs value={timeframe.toString()} onValueChange={(v) => setTimeframe(Number(v) as 30 | 60 | 90)}>
-                <TabsList role="tablist">
-                  <TabsTrigger value="30" className="text-xs" aria-label="View 30 day data">30 Days</TabsTrigger>
-                  <TabsTrigger value="60" className="text-xs" aria-label="View 60 day data">60 Days</TabsTrigger>
-                  <TabsTrigger value="90" className="text-xs" aria-label="View 90 day data">90 Days</TabsTrigger>
-                </TabsList>
-              </Tabs>
-              <Button onClick={exportToCSV} variant="outline" size="sm" aria-label="Export P&L data to CSV">
-                <Download className="h-4 w-4 mr-2" />
-                Export
-              </Button>
+              <ExportDropdown
+                onExportCSV={handleExportCSV}
+                onExportPDF={handleExportPDF}
+                isExporting={isExporting}
+              />
             </div>
           </div>
         </CardHeader>
@@ -372,7 +427,7 @@ export function PnLIntelligenceReport({ restaurantId }: PnLIntelligenceReportPro
             <Card>
               <CardHeader>
                 <CardTitle>Period Over Period</CardTitle>
-                <CardDescription>Current vs Previous {timeframe} days</CardDescription>
+                <CardDescription>Current vs Previous period</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">

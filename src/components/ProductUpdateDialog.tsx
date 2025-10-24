@@ -23,7 +23,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Loader2, Sparkles, CheckCircle, X, Upload } from 'lucide-react';
+import { Loader2, Sparkles, CheckCircle, X, Upload, Package } from 'lucide-react';
+import { InventoryLevelInput } from '@/components/InventoryLevelInput';
 import { 
   Select,
   SelectContent,
@@ -1050,83 +1051,48 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
             {/* Inventory Levels */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Inventory Levels</CardTitle>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Inventory Levels
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="par_level_min"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Min Par Level</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            placeholder="0"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                {/* Info box explaining units */}
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                  <p className="text-sm text-blue-800 dark:text-blue-200">
+                    💡 <strong>Inventory levels are measured in your package size units</strong>
+                  </p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                    {product.size_value && product.size_unit 
+                      ? `Since you purchase this as "${product.uom_purchase}" containing ${product.size_value} ${product.size_unit}, 
+                         enter your desired levels in ${product.size_unit} (e.g., gallons, ounces).`
+                      : `Set your reorder and par levels in ${product.uom_purchase || 'purchase units'}.`}
+                  </p>
+                </div>
 
-                  <FormField
-                    control={form.control}
-                    name="par_level_max"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Max Par Level</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            placeholder="0"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                <InventoryLevelInput
+                  label="Reorder Point"
+                  value={form.watch('reorder_point') || 0}
+                  onChange={(val) => form.setValue('reorder_point', val)}
+                  product={product}
+                  helpText="When stock falls to this level, you'll get an alert to reorder"
+                />
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <InventoryLevelInput
+                    label="Minimum Par Level"
+                    value={form.watch('par_level_min') || 0}
+                    onChange={(val) => form.setValue('par_level_min', val)}
+                    product={product}
+                    helpText="Minimum stock you want to maintain"
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="reorder_point"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Reorder Point</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            placeholder="0"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === '' ? undefined : Number(value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                  
+                  <InventoryLevelInput
+                    label="Maximum Par Level"
+                    value={form.watch('par_level_max') || 0}
+                    onChange={(val) => form.setValue('par_level_max', val)}
+                    product={product}
+                    helpText="Maximum stock level (useful for space management)"
                   />
                 </div>
               </CardContent>

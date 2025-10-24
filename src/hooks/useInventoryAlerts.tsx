@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { formatInventoryLevel } from '@/lib/inventoryDisplay';
 
 export interface InventoryAlert {
   id: string;
@@ -11,6 +12,7 @@ export interface InventoryAlert {
   par_level_min: number;
   par_level_max: number;
   uom_purchase: string;
+  size_value?: number;
   size_unit?: string;
   category: string;
   supplier_name?: string;
@@ -50,6 +52,7 @@ export const useInventoryAlerts = (restaurantId: string | null) => {
           par_level_min: product.par_level_min || 0,
           par_level_max: product.par_level_max || 0,
           uom_purchase: product.uom_purchase || 'unit',
+          size_value: product.size_value,
           size_unit: product.size_unit,
           category: product.category || 'Uncategorized',
           supplier_name: product.supplier_name,
@@ -117,11 +120,10 @@ export const useInventoryAlerts = (restaurantId: string | null) => {
     const headers = [
       'Product Name',
       'Category',
-      'Current Stock',
-      'Unit',
-      'Reorder Point',
-      'Par Level Min',
-      'Par Level Max',
+      'Current Stock (with units)',
+      'Reorder Point (with units)',
+      'Par Level Min (with units)',
+      'Par Level Max (with units)',
       'Supplier',
       'Unit Cost',
       'Total Value'
@@ -130,11 +132,10 @@ export const useInventoryAlerts = (restaurantId: string | null) => {
     const rows = lowStockItems.map(item => [
       item.name,
       item.category || 'Uncategorized',
-      item.current_stock,
-      item.uom_purchase,
-      item.reorder_point,
-      item.par_level_min,
-      item.par_level_max,
+      formatInventoryLevel(item.current_stock, item),
+      formatInventoryLevel(item.reorder_point, item),
+      formatInventoryLevel(item.par_level_min, item),
+      formatInventoryLevel(item.par_level_max, item),
       item.supplier_name || 'No supplier',
       item.cost_per_unit ? `$${item.cost_per_unit}` : '',
       item.cost_per_unit ? `$${(item.current_stock * item.cost_per_unit).toFixed(2)}` : ''

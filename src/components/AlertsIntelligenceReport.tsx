@@ -9,6 +9,7 @@ import { ExportDropdown } from '@/components/financial-statements/shared/ExportD
 import { generateTablePDF } from '@/utils/pdfExport';
 import { exportToCSV as exportCSV, generateCSVFilename } from '@/utils/csvExport';
 import { useToast } from '@/hooks/use-toast';
+import { formatInventoryLevel } from '@/lib/inventoryDisplay';
 import {
   AlertTriangle, AlertCircle, CheckCircle, Info,
   Package, Clock, TrendingUp, Shield, Calendar
@@ -370,8 +371,8 @@ export const AlertsIntelligenceReport: React.FC<AlertsIntelligenceReportProps> =
                         <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
                           <div>Category: {item.category}</div>
                           <div>Supplier: {item.supplier_name}</div>
-                          <div>Current: {item.current_stock} {item.uom_purchase}</div>
-                          <div>Reorder at: {item.reorder_point}</div>
+                          <div>Current: {formatInventoryLevel(item.current_stock, item, { showBothUnits: false })}</div>
+                          <div>Reorder at: {formatInventoryLevel(item.reorder_point, item, { showBothUnits: false })}</div>
                           <div className={getRiskColor(item.stockout_risk)}>
                             Days left: {item.days_until_stockout}
                           </div>

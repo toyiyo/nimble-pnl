@@ -39,6 +39,7 @@ import { productLookupService, ProductLookupResult } from '@/services/productLoo
 import { ProductEnhancementService } from '@/services/productEnhancementService';
 import { ocrService } from '@/services/ocrService';
 import { cn } from '@/lib/utils';
+import { formatInventoryLevel } from '@/lib/inventoryDisplay';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
@@ -1372,19 +1373,19 @@ export const Inventory: React.FC = () => {
                          </div>
                        </CardHeader>
                        <CardContent>
-                         <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm">Current Stock:</span>
-                                <div className="font-medium text-destructive text-right">
-                                  <span>{Number(product.current_stock || 0).toFixed(2)} {product.uom_purchase || 'units'}</span>
-                                </div>
-                              </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm">Reorder Point:</span>
-                              <span className="font-medium">
-                                {Number(product.reorder_point || 0).toFixed(2)} {product.size_unit || 'units'}
-                              </span>
-                            </div>
+                          <div className="space-y-2">
+                               <div className="flex justify-between items-center">
+                                 <span className="text-sm">Current Stock:</span>
+                                 <div className="font-medium text-destructive text-right">
+                                   <span>{formatInventoryLevel(product.current_stock || 0, product, { showBothUnits: false })}</span>
+                                 </div>
+                               </div>
+                             <div className="flex justify-between items-center">
+                               <span className="text-sm">Reorder Point:</span>
+                               <span className="font-medium">
+                                 {formatInventoryLevel(product.reorder_point || 0, product, { showBothUnits: false })}
+                               </span>
+                             </div>
                             {product.cost_per_unit && (
                               <div className="flex justify-between items-center">
                                 <span className="text-sm">Unit Cost:</span>

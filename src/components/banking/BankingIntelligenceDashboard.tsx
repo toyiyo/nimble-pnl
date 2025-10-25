@@ -24,7 +24,7 @@ export function BankingIntelligenceDashboard({
   return (
     <div className="space-y-6">
       {/* Hero Section - Financial Pulse */}
-      <FinancialPulseHero selectedPeriod={selectedPeriod} />
+      <FinancialPulseHero selectedPeriod={selectedPeriod} selectedBankAccount={selectedBankAccount} />
 
       {/* Intelligence Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>

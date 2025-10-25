@@ -10,10 +10,11 @@ import { differenceInDays } from "date-fns";
 
 interface FinancialPulseHeroProps {
   selectedPeriod: Period;
+  selectedBankAccount: string;
 }
 
-export function FinancialPulseHero({ selectedPeriod }: FinancialPulseHeroProps) {
-  const { data: metrics, isLoading } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to);
+export function FinancialPulseHero({ selectedPeriod, selectedBankAccount }: FinancialPulseHeroProps) {
+  const { data: metrics, isLoading } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
   const periodDays = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;
 
   if (isLoading) {

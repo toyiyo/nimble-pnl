@@ -126,6 +126,9 @@ const Index = () => {
   const averages = getAverages(7);
   const recentData = getGroupedPnLData().slice(0, 30);
 
+  // Monthly data (recomputed only when pnlData changes)
+  const monthlyData = useMemo(() => getMonthlyData(), [getMonthlyData]);
+
   // Generate AI insights with memoization
   const insights = useMemo(() => {
     const insightsArray: Array<{
@@ -344,29 +347,32 @@ const Index = () => {
                     sparklineData={periodData?.daily_data.map(d => ({ value: d.labor_cost }))}
                     periodLabel={selectedPeriod.label}
                   />
-                  <DashboardMetricCard
-                    title="Profit"
-                    value={periodData ? `$${(periodData.net_revenue - periodData.food_cost - periodData.labor_cost).toFixed(0)}` : '--'}
-                    trend={periodData && previousPeriodData ? {
-                      value: getTrendValue(
-                        periodData.net_revenue - periodData.food_cost - periodData.labor_cost,
-                        previousPeriodData.net_revenue * (1 - (previousPeriodData.food_cost_percentage + previousPeriodData.labor_cost_percentage) / 100)
-                      ),
-                      label: 'vs previous period'
-                    } : undefined}
-                    icon={TrendingUp}
-                    variant={
-                      periodData && periodData.net_revenue > 0
-                        ? (() => {
-                            const profitMargin = ((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue) * 100;
-                            return profitMargin > 15 ? 'success' : profitMargin < 5 ? 'danger' : profitMargin < 10 ? 'warning' : 'default';
-                          })()
-                        : 'default'
-                    }
-                    subtitle={periodData && periodData.net_revenue > 0 ? `${(((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue) * 100).toFixed(1)}% margin` : undefined}
-                    sparklineData={periodData?.daily_data.map(d => ({ value: d.net_revenue - d.food_cost - d.labor_cost }))}
-                    periodLabel={selectedPeriod.label}
-                  />
+                  {/* Profit Card (replaced Prime Cost) */}
+                  {(() => {
+                    const profit = periodData ? (periodData.net_revenue - periodData.food_cost - periodData.labor_cost) : 0;
+                    const profitMargin = periodData?.net_revenue ? (profit / periodData.net_revenue) * 100 : 0;
+                    const previousProfit = previousPeriodData ? (previousPeriodData.net_revenue * (1 - (previousPeriodData.food_cost_percentage + previousPeriodData.labor_cost_percentage) / 100)) : 0;
+                    
+                    return (
+                      <DashboardMetricCard
+                        title="Profit"
+                        value={periodData ? `$${profit.toFixed(0)}` : '--'}
+                        trend={periodData && previousPeriodData ? {
+                          value: getTrendValue(profit, previousProfit),
+                          label: 'vs previous period'
+                        } : undefined}
+                        icon={TrendingUp}
+                        variant={
+                          periodData && periodData.net_revenue > 0
+                            ? profitMargin > 15 ? 'success' : profitMargin < 5 ? 'danger' : profitMargin < 10 ? 'warning' : 'default'
+                            : 'default'
+                        }
+                        subtitle={periodData && periodData.net_revenue > 0 ? `${profitMargin.toFixed(1)}% margin` : undefined}
+                        sparklineData={periodData?.daily_data.map(d => ({ value: d.net_revenue - d.food_cost - d.labor_cost }))}
+                        periodLabel={selectedPeriod.label}
+                      />
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -451,7 +457,7 @@ const Index = () => {
               <DashboardQuickActions restaurantId={selectedRestaurant.restaurant_id} />
 
               {/* Monthly Performance Table */}
-              <MonthlyBreakdownTable monthlyData={getMonthlyData()} />
+              <MonthlyBreakdownTable monthlyData={monthlyData} />
             </>
           )}
         </div>

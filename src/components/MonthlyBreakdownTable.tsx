@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,19 +17,24 @@ interface MonthlyBreakdownTableProps {
   monthlyData: MonthlyData[];
 }
 
+type MonthlyRow = MonthlyData & { profitChangePercent: number | null };
+
 export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProps) => {
   // Calculate profit change vs prior period
-  const dataWithComparison = monthlyData.map((month, index) => {
-    const priorMonth = monthlyData[index + 1];
-    const profitChange = priorMonth && priorMonth.gross_profit !== 0
-      ? ((month.gross_profit - priorMonth.gross_profit) / Math.abs(priorMonth.gross_profit)) * 100
-      : null;
-    
-    return {
-      ...month,
-      profitChangePercent: profitChange,
-    };
-  });
+  const dataWithComparison: MonthlyRow[] = useMemo(
+    () => monthlyData.map((month, index) => {
+      const priorMonth = monthlyData[index + 1];
+      const profitChange = priorMonth && priorMonth.gross_profit !== 0
+        ? ((month.gross_profit - priorMonth.gross_profit) / Math.abs(priorMonth.gross_profit)) * 100
+        : null;
+      
+      return {
+        ...month,
+        profitChangePercent: profitChange,
+      };
+    }),
+    [monthlyData]
+  );
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -49,10 +55,10 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
   };
 
   const getTrendIcon = (change: number | null) => {
-    if (change === null) return <Minus className="h-3 w-3" />;
-    if (change > 0) return <TrendingUp className="h-3 w-3" />;
-    if (change < 0) return <TrendingDown className="h-3 w-3" />;
-    return <Minus className="h-3 w-3" />;
+    if (change === null) return <Minus aria-hidden="true" className="h-3 w-3" />;
+    if (change > 0) return <TrendingUp aria-hidden="true" className="h-3 w-3" />;
+    if (change < 0) return <TrendingDown aria-hidden="true" className="h-3 w-3" />;
+    return <Minus aria-hidden="true" className="h-3 w-3" />;
   };
 
   const getTrendVariant = (change: number | null): "default" | "secondary" | "destructive" => {
@@ -95,6 +101,9 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
         <ScrollArea className="w-full">
           <div className="min-w-[650px] sm:min-w-[800px]">
             <table className="w-full">
+              <caption className="sr-only">
+                Monthly performance breakdown with revenue, costs, profit, and month-over-month change.
+              </caption>
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
@@ -160,10 +169,10 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                       <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                         <span className={`font-bold text-xs sm:text-sm ${
                           month.gross_profit > 0 
-                            ? 'text-green-600 dark:text-green-400' 
+                            ? 'text-primary' 
                             : month.gross_profit < 0 
-                            ? 'text-red-600 dark:text-red-400'
-                            : ''
+                            ? 'text-destructive'
+                            : 'text-foreground'
                         }`}>
                           {formatCurrency(month.gross_profit)}
                         </span>
@@ -173,6 +182,13 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           <Badge 
                             variant={getTrendVariant(month.profitChangePercent)}
                             className="gap-0.5 sm:gap-1 font-semibold text-[10px] sm:text-xs px-1.5 sm:px-2.5"
+                            aria-label={`${
+                              month.profitChangePercent > 0 
+                                ? 'Profit up' 
+                                : month.profitChangePercent < 0 
+                                ? 'Profit down' 
+                                : 'No change'
+                            } ${Math.abs(month.profitChangePercent).toFixed(1)}% versus prior month`}
                           >
                             {getTrendIcon(month.profitChangePercent)}
                             <span className="hidden sm:inline">
@@ -185,8 +201,8 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                             </span>
                           </Badge>
                         ) : (
-                          <Badge variant="secondary" className="gap-0.5 sm:gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2.5">
-                            <Minus className="h-2 w-2 sm:h-3 sm:w-3" />
+                          <Badge variant="secondary" className="gap-0.5 sm:gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2.5" aria-label="No prior period data">
+                            <Minus aria-hidden="true" className="h-2 w-2 sm:h-3 sm:w-3" />
                             N/A
                           </Badge>
                         )}

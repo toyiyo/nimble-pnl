@@ -82,7 +82,7 @@ export function DashboardMetricCard({
             <div className="text-3xl font-bold tracking-tight flex items-center gap-2">
               {value}
               {isExcellent && (
-                <Sparkles className="h-5 w-5 text-warning animate-pulse" aria-label="Excellent performance" />
+                <Sparkles className="h-5 w-5 text-warning" aria-label="Excellent performance" />
               )}
             </div>
             {subtitle && (

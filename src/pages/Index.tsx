@@ -16,6 +16,8 @@ import { DashboardSkeleton } from '@/components/DashboardSkeleton';
 import { DataInputDialog } from '@/components/DataInputDialog';
 import { PeriodSelector, Period } from '@/components/PeriodSelector';
 import { MonthlyBreakdownTable } from '@/components/MonthlyBreakdownTable';
+import { BankSnapshotSection } from '@/components/BankSnapshotSection';
+import { useConnectedBanks } from '@/hooks/useConnectedBanks';
 import { format, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import {
   DollarSign, 
@@ -30,7 +32,8 @@ import {
   Activity,
   Calendar,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Landmark
 } from 'lucide-react';
 
 const Index = () => {
@@ -38,6 +41,7 @@ const Index = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, getMonthlyData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
   const { lowStockItems, reorderAlerts, loading: alertsLoading } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
+  const { data: connectedBanks } = useConnectedBanks(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
@@ -272,6 +276,14 @@ const Index = () => {
               />
               <Button 
                 variant="outline" 
+                onClick={() => navigate('/banking')} 
+                className="w-full sm:w-auto group hover:border-cyan-500/50 transition-all"
+              >
+                <Landmark className="h-4 w-4 mr-2 group-hover:text-cyan-600 transition-colors" />
+                Banking
+              </Button>
+              <Button 
+                variant="outline" 
                 onClick={() => navigate('/reports')} 
                 className="w-full sm:w-auto group hover:border-primary/50 transition-all"
               >
@@ -300,6 +312,14 @@ const Index = () => {
                 selectedPeriod={selectedPeriod}
                 onPeriodChange={setSelectedPeriod}
               />
+
+              {/* Bank Snapshot Section */}
+              {connectedBanks && connectedBanks.length > 0 && (
+                <BankSnapshotSection 
+                  restaurantId={selectedRestaurant.restaurant_id}
+                  selectedPeriod={selectedPeriod}
+                />
+              )}
 
               {/* Key Metrics */}
               <div className="space-y-4">

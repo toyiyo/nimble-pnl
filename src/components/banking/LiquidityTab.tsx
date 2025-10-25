@@ -1,8 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DashboardMetricCard } from "@/components/DashboardMetricCard";
-import { AlertTriangle, TrendingDown, Wallet } from "lucide-react";
+import { AlertTriangle, TrendingDown, Wallet, AlertCircle } from "lucide-react";
 import { useLiquidityMetrics } from "@/hooks/useLiquidityMetrics";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { format } from "date-fns";
@@ -14,7 +15,22 @@ interface LiquidityTabProps {
 }
 
 export function LiquidityTab({ selectedPeriod, selectedBankAccount }: LiquidityTabProps) {
-  const { data: metrics, isLoading } = useLiquidityMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
+  const { data: metrics, isLoading, isError, error, refetch } = useLiquidityMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
+
+  if (isError) {
+    return (
+      <Card className="border-destructive/50">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+          <p className="text-lg font-semibold mb-2">Failed to load liquidity data</p>
+          <p className="text-sm text-muted-foreground mb-4">{error?.message}</p>
+          <Button onClick={() => refetch()} variant="outline">
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -30,11 +46,15 @@ export function LiquidityTab({ selectedPeriod, selectedBankAccount }: LiquidityT
     );
   }
 
-  if (!metrics) {
+  if (!metrics || metrics.currentBalance === undefined) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">No liquidity data available</p>
-      </div>
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <Wallet className="h-12 w-12 text-muted-foreground/50 mb-4" />
+          <p className="text-lg font-semibold mb-2">No liquidity data available</p>
+          <p className="text-sm text-muted-foreground">Connect a bank account to see cash runway metrics</p>
+        </CardContent>
+      </Card>
     );
   }
 

@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Sparkles, Calendar, DollarSign, TrendingUp, AlertCircle, Home } from "lucide-react";
 import { usePredictiveMetrics } from "@/hooks/usePredictiveMetrics";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import type { Period } from "@/components/PeriodSelector";
@@ -12,7 +13,22 @@ interface PredictionsTabProps {
 }
 
 export function PredictionsTab({ selectedPeriod, selectedBankAccount }: PredictionsTabProps) {
-  const { data: metrics, isLoading } = usePredictiveMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
+  const { data: metrics, isLoading, isError, error, refetch } = usePredictiveMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
+
+  if (isError) {
+    return (
+      <Card className="border-destructive/50">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+          <p className="text-lg font-semibold mb-2">Failed to load predictions</p>
+          <p className="text-sm text-muted-foreground mb-4">{error?.message}</p>
+          <Button onClick={() => refetch()} variant="outline">
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -240,53 +256,50 @@ export function PredictionsTab({ selectedPeriod, selectedBankAccount }: Predicti
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {metrics.recurringExpenses && metrics.recurringExpenses.length > 0 ? (
-            <div className="space-y-4">
-              {metrics.recurringExpenses
-                .filter(expense => 
-                  expense.frequency === 'monthly' && 
-                  (expense.vendor.toLowerCase().includes('rent') ||
-                   expense.vendor.toLowerCase().includes('property') ||
-                   expense.vendor.toLowerCase().includes('landlord') ||
-                   expense.vendor.toLowerCase().includes('lease') ||
-                   expense.avgAmount > 1000)
-                )
-                .slice(0, 3)
-                .map((expense, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-primary/5 to-transparent border border-primary/10">
-                    <div>
-                      <p className="font-semibold">{expense.vendor}</p>
-                      <p className="text-sm text-muted-foreground capitalize">{expense.frequency} recurring</p>
+          {(() => {
+            const isRentOrLargeMonthly = (expense: typeof metrics.recurringExpenses[0]) =>
+              expense.frequency === 'monthly' && 
+              (expense.vendor.toLowerCase().includes('rent') ||
+               expense.vendor.toLowerCase().includes('property') ||
+               expense.vendor.toLowerCase().includes('landlord') ||
+               expense.vendor.toLowerCase().includes('lease') ||
+               expense.avgAmount > 1000);
+
+            const filteredExpenses = metrics.recurringExpenses?.filter(isRentOrLargeMonthly) || [];
+
+            return metrics.recurringExpenses && metrics.recurringExpenses.length > 0 ? (
+              <div className="space-y-4">
+                {filteredExpenses
+                  .slice(0, 3)
+                  .map((expense, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-primary/5 to-transparent border border-primary/10">
+                      <div>
+                        <p className="font-semibold">{expense.vendor}</p>
+                        <p className="text-sm text-muted-foreground capitalize">{expense.frequency} recurring</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xl font-bold">
+                          ${expense.avgAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Next: {format(expense.nextExpectedDate, 'MMM dd')}
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xl font-bold">
-                        ${expense.avgAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Next: {format(expense.nextExpectedDate, 'MMM dd')}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              
-              {metrics.recurringExpenses.filter(e => 
-                e.frequency === 'monthly' && 
-                (e.vendor.toLowerCase().includes('rent') ||
-                 e.vendor.toLowerCase().includes('property') ||
-                 e.vendor.toLowerCase().includes('landlord') ||
-                 e.vendor.toLowerCase().includes('lease') ||
-                 e.avgAmount > 1000)
-              ).length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-6">
-                  No rent or large fixed costs detected in recurring expenses
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-6">
-              No recurring monthly expenses detected
-            </p>
-          )}
+                  ))}
+                
+                {filteredExpenses.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-6">
+                    No rent or large fixed costs detected in recurring expenses
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No recurring monthly expenses detected
+              </p>
+            );
+          })()}
         </CardContent>
       </Card>
     </div>

@@ -1,8 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DashboardMetricCard } from "@/components/DashboardMetricCard";
-import { TrendingUp, TrendingDown, DollarSign, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Activity, AlertCircle } from "lucide-react";
 import { useCashFlowMetrics } from "@/hooks/useCashFlowMetrics";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { format, subDays, differenceInDays } from "date-fns";
 import type { Period } from "@/components/PeriodSelector";
@@ -13,8 +14,23 @@ interface CashFlowTabProps {
 }
 
 export function CashFlowTab({ selectedPeriod, selectedBankAccount }: CashFlowTabProps) {
-  const { data: metrics, isLoading } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
+  const { data: metrics, isLoading, error, refetch } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
   const periodDays = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;
+
+  if (error) {
+    return (
+      <Card className="border-destructive/50">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+          <p className="text-lg font-semibold mb-2">Failed to load cash flow data</p>
+          <p className="text-sm text-muted-foreground mb-4">{error.message}</p>
+          <Button onClick={() => refetch()} variant="outline">
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (

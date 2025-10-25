@@ -88,9 +88,7 @@ export function BankSnapshotSection({ restaurantId, selectedPeriod }: BankSnapsh
     const vendorConcentration = spendingMetrics.vendorConcentration || 0;
 
     // 6. Incoming vs Outgoing Ratio
-    const incomingOutgoingRatio = revenueMetrics.refundRate > 0
-      ? (cashFlowMetrics.netInflows30d || 0) / Math.max((cashFlowMetrics.netOutflows30d || 1), 1)
-      : (cashFlowMetrics.netInflows30d || 0) / Math.max(Math.abs(cashFlowMetrics.netOutflows30d || 1), 1);
+    const incomingOutgoingRatio = (cashFlowMetrics.netInflows30d || 0) / Math.max(Math.abs(cashFlowMetrics.netOutflows30d || 0), 1);
 
     // 7. Average Daily Burn
     const avgDailyBurn = liquidityMetrics.avgDailyOutflow;

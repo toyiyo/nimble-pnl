@@ -11,6 +11,7 @@ import { CategoryRulesDialog } from "@/components/banking/CategoryRulesDialog";
 import { EnhancedReconciliationDialog } from "@/components/banking/EnhancedReconciliationDialog";
 import { ReconciliationReport } from "@/components/banking/ReconciliationReport";
 import { BankConnectionCard } from "@/components/BankConnectionCard";
+import { BankingIntelligenceDashboard } from "@/components/banking/BankingIntelligenceDashboard";
 import { MetricIcon } from "@/components/MetricIcon";
 import { useCategorizeTransactions } from "@/hooks/useCategorizeTransactions";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
@@ -262,6 +263,11 @@ export default function Banking() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Banking Intelligence Dashboard */}
+          {connectedBanks.length > 0 && (
+            <BankingIntelligenceDashboard />
+          )}
 
           {/* Connected Banks Section */}
           <div className="space-y-4">

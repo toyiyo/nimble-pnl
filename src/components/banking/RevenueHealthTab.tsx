@@ -41,7 +41,7 @@ export function RevenueHealthTab({ selectedPeriod, selectedBankAccount }: Revenu
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Primary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-6">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -72,6 +72,15 @@ export function RevenueHealthTab({ selectedPeriod, selectedBankAccount }: Revenu
           icon={TrendingUp}
           variant="default"
           subtitle={`${metrics.depositCount} deposits`}
+          periodLabel={selectedPeriod.label}
+        />
+
+        <DashboardMetricCard
+          title="Largest Deposit Ratio"
+          value={`${metrics.largestToAvgRatio.toFixed(1)}x`}
+          icon={TrendingUp}
+          variant={metrics.largestToAvgRatio > 3 ? 'warning' : 'default'}
+          subtitle="vs average deposit"
           periodLabel={selectedPeriod.label}
         />
 

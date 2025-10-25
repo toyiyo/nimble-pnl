@@ -8,6 +8,7 @@ interface RevenueHealthMetrics {
   depositFrequencyScore: number; // 0-5 stars
   avgDepositSize: number;
   largestDeposit: number;
+  largestToAvgRatio: number;
   depositCount: number;
   revenueSourceBreakdown: Array<{
     source: string;
@@ -138,6 +139,11 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
         ? Math.max(...posDeposits.map(t => t.amount))
         : 0;
 
+      // Largest to Average Ratio
+      const largestToAvgRatio = avgDepositSize > 0 
+        ? largestDeposit / avgDepositSize 
+        : 0;
+
       // Revenue source breakdown
       const deliveryKeywords = ['doordash', 'ubereats', 'grubhub', 'postmates', 'uber eats'];
       const deliveryDeposits = deposits.filter(t => {
@@ -182,6 +188,7 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
         depositFrequencyScore,
         avgDepositSize,
         largestDeposit,
+        largestToAvgRatio,
         depositCount: posDeposits.length,
         revenueSourceBreakdown,
         refundRate,

@@ -86,34 +86,36 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
   return (
     <Card className="animate-fade-in">
       <CardHeader>
-        <CardTitle className="text-xl flex items-center gap-2">
-          <div className="h-1 w-8 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
+        <CardTitle className="text-base sm:text-xl flex items-center gap-2">
+          <div className="h-1 w-6 sm:w-8 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
           Monthly Performance
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-2 sm:px-6">
         <ScrollArea className="w-full">
-          <div className="min-w-[800px]">
+          <div className="min-w-[650px] sm:min-w-[800px]">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-muted-foreground">
+                  <th className="text-left py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
                     Month
                   </th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-muted-foreground">
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
                     Revenue
                   </th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-muted-foreground">
-                    Food Cost
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                    <span className="hidden sm:inline">Food Cost</span>
+                    <span className="sm:hidden">COGS</span>
                   </th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-muted-foreground">
-                    Labor Cost
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                    Labor
                   </th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-muted-foreground">
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
                     Profit
                   </th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-muted-foreground">
-                    vs Prior Period
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                    <span className="hidden sm:inline">vs Prior</span>
+                    <span className="sm:hidden">Δ</span>
                   </th>
                 </tr>
               </thead>
@@ -133,30 +135,30 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         index % 2 === 0 ? 'bg-muted/20' : ''
                       }`}
                     >
-                      <td className="py-3 px-4">
-                        <span className="font-medium">{formatMonth(month.period)}</span>
+                      <td className="py-2 px-2 sm:py-3 sm:px-4">
+                        <span className="font-medium text-xs sm:text-sm">{formatMonth(month.period)}</span>
                       </td>
-                      <td className="text-right py-3 px-4">
-                        <span className="font-semibold">{formatCurrency(month.net_revenue)}</span>
+                      <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
+                        <span className="font-semibold text-xs sm:text-sm">{formatCurrency(month.net_revenue)}</span>
                       </td>
-                      <td className="text-right py-3 px-4">
-                        <div className="flex flex-col items-end gap-1">
-                          <span className="font-semibold">{formatCurrency(month.food_cost)}</span>
-                          <span className="text-xs text-muted-foreground">
+                      <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
+                        <div className="flex flex-col items-end gap-0.5 sm:gap-1">
+                          <span className="font-semibold text-xs sm:text-sm">{formatCurrency(month.food_cost)}</span>
+                          <span className="text-[10px] sm:text-xs text-muted-foreground">
                             {foodCostPercent.toFixed(1)}%
                           </span>
                         </div>
                       </td>
-                      <td className="text-right py-3 px-4">
-                        <div className="flex flex-col items-end gap-1">
-                          <span className="font-semibold">{formatCurrency(month.labor_cost)}</span>
-                          <span className="text-xs text-muted-foreground">
+                      <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
+                        <div className="flex flex-col items-end gap-0.5 sm:gap-1">
+                          <span className="font-semibold text-xs sm:text-sm">{formatCurrency(month.labor_cost)}</span>
+                          <span className="text-[10px] sm:text-xs text-muted-foreground">
                             {laborCostPercent.toFixed(1)}%
                           </span>
                         </div>
                       </td>
-                      <td className="text-right py-3 px-4">
-                        <span className={`font-bold ${
+                      <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
+                        <span className={`font-bold text-xs sm:text-sm ${
                           month.gross_profit > 0 
                             ? 'text-green-600 dark:text-green-400' 
                             : month.gross_profit < 0 
@@ -166,19 +168,25 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           {formatCurrency(month.gross_profit)}
                         </span>
                       </td>
-                      <td className="text-right py-3 px-4">
+                      <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                         {month.profitChangePercent !== null ? (
                           <Badge 
                             variant={getTrendVariant(month.profitChangePercent)}
-                            className="gap-1 font-semibold"
+                            className="gap-0.5 sm:gap-1 font-semibold text-[10px] sm:text-xs px-1.5 sm:px-2.5"
                           >
                             {getTrendIcon(month.profitChangePercent)}
-                            {month.profitChangePercent > 0 ? '+' : ''}
-                            {month.profitChangePercent.toFixed(1)}%
+                            <span className="hidden sm:inline">
+                              {month.profitChangePercent > 0 ? '+' : ''}
+                              {month.profitChangePercent.toFixed(1)}%
+                            </span>
+                            <span className="sm:hidden">
+                              {month.profitChangePercent > 0 ? '+' : ''}
+                              {Math.round(month.profitChangePercent)}%
+                            </span>
                           </Badge>
                         ) : (
-                          <Badge variant="secondary" className="gap-1">
-                            <Minus className="h-3 w-3" />
+                          <Badge variant="secondary" className="gap-0.5 sm:gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2.5">
+                            <Minus className="h-2 w-2 sm:h-3 sm:w-3" />
                             N/A
                           </Badge>
                         )}

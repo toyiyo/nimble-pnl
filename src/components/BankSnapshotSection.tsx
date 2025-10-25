@@ -189,7 +189,7 @@ export function BankSnapshotSection({ restaurantId, selectedPeriod }: BankSnapsh
 
         <DashboardMetricCard
           title="Runway"
-          value={metrics.runway !== Infinity ? `${metrics.runway} days` : '∞'}
+          value={metrics.runway !== Infinity ? `${Math.floor(metrics.runway)} days` : '∞'}
           icon={Timer}
           variant={
             metrics.runwayStatus === 'healthy' ? 'success' :

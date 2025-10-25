@@ -177,11 +177,18 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
       // Anomalous deposits (>2x average)
       const anomalousDeposits = posDeposits
         .filter(t => t.amount > avgDepositSize * 2)
-        .map(t => ({
-          date: format(parseISO(t.transaction_date), 'MMM dd, yyyy'),
-          amount: t.amount,
-          reason: `${((t.amount / avgDepositSize) * 100).toFixed(0)}% larger than average`
-        }));
+        .map(t => {
+          const percentage = avgDepositSize > 0 
+            ? ((t.amount / avgDepositSize) * 100).toFixed(0)
+            : 'N/A';
+          return {
+            date: format(parseISO(t.transaction_date), 'MMM dd, yyyy'),
+            amount: t.amount,
+            reason: avgDepositSize > 0 
+              ? `${percentage}% larger than average`
+              : 'Unusually large deposit'
+          };
+        });
 
       return {
         depositFrequency,

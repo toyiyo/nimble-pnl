@@ -112,10 +112,11 @@ export function RevenueHealthTab({ selectedPeriod, selectedBankAccount }: Revenu
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percentage }) => `${name}: ${percentage.toFixed(1)}%`}
+                  label={({ payload, percent }) => `${payload.source}: ${(percent * 100).toFixed(1)}%`}
                   outerRadius={100}
                   fill="#8884d8"
                   dataKey="amount"
+                  nameKey="source"
                 >
                   {metrics.revenueSourceBreakdown.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

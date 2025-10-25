@@ -33,9 +33,18 @@ export function useRevenueHealth(startDate: Date, endDate: Date) {
         throw new Error("No restaurant selected");
       }
 
+      // Fetch revenue accounts for categorization-based detection
+      const { data: revenueAccounts } = await supabase
+        .from('chart_of_accounts')
+        .select('id')
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .eq('account_type', 'revenue');
+      
+      const revenueAccountIds = new Set(revenueAccounts?.map(a => a.id) || []);
+
       const { data: transactions, error } = await supabase
         .from('bank_transactions')
-        .select('transaction_date, amount, status, description, merchant_name')
+        .select('id, transaction_date, amount, status, description, merchant_name, category_id')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('status', 'posted')
         .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
@@ -49,14 +58,56 @@ export function useRevenueHealth(startDate: Date, endDate: Date) {
       // Filter deposits (inflows)
       const deposits = txns.filter(t => t.amount > 0);
       
-      // Identify POS deposits
-      const posDeposits = deposits.filter(t => {
+      // Method 1: Categorized as revenue
+      const categorizedRevenue = deposits.filter(t => 
+        t.category_id && revenueAccountIds.has(t.category_id)
+      );
+      
+      // Method 2: Keyword-based detection (for uncategorized)
+      const uncategorized = deposits.filter(t => !t.category_id);
+      
+      const posKeywords = [
+        'square', 'clover', 'toast', 'lightspeed', 'shopify',
+        'revel', 'touchbistro', 'upserve', 'aloha', 'micros',
+        'par', 'omnivore', 'pos', 'point of sale'
+      ];
+      
+      const paymentKeywords = [
+        'stripe', 'paypal', 'venmo', 'zelle', 'cash app',
+        'apple pay', 'google pay', 'payment received',
+        'payment from', 'pay from'
+      ];
+      
+      const depositKeywords = [
+        'deposit', 'direct deposit', 'dir dep', 'mobile deposit',
+        'ach credit', 'electronic payment', 'wire transfer',
+        'online payment', 'ba electronic'
+      ];
+      
+      const allKeywords = [...posKeywords, ...paymentKeywords, ...depositKeywords];
+      
+      const keywordMatches = uncategorized.filter(t => {
         const desc = (t.description || '').toLowerCase();
         const merchant = (t.merchant_name || '').toLowerCase();
-        return desc.includes('square') || desc.includes('clover') || 
-               desc.includes('toast') || merchant.includes('square') || 
-               merchant.includes('clover') || merchant.includes('toast');
+        return allKeywords.some(kw => desc.includes(kw) || merchant.includes(kw));
       });
+      
+      // Method 3: Amount-based heuristic (deposits >= $50)
+      const significantDeposits = uncategorized.filter(t => 
+        t.amount >= 50 &&
+        !keywordMatches.find(m => m.id === t.id)
+      );
+      
+      // Combine all detection methods (deduplicate)
+      const allRevenueDeposits = [
+        ...categorizedRevenue,
+        ...keywordMatches,
+        ...significantDeposits
+      ];
+      
+      const posDeposits = Array.from(
+        new Map(allRevenueDeposits.map(t => [t.id, t])).values()
+      );
 
       // Calculate deposit frequency
       const periodDays = differenceInDays(endDate, startDate) + 1;

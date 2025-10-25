@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card } from "@/components/ui/card";
+
 import { TrendingUp, DollarSign, PieChart, Sparkles, AlertTriangle } from "lucide-react";
 import { FinancialPulseHero } from "./FinancialPulseHero";
 import { CashFlowTab } from "./CashFlowTab";
@@ -15,8 +15,11 @@ interface BankingIntelligenceDashboardProps {
   selectedBankAccount: string;
 }
 
-export function BankingIntelligenceDashboard({ selectedPeriod, selectedBankAccount }: BankingIntelligenceDashboardProps) {
-  const [activeTab, setActiveTab] = useState('cash-flow');
+export function BankingIntelligenceDashboard({
+  selectedPeriod,
+  selectedBankAccount,
+}: BankingIntelligenceDashboardProps) {
+  const [activeTab, setActiveTab] = useState("cash-flow");
 
   return (
     <div className="space-y-6">

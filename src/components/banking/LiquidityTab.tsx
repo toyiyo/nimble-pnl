@@ -10,10 +10,11 @@ import type { Period } from "@/components/PeriodSelector";
 
 interface LiquidityTabProps {
   selectedPeriod: Period;
+  selectedBankAccount: string;
 }
 
-export function LiquidityTab({ selectedPeriod }: LiquidityTabProps) {
-  const { data: metrics, isLoading } = useLiquidityMetrics(selectedPeriod.from, selectedPeriod.to);
+export function LiquidityTab({ selectedPeriod, selectedBankAccount }: LiquidityTabProps) {
+  const { data: metrics, isLoading } = useLiquidityMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
 
   if (isLoading) {
     return (

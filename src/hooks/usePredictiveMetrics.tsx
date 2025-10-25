@@ -30,11 +30,11 @@ interface PredictiveMetrics {
   seasonalityMessage: string;
 }
 
-export function usePredictiveMetrics(startDate: Date, endDate: Date) {
+export function usePredictiveMetrics(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
   const { selectedRestaurant } = useRestaurantContext();
 
   return useQuery({
-    queryKey: ['predictive-metrics', selectedRestaurant?.restaurant_id, format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd')],
+    queryKey: ['predictive-metrics', selectedRestaurant?.restaurant_id, format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'), bankAccountId],
     queryFn: async (): Promise<PredictiveMetrics> => {
       if (!selectedRestaurant?.restaurant_id) {
         throw new Error("No restaurant selected");
@@ -43,14 +43,20 @@ export function usePredictiveMetrics(startDate: Date, endDate: Date) {
       const periodDays = differenceInDays(endDate, startDate) + 1;
       const extendedStart = addDays(startDate, -60); // Look back 60 more days for patterns
 
-      const { data: transactions, error } = await supabase
+      let query = supabase
         .from('bank_transactions')
         .select('transaction_date, amount, status, description, merchant_name, normalized_payee')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('status', 'posted')
         .gte('transaction_date', format(extendedStart, 'yyyy-MM-dd'))
-        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
-        .order('transaction_date', { ascending: true });
+        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
+
+      // Apply bank account filter if specified
+      if (bankAccountId && bankAccountId !== 'all') {
+        query = query.eq('connected_bank_id', bankAccountId);
+      }
+
+      const { data: transactions, error } = await query.order('transaction_date', { ascending: true });
 
       if (error) throw error;
 

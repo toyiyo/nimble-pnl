@@ -15,22 +15,29 @@ interface LiquidityMetrics {
   recommendation: string;
 }
 
-export function useLiquidityMetrics(startDate: Date, endDate: Date) {
+export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
   const { selectedRestaurant } = useRestaurantContext();
 
   return useQuery({
-    queryKey: ['liquidity-metrics', selectedRestaurant?.restaurant_id, format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd')],
+    queryKey: ['liquidity-metrics', selectedRestaurant?.restaurant_id, format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'), bankAccountId],
     queryFn: async (): Promise<LiquidityMetrics> => {
       if (!selectedRestaurant?.restaurant_id) {
         throw new Error("No restaurant selected");
       }
 
       // Fetch actual bank balances from connected accounts
-      const { data: connectedBanks, error: banksError } = await supabase
+      let banksQuery = supabase
         .from('connected_banks')
         .select('id')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('status', 'connected');
+
+      // If filtering by specific bank account
+      if (bankAccountId && bankAccountId !== 'all') {
+        banksQuery = banksQuery.eq('id', bankAccountId);
+      }
+
+      const { data: connectedBanks, error: banksError } = await banksQuery;
 
       if (banksError) throw banksError;
 
@@ -51,14 +58,20 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date) {
       // Fetch recent outflows for burn rate calculation
       const periodDays = differenceInDays(endDate, startDate) + 1;
       
-      const { data: periodTransactions, error: periodError } = await supabase
+      let txnQuery = supabase
         .from('bank_transactions')
         .select('transaction_date, amount, status')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('status', 'posted')
         .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
-        .order('transaction_date', { ascending: true });
+        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
+
+      // Apply bank account filter if specified
+      if (bankAccountId && bankAccountId !== 'all') {
+        txnQuery = txnQuery.eq('connected_bank_id', bankAccountId);
+      }
+
+      const { data: periodTransactions, error: periodError } = await txnQuery.order('transaction_date', { ascending: true });
 
       if (periodError) throw periodError;
 

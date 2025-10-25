@@ -9,10 +9,11 @@ import type { Period } from "@/components/PeriodSelector";
 
 interface CashFlowTabProps {
   selectedPeriod: Period;
+  selectedBankAccount: string;
 }
 
-export function CashFlowTab({ selectedPeriod }: CashFlowTabProps) {
-  const { data: metrics, isLoading } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to);
+export function CashFlowTab({ selectedPeriod, selectedBankAccount }: CashFlowTabProps) {
+  const { data: metrics, isLoading } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
   const periodDays = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;
 
   if (isLoading) {

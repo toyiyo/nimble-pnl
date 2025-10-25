@@ -9,10 +9,11 @@ import type { Period } from "@/components/PeriodSelector";
 
 interface SpendingAnalysisTabProps {
   selectedPeriod: Period;
+  selectedBankAccount: string;
 }
 
-export function SpendingAnalysisTab({ selectedPeriod }: SpendingAnalysisTabProps) {
-  const { data: metrics, isLoading } = useSpendingAnalysis(selectedPeriod.from, selectedPeriod.to);
+export function SpendingAnalysisTab({ selectedPeriod, selectedBankAccount }: SpendingAnalysisTabProps) {
+  const { data: metrics, isLoading } = useSpendingAnalysis(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
 
   if (isLoading) {
     return (

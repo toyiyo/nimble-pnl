@@ -12,9 +12,10 @@ import type { Period } from "@/components/PeriodSelector";
 
 interface BankingIntelligenceDashboardProps {
   selectedPeriod: Period;
+  selectedBankAccount: string;
 }
 
-export function BankingIntelligenceDashboard({ selectedPeriod }: BankingIntelligenceDashboardProps) {
+export function BankingIntelligenceDashboard({ selectedPeriod, selectedBankAccount }: BankingIntelligenceDashboardProps) {
   const [activeTab, setActiveTab] = useState('cash-flow');
 
   return (
@@ -53,23 +54,23 @@ export function BankingIntelligenceDashboard({ selectedPeriod }: BankingIntellig
         </TabsList>
 
         <TabsContent value="cash-flow" className="mt-6">
-          <CashFlowTab selectedPeriod={selectedPeriod} />
+          <CashFlowTab selectedPeriod={selectedPeriod} selectedBankAccount={selectedBankAccount} />
         </TabsContent>
 
         <TabsContent value="revenue" className="mt-6">
-          <RevenueHealthTab selectedPeriod={selectedPeriod} />
+          <RevenueHealthTab selectedPeriod={selectedPeriod} selectedBankAccount={selectedBankAccount} />
         </TabsContent>
 
         <TabsContent value="spending" className="mt-6">
-          <SpendingAnalysisTab selectedPeriod={selectedPeriod} />
+          <SpendingAnalysisTab selectedPeriod={selectedPeriod} selectedBankAccount={selectedBankAccount} />
         </TabsContent>
 
         <TabsContent value="liquidity" className="mt-6">
-          <LiquidityTab selectedPeriod={selectedPeriod} />
+          <LiquidityTab selectedPeriod={selectedPeriod} selectedBankAccount={selectedBankAccount} />
         </TabsContent>
 
         <TabsContent value="predictions" className="mt-6">
-          <PredictionsTab selectedPeriod={selectedPeriod} />
+          <PredictionsTab selectedPeriod={selectedPeriod} selectedBankAccount={selectedBankAccount} />
         </TabsContent>
       </Tabs>
     </div>

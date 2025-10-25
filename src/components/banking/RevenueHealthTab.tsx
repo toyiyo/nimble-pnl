@@ -9,10 +9,11 @@ import type { Period } from "@/components/PeriodSelector";
 
 interface RevenueHealthTabProps {
   selectedPeriod: Period;
+  selectedBankAccount: string;
 }
 
-export function RevenueHealthTab({ selectedPeriod }: RevenueHealthTabProps) {
-  const { data: metrics, isLoading } = useRevenueHealth(selectedPeriod.from, selectedPeriod.to);
+export function RevenueHealthTab({ selectedPeriod, selectedBankAccount }: RevenueHealthTabProps) {
+  const { data: metrics, isLoading } = useRevenueHealth(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
 
   if (isLoading) {
     return (

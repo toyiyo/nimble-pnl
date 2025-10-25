@@ -8,10 +8,11 @@ import type { Period } from "@/components/PeriodSelector";
 
 interface PredictionsTabProps {
   selectedPeriod: Period;
+  selectedBankAccount: string;
 }
 
-export function PredictionsTab({ selectedPeriod }: PredictionsTabProps) {
-  const { data: metrics, isLoading } = usePredictiveMetrics(selectedPeriod.from, selectedPeriod.to);
+export function PredictionsTab({ selectedPeriod, selectedBankAccount }: PredictionsTabProps) {
+  const { data: metrics, isLoading } = usePredictiveMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
 
   if (isLoading) {
     return (

@@ -16,11 +16,11 @@ interface CashFlowMetrics {
   trailingTrendPercentage: number;
 }
 
-export function useCashFlowMetrics(startDate: Date, endDate: Date) {
+export function useCashFlowMetrics(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
   const { selectedRestaurant } = useRestaurantContext();
 
   return useQuery({
-    queryKey: ['cash-flow-metrics', selectedRestaurant?.restaurant_id, format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd')],
+    queryKey: ['cash-flow-metrics', selectedRestaurant?.restaurant_id, format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'), bankAccountId],
     queryFn: async (): Promise<CashFlowMetrics> => {
       if (!selectedRestaurant?.restaurant_id) {
         throw new Error("No restaurant selected");
@@ -30,14 +30,20 @@ export function useCashFlowMetrics(startDate: Date, endDate: Date) {
       const comparisonStartDate = subDays(startDate, periodDays);
       
       // Fetch transactions for the selected period + comparison period
-      const { data: transactions, error } = await supabase
+      let query = supabase
         .from('bank_transactions')
         .select('transaction_date, amount, status')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('status', 'posted')
         .gte('transaction_date', format(comparisonStartDate, 'yyyy-MM-dd'))
-        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
-        .order('transaction_date', { ascending: true });
+        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
+
+      // Apply bank account filter if specified
+      if (bankAccountId && bankAccountId !== 'all') {
+        query = query.eq('connected_bank_id', bankAccountId);
+      }
+
+      const { data: transactions, error } = await query.order('transaction_date', { ascending: true });
 
       if (error) throw error;
 

@@ -25,21 +25,28 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date) {
         throw new Error("No restaurant selected");
       }
 
-      // Fetch all transactions up to endDate to calculate balance
-      const { data: allTransactions, error: allError } = await supabase
-        .from('bank_transactions')
-        .select('transaction_date, amount, status')
+      // Fetch actual bank balances from connected accounts
+      const { data: connectedBanks, error: banksError } = await supabase
+        .from('connected_banks')
+        .select('id')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('status', 'posted')
-        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
-        .order('transaction_date', { ascending: true });
+        .eq('status', 'connected');
 
-      if (allError) throw allError;
+      if (banksError) throw banksError;
 
-      const allTxns = allTransactions || [];
+      const bankIds = connectedBanks?.map(b => b.id) || [];
 
-      // Calculate current balance (cumulative sum of all transactions)
-      const currentBalance = allTxns.reduce((sum, t) => sum + t.amount, 0);
+      // Fetch current balances from bank accounts
+      const { data: bankBalances, error: balancesError } = await supabase
+        .from('bank_account_balances')
+        .select('current_balance')
+        .in('connected_bank_id', bankIds)
+        .eq('is_active', true);
+
+      if (balancesError) throw balancesError;
+
+      // Calculate current balance (sum of all active bank account balances)
+      const currentBalance = bankBalances?.reduce((sum, b) => sum + Number(b.current_balance), 0) || 0;
 
       // Fetch recent outflows for burn rate calculation
       const periodDays = differenceInDays(endDate, startDate) + 1;

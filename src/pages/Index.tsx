@@ -16,6 +16,8 @@ import { DashboardSkeleton } from '@/components/DashboardSkeleton';
 import { DataInputDialog } from '@/components/DataInputDialog';
 import { PeriodSelector, Period } from '@/components/PeriodSelector';
 import { MonthlyBreakdownTable } from '@/components/MonthlyBreakdownTable';
+import { BankSnapshotSection } from '@/components/BankSnapshotSection';
+import { useConnectedBanks } from '@/hooks/useConnectedBanks';
 import { format, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import {
   DollarSign, 
@@ -38,6 +40,7 @@ const Index = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, getMonthlyData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
   const { lowStockItems, reorderAlerts, loading: alertsLoading } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
+  const { data: connectedBanks } = useConnectedBanks(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
@@ -300,6 +303,14 @@ const Index = () => {
                 selectedPeriod={selectedPeriod}
                 onPeriodChange={setSelectedPeriod}
               />
+
+              {/* Bank Snapshot Section */}
+              {connectedBanks && connectedBanks.length > 0 && (
+                <BankSnapshotSection 
+                  restaurantId={selectedRestaurant.restaurant_id}
+                  selectedPeriod={selectedPeriod}
+                />
+              )}
 
               {/* Key Metrics */}
               <div className="space-y-4">

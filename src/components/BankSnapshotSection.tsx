@@ -97,7 +97,7 @@ export function BankSnapshotSection({ restaurantId, selectedPeriod }: BankSnapsh
     const runway = liquidityMetrics.daysOfCash;
 
     // 9. Cash Volatility Index
-    const volatility = liquidityMetrics.cashBurnRate || 0;
+    const volatility = cashFlowMetrics.volatility || 0;
 
     // 10. Deposit Frequency (days with deposits in last 30 days)
     const depositFrequency = revenueMetrics.depositCount || 0;

@@ -37,6 +37,13 @@ interface SpendingAnalysisMetrics {
     previousSpend: number;
     changePercent: number;
   }>;
+  processingFees: number;
+  processingFeePercentage: number;
+  weekendOutflows: number;
+  weekendRatio: number;
+  aiConfidencePercentage: number;
+  uncategorizedSpend: number;
+  uncategorizedPercentage: number;
 }
 
 export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
@@ -55,7 +62,7 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
       // Fetch current and previous period transactions
       let query = supabase
         .from('bank_transactions')
-        .select('transaction_date, amount, status, description, merchant_name, normalized_payee')
+        .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, ai_confidence')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('status', 'posted')
         .gte('transaction_date', format(previousPeriodStart, 'yyyy-MM-dd'))
@@ -202,6 +209,61 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
       const weeks = periodDays / 7;
       const avgWeeklyOutflow = weeks > 0 ? totalOutflows / weeks : 0;
 
+      // Payment Processing Fees
+      const processingFeeTransactions = currentOutflows.filter(t => {
+        const desc = (t.description || '').toLowerCase();
+        return desc.includes('square fee') || 
+               desc.includes('stripe fee') || 
+               desc.includes('processing fee') ||
+               desc.includes('merchant fee') ||
+               desc.includes('card fee') ||
+               desc.includes('payment fee');
+      });
+      const processingFees = processingFeeTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      
+      // Calculate total inflows for fee percentage
+      const totalInflows = txns
+        .filter(t => {
+          const txnDate = parseISO(t.transaction_date);
+          return t.amount > 0 && txnDate >= startDate && txnDate <= endDate;
+        })
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      const processingFeePercentage = totalInflows > 0 ? (processingFees / totalInflows) * 100 : 0;
+
+      // Weekend vs Weekday Outflows
+      const weekendOutflows = currentOutflows
+        .filter(t => {
+          const day = parseISO(t.transaction_date).getDay();
+          return day === 0 || day === 6; // Sunday or Saturday
+        })
+        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      
+      const weekendRatio = totalOutflows > 0 ? (weekendOutflows / totalOutflows) * 100 : 0;
+
+      // Auto-Categorization Confidence
+      const currentPeriodTxns = txns.filter(t => {
+        const txnDate = parseISO(t.transaction_date);
+        return txnDate >= startDate && txnDate <= endDate;
+      });
+      
+      const aiCategorizedCount = currentPeriodTxns.filter(t => 
+        t.category_id && t.ai_confidence === 'high'
+      ).length;
+      
+      const aiConfidencePercentage = currentPeriodTxns.length > 0 
+        ? (aiCategorizedCount / currentPeriodTxns.length) * 100 
+        : 0;
+
+      // Uncategorized Spend
+      const uncategorizedSpend = currentOutflows
+        .filter(t => !t.category_id)
+        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      
+      const uncategorizedPercentage = totalOutflows > 0 
+        ? (uncategorizedSpend / totalOutflows) * 100 
+        : 0;
+
       return {
         topVendors,
         categoryBreakdown,
@@ -210,6 +272,13 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
         avgWeeklyOutflow,
         totalOutflows,
         vendorSpendVariance,
+        processingFees,
+        processingFeePercentage,
+        weekendOutflows,
+        weekendRatio,
+        aiConfidencePercentage,
+        uncategorizedSpend,
+        uncategorizedPercentage,
       };
     },
     enabled: !!selectedRestaurant?.restaurant_id,

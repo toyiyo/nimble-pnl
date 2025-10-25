@@ -22,12 +22,21 @@ interface SupplierCostDrift {
   driftPercent: number;
 }
 
+interface RecurringExpense {
+  vendor: string;
+  frequency: 'weekly' | 'biweekly' | 'monthly';
+  avgAmount: number;
+  lastAmount: number;
+  nextExpectedDate: Date;
+}
+
 interface PredictiveMetrics {
   nextDeposit: NextDepositPrediction | null;
   nextPayroll: NextPayrollPrediction | null;
   supplierCostDrift: SupplierCostDrift[];
   seasonalityDetected: boolean;
   seasonalityMessage: string;
+  recurringExpenses: RecurringExpense[];
 }
 
 export function usePredictiveMetrics(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
@@ -45,7 +54,7 @@ export function usePredictiveMetrics(startDate: Date, endDate: Date, bankAccount
 
       let query = supabase
         .from('bank_transactions')
-        .select('transaction_date, amount, status, description, merchant_name, normalized_payee')
+        .select('id, transaction_date, amount, status, description, merchant_name, normalized_payee, category_id')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('status', 'posted')
         .gte('transaction_date', format(extendedStart, 'yyyy-MM-dd'))
@@ -62,12 +71,68 @@ export function usePredictiveMetrics(startDate: Date, endDate: Date, bankAccount
 
       const txns = transactions || [];
 
-      // Predict next deposit
-      const posDeposits = txns
-        .filter(t => {
-          const desc = (t.description || '').toLowerCase();
-          return t.amount > 0 && (desc.includes('square') || desc.includes('clover') || desc.includes('toast'));
-        })
+      // Fetch revenue accounts for categorization-based detection
+      const { data: revenueAccounts } = await supabase
+        .from('chart_of_accounts')
+        .select('id')
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .eq('account_type', 'revenue');
+      
+      const revenueAccountIds = new Set(revenueAccounts?.map(a => a.id) || []);
+
+      // Predict next deposit - Enhanced detection
+      const deposits = txns.filter(t => t.amount > 0);
+      
+      // Method 1: Categorized as revenue
+      const categorizedRevenue = deposits.filter(t => 
+        t.category_id && revenueAccountIds.has(t.category_id)
+      );
+      
+      // Method 2: Keyword-based detection
+      const uncategorized = deposits.filter(t => !t.category_id);
+      
+      const posKeywords = [
+        'square', 'clover', 'toast', 'lightspeed', 'shopify',
+        'revel', 'touchbistro', 'upserve', 'aloha', 'micros',
+        'par', 'omnivore', 'pos', 'point of sale'
+      ];
+      
+      const paymentKeywords = [
+        'stripe', 'paypal', 'venmo', 'zelle', 'cash app',
+        'apple pay', 'google pay', 'payment received',
+        'payment from', 'pay from'
+      ];
+      
+      const depositKeywords = [
+        'deposit', 'direct deposit', 'dir dep', 'mobile deposit',
+        'ach credit', 'electronic payment', 'wire transfer',
+        'online payment', 'ba electronic'
+      ];
+      
+      const allKeywords = [...posKeywords, ...paymentKeywords, ...depositKeywords];
+      
+      const keywordMatches = uncategorized.filter(t => {
+        const desc = (t.description || '').toLowerCase();
+        const merchant = (t.merchant_name || '').toLowerCase();
+        return allKeywords.some(kw => desc.includes(kw) || merchant.includes(kw));
+      });
+      
+      // Method 3: Amount-based heuristic (deposits >= $50)
+      const significantDeposits = uncategorized.filter(t => 
+        t.amount >= 50 &&
+        !keywordMatches.find(m => m.id === t.id)
+      );
+      
+      // Combine all detection methods (deduplicate)
+      const allRevenueDeposits = [
+        ...categorizedRevenue,
+        ...keywordMatches,
+        ...significantDeposits
+      ];
+      
+      const posDeposits = Array.from(
+        new Map(allRevenueDeposits.map(t => [t.id, t])).values()
+      )
         .map(t => ({
           date: parseISO(t.transaction_date),
           amount: t.amount,
@@ -99,12 +164,25 @@ export function usePredictiveMetrics(startDate: Date, endDate: Date, bankAccount
         };
       }
 
-      // Predict next payroll
+      // Predict next payroll - Enhanced detection
+      const payrollKeywords = [
+        'payroll', 'gusto', 'adp', 'paychex', 'quickbooks payroll',
+        'salary', 'wages', 'paycheck', 'paycor', 'rippling',
+        'zenefits', 'bamboohr', 'namely'
+      ];
+      
       const payrollTxns = txns
         .filter(t => {
+          if (t.amount >= 0) return false; // Must be outflow
+          
           const desc = (t.description || '').toLowerCase();
           const merchant = (t.merchant_name || '').toLowerCase();
-          return t.amount < 0 && (desc.includes('payroll') || desc.includes('gusto') || desc.includes('adp') || merchant.includes('payroll'));
+          const payee = (t.normalized_payee || '').toLowerCase();
+          
+          // Keyword match
+          return payrollKeywords.some(kw => 
+            desc.includes(kw) || merchant.includes(kw) || payee.includes(kw)
+          );
         })
         .map(t => ({
           date: parseISO(t.transaction_date),
@@ -198,12 +276,57 @@ export function usePredictiveMetrics(startDate: Date, endDate: Date, bankAccount
           : `Lower spend detected this period (${(((currentPeriodOutflows - previousPeriodOutflows) / previousPeriodOutflows) * 100).toFixed(1)}%). This may indicate seasonal variation.`
         : 'No significant seasonal patterns detected in current period.';
 
+      // Detect recurring expenses
+      const vendorMap = new Map<string, { amounts: number[]; dates: Date[] }>();
+      
+      txns.filter(t => t.amount < 0).forEach(t => {
+        const vendor = t.merchant_name || t.normalized_payee || 'Unknown';
+        if (!vendorMap.has(vendor)) {
+          vendorMap.set(vendor, { amounts: [], dates: [] });
+        }
+        const entry = vendorMap.get(vendor)!;
+        entry.amounts.push(Math.abs(t.amount));
+        entry.dates.push(parseISO(t.transaction_date));
+      });
+
+      const recurringExpenses: RecurringExpense[] = [];
+      vendorMap.forEach((data, vendor) => {
+        if (data.amounts.length >= 2) {
+          const avgAmount = data.amounts.reduce((sum, a) => sum + a, 0) / data.amounts.length;
+          
+          // Check if amounts are similar (within 20%)
+          const isSimilarAmount = data.amounts.every(a => Math.abs(a - avgAmount) / avgAmount < 0.2);
+          
+          if (isSimilarAmount) {
+            const dates = data.dates.sort((a, b) => a.getTime() - b.getTime());
+            const intervals = [];
+            for (let i = 1; i < dates.length; i++) {
+              intervals.push(differenceInDays(dates[i], dates[i - 1]));
+            }
+            const avgInterval = intervals.reduce((sum, i) => sum + i, 0) / intervals.length;
+            
+            let frequency: 'weekly' | 'biweekly' | 'monthly' = 'monthly';
+            if (avgInterval <= 9) frequency = 'weekly';
+            else if (avgInterval <= 16) frequency = 'biweekly';
+            
+            recurringExpenses.push({
+              vendor,
+              frequency,
+              avgAmount,
+              lastAmount: data.amounts[data.amounts.length - 1],
+              nextExpectedDate: addDays(dates[dates.length - 1], Math.round(avgInterval))
+            });
+          }
+        }
+      });
+
       return {
         nextDeposit,
         nextPayroll,
         supplierCostDrift,
         seasonalityDetected,
         seasonalityMessage,
+        recurringExpenses: recurringExpenses.sort((a, b) => b.avgAmount - a.avgAmount),
       };
     },
     enabled: !!selectedRestaurant?.restaurant_id,

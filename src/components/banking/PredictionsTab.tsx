@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Sparkles, Calendar, DollarSign, TrendingUp, AlertCircle } from "lucide-react";
+import { Sparkles, Calendar, DollarSign, TrendingUp, AlertCircle, Home } from "lucide-react";
 import { usePredictiveMetrics } from "@/hooks/usePredictiveMetrics";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -224,6 +224,68 @@ export function PredictionsTab({ selectedPeriod, selectedBankAccount }: Predicti
                 <strong>Tip:</strong> Consider adjusting your cash reserves to account for seasonal spending variations.
               </p>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Rent & Fixed Costs Detection */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Home className="h-5 w-5 text-primary" />
+            Rent & Fixed Costs Detected
+          </CardTitle>
+          <CardDescription>
+            Recurring monthly expenses automatically identified
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {metrics.recurringExpenses && metrics.recurringExpenses.length > 0 ? (
+            <div className="space-y-4">
+              {metrics.recurringExpenses
+                .filter(expense => 
+                  expense.frequency === 'monthly' && 
+                  (expense.vendor.toLowerCase().includes('rent') ||
+                   expense.vendor.toLowerCase().includes('property') ||
+                   expense.vendor.toLowerCase().includes('landlord') ||
+                   expense.vendor.toLowerCase().includes('lease') ||
+                   expense.avgAmount > 1000)
+                )
+                .slice(0, 3)
+                .map((expense, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-primary/5 to-transparent border border-primary/10">
+                    <div>
+                      <p className="font-semibold">{expense.vendor}</p>
+                      <p className="text-sm text-muted-foreground capitalize">{expense.frequency} recurring</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xl font-bold">
+                        ${expense.avgAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Next: {format(expense.nextExpectedDate, 'MMM dd')}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              
+              {metrics.recurringExpenses.filter(e => 
+                e.frequency === 'monthly' && 
+                (e.vendor.toLowerCase().includes('rent') ||
+                 e.vendor.toLowerCase().includes('property') ||
+                 e.vendor.toLowerCase().includes('landlord') ||
+                 e.vendor.toLowerCase().includes('lease') ||
+                 e.avgAmount > 1000)
+              ).length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-6">
+                  No rent or large fixed costs detected in recurring expenses
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              No recurring monthly expenses detected
+            </p>
           )}
         </CardContent>
       </Card>

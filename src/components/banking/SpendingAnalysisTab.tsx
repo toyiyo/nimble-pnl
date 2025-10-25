@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DashboardMetricCard } from "@/components/DashboardMetricCard";
-import { PieChart as PieChartIcon, TrendingDown, RefreshCw, AlertTriangle } from "lucide-react";
+import { PieChart as PieChartIcon, TrendingDown, RefreshCw, AlertTriangle, CreditCard, CalendarDays, Brain, AlertCircle } from "lucide-react";
 import { useSpendingAnalysis } from "@/hooks/useSpendingAnalysis";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
@@ -245,6 +245,89 @@ export function SpendingAnalysisTab({ selectedPeriod, selectedBankAccount }: Spe
               No recurring patterns detected yet
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Efficiency & Data Quality Metrics */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5 text-primary" />
+            Efficiency & Data Quality Metrics
+          </CardTitle>
+          <CardDescription>
+            Track processing costs, spending patterns, and data completeness
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {/* Payment Processing Fees */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <CreditCard className="h-4 w-4" />
+                Processing Fees
+              </div>
+              <p className="text-2xl font-bold">{metrics.processingFeePercentage.toFixed(2)}%</p>
+              <p className="text-xs text-muted-foreground">
+                ${metrics.processingFees.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total
+              </p>
+              <Badge variant={metrics.processingFeePercentage > 3 ? 'secondary' : 'default'} className="text-xs">
+                {metrics.processingFeePercentage > 3 ? 'Review rates' : 'Normal'}
+              </Badge>
+            </div>
+            
+            {/* Weekend Ratio */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <CalendarDays className="h-4 w-4" />
+                Weekend Spending
+              </div>
+              <p className="text-2xl font-bold">{metrics.weekendRatio.toFixed(1)}%</p>
+              <p className="text-xs text-muted-foreground">
+                ${metrics.weekendOutflows.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} spent
+              </p>
+              <Badge variant={metrics.weekendRatio > 20 ? 'secondary' : 'default'} className="text-xs">
+                {metrics.weekendRatio > 20 ? 'Higher than typical' : 'Normal pattern'}
+              </Badge>
+            </div>
+            
+            {/* AI Confidence */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Brain className="h-4 w-4" />
+                AI Categorization
+              </div>
+              <p className="text-2xl font-bold">{metrics.aiConfidencePercentage.toFixed(0)}%</p>
+              <p className="text-xs text-muted-foreground">High confidence</p>
+              <Badge 
+                variant={
+                  metrics.aiConfidencePercentage >= 70 ? 'default' : 
+                  metrics.aiConfidencePercentage >= 40 ? 'secondary' : 
+                  'destructive'
+                } 
+                className="text-xs"
+              >
+                {metrics.aiConfidencePercentage >= 70 ? 'Excellent' : 
+                 metrics.aiConfidencePercentage >= 40 ? 'Good' : 
+                 'Needs review'}
+              </Badge>
+            </div>
+            
+            {/* Uncategorized */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <AlertCircle className="h-4 w-4" />
+                Uncategorized
+              </div>
+              <p className="text-2xl font-bold">{metrics.uncategorizedPercentage.toFixed(1)}%</p>
+              <p className="text-xs text-muted-foreground">
+                ${metrics.uncategorizedSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} untagged
+              </p>
+              <Badge variant={metrics.uncategorizedPercentage > 10 ? 'destructive' : 'default'} className="text-xs">
+                {metrics.uncategorizedPercentage > 10 ? 'Action needed' : 'Good'}
+              </Badge>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

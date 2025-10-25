@@ -127,11 +127,15 @@ serve(async (req) => {
       console.log(`Processing webhook for merchant: ${merchantId}`);
 
       // Find the restaurant associated with this Clover merchant
-      const { data: connection, error: connectionError } = await supabase
+      // Use order by updated_at desc and limit 1 to handle potential duplicates
+      const { data: connections, error: connectionError } = await supabase
         .from("clover_connections")
         .select("restaurant_id")
         .eq("merchant_id", merchantId)
-        .maybeSingle();
+        .order("updated_at", { ascending: false })
+        .limit(1);
+      
+      const connection = connections?.[0];
 
       if (connectionError || !connection) {
         console.error(`No connection found for merchant ${merchantId}:`, connectionError);

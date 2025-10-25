@@ -4,10 +4,16 @@ import { TrendingUp, TrendingDown, DollarSign, Activity } from "lucide-react";
 import { useCashFlowMetrics } from "@/hooks/useCashFlowMetrics";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { format, subDays } from "date-fns";
+import { format, subDays, differenceInDays } from "date-fns";
+import type { Period } from "@/components/PeriodSelector";
 
-export function CashFlowTab() {
-  const { data: metrics, isLoading } = useCashFlowMetrics();
+interface CashFlowTabProps {
+  selectedPeriod: Period;
+}
+
+export function CashFlowTab({ selectedPeriod }: CashFlowTabProps) {
+  const { data: metrics, isLoading } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to);
+  const periodDays = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;
 
   if (isLoading) {
     return (
@@ -35,8 +41,9 @@ export function CashFlowTab() {
   }
 
   // Prepare daily cash flow data for chart
+  const trendDays = Math.min(14, periodDays);
   const dailyChartData = metrics.trend.map((value, index) => ({
-    date: format(subDays(new Date(), 13 - index), 'MMM dd'),
+    date: format(subDays(selectedPeriod.to, trendDays - 1 - index), 'MMM dd'),
     amount: value,
   }));
 
@@ -58,31 +65,28 @@ export function CashFlowTab() {
       {/* Primary Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <DashboardMetricCard
-          title="Net Inflows (30d)"
-          value={`$${metrics.netInflows30d.toLocaleString()}`}
-          trend={{
-            value: metrics.trailingTrendPercentage,
-            label: 'vs previous 30d'
-          }}
+          title="Net Inflows"
+          value={`$${metrics.netInflows30d.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           icon={TrendingUp}
           variant="success"
-          sparklineData={metrics.trend.map(v => ({ value: v > 0 ? v : 0 }))}
+          subtitle="Total incoming cash"
+          periodLabel={selectedPeriod.label}
         />
-        
         <DashboardMetricCard
-          title="Net Outflows (30d)"
-          value={`$${metrics.netOutflows30d.toLocaleString()}`}
+          title="Net Outflows"
+          value={`$${metrics.netOutflows30d.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           icon={TrendingDown}
           variant="danger"
-          sparklineData={metrics.trend.map(v => ({ value: v < 0 ? Math.abs(v) : 0 }))}
+          subtitle="Total outgoing cash"
+          periodLabel={selectedPeriod.label}
         />
-        
         <DashboardMetricCard
-          title="Net Cash Flow (30d)"
-          value={`${metrics.netCashFlow30d >= 0 ? '+' : ''}$${metrics.netCashFlow30d.toLocaleString()}`}
-          icon={DollarSign}
+          title="Net Cash Flow"
+          value={`$${metrics.netCashFlow30d.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          icon={Activity}
           variant={metrics.netCashFlow30d >= 0 ? 'success' : 'danger'}
-          subtitle={`Avg: $${Math.round(metrics.avgDailyCashFlow)}/day`}
+          subtitle="Net position"
+          periodLabel={selectedPeriod.label}
         />
       </div>
 
@@ -93,9 +97,9 @@ export function CashFlowTab() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Activity className="h-5 w-5 text-primary" />
-              Daily Cash Flow
+              Daily Cash Flow Trend
             </CardTitle>
-            <CardDescription>Last 14 days</CardDescription>
+            <CardDescription>Last {Math.min(14, periodDays)} days</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
@@ -142,9 +146,9 @@ export function CashFlowTab() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <DollarSign className="h-5 w-5 text-primary" />
-              Inflows vs Outflows
+              Inflows vs. Outflows
             </CardTitle>
-            <CardDescription>Last 30 days comparison</CardDescription>
+            <CardDescription>{selectedPeriod.label} breakdown</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-center">

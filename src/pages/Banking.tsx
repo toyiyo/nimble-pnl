@@ -11,8 +11,8 @@ import { CategoryRulesDialog } from "@/components/banking/CategoryRulesDialog";
 import { EnhancedReconciliationDialog } from "@/components/banking/EnhancedReconciliationDialog";
 import { ReconciliationReport } from "@/components/banking/ReconciliationReport";
 import { BankConnectionCard } from "@/components/BankConnectionCard";
-import { BankingIntelligenceDashboard } from "@/components/banking/BankingIntelligenceDashboard";
 import { MetricIcon } from "@/components/MetricIcon";
+import { Link } from "react-router-dom";
 import { useCategorizeTransactions } from "@/hooks/useCategorizeTransactions";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
@@ -20,7 +20,7 @@ import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnect
 import { TransactionFiltersSheet, type TransactionFilters } from "@/components/TransactionFilters";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { formatDateInTimezone } from "@/lib/timezone";
-import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2, Plus, Wallet, TrendingUp, Search, ArrowUpDown, Filter } from "lucide-react";
+import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2, Plus, Wallet, TrendingUp, Search, ArrowUpDown, Filter, Brain, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { loadStripe } from "@stripe/stripe-js";
@@ -264,9 +264,31 @@ export default function Banking() {
             </Card>
           </div>
 
-          {/* Banking Intelligence Dashboard */}
+          {/* Financial Intelligence Link */}
           {connectedBanks.length > 0 && (
-            <BankingIntelligenceDashboard />
+            <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10 hover:shadow-lg transition-all duration-300">
+              <CardContent className="pt-6">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <MetricIcon icon={Brain} variant="purple" />
+                    <div>
+                      <h3 className="text-lg font-semibold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent mb-1">
+                        Financial Intelligence
+                      </h3>
+                      <p className="text-sm text-muted-foreground max-w-lg">
+                        View deep insights, cash flow analysis, spending patterns, and AI-powered predictions
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="default" asChild className="w-full sm:w-auto">
+                    <Link to="/financial-intelligence">
+                      View Insights
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Connected Banks Section */}

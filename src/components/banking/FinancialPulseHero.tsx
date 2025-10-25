@@ -5,9 +5,16 @@ import { TrendingUp, TrendingDown, Activity, Calendar } from "lucide-react";
 import { useCashFlowMetrics } from "@/hooks/useCashFlowMetrics";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import type { Period } from "@/components/PeriodSelector";
+import { differenceInDays } from "date-fns";
 
-export function FinancialPulseHero() {
-  const { data: metrics, isLoading } = useCashFlowMetrics();
+interface FinancialPulseHeroProps {
+  selectedPeriod: Period;
+}
+
+export function FinancialPulseHero({ selectedPeriod }: FinancialPulseHeroProps) {
+  const { data: metrics, isLoading } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to);
+  const periodDays = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;
 
   if (isLoading) {
     return (
@@ -63,7 +70,7 @@ export function FinancialPulseHero() {
               <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 Financial Pulse
               </h2>
-              <p className="text-sm text-muted-foreground">Real-time cash flow insights</p>
+              <p className="text-sm text-muted-foreground">Real-time cash flow insights for {selectedPeriod.label}</p>
             </div>
           </div>
         </div>
@@ -74,7 +81,7 @@ export function FinancialPulseHero() {
             <div className="flex items-start justify-between mb-2">
               <div>
                 <p className="text-sm font-medium text-white/80">Net Cash Flow</p>
-                <p className="text-xs text-white/60">Last 7 days</p>
+                <p className="text-xs text-white/60">({periodDays <= 7 ? periodDays : 7} days)</p>
               </div>
               {metrics.netCashFlow7d > 0 ? (
                 <TrendingUp className="h-5 w-5 text-white/80" />
@@ -111,7 +118,7 @@ export function FinancialPulseHero() {
             <div className="flex items-start justify-between mb-2">
               <div>
                 <p className="text-sm font-medium text-white/80">Avg Daily Flow</p>
-                <p className="text-xs text-white/60">30-day average</p>
+                <p className="text-xs text-white/60">{selectedPeriod.label}</p>
               </div>
               <Calendar className="h-5 w-5 text-white/80" />
             </div>
@@ -123,7 +130,7 @@ export function FinancialPulseHero() {
               />
             </div>
             <div className="mt-3 text-xs text-white/70">
-              ${metrics.netCashFlow30d.toLocaleString()} total (30d)
+              ${metrics.netCashFlow30d.toLocaleString()} total
             </div>
           </div>
 
@@ -159,8 +166,8 @@ export function FinancialPulseHero() {
           <div className="group p-4 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/20 transition-all duration-300 hover:scale-105">
             <div className="flex items-start justify-between mb-2">
               <div>
-                <p className="text-sm font-medium text-white/80">30-Day Trend</p>
-                <p className="text-xs text-white/60">vs previous 30d</p>
+                <p className="text-sm font-medium text-white/80">Trailing Trend</p>
+                <p className="text-xs text-white/60">vs Previous {periodDays} days</p>
               </div>
               {metrics.trailingTrendPercentage > 0 ? (
                 <TrendingUp className="h-5 w-5 text-white/80" />

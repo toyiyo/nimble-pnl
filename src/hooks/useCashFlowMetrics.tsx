@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
-import { subDays, differenceInDays, format } from "date-fns";
+import { subDays, differenceInDays, format, startOfDay } from "date-fns";
 
 interface CashFlowMetrics {
   netInflows7d: number;
@@ -16,92 +16,105 @@ interface CashFlowMetrics {
   trailingTrendPercentage: number;
 }
 
-export function useCashFlowMetrics() {
+export function useCashFlowMetrics(startDate: Date, endDate: Date) {
   const { selectedRestaurant } = useRestaurantContext();
 
   return useQuery({
-    queryKey: ['cash-flow-metrics', selectedRestaurant?.restaurant_id],
+    queryKey: ['cash-flow-metrics', selectedRestaurant?.restaurant_id, format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd')],
     queryFn: async (): Promise<CashFlowMetrics> => {
       if (!selectedRestaurant?.restaurant_id) {
         throw new Error("No restaurant selected");
       }
 
-      const now = new Date();
-      const date7dAgo = subDays(now, 7);
-      const date30dAgo = subDays(now, 30);
-      const date60dAgo = subDays(now, 60);
-
-      // Fetch transactions for the last 60 days (for trend comparison)
+      const periodDays = differenceInDays(endDate, startDate) + 1;
+      const comparisonStartDate = subDays(startDate, periodDays);
+      
+      // Fetch transactions for the selected period + comparison period
       const { data: transactions, error } = await supabase
         .from('bank_transactions')
         .select('transaction_date, amount, status')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('status', 'posted')
-        .gte('transaction_date', format(date60dAgo, 'yyyy-MM-dd'))
+        .gte('transaction_date', format(comparisonStartDate, 'yyyy-MM-dd'))
+        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
         .order('transaction_date', { ascending: true });
 
       if (error) throw error;
 
       const txns = transactions || [];
+      
+      // Filter transactions for current period
+      const currentPeriodTxns = txns.filter(t => {
+        const txnDate = new Date(t.transaction_date);
+        return txnDate >= startOfDay(startDate) && txnDate <= endDate;
+      });
+      
+      // Filter transactions for comparison period
+      const comparisonPeriodTxns = txns.filter(t => {
+        const txnDate = new Date(t.transaction_date);
+        return txnDate >= startOfDay(comparisonStartDate) && txnDate < startOfDay(startDate);
+      });
 
-      // Calculate inflows and outflows for 7 days
-      const netInflows7d = txns
-        .filter(t => new Date(t.transaction_date) >= date7dAgo && t.amount > 0)
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      const netOutflows7d = Math.abs(
-        txns
-          .filter(t => new Date(t.transaction_date) >= date7dAgo && t.amount < 0)
-          .reduce((sum, t) => sum + t.amount, 0)
-      );
-
-      // Calculate inflows and outflows for 30 days
-      const netInflows30d = txns
-        .filter(t => new Date(t.transaction_date) >= date30dAgo && t.amount > 0)
+      // Calculate metrics for current period
+      const netInflows30d = currentPeriodTxns
+        .filter(t => t.amount > 0)
         .reduce((sum, t) => sum + t.amount, 0);
 
       const netOutflows30d = Math.abs(
-        txns
-          .filter(t => new Date(t.transaction_date) >= date30dAgo && t.amount < 0)
+        currentPeriodTxns
+          .filter(t => t.amount < 0)
+          .reduce((sum, t) => sum + t.amount, 0)
+      );
+
+      // For 7-day metrics, use last 7 days of the period
+      const last7DaysStart = subDays(endDate, 6);
+      const last7DaysTxns = currentPeriodTxns.filter(t => {
+        const txnDate = new Date(t.transaction_date);
+        return txnDate >= startOfDay(last7DaysStart);
+      });
+
+      const netInflows7d = last7DaysTxns
+        .filter(t => t.amount > 0)
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const netOutflows7d = Math.abs(
+        last7DaysTxns
+          .filter(t => t.amount < 0)
           .reduce((sum, t) => sum + t.amount, 0)
       );
 
       const netCashFlow7d = netInflows7d - netOutflows7d;
       const netCashFlow30d = netInflows30d - netOutflows30d;
-      const avgDailyCashFlow = netCashFlow30d / 30;
+      const avgDailyCashFlow = netCashFlow30d / periodDays;
 
       // Calculate volatility (standard deviation of daily cash flows)
       const dailyFlows = new Map<string, number>();
-      txns.forEach(t => {
-        if (new Date(t.transaction_date) >= date30dAgo) {
-          const dateKey = format(new Date(t.transaction_date), 'yyyy-MM-dd');
-          dailyFlows.set(dateKey, (dailyFlows.get(dateKey) || 0) + t.amount);
-        }
+      currentPeriodTxns.forEach(t => {
+        const dateKey = format(new Date(t.transaction_date), 'yyyy-MM-dd');
+        dailyFlows.set(dateKey, (dailyFlows.get(dateKey) || 0) + t.amount);
       });
 
       const flowValues = Array.from(dailyFlows.values());
-      const meanFlow = flowValues.reduce((sum, val) => sum + val, 0) / flowValues.length;
-      const variance = flowValues.reduce((sum, val) => sum + Math.pow(val - meanFlow, 2), 0) / flowValues.length;
+      const meanFlow = flowValues.length > 0 ? flowValues.reduce((sum, val) => sum + val, 0) / flowValues.length : 0;
+      const variance = flowValues.length > 0 ? flowValues.reduce((sum, val) => sum + Math.pow(val - meanFlow, 2), 0) / flowValues.length : 0;
       const volatility = Math.sqrt(variance);
 
-      // Calculate 14-day trend for sparkline
-      const date14dAgo = subDays(now, 14);
-      const trendData = Array.from({ length: 14 }, (_, i) => {
-        const date = subDays(now, 13 - i);
+      // Calculate trend for sparkline (last 14 days or period length, whichever is smaller)
+      const trendDays = Math.min(14, periodDays);
+      const trendStartDate = subDays(endDate, trendDays - 1);
+      const trendData = Array.from({ length: trendDays }, (_, i) => {
+        const date = subDays(endDate, trendDays - 1 - i);
         const dateKey = format(date, 'yyyy-MM-dd');
         return dailyFlows.get(dateKey) || 0;
       });
 
-      // Calculate trailing 3-month trend (compare last 30d to previous 30d)
-      const inflowsPrevious30d = txns
-        .filter(t => {
-          const txnDate = new Date(t.transaction_date);
-          return txnDate >= date60dAgo && txnDate < date30dAgo && t.amount > 0;
-        })
+      // Calculate trailing trend (compare current period to previous equal-length period)
+      const inflowsPreviousPeriod = comparisonPeriodTxns
+        .filter(t => t.amount > 0)
         .reduce((sum, t) => sum + t.amount, 0);
 
-      const trailingTrendPercentage = inflowsPrevious30d > 0 
-        ? ((netInflows30d - inflowsPrevious30d) / inflowsPrevious30d) * 100
+      const trailingTrendPercentage = inflowsPreviousPeriod > 0 
+        ? ((netInflows30d - inflowsPreviousPeriod) / inflowsPreviousPeriod) * 100
         : 0;
 
       return {

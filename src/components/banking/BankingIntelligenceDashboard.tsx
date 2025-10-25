@@ -4,14 +4,19 @@ import { Card } from "@/components/ui/card";
 import { TrendingUp, DollarSign, PieChart, Sparkles, AlertTriangle } from "lucide-react";
 import { FinancialPulseHero } from "./FinancialPulseHero";
 import { CashFlowTab } from "./CashFlowTab";
+import type { Period } from "@/components/PeriodSelector";
 
-export function BankingIntelligenceDashboard() {
+interface BankingIntelligenceDashboardProps {
+  selectedPeriod: Period;
+}
+
+export function BankingIntelligenceDashboard({ selectedPeriod }: BankingIntelligenceDashboardProps) {
   const [activeTab, setActiveTab] = useState('cash-flow');
 
   return (
     <div className="space-y-6">
       {/* Hero Section - Financial Pulse */}
-      <FinancialPulseHero />
+      <FinancialPulseHero selectedPeriod={selectedPeriod} />
 
       {/* Intelligence Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -44,7 +49,7 @@ export function BankingIntelligenceDashboard() {
         </TabsList>
 
         <TabsContent value="cash-flow" className="mt-6">
-          <CashFlowTab />
+          <CashFlowTab selectedPeriod={selectedPeriod} />
         </TabsContent>
 
         <TabsContent value="revenue" className="mt-6">

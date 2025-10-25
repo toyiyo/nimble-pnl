@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
-import { subDays, differenceInDays, format, startOfDay } from "date-fns";
+import { subDays, differenceInDays, format, startOfDay, endOfDay, parseISO } from "date-fns";
 
 interface CashFlowMetrics {
   netInflows7d: number;
@@ -49,15 +49,15 @@ export function useCashFlowMetrics(startDate: Date, endDate: Date, bankAccountId
 
       const txns = transactions || [];
       
-      // Filter transactions for current period
+      // Filter transactions for current period (inclusive)
       const currentPeriodTxns = txns.filter(t => {
-        const txnDate = new Date(t.transaction_date);
-        return txnDate >= startOfDay(startDate) && txnDate <= endDate;
+        const txnDate = parseISO(t.transaction_date);
+        return txnDate >= startOfDay(startDate) && txnDate <= endOfDay(endDate);
       });
       
       // Filter transactions for comparison period
       const comparisonPeriodTxns = txns.filter(t => {
-        const txnDate = new Date(t.transaction_date);
+        const txnDate = parseISO(t.transaction_date);
         return txnDate >= startOfDay(comparisonStartDate) && txnDate < startOfDay(startDate);
       });
 
@@ -75,7 +75,7 @@ export function useCashFlowMetrics(startDate: Date, endDate: Date, bankAccountId
       // For 7-day metrics, use last 7 days of the period
       const last7DaysStart = subDays(endDate, 6);
       const last7DaysTxns = currentPeriodTxns.filter(t => {
-        const txnDate = new Date(t.transaction_date);
+        const txnDate = parseISO(t.transaction_date);
         return txnDate >= startOfDay(last7DaysStart);
       });
 
@@ -96,7 +96,7 @@ export function useCashFlowMetrics(startDate: Date, endDate: Date, bankAccountId
       // Calculate volatility (standard deviation of daily cash flows)
       const dailyFlows = new Map<string, number>();
       currentPeriodTxns.forEach(t => {
-        const dateKey = format(new Date(t.transaction_date), 'yyyy-MM-dd');
+        const dateKey = format(parseISO(t.transaction_date), 'yyyy-MM-dd');
         dailyFlows.set(dateKey, (dailyFlows.get(dateKey) || 0) + t.amount);
       });
 
@@ -107,7 +107,6 @@ export function useCashFlowMetrics(startDate: Date, endDate: Date, bankAccountId
 
       // Calculate trend for sparkline (last 14 days or period length, whichever is smaller)
       const trendDays = Math.min(14, periodDays);
-      const trendStartDate = subDays(endDate, trendDays - 1);
       const trendData = Array.from({ length: trendDays }, (_, i) => {
         const date = subDays(endDate, trendDays - 1 - i);
         const dateKey = format(date, 'yyyy-MM-dd');

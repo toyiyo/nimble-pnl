@@ -3,6 +3,7 @@ import { DashboardMetricCard } from "@/components/DashboardMetricCard";
 import { PieChart as PieChartIcon, TrendingDown, RefreshCw, AlertTriangle, CreditCard, CalendarDays, Brain, AlertCircle } from "lucide-react";
 import { useSpendingAnalysis } from "@/hooks/useSpendingAnalysis";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { Badge } from "@/components/ui/badge";
 import type { Period } from "@/components/PeriodSelector";
@@ -13,7 +14,22 @@ interface SpendingAnalysisTabProps {
 }
 
 export function SpendingAnalysisTab({ selectedPeriod, selectedBankAccount }: SpendingAnalysisTabProps) {
-  const { data: metrics, isLoading } = useSpendingAnalysis(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
+  const { data: metrics, isLoading, error, refetch } = useSpendingAnalysis(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
+
+  if (error) {
+    return (
+      <Card className="border-destructive/50">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+          <p className="text-lg font-semibold mb-2">Failed to load spending data</p>
+          <p className="text-sm text-muted-foreground mb-4">{error.message}</p>
+          <Button onClick={() => refetch()} variant="outline">
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -34,9 +50,13 @@ export function SpendingAnalysisTab({ selectedPeriod, selectedBankAccount }: Spe
 
   if (!metrics) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">No spending data available</p>
-      </div>
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <PieChartIcon className="h-12 w-12 text-muted-foreground/50 mb-4" />
+          <p className="text-lg font-semibold mb-2">No spending data available</p>
+          <p className="text-sm text-muted-foreground">Connect a bank account to see spending analysis</p>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -140,10 +160,11 @@ export function SpendingAnalysisTab({ selectedPeriod, selectedBankAccount }: Spe
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ category, percentage }) => `${category}: ${percentage.toFixed(1)}%`}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
                   outerRadius={100}
                   fill="#8884d8"
                   dataKey="amount"
+                  nameKey="category"
                 >
                   {metrics.categoryBreakdown.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

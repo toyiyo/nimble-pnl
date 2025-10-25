@@ -171,7 +171,9 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
       const refundRate = totalInflows > 0 ? (totalRefunds / totalInflows) * 100 : 0;
 
       // Missing deposit days (expected vs actual)
-      const expectedDeposits = Math.floor(periodDays / (depositFrequency || 1));
+      const expectedDeposits = depositFrequency > 0 
+        ? Math.floor(periodDays / depositFrequency) 
+        : 0;
       const missingDepositDays = Math.max(0, expectedDeposits - posDeposits.length);
 
       // Anomalous deposits (>2x average)

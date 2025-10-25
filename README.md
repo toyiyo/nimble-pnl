@@ -12,6 +12,16 @@ Nimble PnL is a comprehensive solution that helps restaurants track and analyze 
 - **[Integration Patterns](INTEGRATIONS.md)** - Third-party integrations (banks, POS, AI), security, and performance
 - **[GitHub Copilot Instructions](.github/copilot-instructions.md)** - Guidelines for AI coding assistants
 
+### Quick Links
+- [Caching Strategy](ARCHITECTURE.md#-caching--performance-strategy)
+- [Design System](ARCHITECTURE.md#-design-system-guidelines)
+- [Accessibility Standards](ARCHITECTURE.md#-accessibility-standards)
+- [Bank Connections](INTEGRATIONS.md#-bank-connections)
+- [POS Integrations](INTEGRATIONS.md#-pos-system-integrations)
+- [AI Functionality](INTEGRATIONS.md#-ai--machine-learning)
+- [Edge Functions](INTEGRATIONS.md#-edge-functions-architecture)
+- [Security Best Practices](INTEGRATIONS.md#-security-best-practices)
+
 ### Key Technical Principles
 
 **Data Freshness First**: This is a real-time system where stale data causes operational issues. We use React Query with short cache times (30-60s) and NO manual caching (localStorage, etc.).

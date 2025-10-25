@@ -1217,6 +1217,306 @@ const { data } = await supabase.rpc('calculate_transaction_total', {
 
 ---
 
+## 💡 Performance & Maintainability Tips
+
+### Hook Composition
+
+**Compose hooks for reusability**:
+
+```typescript
+// ✅ GOOD: Compose smaller hooks
+export const useSquareIntegration = (restaurantId: string | null) => {
+  const [isConnected, setIsConnected] = useState(false);
+  const [connection, setConnection] = useState<SquareConnection | null>(null);
+  
+  const checkConnectionStatus = useCallback(async () => {
+    // Check logic
+  }, [restaurantId]);
+  
+  useEffect(() => {
+    checkConnectionStatus();
+  }, [restaurantId, checkConnectionStatus]);
+  
+  return { isConnected, connection, checkConnectionStatus };
+};
+
+// Use in adapter
+export const useSquareSalesAdapter = (restaurantId: string | null): POSAdapter => {
+  const { isConnected, connection } = useSquareIntegration(restaurantId);
+  // Adapter logic
+};
+```
+
+### Memoization Strategy
+
+**Use memoization for expensive calculations**:
+
+```typescript
+// Memoize derived values
+const filteredProducts = useMemo(() => {
+  return products.filter(p => p.name.includes(searchTerm));
+}, [products, searchTerm]);
+
+// Memoize callbacks
+const handleSync = useCallback(async () => {
+  await syncTransactions(bankId);
+}, [bankId]);
+
+// Memoize entire hook return
+return useMemo(() => ({
+  isConnected,
+  fetchSales,
+  syncToUnified,
+}), [isConnected, fetchSales, syncToUnified]);
+```
+
+### Error Boundaries
+
+**Wrap components with error boundaries**:
+
+```typescript
+// Prevent integration failures from crashing app
+<ErrorBoundary fallback={<ErrorDisplay />}>
+  <BankIntegrationPanel />
+</ErrorBoundary>
+```
+
+### Loading States
+
+**Always show loading states for async operations**:
+
+```typescript
+// ✅ GOOD: Show loading, success, and error states
+const { mutate: syncTransactions, isLoading } = useMutation({
+  mutationFn: async (bankId: string) => {
+    const { data, error } = await supabase.functions.invoke('stripe-sync-transactions', {
+      body: { bankId }
+    });
+    if (error) throw error;
+    return data;
+  },
+  onSuccess: (data) => {
+    toast({ title: "Synced", description: `${data.synced} transactions imported` });
+  },
+  onError: (error) => {
+    toast({ title: "Sync failed", description: error.message, variant: "destructive" });
+  },
+});
+
+// In UI
+{isLoading ? (
+  <Button disabled>
+    <Loader className="mr-2 h-4 w-4 animate-spin" />
+    Syncing...
+  </Button>
+) : (
+  <Button onClick={() => syncTransactions(bankId)}>
+    Sync Transactions
+  </Button>
+)}
+```
+
+### Type Safety
+
+**Use TypeScript strictly**:
+
+```typescript
+// ✅ GOOD: Strong typing
+interface BankConnection {
+  id: string;
+  institution_name: string;
+  status: 'connected' | 'disconnected' | 'error';
+  balances: BankAccountBalance[];
+}
+
+// ❌ BAD: Any types
+const connection: any = await fetchConnection();
+```
+
+### API Response Validation
+
+**Validate third-party API responses**:
+
+```typescript
+// ✅ GOOD: Validate structure
+const response = await fetch(squareApiUrl);
+const data = await response.json();
+
+if (!data.orders || !Array.isArray(data.orders)) {
+  throw new Error('Invalid response format from Square API');
+}
+
+// Map to internal format with validation
+const orders = data.orders.map(order => {
+  if (!order.id || !order.total_money) {
+    console.warn('Skipping invalid order:', order);
+    return null;
+  }
+  return {
+    id: order.id,
+    total: order.total_money.amount,
+    // ...
+  };
+}).filter(Boolean);
+```
+
+### Retry Logic
+
+**Implement smart retries for network operations**:
+
+```typescript
+async function fetchWithRetry(
+  url: string, 
+  options: RequestInit, 
+  maxRetries = 3
+): Promise<Response> {
+  let lastError: Error | null = null;
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(url, options);
+      
+      if (response.ok) {
+        return response;
+      }
+      
+      // Don't retry 4xx errors (client errors)
+      if (response.status >= 400 && response.status < 500) {
+        throw new Error(`Client error: ${response.status}`);
+      }
+      
+      // Retry 5xx errors (server errors)
+      lastError = new Error(`Server error: ${response.status}`);
+      
+    } catch (error) {
+      lastError = error as Error;
+    }
+    
+    // Exponential backoff
+    if (i < maxRetries - 1) {
+      await new Promise(resolve => 
+        setTimeout(resolve, Math.pow(2, i) * 1000)
+      );
+    }
+  }
+  
+  throw lastError || new Error('Max retries exceeded');
+}
+```
+
+### Logging Best Practices
+
+**Log strategically for debugging**:
+
+```typescript
+// ✅ GOOD: Structured logging
+console.log('[SQUARE-SYNC] Starting sync', {
+  restaurantId,
+  timestamp: new Date().toISOString(),
+  orderCount: orders.length
+});
+
+// Log errors with context
+console.error('[SQUARE-SYNC] Sync failed', {
+  restaurantId,
+  error: error.message,
+  orderIds: failedOrders.map(o => o.id)
+});
+
+// ❌ BAD: Generic logging
+console.log('sync started');
+console.log(error);
+```
+
+### Testing Integration Code
+
+**Test integrations with mocks**:
+
+```typescript
+// Mock Supabase client
+jest.mock('@/integrations/supabase/client', () => ({
+  supabase: {
+    from: jest.fn(() => ({
+      select: jest.fn(() => ({
+        eq: jest.fn(() => ({
+          data: mockProducts,
+          error: null
+        }))
+      }))
+    })),
+    functions: {
+      invoke: jest.fn(() => ({
+        data: { synced: 10 },
+        error: null
+      }))
+    }
+  }
+}));
+
+// Test hook
+test('useSquareSalesAdapter fetches sales', async () => {
+  const { result } = renderHook(() => 
+    useSquareSalesAdapter('restaurant-123')
+  );
+  
+  await waitFor(() => {
+    expect(result.current.isConnected).toBe(true);
+  });
+  
+  const sales = await result.current.fetchSales('restaurant-123');
+  expect(sales).toHaveLength(5);
+});
+```
+
+### Migration Strategy
+
+**When updating integration patterns**:
+
+1. **Create new pattern alongside old**
+   ```typescript
+   // Keep old hook working
+   export const useProductsLegacy = () => { /* old implementation */ };
+   
+   // Add new React Query version
+   export const useProducts = () => { /* new implementation */ };
+   ```
+
+2. **Migrate gradually**
+   - Update one component at a time
+   - Test thoroughly
+   - Monitor for issues
+
+3. **Deprecate old pattern**
+   ```typescript
+   /**
+    * @deprecated Use useProducts instead
+    */
+   export const useProductsLegacy = () => {
+     console.warn('useProductsLegacy is deprecated, use useProducts');
+     // ...
+   };
+   ```
+
+4. **Remove after migration**
+
+### Documentation Maintenance
+
+**Keep documentation up to date**:
+
+- ✅ Update when adding new integrations
+- ✅ Document breaking changes
+- ✅ Add examples from real code
+- ✅ Include troubleshooting tips
+- ✅ Link to related documentation
+
+**Review documentation**:
+- When reviewing PRs
+- After major changes
+- Quarterly audits
+- When onboarding new developers
+
+---
+
 ## 🔗 Related Documentation
 
 - [Architecture & Technical Guidelines](ARCHITECTURE.md)

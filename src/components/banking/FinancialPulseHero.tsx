@@ -37,7 +37,7 @@ export function FinancialPulseHero() {
 
   const getStatusGlow = (value: number) => {
     if (value > 0) return 'shadow-lg shadow-emerald-500/20';
-    if (value < 0) return 'shadow-lg shadow-red-500/20 animate-pulse';
+    if (value < 0) return 'shadow-lg shadow-red-500/20';
     return '';
   };
 

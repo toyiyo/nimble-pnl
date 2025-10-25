@@ -536,6 +536,42 @@ supabase db push
 
 ---
 
+## 🔌 Integration Architecture
+
+For comprehensive documentation on third-party integrations, see **[INTEGRATIONS.md](INTEGRATIONS.md)**:
+
+### Bank Connections
+- **Stripe Financial Connections** for secure bank linking
+- OAuth-based authentication (credentials never stored)
+- Webhook + polling for real-time transaction sync
+- AI-powered categorization
+
+### POS System Integrations
+- **Adapter Pattern** for unified POS abstraction
+- **Square** (primary) - OAuth, webhooks, periodic sync
+- **Clover** (secondary) - OAuth, webhooks, periodic sync
+- **Unified Sales Table** - Single source of truth for all POS data
+
+### AI Functionality
+- **OpenRouter** with multi-model fallback
+- Free models first (Llama 4, Gemma 3)
+- Paid models as fallback (Gemini, Claude, GPT)
+- Use cases: Transaction categorization, OCR, product enhancement
+
+### Edge Functions
+- **Deno runtime** on Supabase
+- OAuth flows, webhooks, third-party API calls
+- Shared utilities: Encryption service (AES-GCM), CORS headers
+- Service role (bypasses RLS) - validate permissions in code
+
+**Key Principles**:
+- Security first (encrypt tokens, verify webhooks)
+- Adapter pattern for extensibility
+- Multi-model fallback for reliability
+- Real-time sync with background jobs for bulk operations
+
+---
+
 ## 📚 Learning Resources
 
 ### React Query
@@ -545,6 +581,12 @@ supabase db push
 ### Supabase
 - [Quickstart](https://supabase.com/docs/guides/getting-started/quickstarts/reactjs)
 - [RLS Guide](https://supabase.com/docs/guides/auth/row-level-security)
+- [Edge Functions](https://supabase.com/docs/guides/functions)
+
+### Integrations
+- [Stripe Financial Connections](https://stripe.com/docs/financial-connections)
+- [Square API](https://developer.squareup.com/docs)
+- [OpenRouter API](https://openrouter.ai/docs)
 
 ### Accessibility
 - [WCAG 2.1 Guidelines](https://www.w3.org/WAI/WCAG21/quickref/)

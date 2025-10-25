@@ -15,6 +15,88 @@ interface SyncRequest {
   };
 }
 
+/**
+ * Helper function to refresh Clover access token
+ */
+async function refreshCloverToken(connection: any, supabase: any) {
+  console.log('Attempting to refresh Clover token...');
+  
+  if (!connection.refresh_token) {
+    throw new Error('No refresh token available. Please reconnect your Clover account.');
+  }
+  
+  const encryption = await getEncryptionService();
+  const decryptedRefreshToken = await encryption.decrypt(connection.refresh_token);
+  
+  // Use production credentials only
+  const CLOVER_APP_ID = Deno.env.get('CLOVER_APP_ID');
+  const CLOVER_APP_SECRET = Deno.env.get('CLOVER_APP_SECRET');
+  
+  // Use production API domains
+  const regionAPIDomains = {
+    na: 'api.clover.com',
+    eu: 'api.eu.clover.com',
+    latam: 'api.la.clover.com',
+    apac: 'api.clover.com'
+  };
+  
+  const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as keyof typeof regionAPIDomains] || 'api.clover.com';
+  const tokenRefreshUrl = `https://${CLOVER_API_DOMAIN}/oauth/v2/refresh`;
+  
+  const refreshResponse = await fetch(tokenRefreshUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: CLOVER_APP_ID,
+      client_secret: CLOVER_APP_SECRET,
+      refresh_token: decryptedRefreshToken,
+    }),
+  });
+  
+  if (!refreshResponse.ok) {
+    const errorText = await refreshResponse.text();
+    console.error('Token refresh failed:', errorText);
+    throw new Error('Failed to refresh Clover token. Please reconnect your account.');
+  }
+  
+  const refreshData = await refreshResponse.json();
+  console.log('Token refresh successful');
+  
+  // Calculate new expiry
+  let newExpiresAt = null;
+  if (refreshData.expires_in) {
+    newExpiresAt = new Date(Date.now() + (refreshData.expires_in * 1000)).toISOString();
+  } else {
+    // Default to 1 year if not provided
+    const oneYearFromNow = new Date();
+    oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+    newExpiresAt = oneYearFromNow.toISOString();
+  }
+  
+  // Encrypt new tokens
+  const encryptedAccessToken = await encryption.encrypt(refreshData.access_token);
+  let encryptedRefreshToken = connection.refresh_token;
+  if (refreshData.refresh_token) {
+    encryptedRefreshToken = await encryption.encrypt(refreshData.refresh_token);
+  }
+  
+  // Update the connection with new tokens
+  await supabase
+    .from('clover_connections')
+    .update({
+      access_token: encryptedAccessToken,
+      refresh_token: encryptedRefreshToken,
+      expires_at: newExpiresAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', connection.id);
+  
+  console.log('Connection updated with refreshed token, expires:', newExpiresAt);
+  
+  // Return the new decrypted access token
+  return refreshData.access_token;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -72,19 +154,16 @@ Deno.serve(async (req) => {
         const encryption = await getEncryptionService();
         const decryptedRefreshToken = await encryption.decrypt(connection.refresh_token);
         
-        const isSandbox = connection.environment === 'sandbox';
-        const CLOVER_APP_ID = isSandbox
-          ? Deno.env.get('CLOVER_SANDBOX_APP_ID')
-          : Deno.env.get('CLOVER_APP_ID');
-        const CLOVER_APP_SECRET = isSandbox
-          ? Deno.env.get('CLOVER_SANDBOX_APP_SECRET')
-          : Deno.env.get('CLOVER_APP_SECRET');
+        // Use production credentials only
+        const CLOVER_APP_ID = Deno.env.get('CLOVER_APP_ID');
+        const CLOVER_APP_SECRET = Deno.env.get('CLOVER_APP_SECRET');
           
+        // Use production API domains
         const regionAPIDomains = {
-          na: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com',
-          eu: isSandbox ? 'apisandbox.dev.clover.com' : 'api.eu.clover.com',
-          latam: isSandbox ? 'apisandbox.dev.clover.com' : 'api.la.clover.com',
-          apac: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com'
+          na: 'api.clover.com',
+          eu: 'api.eu.clover.com',
+          latam: 'api.la.clover.com',
+          apac: 'api.clover.com'
         };
         
         const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as keyof typeof regionAPIDomains] || regionAPIDomains.na;
@@ -152,7 +231,7 @@ Deno.serve(async (req) => {
 
     // Decrypt access token
     const encryption = await getEncryptionService();
-    const accessToken = await encryption.decrypt(connection.access_token);
+    let accessToken = await encryption.decrypt(connection.access_token);
     
     console.log('Token info:', {
       hasToken: !!accessToken,
@@ -163,20 +242,18 @@ Deno.serve(async (req) => {
       isExpired: connection.expires_at ? new Date(connection.expires_at) < new Date() : 'unknown'
     });
 
-    // Determine if this is a sandbox or production connection
-    const isSandbox = connection.environment === 'sandbox';
-
+    // Use production API domains
     const regionAPIDomains = {
-      na: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com',
-      eu: isSandbox ? 'apisandbox.dev.clover.com' : 'api.eu.clover.com',
-      latam: isSandbox ? 'apisandbox.dev.clover.com' : 'api.la.clover.com',
-      apac: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com'
+      na: 'api.clover.com',
+      eu: 'api.eu.clover.com',
+      latam: 'api.la.clover.com',
+      apac: 'api.clover.com'
     };
 
-    const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as keyof typeof regionAPIDomains] || (isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com');
+    const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as keyof typeof regionAPIDomains] || 'api.clover.com';
     const BASE_URL = `https://${CLOVER_API_DOMAIN}/v3/merchants/${connection.merchant_id}`;
     
-    console.log('Using Clover API:', { environment: isSandbox ? 'sandbox' : 'production', domain: CLOVER_API_DOMAIN, region: connection.region });
+    console.log('Using Clover API:', { environment: 'production', domain: CLOVER_API_DOMAIN, region: connection.region });
 
     // Calculate date range
     let startDate: Date, endDate: Date;
@@ -234,6 +311,8 @@ Deno.serve(async (req) => {
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
         
         let ordersResponse;
+        let tokenRefreshed = false;
+        
         try {
           ordersResponse = await fetch(ordersUrl.toString(), {
             headers: {
@@ -243,6 +322,35 @@ Deno.serve(async (req) => {
           });
           
           clearTimeout(timeoutId);
+          
+          // If we get a 401, try refreshing the token and retry once
+          if (ordersResponse.status === 401) {
+            console.log('Received 401 Unauthorized - attempting token refresh');
+            
+            try {
+              accessToken = await refreshCloverToken(connection, supabase);
+              tokenRefreshed = true;
+              console.log('Token refreshed successfully, retrying request');
+              
+              // Retry the request with new token
+              const retryController = new AbortController();
+              const retryTimeoutId = setTimeout(() => retryController.abort(), 30000);
+              
+              ordersResponse = await fetch(ordersUrl.toString(), {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                },
+                signal: retryController.signal,
+              });
+              
+              clearTimeout(retryTimeoutId);
+              console.log('Retry request completed with status:', ordersResponse.status);
+            } catch (refreshError: any) {
+              console.error('Failed to refresh token:', refreshError.message);
+              errors.push(`Token refresh failed: ${refreshError.message}`);
+              break;
+            }
+          }
         } catch (fetchError: any) {
           clearTimeout(timeoutId);
           console.error('Fetch timeout or error:', fetchError.message);
@@ -259,7 +367,7 @@ Deno.serve(async (req) => {
             environment: connection.environment,
             region: connection.region,
             tokenLength: accessToken?.length,
-            tokenPrefix: accessToken?.substring(0, 50) + '...',
+            tokenRefreshed,
             expiresAt: connection.expires_at
           });
           errors.push(`Failed to fetch orders: ${errorText}`);

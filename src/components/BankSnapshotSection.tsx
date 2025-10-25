@@ -31,9 +31,7 @@ export function BankSnapshotSection({ restaurantId, selectedPeriod }: BankSnapsh
 
   // Calculate date ranges for metrics
   const periodEnd = selectedPeriod.to;
-  const periodStart = selectedPeriod.from;
   const thirtyDaysAgo = subDays(periodEnd, 30);
-  const sevenDaysAgo = subDays(periodEnd, 7);
   const monthStart = startOfMonth(periodEnd);
 
   // Fetch all metrics

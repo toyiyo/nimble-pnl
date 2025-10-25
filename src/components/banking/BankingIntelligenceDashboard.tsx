@@ -4,6 +4,10 @@ import { Card } from "@/components/ui/card";
 import { TrendingUp, DollarSign, PieChart, Sparkles, AlertTriangle } from "lucide-react";
 import { FinancialPulseHero } from "./FinancialPulseHero";
 import { CashFlowTab } from "./CashFlowTab";
+import { RevenueHealthTab } from "./RevenueHealthTab";
+import { SpendingAnalysisTab } from "./SpendingAnalysisTab";
+import { LiquidityTab } from "./LiquidityTab";
+import { PredictionsTab } from "./PredictionsTab";
 import type { Period } from "@/components/PeriodSelector";
 
 interface BankingIntelligenceDashboardProps {
@@ -53,27 +57,19 @@ export function BankingIntelligenceDashboard({ selectedPeriod }: BankingIntellig
         </TabsContent>
 
         <TabsContent value="revenue" className="mt-6">
-          <Card className="p-12 text-center">
-            <p className="text-muted-foreground">Revenue Health tab coming soon</p>
-          </Card>
+          <RevenueHealthTab selectedPeriod={selectedPeriod} />
         </TabsContent>
 
         <TabsContent value="spending" className="mt-6">
-          <Card className="p-12 text-center">
-            <p className="text-muted-foreground">Spending Analysis tab coming soon</p>
-          </Card>
+          <SpendingAnalysisTab selectedPeriod={selectedPeriod} />
         </TabsContent>
 
         <TabsContent value="liquidity" className="mt-6">
-          <Card className="p-12 text-center">
-            <p className="text-muted-foreground">Liquidity & Runway tab coming soon</p>
-          </Card>
+          <LiquidityTab selectedPeriod={selectedPeriod} />
         </TabsContent>
 
         <TabsContent value="predictions" className="mt-6">
-          <Card className="p-12 text-center">
-            <p className="text-muted-foreground">AI Predictions tab coming soon</p>
-          </Card>
+          <PredictionsTab selectedPeriod={selectedPeriod} />
         </TabsContent>
       </Tabs>
     </div>

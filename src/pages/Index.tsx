@@ -15,6 +15,7 @@ import { DashboardMiniChart } from '@/components/DashboardMiniChart';
 import { DashboardSkeleton } from '@/components/DashboardSkeleton';
 import { DataInputDialog } from '@/components/DataInputDialog';
 import { PeriodSelector, Period } from '@/components/PeriodSelector';
+import { MonthlyBreakdownTable } from '@/components/MonthlyBreakdownTable';
 import { format, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import {
   DollarSign, 
@@ -35,7 +36,7 @@ import {
 const Index = () => {
   const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
-  const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
+  const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, getMonthlyData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
   const { lowStockItems, reorderAlerts, loading: alertsLoading } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
 
@@ -344,16 +345,26 @@ const Index = () => {
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
-                    title="Prime Cost"
-                    value={periodData ? `$${(periodData.food_cost + periodData.labor_cost).toFixed(0)}` : '--'}
+                    title="Profit"
+                    value={periodData ? `$${(periodData.net_revenue - periodData.food_cost - periodData.labor_cost).toFixed(0)}` : '--'}
                     trend={periodData && previousPeriodData ? {
-                      value: getTrendValue(periodData.prime_cost_percentage, previousPeriodData.prime_cost_percentage),
+                      value: getTrendValue(
+                        periodData.net_revenue - periodData.food_cost - periodData.labor_cost,
+                        previousPeriodData.net_revenue * (1 - (previousPeriodData.food_cost_percentage + previousPeriodData.labor_cost_percentage) / 100)
+                      ),
                       label: 'vs previous period'
                     } : undefined}
-                    icon={Target}
-                    variant={periodData && periodData.prime_cost_percentage > 65 ? 'danger' : periodData && periodData.prime_cost_percentage < 60 ? 'success' : 'default'}
-                    subtitle={periodData ? `${periodData.prime_cost_percentage.toFixed(1)}% of revenue | Target: 60-65%` : undefined}
-                    sparklineData={periodData?.daily_data.map(d => ({ value: d.food_cost + d.labor_cost }))}
+                    icon={TrendingUp}
+                    variant={
+                      periodData && periodData.net_revenue > 0
+                        ? (() => {
+                            const profitMargin = ((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue) * 100;
+                            return profitMargin > 15 ? 'success' : profitMargin < 5 ? 'danger' : profitMargin < 10 ? 'warning' : 'default';
+                          })()
+                        : 'default'
+                    }
+                    subtitle={periodData && periodData.net_revenue > 0 ? `${(((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue) * 100).toFixed(1)}% margin` : undefined}
+                    sparklineData={periodData?.daily_data.map(d => ({ value: d.net_revenue - d.food_cost - d.labor_cost }))}
                     periodLabel={selectedPeriod.label}
                   />
                 </div>
@@ -439,133 +450,8 @@ const Index = () => {
               {/* Quick Actions */}
               <DashboardQuickActions restaurantId={selectedRestaurant.restaurant_id} />
 
-              {/* Enhanced Recent Activity Summary */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card className="group transition-all duration-300 hover:shadow-xl hover:scale-[1.02] hover:-translate-y-1 animate-fade-in bg-gradient-to-br from-card via-background to-muted/20">
-                  <CardHeader className="border-b">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <div className="h-1 w-6 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
-                      Today's Summary
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    {todaysData ? (
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center p-2.5 rounded-lg hover:bg-accent/50 transition-colors">
-                          <div className="flex items-center gap-2">
-                            <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
-                            <span className="text-sm text-muted-foreground">Net Revenue</span>
-                          </div>
-                          <span className="font-semibold">${todaysData.net_revenue.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center p-2.5 rounded-lg hover:bg-accent/50 transition-colors">
-                          <div className="flex items-center gap-2">
-                            <ShoppingCart className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                            <span className="text-sm text-muted-foreground">Food Costs</span>
-                          </div>
-                          <span className="font-semibold">${todaysData.food_cost.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center p-2.5 rounded-lg hover:bg-accent/50 transition-colors">
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                            <span className="text-sm text-muted-foreground">Labor Costs</span>
-                          </div>
-                          <span className="font-semibold">${todaysData.labor_cost.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-3 mt-2 border-t p-2.5 rounded-lg bg-gradient-to-r from-primary/10 to-transparent">
-                          <div className="flex items-center gap-2">
-                            <Target className="h-4 w-4 text-primary" />
-                            <span className="font-semibold">Gross Profit</span>
-                          </div>
-                          <span className="font-bold text-lg text-primary">
-                            ${todaysData.gross_profit.toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 space-y-3">
-                        <div className="inline-flex p-3 rounded-lg bg-muted">
-                          <Activity className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground mb-1">
-                            No data for today
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Start tracking your performance!
-                          </p>
-                        </div>
-                        <Button size="sm" onClick={() => navigate('/inventory')}>
-                          <Package className="h-4 w-4 mr-2" />
-                          Add Data
-                        </Button>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="group transition-all duration-300 hover:shadow-xl hover:scale-[1.02] hover:-translate-y-1 animate-fade-in bg-gradient-to-br from-card via-background to-muted/20">
-                  <CardHeader className="border-b">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <div className="h-1 w-6 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
-                      Last 7 Days
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    {recentData.slice(0, 7).length > 0 ? (
-                      <div className="space-y-2">
-                        {recentData.slice(0, 7).map((day, index) => (
-                          <div 
-                            key={day.date} 
-                            className="flex items-center justify-between py-2.5 px-3 rounded-lg"
-                            style={{ animationDelay: `${index * 50}ms` }}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className={`w-2.5 h-2.5 rounded-full ${
-                                index === 0 
-                                  ? 'bg-primary shadow-lg shadow-primary/50 animate-pulse scale-110' 
-                                  : 'bg-muted'
-                              }`} />
-                              <span className="text-xs font-medium">
-                                {new Date(day.date + 'T12:00:00Z').toLocaleDateString('en-US', {
-                                  weekday: 'short',
-                                  month: 'short',
-                                  day: 'numeric'
-                                })}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs font-semibold text-muted-foreground">
-                                ${day.net_revenue.toFixed(0)}
-                              </span>
-                              <Badge 
-                                variant={day.prime_cost_percentage < 60 ? 'default' : day.prime_cost_percentage > 65 ? 'destructive' : 'secondary'}
-                                className="text-xs font-semibold min-w-[3rem] justify-center"
-                              >
-                                {day.prime_cost_percentage.toFixed(1)}%
-                              </Badge>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 space-y-3">
-                        <div className="inline-flex p-3 rounded-lg bg-muted">
-                          <TrendingDown className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground mb-1">
-                            No historical data available
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Start tracking to see trends
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
+              {/* Monthly Performance Table */}
+              <MonthlyBreakdownTable monthlyData={getMonthlyData()} />
             </>
           )}
         </div>

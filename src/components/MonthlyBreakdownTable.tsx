@@ -62,7 +62,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
   };
 
   const getTrendVariant = (change: number | null): "default" | "secondary" | "destructive" => {
-    if (change === null) return "secondary";
+    if (change === null || change === 0) return "secondary";
     if (change > 0) return "default";
     return "destructive";
   };

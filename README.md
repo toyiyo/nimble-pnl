@@ -9,6 +9,7 @@ Nimble PnL is a comprehensive solution that helps restaurants track and analyze 
 ## 📚 Documentation
 
 - **[Architecture & Technical Guidelines](ARCHITECTURE.md)** - Detailed technical documentation, design patterns, and best practices
+- **[Integration Patterns](INTEGRATIONS.md)** - Third-party integrations (banks, POS, AI), security, and performance
 - **[GitHub Copilot Instructions](.github/copilot-instructions.md)** - Guidelines for AI coding assistants
 
 ### Key Technical Principles
@@ -38,10 +39,11 @@ Nimble PnL is a comprehensive solution that helps restaurants track and analyze 
 - **File Storage**: Supabase Storage
 
 ### Integrations
-- Square API for business data
-- OpenAI for AI-powered features
-- Resend for email services
-- SCIM for enterprise user management
+- **Square & Clover** - POS system integrations via adapter pattern
+- **Stripe Financial Connections** - Secure bank account linking
+- **OpenRouter** - AI functionality with multi-model fallback
+- **Resend** - Transactional email service
+- **SCIM** - Enterprise user provisioning
 
 ## Project Structure
 
@@ -175,13 +177,16 @@ OPENAI_API_KEY=your_openai_key
 
 ## Features
 
-- Square integration for real-time business data
-- Automated P&L calculations
-- Enterprise SSO support
-- SCIM provisioning for user management
-- AI-powered product insights
-- Team collaboration tools
-- Multi-restaurant support
+- **Multi-POS Support** - Square and Clover integrations with unified data model
+- **Bank Integration** - Secure bank connections via Stripe Financial Connections
+- **Automated P&L Calculations** - Real-time profit and loss tracking
+- **AI-Powered Categorization** - Automatic transaction categorization with multi-model fallback
+- **OCR & Receipt Processing** - Extract data from receipts and product images
+- **Enterprise SSO Support** - SAML-based single sign-on
+- **SCIM Provisioning** - Automated user management for enterprise
+- **Real-time Sync** - Webhooks + polling for up-to-date data
+- **Team Collaboration** - Multi-user support with role-based permissions
+- **Multi-Restaurant Support** - Manage multiple locations from one account
 
 ## Testing
 

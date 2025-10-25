@@ -399,4 +399,272 @@ If you need to suggest unfamiliar patterns, reference:
 
 ---
 
+## 🔌 Integration Patterns
+
+### Bank Connections (Stripe Financial Connections)
+
+When working with bank integrations:
+
+```typescript
+// ✅ CORRECT - Use hook pattern
+const { createFinancialConnectionsSession, syncTransactions } = 
+  useStripeFinancialConnections(restaurantId);
+
+// Create session for user
+const session = await createFinancialConnectionsSession();
+// User completes OAuth flow in Stripe UI
+// Then sync transactions
+await syncTransactions(bankId);
+```
+
+**Rules**:
+- ❌ NEVER store bank credentials in database
+- ✅ ALWAYS use Stripe for credential storage
+- ✅ ALWAYS verify webhook signatures
+- ✅ Use background jobs for bulk transaction syncs (>1000)
+
+### POS Integrations (Square, Clover)
+
+Use the **Adapter Pattern** for all POS integrations:
+
+```typescript
+// ✅ CORRECT - Use adapter abstraction
+const adapter = useSquareSalesAdapter(restaurantId);
+const sales = await adapter.fetchSales(restaurantId, startDate, endDate);
+await adapter.syncToUnified(restaurantId);
+
+// ❌ WRONG - Don't query POS-specific tables directly in UI
+const { data } = await supabase.from('square_orders').select('*');
+```
+
+**Adapter Interface** (from `types/pos.ts`):
+```typescript
+interface POSAdapter {
+  system: POSSystemType;
+  isConnected: boolean;
+  fetchSales: (restaurantId: string, startDate?: string, endDate?: string) => Promise<UnifiedSaleItem[]>;
+  syncToUnified: (restaurantId: string) => Promise<number>;
+  getIntegrationStatus: () => POSIntegrationStatus;
+}
+```
+
+**Rules**:
+- ✅ ALWAYS write to `unified_sales` table
+- ✅ ALWAYS encrypt OAuth tokens using encryption service
+- ✅ Store raw POS data in `raw_data` JSONB field
+- ✅ Implement both webhooks + polling for sync
+- ❌ NEVER hardcode POS-specific logic in UI components
+
+### AI Functionality (OpenRouter)
+
+All AI features use OpenRouter with **multi-model fallback**:
+
+```typescript
+// ✅ CORRECT - Edge function handles fallback automatically
+const { data, error } = await supabase.functions.invoke(
+  'ai-categorize-transactions',
+  { body: { restaurantId } }
+);
+
+// AI suggestion stored separately from final categorization
+// User must approve AI suggestions
+```
+
+**AI Edge Functions Pattern**:
+1. Try free models first (Llama 4 Free, Gemma 3 Free)
+2. Fall back to paid models (Gemini, Claude, GPT)
+3. Return structured JSON with validation
+4. Handle errors gracefully
+
+**Rules**:
+- ✅ ALWAYS validate AI output before using
+- ✅ Store AI suggestions separately (user must approve)
+- ✅ Use `suggested_category_id` not `category_id` for AI suggestions
+- ❌ NEVER auto-apply AI changes without user confirmation
+- ❌ NEVER send sensitive data (PII, credentials) to AI
+
+### Supabase Patterns
+
+**React Query (Recommended)**:
+```typescript
+// ✅ CORRECT - Modern pattern
+const { data: products, isLoading, error } = useQuery({
+  queryKey: ['products', restaurantId],
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('restaurant_id', restaurantId);
+    if (error) throw error;
+    return data;
+  },
+  enabled: !!restaurantId,
+  staleTime: 30000,           // 30s for critical data
+  refetchOnWindowFocus: true,
+  refetchOnMount: true,
+});
+```
+
+**Real-time Subscriptions**:
+```typescript
+// ✅ For live data that changes frequently
+useEffect(() => {
+  const channel = supabase
+    .channel(`data-${restaurantId}`)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'bank_transactions',
+      filter: `restaurant_id=eq.${restaurantId}`
+    }, () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions', restaurantId] });
+    })
+    .subscribe();
+
+  return () => supabase.removeChannel(channel);
+}, [restaurantId]);
+```
+
+**Edge Function Invocation**:
+```typescript
+// ✅ For operations requiring secrets or third-party APIs
+const { data, error } = await supabase.functions.invoke(
+  'square-sync-data',
+  { body: { restaurantId } }
+);
+```
+
+**Rules**:
+- ✅ Use React Query for all data fetching
+- ✅ Set `staleTime` 30-60s for critical data
+- ✅ Use real-time subscriptions for live data
+- ✅ Invalidate React Query cache after mutations
+- ✅ Always filter by `restaurant_id`
+- ❌ NEVER query without restaurant filter
+- ❌ NEVER use `staleTime` > 60s for critical data
+
+### Edge Functions
+
+**Standard Pattern**:
+```typescript
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getEncryptionService } from '../_shared/encryption.ts';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    // 1. Authenticate
+    const authHeader = req.headers.get('Authorization');
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Unauthorized');
+
+    // 2. Verify permissions (service role bypasses RLS!)
+    const { restaurantId } = await req.json();
+    const { data: userRestaurant } = await supabase
+      .from('user_restaurants')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('restaurant_id', restaurantId)
+      .single();
+
+    if (!userRestaurant || !['owner', 'manager'].includes(userRestaurant.role)) {
+      throw new Error('Access denied');
+    }
+
+    // 3. Business logic
+    const result = await performOperation();
+
+    return new Response(
+      JSON.stringify({ success: true, data: result }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});
+```
+
+**Rules**:
+- ✅ Handle OPTIONS (CORS)
+- ✅ Authenticate user
+- ✅ Verify permissions (service role bypasses RLS)
+- ✅ Use try-catch
+- ✅ Return consistent JSON
+- ✅ Use `getEncryptionService()` for sensitive data
+- ❌ NEVER expose secrets in responses
+- ❌ NEVER skip permission checks
+
+### Security Rules
+
+**Token Management**:
+```typescript
+// ✅ ALWAYS encrypt before storing
+const encryption = await getEncryptionService();
+const encrypted = await encryption.encrypt(accessToken);
+
+// ❌ NEVER store plain text tokens
+await supabase.from('connections').insert({
+  access_token: accessToken  // WRONG!
+});
+```
+
+**Webhook Verification**:
+```typescript
+// ✅ ALWAYS verify signatures
+const signature = req.headers.get('x-webhook-signature');
+const payload = await req.text();
+const computed = createHmac('sha256', SECRET)
+  .update(payload)
+  .digest('base64');
+
+if (signature !== computed) {
+  return new Response('Invalid', { status: 401 });
+}
+```
+
+**Row Level Security**:
+```typescript
+// ❌ Client-side checks are NOT security
+if (user.role === 'owner') {
+  // Delete - NOT SECURE!
+}
+
+// ✅ RLS enforced at database
+// If no permission, query returns empty/error
+await supabase.from('products').delete().eq('id', productId);
+```
+
+---
+
+## 📚 Integration Documentation
+
+For detailed integration patterns and best practices, see:
+- **[INTEGRATIONS.md](../INTEGRATIONS.md)** - Comprehensive integration guide
+  - Bank connections (Stripe Financial Connections)
+  - POS systems (Square, Clover adapter pattern)
+  - AI functionality (OpenRouter multi-model fallback)
+  - Supabase patterns (React Query, real-time, Edge Functions)
+  - Security best practices
+  - Performance optimization
+
+---
+
 **Remember**: This system manages real restaurants with real inventory and money. Correctness and reliability are more important than clever code.

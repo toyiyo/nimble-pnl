@@ -159,8 +159,10 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
           const amounts = data.transactions.map(t => Math.abs(t.amount));
           const avgAmount = amounts.reduce((sum, a) => sum + a, 0) / amounts.length;
           
-          // Check if amounts are similar (within 20%)
-          const isSimilarAmount = amounts.every(a => Math.abs(a - avgAmount) / avgAmount < 0.2);
+          // Check if amounts are similar (within 20%), skip if avgAmount is 0
+          const isSimilarAmount = avgAmount > 0 
+            ? amounts.every(a => Math.abs(a - avgAmount) / avgAmount < 0.2)
+            : false;
           
           if (isSimilarAmount) {
             const dates = data.transactions.map(t => parseISO(t.transaction_date)).sort((a, b) => a.getTime() - b.getTime());

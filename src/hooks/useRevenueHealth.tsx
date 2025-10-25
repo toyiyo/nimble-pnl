@@ -178,7 +178,7 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
 
       // Anomalous deposits (>2x average)
       const anomalousDeposits = posDeposits
-        .filter(t => t.amount > avgDepositSize * 2)
+        .filter(t => avgDepositSize > 0 && t.amount > avgDepositSize * 2)
         .map(t => {
           const percentage = avgDepositSize > 0 
             ? ((t.amount / avgDepositSize) * 100).toFixed(0)

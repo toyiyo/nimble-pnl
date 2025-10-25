@@ -32,7 +32,8 @@ import {
   Activity,
   Calendar,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Landmark
 } from 'lucide-react';
 
 const Index = () => {
@@ -273,6 +274,14 @@ const Index = () => {
                 }}
                 className="w-full sm:w-auto"
               />
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/banking')} 
+                className="w-full sm:w-auto group hover:border-cyan-500/50 transition-all"
+              >
+                <Landmark className="h-4 w-4 mr-2 group-hover:text-cyan-600 transition-colors" />
+                Banking
+              </Button>
               <Button 
                 variant="outline" 
                 onClick={() => navigate('/reports')} 

@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { PeriodSelector, Period } from '@/components/PeriodSelector';
 import { BankingIntelligenceDashboard } from '@/components/banking/BankingIntelligenceDashboard';
 import { BankAccountFilter } from '@/components/banking/BankAccountFilter';
+import { BankSnapshotSection } from '@/components/BankSnapshotSection';
 import { useConnectedBanks } from '@/hooks/useConnectedBanks';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { Brain } from 'lucide-react';
@@ -48,6 +49,13 @@ export default function FinancialIntelligence() {
             connectedBanks={connectedBanks}
           />
         ) : null}
+
+        {selectedRestaurant && connectedBanks.length > 0 && (
+          <BankSnapshotSection 
+            restaurantId={selectedRestaurant.restaurant_id}
+            selectedPeriod={selectedPeriod}
+          />
+        )}
         
         <BankingIntelligenceDashboard 
           selectedPeriod={selectedPeriod} 

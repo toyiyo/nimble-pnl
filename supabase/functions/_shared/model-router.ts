@@ -25,13 +25,6 @@ export const MODELS = [
     reliableTools: true,
     cost: 1,
   },
-  {
-    name: "GPT OSS 120B",
-    id: "openai/gpt-oss-120b",
-    supportsTools: true,
-    reliableTools: true,
-    cost: 1,
-  },
   // Best tool-calling models (paid but reliable)
   {
     name: "Gemini Flash",

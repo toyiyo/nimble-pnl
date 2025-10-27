@@ -136,6 +136,11 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
             type: 'boolean',
             description: 'Compare to previous period',
             default: true
+          },
+          include_items: {
+            type: 'boolean',
+            description: 'Include breakdown by item',
+            default: false
           }
         },
         required: ['period']
@@ -143,46 +148,147 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     },
   ];
 
-  // Add report generation for managers and owners
+  // Add financial intelligence for managers and owners
   if (userRole === 'manager' || userRole === 'owner') {
-    tools.push({
-      name: 'generate_report',
-      description: 'Generate a financial or operational report in various formats',
-      parameters: {
-        type: 'object',
-        properties: {
-          type: {
-            type: 'string',
-            enum: [
-              'monthly_pnl',
-              'inventory_variance',
-              'recipe_profitability',
-              'sales_by_category',
-              'cash_flow',
-              'balance_sheet'
-            ],
-            description: 'Type of report to generate'
+    tools.push(
+      {
+        name: 'get_financial_intelligence',
+        description: 'Get comprehensive financial intelligence including cash flow metrics, revenue health, spending analysis, liquidity metrics, and predictions',
+        parameters: {
+          type: 'object',
+          properties: {
+            analysis_type: {
+              type: 'string',
+              enum: ['cash_flow', 'revenue_health', 'spending', 'liquidity', 'predictions', 'all'],
+              description: 'Type of financial analysis to perform'
+            },
+            start_date: {
+              type: 'string',
+              format: 'date',
+              description: 'Start date for analysis (YYYY-MM-DD)'
+            },
+            end_date: {
+              type: 'string',
+              format: 'date',
+              description: 'End date for analysis (YYYY-MM-DD)'
+            },
+            bank_account_id: {
+              type: 'string',
+              description: 'Optional bank account ID to filter by'
+            }
           },
-          start_date: {
-            type: 'string',
-            format: 'date',
-            description: 'Start date for the report (YYYY-MM-DD)'
+          required: ['analysis_type', 'start_date', 'end_date']
+        }
+      },
+      {
+        name: 'get_bank_transactions',
+        description: 'Query and analyze bank transactions with filters',
+        parameters: {
+          type: 'object',
+          properties: {
+            start_date: {
+              type: 'string',
+              format: 'date',
+              description: 'Start date for transactions (YYYY-MM-DD)'
+            },
+            end_date: {
+              type: 'string',
+              format: 'date',
+              description: 'End date for transactions (YYYY-MM-DD)'
+            },
+            bank_account_id: {
+              type: 'string',
+              description: 'Filter by specific bank account'
+            },
+            category_id: {
+              type: 'string',
+              description: 'Filter by chart of accounts category'
+            },
+            min_amount: {
+              type: 'number',
+              description: 'Minimum transaction amount'
+            },
+            max_amount: {
+              type: 'number',
+              description: 'Maximum transaction amount'
+            },
+            is_categorized: {
+              type: 'boolean',
+              description: 'Filter by categorization status'
+            },
+            limit: {
+              type: 'integer',
+              description: 'Maximum number of transactions to return',
+              default: 50
+            }
           },
-          end_date: {
-            type: 'string',
-            format: 'date',
-            description: 'End date for the report (YYYY-MM-DD)'
+          required: ['start_date', 'end_date']
+        }
+      },
+      {
+        name: 'get_financial_statement',
+        description: 'Get detailed financial statements including income statement, balance sheet, cash flow statement, or trial balance',
+        parameters: {
+          type: 'object',
+          properties: {
+            statement_type: {
+              type: 'string',
+              enum: ['income_statement', 'balance_sheet', 'cash_flow', 'trial_balance'],
+              description: 'Type of financial statement to retrieve'
+            },
+            start_date: {
+              type: 'string',
+              format: 'date',
+              description: 'Start date for the statement (YYYY-MM-DD)'
+            },
+            end_date: {
+              type: 'string',
+              format: 'date',
+              description: 'End date for the statement (YYYY-MM-DD)'
+            }
           },
-          format: {
-            type: 'string',
-            enum: ['json', 'csv', 'pdf'],
-            description: 'Output format',
-            default: 'json'
-          }
-        },
-        required: ['type', 'start_date', 'end_date']
+          required: ['statement_type', 'start_date', 'end_date']
+        }
+      },
+      {
+        name: 'generate_report',
+        description: 'Generate a financial or operational report in various formats',
+        parameters: {
+          type: 'object',
+          properties: {
+            type: {
+              type: 'string',
+              enum: [
+                'monthly_pnl',
+                'inventory_variance',
+                'recipe_profitability',
+                'sales_by_category',
+                'cash_flow',
+                'balance_sheet'
+              ],
+              description: 'Type of report to generate'
+            },
+            start_date: {
+              type: 'string',
+              format: 'date',
+              description: 'Start date for the report (YYYY-MM-DD)'
+            },
+            end_date: {
+              type: 'string',
+              format: 'date',
+              description: 'End date for the report (YYYY-MM-DD)'
+            },
+            format: {
+              type: 'string',
+              enum: ['json', 'csv', 'pdf'],
+              description: 'Output format',
+              default: 'json'
+            }
+          },
+          required: ['type', 'start_date', 'end_date']
+        }
       }
-    });
+    );
   }
 
   // Add AI-powered insights for owners
@@ -224,8 +330,15 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     return true;
   }
 
-  // Report generation for managers and owners
-  if (toolName === 'generate_report') {
+  // Financial intelligence, bank transactions, financial statements, and report generation for managers and owners
+  const managerOwnerTools = [
+    'get_financial_intelligence',
+    'get_bank_transactions',
+    'get_financial_statement',
+    'generate_report'
+  ];
+  
+  if (managerOwnerTools.includes(toolName)) {
     return userRole === 'manager' || userRole === 'owner';
   }
 

@@ -315,18 +315,41 @@ When users ask questions:
 
 Available tools: ${tools.map(t => t.name).join(', ')}
 
-Special tool: get_ai_insights
-- Use this when owners ask for business advice, insights, or recommendations
-- Available focus areas: cost_reduction, revenue_growth, inventory_optimization, menu_engineering, overall_health
-- Example triggers: "Give me insights", "How can I reduce costs?", "What should I improve?", "Analyze my business"
+Tool Usage Guidelines:
 
-Special tool: generate_report (managers and owners only)
-- Use this to generate detailed financial and operational reports
-- Available report types ONLY: monthly_pnl, inventory_variance, recipe_profitability, sales_by_category, cash_flow, balance_sheet
-- NEVER use other report types - they do not exist
-- Example: "Generate a monthly P&L report" → use type: monthly_pnl
+1. Navigation & Basic Data (all users):
+   - navigate: Guide users to specific app sections
+   - get_kpis: Revenue, costs, margins, inventory value
+   - get_inventory_status: Stock levels, low stock alerts, suppliers
+   - get_recipe_analytics: Recipe costs, margins, profitability
+   - get_sales_summary: Sales data with item breakdowns
 
-Always use tools to get real-time data rather than making assumptions.`,
+2. Financial Intelligence (managers/owners):
+   - get_financial_intelligence: Deep financial analysis
+     * analysis_type: 'cash_flow', 'revenue_health', 'spending', 'liquidity', 'predictions', 'all'
+     * Returns: Cash flow metrics, deposit patterns, spending by vendor, burn rate, runway
+     * Example: "What's my cash burn rate?" → use analysis_type: 'liquidity'
+     * Example: "Show me spending breakdown" → use analysis_type: 'spending'
+   
+   - get_bank_transactions: Query specific transactions
+     * Filter by date, amount, category, bank account
+     * Example: "Show transactions over $500 last week"
+   
+   - get_financial_statement: Formal financial statements
+     * statement_type: 'income_statement', 'balance_sheet', 'cash_flow', 'trial_balance'
+     * Example: "What's on my balance sheet?" → use statement_type: 'balance_sheet'
+
+3. AI Insights (owners only):
+   - get_ai_insights: Business advice and recommendations
+     * focus_area: cost_reduction, revenue_growth, inventory_optimization, menu_engineering, overall_health
+     * Example: "Give me insights" → use focus_area: 'overall_health'
+
+4. Report Generation (managers/owners):
+   - generate_report: Generate formatted reports
+     * Available types ONLY: monthly_pnl, inventory_variance, recipe_profitability, sales_by_category, cash_flow, balance_sheet
+     * Example: "Generate monthly P&L" → use type: 'monthly_pnl'
+
+Always use tools to fetch real-time data. When users ask about financial health, liquidity, cash flow, spending, or similar topics, use get_financial_intelligence. Format numbers clearly with $ signs and proper thousands separators.`,
     };
 
     const messagesWithSystem = messages[0]?.role === 'system' 

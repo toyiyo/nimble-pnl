@@ -288,11 +288,18 @@ User role: ${userRestaurant.role}
 When users ask questions:
 - Be concise and helpful
 - Use the available tools to fetch real data
-- Provide actionable insights
+- Provide actionable insights based on actual numbers
 - Navigate users to relevant sections when needed
 - Format numbers and dates clearly
+- When users ask for insights, recommendations, or advice, use the get_ai_insights tool (owners only)
+- Always use tools to get real-time data rather than making assumptions
 
 Available tools: ${tools.map(t => t.name).join(', ')}
+
+Special tool: get_ai_insights
+- Use this when owners ask for business advice, insights, or recommendations
+- Available focus areas: cost_reduction, revenue_growth, inventory_optimization, menu_engineering, overall_health
+- Example triggers: "Give me insights", "How can I reduce costs?", "What should I improve?", "Analyze my business"
 
 Always use tools to get real-time data rather than making assumptions.`,
     };

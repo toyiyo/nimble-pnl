@@ -185,6 +185,25 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     });
   }
 
+  // Add AI-powered insights for owners
+  if (userRole === 'owner') {
+    tools.push({
+      name: 'get_ai_insights',
+      description: 'Get AI-powered actionable insights and recommendations for the business based on your data',
+      parameters: {
+        type: 'object',
+        properties: {
+          focus_area: {
+            type: 'string',
+            enum: ['cost_reduction', 'revenue_growth', 'inventory_optimization', 'menu_engineering', 'overall_health'],
+            description: 'Area to focus insights on',
+            default: 'overall_health'
+          }
+        }
+      }
+    });
+  }
+
   return tools;
 }
 
@@ -208,6 +227,11 @@ export function canUseTool(toolName: string, userRole: string): boolean {
   // Report generation for managers and owners
   if (toolName === 'generate_report') {
     return userRole === 'manager' || userRole === 'owner';
+  }
+
+  // AI insights only for owners
+  if (toolName === 'get_ai_insights') {
+    return userRole === 'owner';
   }
 
   return false;

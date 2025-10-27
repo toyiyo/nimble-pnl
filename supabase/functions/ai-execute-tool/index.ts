@@ -1,7 +1,11 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { canUseTool } from "../_shared/tools-registry.ts";
+import { MODELS } from "../_shared/model-router.ts";
+
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
 
 interface ToolExecutionRequest {
   tool_name: string;
@@ -157,7 +161,7 @@ async function executeGetInventoryStatus(
 
   let query = supabase
     .from('products')
-    .select('id, name, current_stock, minimum_quantity, cost_per_unit, category')
+    .select('id, name, current_stock, par_level_min, cost_per_unit, category')
     .eq('restaurant_id', restaurantId);
 
   if (category) {
@@ -171,7 +175,7 @@ async function executeGetInventoryStatus(
   }
 
   const lowStockItems = products?.filter((p: any) => 
-    p.current_stock <= (p.minimum_quantity || 0)
+    p.current_stock <= (p.par_level_min || 0)
   ) || [];
 
   const totalValue = products?.reduce((sum: number, item: any) => 
@@ -367,6 +371,370 @@ async function executeGetSalesSummary(
   };
 }
 
+/**
+ * Execute get_ai_insights tool using OpenRouter with multi-model fallback
+ */
+async function executeGetAiInsights(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { focus_area = 'overall_health' } = args;
+
+  // Fetch relevant data based on focus area
+  let dataContext: any = {};
+
+  try {
+    // Get KPIs
+    const kpisResult = await executeGetKpis({ period: 'month' }, restaurantId, supabase);
+    dataContext.kpis = kpisResult.data;
+
+    // Get inventory status
+    const inventoryResult = await executeGetInventoryStatus({ include_low_stock: true }, restaurantId, supabase);
+    dataContext.inventory = inventoryResult.data;
+
+    // Get recipe analytics
+    const recipeResult = await executeGetRecipeAnalytics({ sort_by: 'margin' }, restaurantId, supabase);
+    dataContext.recipes = recipeResult.data;
+
+    // Get sales summary
+    const salesResult = await executeGetSalesSummary({ period: 'month', compare_to_previous: true }, restaurantId, supabase);
+    dataContext.sales = salesResult.data;
+
+    // Focus area specific data
+    if (focus_area === 'cost_reduction') {
+      // Get high-cost products
+      const { data: highCostProducts } = await supabase
+        .from('products')
+        .select('name, cost_per_unit, current_stock')
+        .eq('restaurant_id', restaurantId)
+        .order('cost_per_unit', { ascending: false })
+        .limit(10);
+      dataContext.high_cost_products = highCostProducts;
+    }
+
+  } catch (error) {
+    console.error('Error fetching data for insights:', error);
+    throw new Error(`Failed to fetch data: ${error.message}`);
+  }
+
+  // Construct prompt for AI
+  const prompt = `You are a restaurant financial analyst. Analyze the following data and provide 3-5 specific, actionable insights for ${focus_area.replace('_', ' ')}.
+
+Restaurant Data:
+${JSON.stringify(dataContext, null, 2)}
+
+Focus Area: ${focus_area}
+
+Provide insights in the following format. Be specific with numbers and actionable recommendations.`;
+
+  // Try models in order (free first, then paid)
+  let lastError: Error | null = null;
+  
+  for (const model of MODELS.filter(m => m.supportsTools)) {
+    try {
+      console.log(`Trying model: ${model.name} (${model.id})`);
+      
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://nimble-pnl.vercel.app',
+          'X-Title': 'Nimble P&L AI Insights',
+        },
+        body: JSON.stringify({
+          model: model.id,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a restaurant financial analyst specializing in actionable business insights.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          tools: [
+            {
+              type: 'function',
+              function: {
+                name: 'provide_insights',
+                description: 'Provide actionable business insights',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    insights: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          category: { type: 'string', description: 'Category of the insight' },
+                          insight: { type: 'string', description: 'The specific insight or finding' },
+                          impact: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Expected impact level' },
+                          action: { type: 'string', description: 'Specific action to take' },
+                          estimated_savings: { type: 'number', description: 'Estimated monthly savings in dollars (optional)' },
+                        },
+                        required: ['category', 'insight', 'impact', 'action'],
+                      },
+                    },
+                  },
+                  required: ['insights'],
+                },
+              },
+            },
+          ],
+          tool_choice: { type: 'function', function: { name: 'provide_insights' } },
+          temperature: 0.7,
+          max_tokens: 2000,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenRouter API error (${response.status}): ${errorText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.choices?.[0]?.message?.tool_calls?.[0]) {
+        const toolCall = data.choices[0].message.tool_calls[0];
+        const insights = JSON.parse(toolCall.function.arguments);
+        
+        return {
+          ok: true,
+          data: {
+            focus_area,
+            insights: insights.insights,
+            model_used: model.name,
+            data_points_analyzed: Object.keys(dataContext).length,
+          },
+        };
+      }
+
+      throw new Error('No tool call in response');
+
+    } catch (error) {
+      console.error(`Model ${model.name} failed:`, error.message);
+      lastError = error;
+      // Continue to next model
+    }
+  }
+
+  // All models failed
+  throw new Error(`All AI models failed. Last error: ${lastError?.message || 'Unknown error'}`);
+}
+
+/**
+ * Execute generate_report tool
+ */
+async function executeGenerateReport(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { type, start_date, end_date, format = 'json' } = args;
+
+  // Validate dates
+  const startDate = new Date(start_date);
+  const endDate = new Date(end_date);
+  
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    throw new Error('Invalid date format');
+  }
+
+  let reportData: any = {};
+
+  try {
+    switch (type) {
+      case 'monthly_pnl': {
+        // Get revenue from unified_sales
+        const { data: sales } = await supabase
+          .from('unified_sales')
+          .select('total_price, sale_date')
+          .eq('restaurant_id', restaurantId)
+          .gte('sale_date', start_date)
+          .lte('sale_date', end_date);
+
+        const totalRevenue = sales?.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0) || 0;
+
+        // Get COGS from inventory transactions
+        const { data: inventory } = await supabase
+          .from('inventory_transactions')
+          .select('total_cost, transaction_type')
+          .eq('restaurant_id', restaurantId)
+          .gte('created_at', start_date)
+          .lte('created_at', end_date)
+          .eq('transaction_type', 'usage');
+
+        const totalCOGS = Math.abs(inventory?.reduce((sum: number, i: any) => sum + (i.total_cost || 0), 0) || 0);
+
+        // Get expenses from bank transactions
+        const { data: expenses } = await supabase
+          .from('bank_transactions')
+          .select('amount, description')
+          .eq('restaurant_id', restaurantId)
+          .gte('transaction_date', start_date)
+          .lte('transaction_date', end_date)
+          .lt('amount', 0);
+
+        const totalExpenses = Math.abs(expenses?.reduce((sum: number, e: any) => sum + (e.amount || 0), 0) || 0);
+
+        reportData = {
+          period: { start_date, end_date },
+          revenue: totalRevenue,
+          cogs: totalCOGS,
+          gross_profit: totalRevenue - totalCOGS,
+          gross_margin: totalRevenue > 0 ? ((totalRevenue - totalCOGS) / totalRevenue) * 100 : 0,
+          expenses: totalExpenses,
+          net_profit: totalRevenue - totalCOGS - totalExpenses,
+          net_margin: totalRevenue > 0 ? ((totalRevenue - totalCOGS - totalExpenses) / totalRevenue) * 100 : 0,
+        };
+        break;
+      }
+
+      case 'inventory_variance': {
+        const { data: products } = await supabase
+          .from('products')
+          .select('id, name, current_stock, par_level_min, par_level_max, cost_per_unit')
+          .eq('restaurant_id', restaurantId);
+
+        reportData = {
+          period: { start_date, end_date },
+          items: products?.map((p: any) => ({
+            name: p.name,
+            current_stock: p.current_stock || 0,
+            par_min: p.par_level_min || 0,
+            par_max: p.par_level_max || 0,
+            variance: (p.current_stock || 0) - (p.par_level_min || 0),
+            value: (p.current_stock || 0) * (p.cost_per_unit || 0),
+            status: (p.current_stock || 0) < (p.par_level_min || 0) ? 'low' : 
+                   (p.current_stock || 0) > (p.par_level_max || 0) ? 'high' : 'ok',
+          })) || [],
+        };
+        break;
+      }
+
+      case 'recipe_profitability': {
+        const recipeResult = await executeGetRecipeAnalytics({ sort_by: 'margin' }, restaurantId, supabase);
+        reportData = {
+          period: { start_date, end_date },
+          recipes: recipeResult.data.recipes,
+        };
+        break;
+      }
+
+      case 'sales_by_category': {
+        const { data: sales } = await supabase
+          .from('unified_sales')
+          .select('item_name, total_price, pos_category, sale_date')
+          .eq('restaurant_id', restaurantId)
+          .gte('sale_date', start_date)
+          .lte('sale_date', end_date);
+
+        // Group by category
+        const byCategory: Record<string, { total: number; count: number }> = {};
+        sales?.forEach((s: any) => {
+          const cat = s.pos_category || 'Uncategorized';
+          if (!byCategory[cat]) {
+            byCategory[cat] = { total: 0, count: 0 };
+          }
+          byCategory[cat].total += s.total_price || 0;
+          byCategory[cat].count += 1;
+        });
+
+        reportData = {
+          period: { start_date, end_date },
+          categories: Object.entries(byCategory).map(([name, data]) => ({
+            name,
+            total_sales: data.total,
+            item_count: data.count,
+            average_price: data.count > 0 ? data.total / data.count : 0,
+          })),
+        };
+        break;
+      }
+
+      case 'cash_flow': {
+        const { data: transactions } = await supabase
+          .from('bank_transactions')
+          .select('amount, description, transaction_date, category:chart_of_accounts(account_name)')
+          .eq('restaurant_id', restaurantId)
+          .gte('transaction_date', start_date)
+          .lte('transaction_date', end_date)
+          .order('transaction_date', { ascending: true });
+
+        const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
+        const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+
+        reportData = {
+          period: { start_date, end_date },
+          cash_inflows: inflows,
+          cash_outflows: outflows,
+          net_cash_flow: inflows - outflows,
+          transactions: transactions?.map((t: any) => ({
+            date: t.transaction_date,
+            description: t.description,
+            amount: t.amount,
+            category: t.category?.account_name || 'Uncategorized',
+          })) || [],
+        };
+        break;
+      }
+
+      case 'balance_sheet': {
+        // Simplified balance sheet
+        const { data: inventory } = await supabase
+          .from('products')
+          .select('current_stock, cost_per_unit')
+          .eq('restaurant_id', restaurantId);
+
+        const inventoryValue = inventory?.reduce((sum: number, i: any) => 
+          sum + ((i.current_stock || 0) * (i.cost_per_unit || 0)), 0) || 0;
+
+        const { data: bank } = await supabase
+          .from('connected_banks')
+          .select('bank_account_balances(current_balance)')
+          .eq('restaurant_id', restaurantId);
+
+        const cashBalance = bank?.[0]?.bank_account_balances?.[0]?.current_balance || 0;
+
+        reportData = {
+          as_of: end_date,
+          assets: {
+            cash: cashBalance,
+            inventory: inventoryValue,
+            total: cashBalance + inventoryValue,
+          },
+          liabilities: {
+            total: 0, // Placeholder - would need accounts payable data
+          },
+          equity: {
+            total: cashBalance + inventoryValue, // Simplified
+          },
+        };
+        break;
+      }
+
+      default:
+        throw new Error(`Unknown report type: ${type}`);
+    }
+
+    return {
+      ok: true,
+      data: {
+        report_type: type,
+        format,
+        generated_at: new Date().toISOString(),
+        ...reportData,
+      },
+    };
+
+  } catch (error) {
+    throw new Error(`Failed to generate report: ${error.message}`);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -432,6 +800,12 @@ serve(async (req) => {
         break;
       case 'get_sales_summary':
         result = await executeGetSalesSummary(args, restaurant_id, supabase);
+        break;
+      case 'get_ai_insights':
+        result = await executeGetAiInsights(args, restaurant_id, supabase);
+        break;
+      case 'generate_report':
+        result = await executeGenerateReport(args, restaurant_id, supabase);
         break;
       default:
         throw new Error(`Unknown tool: ${tool_name}`);

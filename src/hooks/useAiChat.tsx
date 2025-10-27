@@ -158,6 +158,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
             
             try {
               const event: SSEEvent = JSON.parse(data);
+              console.log('[AI Chat Follow-up] Received event:', event.type);
 
               switch (event.type) {
                 case 'message_start':
@@ -175,7 +176,8 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                   break;
 
                 case 'message_delta':
-                  if (event.delta && event.delta.trim()) {
+                  if (event.delta) {
+                    console.log('[AI Chat] Received delta:', JSON.stringify(event.delta));
                     currentMessageRef.current += event.delta;
                     setMessages(prev =>
                       prev.map(msg =>
@@ -307,7 +309,10 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('[AI Chat] Stream completed (main)');
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -319,6 +324,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
             
             try {
               const event: SSEEvent = JSON.parse(data);
+              console.log('[AI Chat] Received event:', event.type);
 
               switch (event.type) {
                 case 'message_start':
@@ -335,7 +341,8 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                   break;
 
                 case 'message_delta':
-                  if (event.delta && event.delta.trim()) {
+                  if (event.delta) {
+                    console.log('[AI Chat] Received delta:', JSON.stringify(event.delta));
                     currentMessageRef.current += event.delta;
                     setMessages(prev =>
                       prev.map(msg =>

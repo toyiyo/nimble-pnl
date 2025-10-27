@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 
 interface ChatMessageProps {
@@ -23,16 +23,42 @@ mermaid.initialize({
 
 const MermaidChart = ({ chart }: { chart: string }) => {
   const ref = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     if (ref.current) {
+      setError(false);
       try {
         // Clean up the chart text - remove markdown code block markers
-        const cleanChart = chart.trim().replace(/^```mermaid\n?/, '').replace(/\n?```$/, '').trim();
+        let cleanChart = chart.trim().replace(/^```mermaid\n?/, '').replace(/\n?```$/, '').trim();
         
         // Skip rendering if chart is empty or too short to be valid
         if (!cleanChart || cleanChart.length < 10) {
           return;
+        }
+
+        // Sanitize the chart - replace problematic unicode characters
+        cleanChart = cleanChart
+          .replace(/[\u2011\u2012\u2013\u2014\u2015]/g, '-') // Replace various dashes with regular hyphen
+          .replace(/[\u2018\u2019]/g, "'") // Replace smart quotes with regular quotes
+          .replace(/[\u201C\u201D]/g, '"') // Replace smart double quotes
+          .replace(/\u00A0/g, ' ') // Replace non-breaking spaces
+          .trim();
+
+        // Validate basic mermaid syntax - check for incomplete arrows
+        const lines = cleanChart.split('\n');
+        const validLines = lines.filter(line => {
+          const trimmedLine = line.trim();
+          // Skip empty lines and comments
+          if (!trimmedLine || trimmedLine.startsWith('%%')) return true;
+          // Check for incomplete arrows (arrows that end the line without a destination)
+          if (/--[->]?\s*$/.test(trimmedLine)) return false;
+          return true;
+        });
+        
+        if (validLines.length < lines.length) {
+          console.warn('Mermaid: Removed incomplete arrow syntax');
+          cleanChart = validLines.join('\n');
         }
 
         mermaid.render(`mermaid-${Date.now()}`, cleanChart).then(({ svg }) => {
@@ -40,14 +66,25 @@ const MermaidChart = ({ chart }: { chart: string }) => {
             ref.current.innerHTML = svg;
           }
         }).catch((e) => {
-          // Fail silently on mermaid errors - don't show error to user
           console.error('Mermaid rendering error:', e);
+          setError(true);
         });
       } catch (e) {
         console.error('Mermaid rendering error:', e);
+        setError(true);
       }
     }
   }, [chart]);
+
+  if (error) {
+    return (
+      <div className="my-4 p-4 bg-muted/50 border border-border rounded-md">
+        <p className="text-sm text-muted-foreground">
+          Unable to render diagram. The chart syntax may be incomplete or invalid.
+        </p>
+      </div>
+    );
+  }
 
   return <div ref={ref} className="my-4 overflow-x-auto max-w-full" />;
 };

@@ -329,11 +329,20 @@ RESPONSE FORMATTING - CRITICAL:
 - Use bullet points for lists
 - Use tables for comparing data
 - Use headers (##, ###) to structure longer responses
-- When showing processes or workflows, use mermaid charts with \`\`\`mermaid code blocks
-- For flowcharts: use graph TD or graph LR syntax
 - For data analysis: present key insights in markdown tables
+- When presenting reports: format them as tables using markdown table syntax
+- DO NOT generate fake download links like "/reports/download?report_id=..."
+- ALL report data should be presented inline in the chat using tables and formatting
 
-Example mermaid chart formats:
+MERMAID DIAGRAM GUIDELINES (use sparingly):
+- Only use mermaid diagrams when they add clear value (NOT for simple lists)
+- ALWAYS complete arrow syntax: use "A --> B" NOT "A -->" (arrows MUST have destinations)
+- Use simple ASCII characters ONLY - NO unicode dashes (‑, –, —), smart quotes (', ", ", "), or special symbols
+- Keep diagrams simple and focused (3-8 nodes maximum)
+- Test syntax is valid: proper graph/flowchart declarations, complete arrow connections, closed brackets
+- If a diagram is complex, use a markdown table or bullet list instead
+
+Example mermaid (only when needed):
 \`\`\`mermaid
 graph TD
     A[Analyze Sales] --> B[Identify Top Items]

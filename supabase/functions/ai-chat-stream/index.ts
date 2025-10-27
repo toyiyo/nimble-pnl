@@ -391,7 +391,9 @@ Tool Usage Guidelines:
 4. Report Generation (managers/owners):
    - generate_report: Generate formatted reports
      * Available types ONLY: monthly_pnl, inventory_variance, recipe_profitability, sales_by_category, cash_flow, balance_sheet
-     * Example: "Generate monthly P&L" → use type: 'monthly_pnl'
+     * Returns: Report data in JSON format - NEVER generate download links or URLs
+     * IMPORTANT: Present the report data inline using markdown tables and formatting
+     * Example: "Generate monthly P&L" → use type: 'monthly_pnl', then format the returned data as a table
 
 Always use tools to fetch real-time data. When users ask about financial health, liquidity, cash flow, spending, or similar topics, use get_financial_intelligence. Format numbers clearly with $ signs and proper thousands separators.`,
     };

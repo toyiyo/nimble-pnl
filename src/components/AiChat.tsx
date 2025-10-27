@@ -64,20 +64,20 @@ export const AiChat = () => {
   ];
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex flex-col h-full max-h-[100dvh] md:max-h-full">
       {/* Header */}
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10 mb-4">
-        <CardHeader>
+      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10 mb-4 flex-shrink-0">
+        <CardHeader className="py-4 md:py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-gradient-to-br from-primary to-accent">
-                <Sparkles className="h-6 w-6 text-primary-foreground" />
+                <Sparkles className="h-5 w-5 md:h-6 md:w-6 text-primary-foreground" />
               </div>
               <div>
-                <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                <CardTitle className="text-xl md:text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                   AI Assistant
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-xs md:text-sm">
                   Ask questions about your restaurant operations, get insights, and navigate the app
                 </CardDescription>
               </div>
@@ -88,6 +88,7 @@ export const AiChat = () => {
                 size="sm"
                 onClick={clearMessages}
                 disabled={isStreaming}
+                className="hidden md:flex"
               >
                 Clear Chat
               </Button>
@@ -98,17 +99,17 @@ export const AiChat = () => {
 
       {/* Quick Actions */}
       {messages.length === 0 && (
-        <Card className="mb-4">
-          <CardHeader>
+        <Card className="mb-4 flex-shrink-0">
+          <CardHeader className="py-3">
             <CardTitle className="text-sm">Quick Actions</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pb-3">
             <div className="flex flex-wrap gap-2">
               {quickActions.map((action, idx) => (
                 <Badge
                   key={idx}
                   variant="outline"
-                  className="cursor-pointer hover:bg-accent transition-colors"
+                  className="cursor-pointer hover:bg-accent transition-colors text-xs"
                   onClick={() => handleQuickAction(action.prompt)}
                 >
                   {action.label}
@@ -119,20 +120,20 @@ export const AiChat = () => {
         </Card>
       )}
 
-      {/* Chat Messages */}
-      <Card className="flex-1 flex flex-col overflow-hidden">
-        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+      {/* Chat Messages - Scrollable area */}
+      <div className="flex-1 min-h-0 mb-4">
+        <ScrollArea className="h-full px-4" ref={scrollAreaRef}>
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-12">
-              <Bot className="h-16 w-16 text-muted-foreground mb-4 opacity-50" />
-              <h3 className="text-lg font-semibold mb-2">How can I help you today?</h3>
-              <p className="text-muted-foreground max-w-md">
+              <Bot className="h-12 w-12 md:h-16 md:w-16 text-muted-foreground mb-4 opacity-50" />
+              <h3 className="text-base md:text-lg font-semibold mb-2">How can I help you today?</h3>
+              <p className="text-sm md:text-base text-muted-foreground max-w-md px-4">
                 I can help you with inventory, recipes, sales, financial reports, and more.
                 Try asking a question or use a quick action above.
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 pb-4">
               {messages.map((message) => (
                 <ChatMessage key={message.id} message={message} />
               ))}
@@ -155,26 +156,28 @@ export const AiChat = () => {
             </div>
           )}
         </ScrollArea>
+      </div>
 
-        {/* Error Display */}
-        {error && (
-          <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
-            <div className="flex items-center gap-2 text-sm text-destructive">
-              <XCircle className="h-4 w-4" />
-              <span>{error}</span>
-            </div>
+      {/* Error Display */}
+      {error && (
+        <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20 flex-shrink-0">
+          <div className="flex items-center gap-2 text-sm text-destructive">
+            <XCircle className="h-4 w-4" />
+            <span className="text-xs md:text-sm">{error}</span>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Input Area */}
-        <div className="p-4 border-t border-border">
+      {/* Input Area - Fixed at bottom */}
+      <Card className="border-t rounded-none flex-shrink-0 sticky bottom-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="p-3 md:p-4">
           <form onSubmit={handleSubmit} className="flex gap-2">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask a question..."
               disabled={isStreaming}
-              className="flex-1"
+              className="flex-1 text-sm md:text-base"
               aria-label="Chat message input"
             />
             {isStreaming ? (
@@ -184,6 +187,7 @@ export const AiChat = () => {
                 variant="outline"
                 size="icon"
                 aria-label="Stop generation"
+                className="flex-shrink-0"
               >
                 <XCircle className="h-4 w-4" />
               </Button>
@@ -193,6 +197,7 @@ export const AiChat = () => {
                 disabled={!input.trim() || isStreaming}
                 size="icon"
                 aria-label="Send message"
+                className="flex-shrink-0"
               >
                 <Send className="h-4 w-4" />
               </Button>

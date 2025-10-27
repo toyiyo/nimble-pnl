@@ -441,8 +441,8 @@ Provide insights in the following format. Be specific with numbers and actionabl
         headers: {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://nimble-pnl.vercel.app',
-          'X-Title': 'Nimble P&L AI Insights',
+          'HTTP-Referer': 'https://app.easyshifthq.com',
+          'X-Title': 'EasyShiftHQ AI Insights',
         },
         body: JSON.stringify({
           model: model.id,

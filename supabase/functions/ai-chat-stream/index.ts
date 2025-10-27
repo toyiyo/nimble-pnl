@@ -39,8 +39,8 @@ async function callOpenRouter(
     headers: {
       'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://nimble-pnl.vercel.app',
-      'X-Title': 'Nimble P&L AI Assistant',
+      'HTTP-Referer': 'https://app.easyshifthq.com',
+      'X-Title': 'EasyShiftHQ AI Assistant',
     },
     body: JSON.stringify({
       model,
@@ -279,7 +279,7 @@ serve(async (req) => {
     // Add system message if not present
     const systemMessage = {
       role: 'system' as const,
-      content: `You are a helpful AI assistant for Nimble P&L, a restaurant management system. 
+      content: `You are a helpful AI assistant for EasyShiftHQ, a restaurant management system. 
 You help restaurant owners and managers with their operations, financials, inventory, and recipes.
 
 Current restaurant ID: ${projectRef}

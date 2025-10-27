@@ -17,27 +17,42 @@ export interface GetModelOptions {
 
 // Model configurations (prioritize reliable tool-calling models)
 export const MODELS = [
+  // Finance-optimized models
+  {
+    name: "GPT OSS 120B",
+    id: "openai/gpt-oss-120b",
+    supportsTools: true,
+    reliableTools: true,
+    cost: 1,
+  },
+  {
+    name: "Gemini 2.5 Flash Lite",
+    id: "google/gemini-2.5-flash-lite",
+    supportsTools: true,
+    reliableTools: true,
+    cost: 1,
+  },
   // Best tool-calling models (paid but reliable)
   {
     name: "Gemini Flash",
     id: "google/gemini-flash-1.5",
     supportsTools: true,
     reliableTools: true,
-    cost: 1,
+    cost: 2,
   },
   {
     name: "Claude Haiku",
     id: "anthropic/claude-3-haiku",
     supportsTools: true,
     reliableTools: true,
-    cost: 2,
+    cost: 3,
   },
   {
     name: "GPT-4o Mini",
     id: "openai/gpt-4o-mini",
     supportsTools: true,
     reliableTools: true,
-    cost: 3,
+    cost: 4,
   },
   // Free models - may have tool calling issues
   {

@@ -111,7 +111,7 @@ async function executeGetKpis(
   // Fetch inventory value
   const { data: inventory, error: invError } = await supabase
     .from('products')
-    .select('current_quantity, unit_cost')
+    .select('current_stock, cost_per_unit')
     .eq('restaurant_id', restaurantId);
 
   if (invError) {
@@ -119,7 +119,7 @@ async function executeGetKpis(
   }
 
   const inventoryValue = inventory?.reduce((sum: number, item: any) => 
-    sum + ((item.current_quantity || 0) * (item.unit_cost || 0)), 0) || 0;
+    sum + ((item.current_stock || 0) * (item.cost_per_unit || 0)), 0) || 0;
 
   // Get transaction count for the period
   const { count: transactionCount } = await supabase
@@ -157,7 +157,7 @@ async function executeGetInventoryStatus(
 
   let query = supabase
     .from('products')
-    .select('id, name, current_quantity, minimum_quantity, unit_cost, category')
+    .select('id, name, current_stock, minimum_quantity, cost_per_unit, category')
     .eq('restaurant_id', restaurantId);
 
   if (category) {
@@ -171,11 +171,11 @@ async function executeGetInventoryStatus(
   }
 
   const lowStockItems = products?.filter((p: any) => 
-    p.current_quantity <= (p.minimum_quantity || 0)
+    p.current_stock <= (p.minimum_quantity || 0)
   ) || [];
 
   const totalValue = products?.reduce((sum: number, item: any) => 
-    sum + ((item.current_quantity || 0) * (item.unit_cost || 0)), 0) || 0;
+    sum + ((item.current_stock || 0) * (item.cost_per_unit || 0)), 0) || 0;
 
   return {
     ok: true,
@@ -203,14 +203,15 @@ async function executeGetRecipeAnalytics(
     .select(`
       id,
       name,
-      food_cost,
-      sale_price,
+      estimated_cost,
+      pos_item_name,
       recipe_ingredients (
         product_id,
         quantity
       )
     `)
-    .eq('restaurant_id', restaurantId);
+    .eq('restaurant_id', restaurantId)
+    .eq('is_active', true);
 
   if (recipe_id) {
     query = query.eq('id', recipe_id);
@@ -223,8 +224,9 @@ async function executeGetRecipeAnalytics(
   }
 
   const recipesWithAnalytics = recipes?.map((recipe: any) => {
-    const cost = recipe.food_cost || 0;
-    const price = recipe.sale_price || 0;
+    const cost = recipe.estimated_cost || 0;
+    // Get price from unified_sales if available (will need separate query per recipe for real data)
+    const price = 0; // Placeholder since we don't have sale_price in recipes table
     const margin = price > 0 ? ((price - cost) / price) * 100 : 0;
     const profit = price - cost;
 

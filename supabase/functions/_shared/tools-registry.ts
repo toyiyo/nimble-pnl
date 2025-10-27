@@ -103,7 +103,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     // Recipe queries - available to all users
     {
       name: 'get_recipe_analytics',
-      description: 'Get analytics for recipes including costs, margins, and profitability',
+      description: 'Get analytics for recipes including actual costs, selling prices from sales data, profit margins, and food cost percentages. Prices are calculated from real POS sales data.',
       parameters: {
         type: 'object',
         properties: {
@@ -113,8 +113,18 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
           },
           sort_by: {
             type: 'string',
-            enum: ['margin', 'cost', 'name', 'popularity'],
-            description: 'How to sort the results'
+            enum: ['margin', 'cost', 'name', 'sales'],
+            description: 'How to sort the results (margin = profit margin, sales = total revenue)'
+          },
+          days_back: {
+            type: 'integer',
+            description: 'Number of days to look back for sales data (default: 30)',
+            default: 30
+          },
+          include_zero_sales: {
+            type: 'boolean',
+            description: 'Include recipes with no sales data (default: false)',
+            default: false
           }
         }
       }

@@ -218,79 +218,58 @@ async function executeGetInventoryStatus(
 
 /**
  * Execute get_recipe_analytics tool
+ * 
+ * Note: This imports shared business logic from the service layer.
+ * The service file is bundled with the edge function at deployment.
  */
 async function executeGetRecipeAnalytics(
   args: any,
   restaurantId: string,
   supabase: any
 ): Promise<any> {
-  const { recipe_id, sort_by = 'margin' } = args;
+  const { 
+    recipe_id, 
+    sort_by = 'margin',
+    days_back = 30,
+    include_zero_sales = false
+  } = args;
 
-  let query = supabase
-    .from('recipes')
-    .select(`
-      id,
-      name,
-      estimated_cost,
-      pos_item_name,
-      recipe_ingredients (
-        product_id,
-        quantity
-      )
-    `)
-    .eq('restaurant_id', restaurantId)
-    .eq('is_active', true);
+  // Import the shared service (bundled at deployment)
+  const { calculateRecipeProfitability } = await import('../../../src/services/recipeAnalytics.service.ts');
 
-  if (recipe_id) {
-    query = query.eq('id', recipe_id);
-  }
-
-  const { data: recipes, error } = await query;
-
-  if (error) {
-    throw new Error(`Failed to fetch recipes: ${error.message}`);
-  }
-
-  const recipesWithAnalytics = recipes?.map((recipe: any) => {
-    const cost = recipe.estimated_cost || 0;
-    // Get price from unified_sales if available (will need separate query per recipe for real data)
-    const price = 0; // Placeholder since we don't have sale_price in recipes table
-    const margin = price > 0 ? ((price - cost) / price) * 100 : 0;
-    const profit = price - cost;
+  try {
+    const summary = await calculateRecipeProfitability(supabase, {
+      restaurantId,
+      recipeId: recipe_id,
+      daysBack: days_back,
+      includeZeroSales: include_zero_sales,
+      sortBy: sort_by
+    });
 
     return {
-      id: recipe.id,
-      name: recipe.name,
-      cost,
-      price,
-      margin: Math.round(margin * 10) / 10,
-      profit,
-      ingredient_count: recipe.recipe_ingredients?.length || 0,
+      ok: true,
+      data: {
+        recipes: summary.recipes.slice(0, 20), // Limit to top 20 for AI responses
+        total_count: summary.totalRecipes,
+        recipes_with_sales: summary.recipesWithSales,
+        average_margin: summary.averageMargin,
+        average_food_cost: summary.averageFoodCost,
+        highest_margin: summary.highestMargin ? {
+          name: summary.highestMargin.name,
+          margin: summary.highestMargin.margin,
+          selling_price: summary.highestMargin.selling_price
+        } : null,
+        lowest_margin: summary.lowestMargin ? {
+          name: summary.lowestMargin.name,
+          margin: summary.lowestMargin.margin,
+          selling_price: summary.lowestMargin.selling_price
+        } : null,
+        analysis_period_days: days_back
+      },
     };
-  }) || [];
-
-  // Sort recipes
-  recipesWithAnalytics.sort((a: any, b: any) => {
-    switch (sort_by) {
-      case 'margin':
-        return b.margin - a.margin;
-      case 'cost':
-        return b.cost - a.cost;
-      case 'name':
-        return a.name.localeCompare(b.name);
-      default:
-        return 0;
-    }
-  });
-
-  return {
-    ok: true,
-    data: {
-      recipes: recipesWithAnalytics.slice(0, 20),
-      total_count: recipesWithAnalytics.length,
-      average_margin: recipesWithAnalytics.reduce((sum: number, r: any) => sum + r.margin, 0) / (recipesWithAnalytics.length || 1),
-    },
-  };
+  } catch (error: any) {
+    throw new Error(`Failed to calculate recipe analytics: ${error.message}`);
+  }
 }
 
 /**

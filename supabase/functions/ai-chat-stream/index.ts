@@ -196,7 +196,14 @@ function createSSEStream(
         if (toolCalls.length > 0) {
           for (const toolCall of toolCalls) {
             try {
-              const args = JSON.parse(toolCall.function.arguments);
+              // Clean up arguments string - remove any special tokens
+              let argsString = toolCall.function.arguments
+                .replace(/<\|python_end\|>/g, '')
+                .replace(/<\|python_start\|>/g, '')
+                .replace(/<\|[^|]+\|>/g, '') // Remove any other special tokens
+                .trim();
+              
+              const args = JSON.parse(argsString);
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({
                   type: 'tool_call',
@@ -209,6 +216,17 @@ function createSSEStream(
               );
             } catch (e) {
               console.error('Failed to parse tool arguments:', e);
+              console.error('Raw arguments:', toolCall.function.arguments);
+              // Send error event instead of silently failing
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({
+                  type: 'error',
+                  error: {
+                    code: 'TOOL_PARSE_ERROR',
+                    message: 'Failed to parse tool arguments. The AI model may not support this tool format properly.',
+                  },
+                })}\n\n`)
+              );
             }
           }
         }

@@ -15,39 +15,44 @@ export interface GetModelOptions {
   requiresTools?: boolean;
 }
 
-// Model configurations (free models first, then paid fallbacks)
+// Model configurations (prioritize reliable tool-calling models)
 export const MODELS = [
-  // Free models - good for general chat
-  {
-    name: "Llama 4 Maverick Free",
-    id: "meta-llama/llama-4-maverick:free",
-    supportsTools: true,
-    cost: 0,
-  },
-  {
-    name: "Gemma 3 27B Free",
-    id: "google/gemma-3-27b-it:free",
-    supportsTools: true,
-    cost: 0,
-  },
-  // Paid fallbacks
+  // Best tool-calling models (paid but reliable)
   {
     name: "Gemini Flash",
     id: "google/gemini-flash-1.5",
     supportsTools: true,
+    reliableTools: true,
     cost: 1,
   },
   {
     name: "Claude Haiku",
     id: "anthropic/claude-3-haiku",
     supportsTools: true,
+    reliableTools: true,
     cost: 2,
   },
   {
     name: "GPT-4o Mini",
     id: "openai/gpt-4o-mini",
     supportsTools: true,
+    reliableTools: true,
     cost: 3,
+  },
+  // Free models - may have tool calling issues
+  {
+    name: "Llama 4 Maverick Free",
+    id: "meta-llama/llama-4-maverick:free",
+    supportsTools: true,
+    reliableTools: false,
+    cost: 0,
+  },
+  {
+    name: "Gemma 3 27B Free",
+    id: "google/gemma-3-27b-it:free",
+    supportsTools: true,
+    reliableTools: false,
+    cost: 0,
   },
 ];
 
@@ -64,25 +69,31 @@ export function getModel(options: GetModelOptions = {}): ModelConfig {
     ? MODELS.filter(m => m.supportsTools)
     : MODELS;
 
-  // Select model based on routing key
-  let selectedModel = availableModels[0]; // Default to first (free) model
+  // For tool calling, prioritize reliable models
+  let selectedModel = availableModels[0];
 
+  if (requiresTools) {
+    // Prefer models with reliable tool calling
+    const reliableModel = availableModels.find(m => m.reliableTools);
+    if (reliableModel) {
+      selectedModel = reliableModel;
+    }
+  }
+
+  // Override based on routing key
   switch (routingKey) {
     case 'sql_heavy':
-      // Use a more capable model for complex SQL queries
+      // Use Gemini for complex SQL queries
       selectedModel = availableModels.find(m => m.id.includes('gemini')) || selectedModel;
       break;
     case 'narrative':
-      // Use a model better at natural language
+      // Use Claude for natural language
       selectedModel = availableModels.find(m => m.id.includes('claude')) || selectedModel;
       break;
     case 'fast_preview':
-      // Use the fastest free model
-      selectedModel = availableModels[0];
+      // Use fastest available model (even if less reliable)
+      selectedModel = availableModels[availableModels.length - 1];
       break;
-    default:
-      // Use first available free model
-      selectedModel = availableModels[0];
   }
 
   return {
@@ -97,6 +108,7 @@ export function getModel(options: GetModelOptions = {}): ModelConfig {
 
 /**
  * Get list of models for fallback (in order of preference)
+ * Prioritizes reliable tool-calling models over free models
  */
 export function getModelFallbackList(requiresTools = true): string[] {
   const models = requiresTools 
@@ -104,6 +116,13 @@ export function getModelFallbackList(requiresTools = true): string[] {
     : MODELS;
   
   return models
-    .sort((a, b) => a.cost - b.cost) // Sort by cost (free first)
+    .sort((a, b) => {
+      // Prioritize reliable tool-calling models over cost
+      if (requiresTools && a.reliableTools !== b.reliableTools) {
+        return a.reliableTools ? -1 : 1;
+      }
+      // Then sort by cost
+      return a.cost - b.cost;
+    })
     .map(m => m.id);
 }

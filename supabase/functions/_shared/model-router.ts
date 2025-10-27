@@ -19,15 +19,15 @@ export interface GetModelOptions {
 export const MODELS = [
   // Finance-optimized models
   {
-    name: "GPT OSS 120B",
-    id: "openai/gpt-oss-120b",
+    name: "Gemini 2.5 Flash Lite",
+    id: "google/gemini-2.5-flash-lite",
     supportsTools: true,
     reliableTools: true,
     cost: 1,
   },
   {
-    name: "Gemini 2.5 Flash Lite",
-    id: "google/gemini-2.5-flash-lite",
+    name: "GPT OSS 120B",
+    id: "openai/gpt-oss-120b",
     supportsTools: true,
     reliableTools: true,
     cost: 1,

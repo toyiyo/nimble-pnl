@@ -44,7 +44,8 @@ function executeNavigate(args: any): any {
     data: {
       path,
       section,
-      message: `Navigate to ${section}`,
+      message: `I can take you to ${section}. Would you like to go there?`,
+      action_required: 'navigation_confirmation',
     },
   };
 }

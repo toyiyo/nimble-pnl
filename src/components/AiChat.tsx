@@ -21,19 +21,7 @@ export const AiChat = () => {
   const { messages, isStreaming, error, sendMessage, clearMessages, abortStream } = useAiChat({
     restaurantId: selectedRestaurant?.restaurant_id || '',
     onToolCall: async (toolCall) => {
-      try {
-        const args = JSON.parse(toolCall.function.arguments);
-        
-        // Handle navigation tool
-        if (toolCall.function.name === 'navigate') {
-          const path = args.path || '/';
-          toast.success(`Navigating to ${args.section}...`);
-          // Don't navigate immediately, let user see the message first
-          setTimeout(() => navigate(path), 1000);
-        }
-      } catch (err) {
-        console.error('Tool call handler error:', err);
-      }
+      // Navigation is now handled via message prompts, not automatic navigation
     },
   });
 

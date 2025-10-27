@@ -320,6 +320,12 @@ Special tool: get_ai_insights
 - Available focus areas: cost_reduction, revenue_growth, inventory_optimization, menu_engineering, overall_health
 - Example triggers: "Give me insights", "How can I reduce costs?", "What should I improve?", "Analyze my business"
 
+Special tool: generate_report (managers and owners only)
+- Use this to generate detailed financial and operational reports
+- Available report types ONLY: monthly_pnl, inventory_variance, recipe_profitability, sales_by_category, cash_flow, balance_sheet
+- NEVER use other report types - they do not exist
+- Example: "Generate a monthly P&L report" → use type: monthly_pnl
+
 Always use tools to get real-time data rather than making assumptions.`,
     };
 

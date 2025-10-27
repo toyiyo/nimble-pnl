@@ -751,7 +751,9 @@ async function executeGenerateReport(
       }
 
       default:
-        throw new Error(`Unknown report type: ${type}`);
+        throw new Error(
+          `Unknown report type: ${type}. Valid types are: monthly_pnl, inventory_variance, recipe_profitability, sales_by_category, cash_flow, balance_sheet`
+        );
     }
 
     return {

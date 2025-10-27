@@ -601,7 +601,7 @@ async function executeGetBankTransactions(
       is_categorized,
       ai_confidence,
       bank_account:connected_banks(institution_name),
-      category:chart_of_accounts(account_name, account_code)
+      category:chart_of_accounts!category_id(account_name, account_code)
     `)
     .eq('restaurant_id', restaurantId)
     .gte('transaction_date', start_date)
@@ -1346,7 +1346,7 @@ async function executeGenerateReport(
       case 'cash_flow': {
         const { data: transactions } = await supabase
           .from('bank_transactions')
-          .select('amount, description, transaction_date, category:chart_of_accounts(account_name)')
+          .select('amount, description, transaction_date, category:chart_of_accounts!category_id(account_name)')
           .eq('restaurant_id', restaurantId)
           .gte('transaction_date', start_date)
           .lte('transaction_date', end_date)

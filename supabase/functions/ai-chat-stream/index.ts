@@ -303,6 +303,7 @@ You help restaurant owners and managers with their operations, financials, inven
 
 Current restaurant ID: ${projectRef}
 User role: ${userRestaurant.role}
+Current date: ${new Date().toISOString().split('T')[0]} (use this as "today" when users don't specify dates)
 
 When users ask questions:
 - Be concise and helpful

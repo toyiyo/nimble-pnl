@@ -415,7 +415,7 @@ async function executeGetFinancialIntelligence(
               transaction_date, 
               description,
               merchant_name,
-              category:chart_of_accounts(id, account_name, account_code)
+              category:chart_of_accounts!category_id(id, account_name, account_code)
             `)
             .eq('restaurant_id', restaurantId)
             .gte('transaction_date', start_date)

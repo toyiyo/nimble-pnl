@@ -126,11 +126,14 @@ export const ChatMessage = ({ message, onNavigate }: ChatMessageProps) => {
         className={cn(
           'max-w-[85%] md:max-w-[80%] px-4 py-3 break-words overflow-hidden',
           isUser
-            ? 'bg-primary/90 text-primary-foreground'
+            ? 'bg-primary text-primary-foreground [&_.prose]:text-primary-foreground [&_.prose_*]:text-primary-foreground'
             : 'bg-muted'
         )}
       >
-        <div className="prose prose-sm dark:prose-invert max-w-none">
+        <div className={cn(
+          "prose prose-sm max-w-none",
+          !isUser && "dark:prose-invert"
+        )}>
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{

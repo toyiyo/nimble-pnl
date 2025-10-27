@@ -161,3 +161,87 @@ iframe[name^="__privateStripe"] {
   0% { background-position: -1000px 0; }
   100% { background-position: 1000px 0; }
 }
+
+/* Prose styles for markdown in chat */
+.prose {
+  @apply text-foreground;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  @apply text-foreground font-semibold;
+}
+
+.prose h1 {
+  @apply text-2xl mb-4 mt-6;
+}
+
+.prose h2 {
+  @apply text-xl mb-3 mt-5;
+}
+
+.prose h3 {
+  @apply text-lg mb-2 mt-4;
+}
+
+.prose p {
+  @apply mb-3;
+}
+
+.prose strong {
+  @apply font-semibold text-foreground;
+}
+
+.prose code {
+  @apply text-sm;
+}
+
+.prose pre {
+  @apply my-4;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-primary pl-4 italic my-4;
+}
+
+.prose hr {
+  @apply my-6 border-border;
+}
+
+.prose ul {
+  @apply my-2;
+}
+
+.prose ol {
+  @apply my-2;
+}
+
+.prose li {
+  @apply my-1;
+}
+
+/* Dark mode prose */
+.dark .prose {
+  @apply text-foreground;
+}
+
+.dark .prose h1,
+.dark .prose h2,
+.dark .prose h3,
+.dark .prose h4 {
+  @apply text-foreground;
+}
+
+.dark .prose strong {
+  @apply text-foreground;
+}
+
+.dark .prose code {
+  @apply bg-muted;
+}
+
+.dark .prose blockquote {
+  @apply border-primary;
+}

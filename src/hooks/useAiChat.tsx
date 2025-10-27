@@ -66,6 +66,105 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
     }
   }, [restaurantId]);
 
+  const streamFollowUp = useCallback(async (conversationHistory: ChatMessage[]) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      abortControllerRef.current = new AbortController();
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-stream`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            projectRef: restaurantId,
+            messages: conversationHistory.map(m => ({
+              role: m.role,
+              content: m.content,
+              ...(m.name && { name: m.name }),
+              ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
+              ...(m.tool_calls && { tool_calls: m.tool_calls }),
+            })),
+          }),
+          signal: abortControllerRef.current.signal,
+        }
+      );
+
+      if (!response.ok) return;
+
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let assistantMessageId = '';
+      currentMessageRef.current = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            
+            try {
+              const event: SSEEvent = JSON.parse(data);
+
+              switch (event.type) {
+                case 'message_start':
+                  assistantMessageId = event.id || `assistant_${Date.now()}`;
+                  setMessages(prev => [
+                    ...prev,
+                    {
+                      id: assistantMessageId,
+                      role: 'assistant',
+                      content: '',
+                      created_at: new Date().toISOString(),
+                    },
+                  ]);
+                  break;
+
+                case 'message_delta':
+                  if (event.delta) {
+                    currentMessageRef.current += event.delta;
+                    setMessages(prev =>
+                      prev.map(msg =>
+                        msg.id === assistantMessageId
+                          ? { ...msg, content: currentMessageRef.current }
+                          : msg
+                      )
+                    );
+                  }
+                  break;
+
+                case 'message_end':
+                  currentMessageRef.current = '';
+                  break;
+              }
+            } catch (e) {
+              console.error('Failed to parse SSE event:', e);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      const error = err as Error & { name?: string };
+      if (error.name !== 'AbortError') {
+        console.error('Follow-up stream error:', error);
+      }
+    }
+  }, [restaurantId]);
+
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim() || isStreaming) return;
 
@@ -208,6 +307,16 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                   break;
 
                 case 'message_end':
+                  // If we have tool calls, we need to update the assistant message and continue the conversation
+                  if (toolCalls.length > 0) {
+                    setMessages(prev => 
+                      prev.map(msg =>
+                        msg.id === assistantMessageId
+                          ? { ...msg, tool_calls: toolCalls }
+                          : msg
+                      )
+                    );
+                  }
                   currentMessageRef.current = '';
                   break;
 
@@ -222,6 +331,20 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
           }
         }
       }
+
+      // After streaming ends, if we have tool calls, send another request with tool results
+      if (toolCalls.length > 0) {
+        // Get all messages including tool results
+        const messagesWithTools = await new Promise<ChatMessage[]>((resolve) => {
+          setMessages(prev => {
+            resolve(prev);
+            return prev;
+          });
+        });
+
+        // Make a follow-up request to get AI's response based on tool results
+        await streamFollowUp(messagesWithTools);
+      }
     } catch (err) {
       const error = err as Error & { name?: string };
       if (error.name === 'AbortError') {
@@ -234,7 +357,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [messages, isStreaming, restaurantId, executeTool, onToolCall]);
+  }, [messages, isStreaming, restaurantId, executeTool, onToolCall, streamFollowUp]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);

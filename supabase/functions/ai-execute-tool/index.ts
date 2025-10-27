@@ -218,9 +218,6 @@ async function executeGetInventoryStatus(
 
 /**
  * Execute get_recipe_analytics tool
- * 
- * Note: This imports shared business logic from the service layer.
- * The service file is bundled with the edge function at deployment.
  */
 async function executeGetRecipeAnalytics(
   args: any,
@@ -234,8 +231,8 @@ async function executeGetRecipeAnalytics(
     include_zero_sales = false
   } = args;
 
-  // Import the shared service (bundled at deployment)
-  const { calculateRecipeProfitability } = await import('../../../src/services/recipeAnalytics.service.ts');
+  // Import the shared service from _shared directory
+  const { calculateRecipeProfitability } = await import('../_shared/recipeAnalytics.ts');
 
   try {
     const summary = await calculateRecipeProfitability(supabase, {

@@ -27,10 +27,21 @@ const MermaidChart = ({ chart }: { chart: string }) => {
   useEffect(() => {
     if (ref.current) {
       try {
-        mermaid.render(`mermaid-${Date.now()}`, chart).then(({ svg }) => {
+        // Clean up the chart text - remove markdown code block markers
+        const cleanChart = chart.trim().replace(/^```mermaid\n?/, '').replace(/\n?```$/, '').trim();
+        
+        // Skip rendering if chart is empty or too short to be valid
+        if (!cleanChart || cleanChart.length < 10) {
+          return;
+        }
+
+        mermaid.render(`mermaid-${Date.now()}`, cleanChart).then(({ svg }) => {
           if (ref.current) {
             ref.current.innerHTML = svg;
           }
+        }).catch((e) => {
+          // Fail silently on mermaid errors - don't show error to user
+          console.error('Mermaid rendering error:', e);
         });
       } catch (e) {
         console.error('Mermaid rendering error:', e);
@@ -38,7 +49,7 @@ const MermaidChart = ({ chart }: { chart: string }) => {
     }
   }, [chart]);
 
-  return <div ref={ref} className="my-4" />;
+  return <div ref={ref} className="my-4 overflow-x-auto max-w-full" />;
 };
 
 export const ChatMessage = ({ message, onNavigate }: ChatMessageProps) => {
@@ -113,9 +124,9 @@ export const ChatMessage = ({ message, onNavigate }: ChatMessageProps) => {
 
       <Card
         className={cn(
-          'max-w-[80%] px-4 py-3',
+          'max-w-[85%] md:max-w-[80%] px-4 py-3 break-words overflow-hidden',
           isUser
-            ? 'bg-primary text-primary-foreground'
+            ? 'bg-primary/90 text-primary-foreground'
             : 'bg-muted'
         )}
       >
@@ -136,8 +147,8 @@ export const ChatMessage = ({ message, onNavigate }: ChatMessageProps) => {
                 // Regular code block
                 if (!inline && match) {
                   return (
-                    <pre className="bg-background/50 p-3 rounded-md overflow-x-auto">
-                      <code className={className} {...props}>
+                    <pre className="bg-background/50 p-3 rounded-md overflow-x-auto max-w-full">
+                      <code className={cn(className, 'block break-words whitespace-pre-wrap')} {...props}>
                         {children}
                       </code>
                     </pre>
@@ -146,27 +157,39 @@ export const ChatMessage = ({ message, onNavigate }: ChatMessageProps) => {
                 
                 // Inline code
                 return (
-                  <code className="bg-background/50 px-1.5 py-0.5 rounded text-sm" {...props}>
+                  <code className="bg-background/50 px-1.5 py-0.5 rounded text-sm break-words" {...props}>
                     {children}
                   </code>
                 );
               },
               a({ children, ...props }: any) {
                 return (
-                  <a {...props} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+                  <a {...props} className="text-primary hover:underline break-words" target="_blank" rel="noopener noreferrer">
                     {children}
                   </a>
                 );
               },
               ul({ children, ...props }: any) {
-                return <ul className="list-disc list-inside space-y-1" {...props}>{children}</ul>;
+                return <ul className="list-disc list-inside space-y-1 break-words" {...props}>{children}</ul>;
               },
               ol({ children, ...props }: any) {
-                return <ol className="list-decimal list-inside space-y-1" {...props}>{children}</ol>;
+                return <ol className="list-decimal list-inside space-y-1 break-words" {...props}>{children}</ol>;
+              },
+              p({ children, ...props }: any) {
+                return <p className="break-words" {...props}>{children}</p>;
+              },
+              h1({ children, ...props }: any) {
+                return <h1 className="break-words text-xl md:text-2xl" {...props}>{children}</h1>;
+              },
+              h2({ children, ...props }: any) {
+                return <h2 className="break-words text-lg md:text-xl" {...props}>{children}</h2>;
+              },
+              h3({ children, ...props }: any) {
+                return <h3 className="break-words text-base md:text-lg" {...props}>{children}</h3>;
               },
               table({ children, ...props }: any) {
                 return (
-                  <div className="overflow-x-auto my-4">
+                  <div className="overflow-x-auto my-4 max-w-full">
                     <table className="min-w-full border-collapse border border-border" {...props}>
                       {children}
                     </table>
@@ -175,14 +198,14 @@ export const ChatMessage = ({ message, onNavigate }: ChatMessageProps) => {
               },
               th({ children, ...props }: any) {
                 return (
-                  <th className="border border-border px-4 py-2 bg-muted font-semibold text-left" {...props}>
+                  <th className="border border-border px-2 md:px-4 py-2 bg-muted font-semibold text-left text-xs md:text-sm break-words" {...props}>
                     {children}
                   </th>
                 );
               },
               td({ children, ...props }: any) {
                 return (
-                  <td className="border border-border px-4 py-2" {...props}>
+                  <td className="border border-border px-2 md:px-4 py-2 text-xs md:text-sm break-words" {...props}>
                     {children}
                   </td>
                 );

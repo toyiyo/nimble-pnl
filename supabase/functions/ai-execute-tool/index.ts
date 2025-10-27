@@ -5,6 +5,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { canUseTool } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
 
+// AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
 
 interface ToolExecutionRequest {

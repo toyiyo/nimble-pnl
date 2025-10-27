@@ -100,6 +100,27 @@ export const ChatMessage = ({ message, onNavigate }: ChatMessageProps) => {
     return null;
   }
 
+  // Don't render messages with no actual content
+  if (!message.content?.trim()) {
+    // Show processing indicator for empty assistant messages (streaming might be starting)
+    if (isAssistant) {
+      return (
+        <div className="flex gap-3 mb-4 justify-start">
+          <div className="flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+              <Bot className="h-5 w-5 text-primary-foreground" />
+            </div>
+          </div>
+          <Card className="max-w-[85%] md:max-w-[80%] px-4 py-3">
+            <div className="text-sm text-muted-foreground">Processing...</div>
+          </Card>
+        </div>
+      );
+    }
+    // Don't render empty user messages
+    return null;
+  }
+
   // Check if this is a navigation suggestion by looking for tool calls
   const navigationTool = message.tool_calls?.find(tc => tc.function.name === 'navigate');
   let navigationPath: string | null = null;

@@ -132,7 +132,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
         return;
       }
 
-      const decoder = new TextDecoder();
+      const decoder = new TextDecoder('utf-8');
       let buffer = '';
       let assistantMessageId = '';
       let hasReceivedData = false;
@@ -175,7 +175,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                   break;
 
                 case 'message_delta':
-                  if (event.delta) {
+                  if (event.delta && event.delta.trim()) {
                     currentMessageRef.current += event.delta;
                     setMessages(prev =>
                       prev.map(msg =>
@@ -300,7 +300,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
         throw new Error('No response body');
       }
 
-      const decoder = new TextDecoder();
+      const decoder = new TextDecoder('utf-8');
       let buffer = '';
       let assistantMessageId = '';
       const toolCalls: ToolCall[] = [];
@@ -335,7 +335,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                   break;
 
                 case 'message_delta':
-                  if (event.delta) {
+                  if (event.delta && event.delta.trim()) {
                     currentMessageRef.current += event.delta;
                     setMessages(prev =>
                       prev.map(msg =>

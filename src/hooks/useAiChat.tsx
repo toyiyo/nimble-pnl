@@ -144,6 +144,8 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
         const { done, value } = await reader.read();
         if (done) {
           console.log('[Follow-up] Stream completed');
+          console.log('[Follow-up] Final assistant message ID:', assistantMessageId);
+          console.log('[Follow-up] Final content length:', currentMessageRef.current.length);
           break;
         }
 
@@ -158,39 +160,63 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
             
             try {
               const event: SSEEvent = JSON.parse(data);
-              console.log('[AI Chat Follow-up] Received event:', event.type);
+              console.log('[AI Chat Follow-up] Received event:', event.type, 'ID:', event.id);
 
               switch (event.type) {
                 case 'message_start':
                   assistantMessageId = event.id || `assistant_${Date.now()}`;
-                  console.log('[Follow-up] Message start:', assistantMessageId);
-                  setMessages(prev => [
-                    ...prev,
-                    {
-                      id: assistantMessageId,
-                      role: 'assistant',
-                      content: '',
-                      created_at: new Date().toISOString(),
-                    },
-                  ]);
+                  console.log('[Follow-up] Creating new assistant message with ID:', assistantMessageId);
+                  setMessages(prev => {
+                    console.log('[Follow-up] Messages before adding:', prev.length);
+                    return [
+                      ...prev,
+                      {
+                        id: assistantMessageId,
+                        role: 'assistant',
+                        content: '',
+                        created_at: new Date().toISOString(),
+                      },
+                    ];
+                  });
                   break;
 
                 case 'message_delta':
-                  if (event.delta) {
-                    console.log('[AI Chat] Received delta:', JSON.stringify(event.delta));
+                  console.log('[AI Chat Follow-up] Delta received:', {
+                    hasAssistantId: !!assistantMessageId,
+                    assistantMessageId,
+                    deltaLength: event.delta?.length || 0,
+                    delta: event.delta,
+                  });
+                  
+                  if (event.delta && assistantMessageId) {
                     currentMessageRef.current += event.delta;
-                    setMessages(prev =>
-                      prev.map(msg =>
+                    console.log('[Follow-up] Updating message, total content length:', currentMessageRef.current.length);
+                    
+                    setMessages(prev => {
+                      const messageIndex = prev.findIndex(msg => msg.id === assistantMessageId);
+                      console.log('[Follow-up] Found message at index:', messageIndex, 'out of', prev.length);
+                      
+                      if (messageIndex === -1) {
+                        console.error('[Follow-up] Could not find assistant message with ID:', assistantMessageId);
+                        return prev;
+                      }
+                      
+                      return prev.map(msg =>
                         msg.id === assistantMessageId
                           ? { ...msg, content: currentMessageRef.current }
                           : msg
-                      )
-                    );
+                      );
+                    });
+                  } else {
+                    console.warn('[Follow-up] Skipping delta - missing data:', {
+                      hasDelta: !!event.delta,
+                      hasAssistantId: !!assistantMessageId,
+                    });
                   }
                   break;
 
                 case 'message_end':
-                  console.log('[Follow-up] Message end');
+                  console.log('[Follow-up] Message end, final content:', currentMessageRef.current.substring(0, 100));
                   currentMessageRef.current = '';
                   break;
                   
@@ -260,6 +286,13 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
     // Start streaming
     setIsStreaming(true);
     currentMessageRef.current = '';
+    
+    // Safety timeout to prevent stuck streaming state (30 seconds)
+    const streamTimeout = setTimeout(() => {
+      console.error('[AI Chat] Stream timeout after 30s, forcing completion');
+      setIsStreaming(false);
+      setError('Request timed out. Please try again.');
+    }, 30000);
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -436,6 +469,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
         setError(error.message || 'Failed to send message');
       }
     } finally {
+      clearTimeout(streamTimeout);
       setIsStreaming(false);
       abortControllerRef.current = null;
     }

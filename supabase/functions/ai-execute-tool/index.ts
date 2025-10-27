@@ -494,7 +494,30 @@ Provide insights in the following format. Be specific with numbers and actionabl
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`OpenRouter API error (${response.status}): ${errorText}`);
+        let errorMessage = `OpenRouter API error (${response.status}): ${errorText}`;
+        
+        // Parse error to check if it's a moderation error
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error) {
+            errorMessage = `Model ${model.name} failed: ${errorData.error.message || errorText}`;
+            
+            // Check for moderation errors (403)
+            if (errorData.error.code === 403 || response.status === 403) {
+              console.log(`[OpenRouter AI Insights] Moderation error on model ${model.name}:`, errorData.error.message);
+              throw new Error(`MODERATION_ERROR: ${errorMessage}`);
+            }
+          }
+        } catch (parseError) {
+          // If parsing fails, use the raw error text
+          if (!(parseError instanceof Error && parseError.message.includes('MODERATION_ERROR'))) {
+            console.error('[OpenRouter AI Insights] Failed to parse error response:', parseError);
+          } else {
+            throw parseError; // Re-throw moderation errors
+          }
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -517,8 +540,17 @@ Provide insights in the following format. Be specific with numbers and actionabl
       throw new Error('No tool call in response');
 
     } catch (error) {
-      console.error(`Model ${model.name} failed:`, error.message);
-      lastError = error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isModeration = errorMessage.includes('MODERATION_ERROR') || errorMessage.includes('moderation') || errorMessage.includes('flagged');
+      const is403 = errorMessage.includes('403');
+      
+      if (isModeration || is403) {
+        console.log(`[OpenRouter AI Insights] Model ${model.name} hit moderation/403 error, trying next model...`);
+      } else {
+        console.error(`[OpenRouter AI Insights] Model ${model.name} failed:`, errorMessage);
+      }
+      
+      lastError = error instanceof Error ? error : new Error(String(error));
       // Continue to next model
     }
   }

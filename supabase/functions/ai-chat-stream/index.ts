@@ -67,8 +67,27 @@ async function callOpenRouter(
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenRouter API error: ${error}`);
+    const errorText = await response.text();
+    let errorMessage = `OpenRouter API error: ${errorText}`;
+    
+    // Parse error to check if it's a moderation error
+    try {
+      const errorData = JSON.parse(errorText);
+      if (errorData.error) {
+        errorMessage = `Model ${model} failed: ${errorData.error.message || errorText}`;
+        
+        // Check for moderation errors (403)
+        if (errorData.error.code === 403 || response.status === 403) {
+          console.log(`[OpenRouter] Moderation error on model ${model}:`, errorData.error.message);
+          throw new Error(`MODERATION_ERROR: ${errorMessage}`);
+        }
+      }
+    } catch (parseError) {
+      // If parsing fails, use the raw error text
+      console.error('[OpenRouter] Failed to parse error response:', parseError);
+    }
+    
+    throw new Error(errorMessage);
   }
 
   return response.body!;
@@ -308,7 +327,7 @@ Always use tools to get real-time data rather than making assumptions.`,
       ? messages 
       : [systemMessage, ...messages];
 
-    // Call OpenRouter with fallback
+    // Call OpenRouter with fallback logic
     const modelList = getModelFallbackList(true);
     let selectedModel = body.model || modelConfig.model;
     
@@ -316,11 +335,60 @@ Always use tools to get real-time data rather than making assumptions.`,
       selectedModel = modelList[0];
     }
 
-    const openRouterStream = await callOpenRouter(
-      selectedModel,
-      messagesWithSystem,
-      tools
-    );
+    // Try models in order until one succeeds
+    let openRouterStream: ReadableStream | null = null;
+    let lastError: Error | null = null;
+    const attemptedModels: string[] = [];
+
+    for (const model of modelList) {
+      // Start with the selected model if it's in the list
+      const currentModel = attemptedModels.length === 0 && modelList.includes(selectedModel) 
+        ? selectedModel 
+        : model;
+      
+      // Skip if already attempted
+      if (attemptedModels.includes(currentModel)) {
+        continue;
+      }
+
+      attemptedModels.push(currentModel);
+      
+      try {
+        console.log(`[OpenRouter] Attempting model: ${currentModel}`);
+        openRouterStream = await callOpenRouter(
+          currentModel,
+          messagesWithSystem,
+          tools
+        );
+        console.log(`[OpenRouter] Successfully connected with model: ${currentModel}`);
+        break; // Success! Exit the loop
+      } catch (error) {
+        lastError = error as Error;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        // Check if this is a moderation error or other retryable error
+        const isModeration = errorMessage.includes('MODERATION_ERROR') || errorMessage.includes('moderation') || errorMessage.includes('flagged');
+        const is403 = errorMessage.includes('403');
+        
+        if (isModeration || is403) {
+          console.log(`[OpenRouter] Model ${currentModel} hit moderation/403 error, trying next model...`);
+        } else {
+          console.error(`[OpenRouter] Model ${currentModel} failed:`, errorMessage);
+        }
+        
+        // Continue to next model in the list
+        continue;
+      }
+    }
+
+    // If all models failed, throw the last error
+    if (!openRouterStream) {
+      console.error(`[OpenRouter] All models failed. Attempted: ${attemptedModels.join(', ')}`);
+      throw new Error(
+        lastError?.message || 
+        `All AI models failed. This may be due to content moderation. Please try rephrasing your request.`
+      );
+    }
 
     // Create SSE response stream
     const messageId = `msg_${Date.now()}`;

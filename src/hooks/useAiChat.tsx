@@ -66,13 +66,27 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
     }
   }, [restaurantId]);
 
-  const streamFollowUp = useCallback(async (conversationHistory: ChatMessage[]) => {
+  const streamFollowUp = useCallback(async (conversationHistory: ChatMessage[], retryCount = 0) => {
+    const MAX_RETRIES = 2;
+    const TIMEOUT_MS = 30000; // 30 second timeout
+    
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) {
+        console.error('No session for follow-up stream');
+        return;
+      }
 
       abortControllerRef.current = new AbortController();
+      
+      // Add timeout to abort controller
+      const timeoutId = setTimeout(() => {
+        console.log('[Follow-up] Timeout reached, aborting stream');
+        abortControllerRef.current?.abort();
+      }, TIMEOUT_MS);
 
+      console.log(`[Follow-up] Starting stream (attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
+      
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-stream`,
         {
@@ -95,20 +109,45 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
         }
       );
 
-      if (!response.ok) return;
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[Follow-up] HTTP error ${response.status}:`, errorText);
+        
+        // Retry on server errors
+        if (response.status >= 500 && retryCount < MAX_RETRIES) {
+          const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff
+          console.log(`[Follow-up] Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return streamFollowUp(conversationHistory, retryCount + 1);
+        }
+        
+        return;
+      }
 
       const reader = response.body?.getReader();
-      if (!reader) return;
+      if (!reader) {
+        console.error('[Follow-up] No response body');
+        return;
+      }
 
       const decoder = new TextDecoder();
       let buffer = '';
       let assistantMessageId = '';
+      let hasReceivedData = false;
       currentMessageRef.current = '';
+
+      console.log('[Follow-up] Starting to read stream...');
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('[Follow-up] Stream completed');
+          break;
+        }
 
+        hasReceivedData = true;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
@@ -123,6 +162,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
               switch (event.type) {
                 case 'message_start':
                   assistantMessageId = event.id || `assistant_${Date.now()}`;
+                  console.log('[Follow-up] Message start:', assistantMessageId);
                   setMessages(prev => [
                     ...prev,
                     {
@@ -148,19 +188,54 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                   break;
 
                 case 'message_end':
+                  console.log('[Follow-up] Message end');
                   currentMessageRef.current = '';
+                  break;
+                  
+                case 'error':
+                  console.error('[Follow-up] Stream error event:', event.error);
+                  if (retryCount < MAX_RETRIES) {
+                    const delay = Math.pow(2, retryCount) * 1000;
+                    console.log(`[Follow-up] Retrying after error in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return streamFollowUp(conversationHistory, retryCount + 1);
+                  }
                   break;
               }
             } catch (e) {
-              console.error('Failed to parse SSE event:', e);
+              console.error('[Follow-up] Failed to parse SSE event:', e, 'data:', data);
             }
           }
         }
       }
+      
+      if (!hasReceivedData) {
+        console.warn('[Follow-up] No data received from stream');
+        if (retryCount < MAX_RETRIES) {
+          const delay = Math.pow(2, retryCount) * 1000;
+          console.log(`[Follow-up] Retrying due to no data in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return streamFollowUp(conversationHistory, retryCount + 1);
+        }
+      }
     } catch (err) {
       const error = err as Error & { name?: string };
-      if (error.name !== 'AbortError') {
-        console.error('Follow-up stream error:', error);
+      if (error.name === 'AbortError') {
+        console.log('[Follow-up] Stream aborted');
+        if (retryCount < MAX_RETRIES) {
+          const delay = Math.pow(2, retryCount) * 1000;
+          console.log(`[Follow-up] Retrying after abort in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return streamFollowUp(conversationHistory, retryCount + 1);
+        }
+      } else {
+        console.error('[Follow-up] Stream error:', error);
+        if (retryCount < MAX_RETRIES) {
+          const delay = Math.pow(2, retryCount) * 1000;
+          console.log(`[Follow-up] Retrying after error in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return streamFollowUp(conversationHistory, retryCount + 1);
+        }
       }
     }
   }, [restaurantId]);

@@ -428,14 +428,18 @@ Always use tools to fetch real-time data. When users ask about financial health,
 
       attemptedModels.push(currentModel);
       
-      try {
-        console.log(`[OpenRouter] Attempting model: ${currentModel}`);
+    try {
+        console.log(`[OpenRouter] Attempting model: ${currentModel} (${attemptedModels.length}/${modelList.length})`);
+        const startTime = Date.now();
+        
         openRouterStream = await callOpenRouter(
           currentModel,
           messagesWithSystem,
           tools
         );
-        console.log(`[OpenRouter] Successfully connected with model: ${currentModel}`);
+        
+        const connectionTime = Date.now() - startTime;
+        console.log(`[OpenRouter] Successfully connected with model: ${currentModel} in ${connectionTime}ms`);
         break; // Success! Exit the loop
       } catch (error) {
         lastError = error as Error;
@@ -444,9 +448,12 @@ Always use tools to fetch real-time data. When users ask about financial health,
         // Check if this is a moderation error or other retryable error
         const isModeration = errorMessage.includes('MODERATION_ERROR') || errorMessage.includes('moderation') || errorMessage.includes('flagged');
         const is403 = errorMessage.includes('403');
+        const is5xx = errorMessage.includes('500') || errorMessage.includes('502') || errorMessage.includes('503');
         
         if (isModeration || is403) {
           console.log(`[OpenRouter] Model ${currentModel} hit moderation/403 error, trying next model...`);
+        } else if (is5xx) {
+          console.error(`[OpenRouter] Model ${currentModel} hit server error (${errorMessage}), trying next model...`);
         } else {
           console.error(`[OpenRouter] Model ${currentModel} failed:`, errorMessage);
         }

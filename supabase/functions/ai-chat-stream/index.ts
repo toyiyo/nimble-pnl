@@ -9,6 +9,16 @@ const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
 const MAX_PROMPT_TOKENS = 100000;
 const MAX_MESSAGES = 100;
 
+/**
+ * Typed HTTP error for proper status code handling
+ */
+class HttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = 'HttpError';
+  }
+}
+
 interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'tool' | 'system';
@@ -68,13 +78,13 @@ async function callOpenRouter(
 
   if (!response.ok) {
     const errorText = await response.text();
-    let errorMessage = `OpenRouter API error: ${errorText}`;
+    let errorMessage = `OpenRouter API error`;
     
     // Parse error to check if it's a moderation error
     try {
       const errorData = JSON.parse(errorText);
       if (errorData.error) {
-        errorMessage = `Model ${model} failed: ${errorData.error.message || errorText}`;
+        errorMessage = `Model ${model} failed: ${errorData.error.message || 'Unknown error'}`;
         
         // Check for moderation errors (403)
         if (errorData.error.code === 403 || response.status === 403) {
@@ -266,7 +276,7 @@ serve(async (req) => {
     // Authenticate request
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      throw new Error('Missing authorization header');
+      throw new HttpError(401, 'Missing authorization header');
     }
 
     const supabase = createClient(
@@ -277,7 +287,7 @@ serve(async (req) => {
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
-      throw new Error('Unauthorized');
+      throw new HttpError(401, 'Unauthorized');
     }
 
     // Parse request body
@@ -285,16 +295,16 @@ serve(async (req) => {
     const { projectRef, messages, routingKey } = body;
 
     if (!projectRef) {
-      throw new Error('Missing projectRef (restaurant_id)');
+      throw new HttpError(400, 'Missing projectRef (restaurant_id)');
     }
 
     if (!messages || messages.length === 0) {
-      throw new Error('Messages array is required');
+      throw new HttpError(400, 'Messages array is required');
     }
 
     // Validate message count
     if (messages.length > MAX_MESSAGES) {
-      throw new Error(`Too many messages (max ${MAX_MESSAGES})`);
+      throw new HttpError(400, `Too many messages (max ${MAX_MESSAGES})`);
     }
 
     // Verify user has access to this restaurant
@@ -306,7 +316,7 @@ serve(async (req) => {
       .single();
 
     if (accessError || !userRestaurant) {
-      throw new Error('Access denied to this restaurant');
+      throw new HttpError(403, 'Access denied to this restaurant');
     }
 
     // Get model configuration
@@ -484,12 +494,12 @@ Tool Usage Guidelines:
       }
     }
 
-    // If all models failed, throw the last error
+    // If all models failed, throw provider error
     if (!openRouterStream) {
       console.error(`[OpenRouter] All models failed. Attempted: ${attemptedModels.join(', ')}`);
-      throw new Error(
-        lastError?.message || 
-        `All AI models failed. This may be due to content moderation. Please try rephrasing your request.`
+      throw new HttpError(
+        502,
+        'AI service temporarily unavailable. Please try again.'
       );
     }
 
@@ -509,12 +519,33 @@ Tool Usage Guidelines:
   } catch (error) {
     console.error('AI Chat Stream Error:', error);
     
+    // Determine status code and sanitized message
+    let status = 500;
+    let message = 'Internal server error';
+    
+    if (error instanceof HttpError) {
+      // Use typed error status and message
+      status = error.status;
+      message = error.message;
+    } else if (error instanceof Error) {
+      // Check if it's a provider/upstream error (fallback to 502)
+      const errorStr = error.message.toLowerCase();
+      if (errorStr.includes('openrouter') || 
+          errorStr.includes('api error') || 
+          errorStr.includes('fetch') ||
+          errorStr.includes('network')) {
+        status = 502;
+        message = 'AI service temporarily unavailable';
+      } else {
+        // Sanitize unexpected errors
+        message = 'An unexpected error occurred';
+      }
+    }
+    
     return new Response(
-      JSON.stringify({ 
-        error: error.message || 'Internal server error' 
-      }),
+      JSON.stringify({ error: message }),
       { 
-        status: 500, 
+        status, 
         headers: { 
           ...corsHeaders, 
           'Content-Type': 'application/json' 

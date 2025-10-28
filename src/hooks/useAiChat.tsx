@@ -266,7 +266,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
         }
       }
     }
-  }, [restaurantId]);
+  }, [restaurantId, setMessages]);
 
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim() || isStreaming) return;

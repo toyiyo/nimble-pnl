@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide provides comprehensive information about testing all SQL functions in the Nimble PnL database.
+This guide provides comprehensive information about testing all SQL functions in the EasyShiftHQ database.
 
 ## Test Coverage Summary
 

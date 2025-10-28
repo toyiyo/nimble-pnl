@@ -34,6 +34,7 @@ import FinancialStatements from "./pages/FinancialStatements";
 import Accounting from "./pages/Accounting";
 import Banking from "./pages/Banking";
 import FinancialIntelligence from "./pages/FinancialIntelligence";
+import AiAssistant from "./pages/AiAssistant";
 
 const queryClient = new QueryClient();
 
@@ -103,6 +104,7 @@ const App = () => (
           <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
           <Route path="/chart-of-accounts" element={<ProtectedRoute><ChartOfAccounts /></ProtectedRoute>} />
           <Route path="/financial-statements" element={<ProtectedRoute><FinancialStatements /></ProtectedRoute>} />
+            <Route path="/ai-assistant" element={<ProtectedRoute><AiAssistant /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/clover/callback" element={<CloverCallback />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />

@@ -1,6 +1,6 @@
 # SQL Function Tests
 
-This directory contains comprehensive tests for all PostgreSQL functions in the Nimble PnL database using pgTAP.
+This directory contains comprehensive tests for all PostgreSQL functions in the EasyShiftHQ database using pgTAP.
 
 ## Overview
 

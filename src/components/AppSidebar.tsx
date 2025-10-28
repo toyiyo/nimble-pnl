@@ -28,6 +28,7 @@ import {
   CalendarCheck,
   LogOut,
   TrendingUp,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -41,6 +42,7 @@ const navigationGroups = [
     label: 'Main',
     items: [
       { path: '/', label: 'Dashboard', icon: Home },
+      { path: '/ai-assistant', label: 'AI Assistant', icon: Sparkles },
       { path: '/integrations', label: 'Integrations', icon: Plug },
       { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
     ],

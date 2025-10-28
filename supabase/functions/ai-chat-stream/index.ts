@@ -170,23 +170,31 @@ function createSSEStream(
             for (const toolCall of delta.tool_calls) {
               const index = toolCall.index;
               
+              // Ensure toolCalls[index] is initialized (handles sparse indexes)
               if (!toolCalls[index]) {
                 toolCalls[index] = {
                   id: toolCall.id || `tc_${Date.now()}_${index}`,
                   type: 'function',
                   function: {
-                    name: toolCall.function?.name || '',
-                    arguments: toolCall.function?.arguments || '',
+                    name: '',
+                    arguments: '',
                   },
                 };
-              } else {
-                // Append to existing tool call
-                if (toolCall.function?.name) {
-                  toolCalls[index].function.name += toolCall.function.name;
-                }
-                if (toolCall.function?.arguments) {
-                  toolCalls[index].function.arguments += toolCall.function.arguments;
-                }
+              }
+              
+              // Update ID if provided
+              if (toolCall.id) {
+                toolCalls[index].id = toolCall.id;
+              }
+              
+              // For name: assign (names typically come complete in one chunk)
+              if (toolCall.function?.name) {
+                toolCalls[index].function.name = toolCall.function.name;
+              }
+              
+              // For arguments: concatenate (arguments stream as JSON tokens)
+              if (toolCall.function?.arguments) {
+                toolCalls[index].function.arguments += toolCall.function.arguments;
               }
             }
           }
@@ -195,39 +203,33 @@ function createSSEStream(
         // Send tool calls if any
         if (toolCalls.length > 0) {
           for (const toolCall of toolCalls) {
+            // Clean up arguments string - remove any special tokens
+            let argsString = toolCall.function.arguments
+              .replace(/<\|python_end\|>/g, '')
+              .replace(/<\|python_start\|>/g, '')
+              .replace(/<\|[^|]+\|>/g, '') // Remove any other special tokens
+              .trim();
+            
+            let args;
             try {
-              // Clean up arguments string - remove any special tokens
-              let argsString = toolCall.function.arguments
-                .replace(/<\|python_end\|>/g, '')
-                .replace(/<\|python_start\|>/g, '')
-                .replace(/<\|[^|]+\|>/g, '') // Remove any other special tokens
-                .trim();
-              
-              const args = JSON.parse(argsString);
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({
-                  type: 'tool_call',
-                  id: toolCall.id,
-                  tool: {
-                    name: toolCall.function.name,
-                    arguments: args,
-                  },
-                })}\n\n`)
-              );
+              args = JSON.parse(argsString);
             } catch (e) {
               console.error('Failed to parse tool arguments:', e);
-              console.error('Raw arguments:', toolCall.function.arguments);
-              // Send error event instead of silently failing
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({
-                  type: 'error',
-                  error: {
-                    code: 'TOOL_PARSE_ERROR',
-                    message: 'Failed to parse tool arguments. The AI model may not support this tool format properly.',
-                  },
-                })}\n\n`)
-              );
+              console.error('Raw arguments:', argsString);
+              // Keep raw string as arguments value so tool invocation still emits
+              args = argsString;
             }
+            
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                type: 'tool_call',
+                id: toolCall.id,
+                tool: {
+                  name: toolCall.function.name,
+                  arguments: args,
+                },
+              })}\n\n`)
+            );
           }
         }
 

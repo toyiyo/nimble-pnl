@@ -156,6 +156,70 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
         required: ['period']
       }
     },
+
+    // Inventory transactions audit - available to all users
+    {
+      name: 'get_inventory_transactions',
+      description: 'Query and analyze inventory audit trail including purchases, usage, adjustments, waste, and transfers. Returns detailed transaction history with costs and reasons.',
+      parameters: {
+        type: 'object',
+        properties: {
+          transaction_type: {
+            type: 'string',
+            enum: ['purchase', 'usage', 'adjustment', 'waste', 'transfer', 'all'],
+            description: 'Type of inventory transaction to query (default: all)',
+            default: 'all'
+          },
+          product_id: {
+            type: 'string',
+            description: 'Filter by specific product ID'
+          },
+          start_date: {
+            type: 'string',
+            format: 'date',
+            description: 'Start date for transactions (YYYY-MM-DD)'
+          },
+          end_date: {
+            type: 'string',
+            format: 'date',
+            description: 'End date for transactions (YYYY-MM-DD)'
+          },
+          days_back: {
+            type: 'integer',
+            description: 'Number of days to look back (default: 30, max: 90)',
+            default: 30
+          },
+          supplier_id: {
+            type: 'string',
+            description: 'Filter by specific supplier'
+          },
+          min_cost: {
+            type: 'number',
+            description: 'Minimum transaction cost'
+          },
+          max_cost: {
+            type: 'number',
+            description: 'Maximum transaction cost'
+          },
+          include_summary: {
+            type: 'boolean',
+            description: 'Include summary statistics (default: true)',
+            default: true
+          },
+          group_by: {
+            type: 'string',
+            enum: ['type', 'product', 'supplier', 'date', 'none'],
+            description: 'How to group the results (default: none)',
+            default: 'none'
+          },
+          limit: {
+            type: 'integer',
+            description: 'Maximum number of transactions to return (default: 50, max: 200)',
+            default: 50
+          }
+        }
+      }
+    },
   ];
 
   // Add financial intelligence for managers and owners
@@ -333,7 +397,8 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_kpis',
     'get_inventory_status',
     'get_recipe_analytics',
-    'get_sales_summary'
+    'get_sales_summary',
+    'get_inventory_transactions'
   ];
 
   if (basicTools.includes(toolName)) {

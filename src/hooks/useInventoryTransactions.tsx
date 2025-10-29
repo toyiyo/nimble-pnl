@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { 
+  fetchInventoryTransactions,
+  calculateTransactionsSummary,
+  exportTransactionsToCSV,
+  type InventoryTransactionResult 
+} from '@/services/inventoryTransactions.service';
 
 interface InventoryTransaction {
   id: string;
@@ -46,45 +52,19 @@ export const useInventoryTransactions = ({
     setError(null);
     
     try {
-      let query = supabase
-        .from('inventory_transactions')
-        .select(`
-          id,
-          quantity,
-          unit_cost,
-          total_cost,
-          transaction_type,
-          reason,
-          reference_id,
-          created_at,
-          performed_by,
-          location,
-          lot_number,
-          expiry_date,
-          products!inner(name)
-        `)
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: false });
+      // Use shared service for fetching
+      const data = await fetchInventoryTransactions(supabase, {
+        restaurantId,
+        typeFilter,
+        startDate,
+        endDate,
+        limit
+      });
 
-      if (typeFilter && typeFilter !== 'all') {
-        query = query.eq('transaction_type', typeFilter);
-      }
-
-      if (startDate) {
-        query = query.gte('created_at', startDate);
-      }
-
-      if (endDate) {
-        query = query.lte('created_at', `${endDate}T23:59:59`);
-      }
-
-      const { data, error: fetchError } = await query.limit(limit);
-
-      if (fetchError) throw fetchError;
-
-      const formattedTransactions = (data || []).map(transaction => ({
+      // Format for UI consumption
+      const formattedTransactions = data.map(transaction => ({
         ...transaction,
-        product_name: transaction.products?.name || 'Unknown Product'
+        product_name: transaction.product?.name || 'Unknown Product'
       }));
 
       setTransactions(formattedTransactions);
@@ -97,41 +77,14 @@ export const useInventoryTransactions = ({
   };
 
   const getTransactionsSummary = () => {
-    const summary = {
-      purchase: { count: 0, totalCost: 0 },
-      usage: { count: 0, totalCost: 0 },
-      adjustment: { count: 0, totalCost: 0 },
-      waste: { count: 0, totalCost: 0 },
-      transfer: { count: 0, totalCost: 0 }
-    };
-
-    transactions.forEach(transaction => {
-      const type = transaction.transaction_type as keyof typeof summary;
-      if (summary[type]) {
-        summary[type].count += 1;
-        summary[type].totalCost += Math.abs(transaction.total_cost || 0);
-      }
-    });
-
-    return summary;
+    // Use shared service for summary calculation
+    return calculateTransactionsSummary(transactions as any);
   };
 
   const exportToCSV = () => {
-    const headers = ['Date', 'Product', 'Type', 'Quantity', 'Unit Cost', 'Total Cost', 'Reason', 'Reference'];
-    const csvContent = [
-      headers.join(','),
-      ...transactions.map(t => [
-        new Date(t.created_at).toISOString().replace('T', ' ').substring(0, 19),
-        `"${t.product_name}"`,
-        t.transaction_type,
-        t.quantity,
-        t.unit_cost || 0,
-        t.total_cost || 0,
-        `"${t.reason || ''}"`,
-        `"${t.reference_id || ''}"`
-      ].join(','))
-    ].join('\n');
-
+    // Use shared service for CSV export
+    const csvContent = exportTransactionsToCSV(transactions as any);
+    
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

@@ -4,6 +4,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { canUseTool } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
+import { 
+  fetchInventoryTransactions,
+  calculateTransactionsSummary,
+  groupTransactions,
+  type InventoryTransactionQuery 
+} from "../../src/services/inventoryTransactions.service.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -1004,6 +1010,108 @@ async function executeGetSalesSummary(
 }
 
 /**
+ * Execute get_inventory_transactions tool
+ * Reuses shared service logic for consistency with frontend
+ */
+async function executeGetInventoryTransactions(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const {
+    transaction_type = 'all',
+    product_id,
+    start_date,
+    end_date,
+    days_back = 30,
+    supplier_id,
+    min_cost,
+    max_cost,
+    include_summary = true,
+    group_by = 'none',
+    limit = 50
+  } = args;
+
+  // Calculate date range
+  let startDateStr: string;
+  let endDateStr: string;
+
+  if (start_date && end_date) {
+    startDateStr = start_date;
+    endDateStr = end_date;
+  } else {
+    const now = new Date();
+    const daysToLookBack = Math.min(days_back, 90); // Max 90 days
+    const startDate = new Date(now.getTime() - daysToLookBack * 24 * 60 * 60 * 1000);
+    startDateStr = startDate.toISOString().split('T')[0];
+    endDateStr = now.toISOString().split('T')[0];
+  }
+
+  // ✅ REUSE: Call the SAME service function used by the frontend
+  const transactions = await fetchInventoryTransactions(supabase, {
+    restaurantId,
+    typeFilter: transaction_type,
+    startDate: startDateStr,
+    endDate: endDateStr,
+    limit: Math.min(limit, 200),
+    productId: product_id,
+    supplierId: supplier_id,
+    minCost: min_cost,
+    maxCost: max_cost
+  });
+
+  // ✅ REUSE: Calculate summary using same function
+  const summary = include_summary 
+    ? calculateTransactionsSummary(transactions)
+    : null;
+
+  // ✅ REUSE: Group using same function
+  const groupedData = group_by !== 'none'
+    ? groupTransactions(transactions, group_by as any)
+    : null;
+
+  // Format for AI consumption
+  const formattedTransactions = transactions.map((t: any) => ({
+    id: t.id,
+    type: t.transaction_type,
+    product: {
+      id: t.product?.id,
+      name: t.product?.name,
+      sku: t.product?.sku,
+      category: t.product?.category,
+      unit: t.product?.individual_unit,
+    },
+    quantity: t.quantity,
+    unit_cost: t.unit_cost,
+    total_cost: t.total_cost,
+    supplier: t.supplier?.name,
+    reason: t.reason,
+    reference_id: t.reference_id,
+    lot_number: t.lot_number,
+    expiry_date: t.expiry_date,
+    location: t.location,
+    performed_by: t.performed_by_user?.full_name || t.performed_by_user?.email || 'Unknown',
+    date: t.created_at,
+  }));
+
+  return {
+    ok: true,
+    data: {
+      period: { start_date: startDateStr, end_date: endDateStr },
+      filters: {
+        transaction_type: transaction_type !== 'all' ? transaction_type : 'all types',
+        product_id,
+        supplier_id,
+      },
+      summary,
+      grouped: groupedData,
+      transactions: formattedTransactions,
+      has_more: transactions.length >= limit,
+    },
+  };
+}
+
+/**
  * Execute get_ai_insights tool using OpenRouter with multi-model fallback
  */
 async function executeGetAiInsights(
@@ -1466,6 +1574,9 @@ serve(async (req) => {
         break;
       case 'get_sales_summary':
         result = await executeGetSalesSummary(args, restaurant_id, supabase);
+        break;
+      case 'get_inventory_transactions':
+        result = await executeGetInventoryTransactions(args, restaurant_id, supabase);
         break;
       case 'get_financial_intelligence':
         result = await executeGetFinancialIntelligence(args, restaurant_id, supabase);

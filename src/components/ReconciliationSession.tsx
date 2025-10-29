@@ -75,14 +75,16 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
     // If we have a price, use monetary variance
     if (varianceValue !== null && unitCost !== null && unitCost > 0) {
       const absValue = Math.abs(varianceValue);
-      if (absValue < 50) return <Badge className="bg-yellow-500">🟡 -${absValue.toFixed(2)}</Badge>;
-      return <Badge variant="destructive">🔴 -${absValue.toFixed(2)}</Badge>;
+      const sign = varianceValue >= 0 ? '+' : '';
+      if (absValue < 50) return <Badge className="bg-yellow-500">🟡 {sign}${varianceValue.toFixed(2)}</Badge>;
+      return <Badge variant="destructive">🔴 {sign}${varianceValue.toFixed(2)}</Badge>;
     }
     
     // No price but we have quantity variance - use quantity
     const absQty = Math.abs(varianceQty);
-    if (absQty < 10) return <Badge className="bg-yellow-500">🟡 -{absQty.toFixed(2)} units</Badge>;
-    return <Badge variant="destructive">🔴 -{absQty.toFixed(2)} units</Badge>;
+    const sign = varianceQty >= 0 ? '+' : '';
+    if (absQty < 10) return <Badge className="bg-yellow-500">🟡 {sign}{varianceQty.toFixed(2)} units</Badge>;
+    return <Badge variant="destructive">🔴 {sign}{varianceQty.toFixed(2)} units</Badge>;
   };
 
   const handleInputChange = (itemId: string, value: string) => {

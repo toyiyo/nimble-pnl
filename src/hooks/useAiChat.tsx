@@ -377,13 +377,17 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                   if (event.delta) {
                     console.log('[AI Chat] Received delta:', JSON.stringify(event.delta));
                     currentMessageRef.current += event.delta;
-                    setMessages(prev =>
-                      prev.map(msg =>
-                        msg.id === assistantMessageId
-                          ? { ...msg, content: currentMessageRef.current }
-                          : msg
-                      )
-                    );
+                    setMessages(prev => {
+                      const msgIndex = prev.findIndex(msg => msg.id === assistantMessageId);
+                      if (msgIndex === -1) {
+                        // Message not found yet, it might still be being added
+                        console.warn('[AI Chat] Message not found for delta, ID:', assistantMessageId);
+                        return prev;
+                      }
+                      const updated = [...prev];
+                      updated[msgIndex] = { ...updated[msgIndex], content: currentMessageRef.current };
+                      return updated;
+                    });
                   }
                   break;
 

@@ -393,6 +393,31 @@ export function useReconciliation(restaurantId: string | null) {
     }
   };
 
+  const resumeReconciliation = async (sessionId: string) => {
+    setLoading(true);
+    try {
+      const { data: session, error } = await supabase
+        .from('inventory_reconciliations')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+
+      if (error) throw error;
+
+      setActiveSession(session as ReconciliationSession);
+      await fetchSessionItems(sessionId);
+      
+      toast({ title: 'Success', description: 'Resumed reconciliation session' });
+      return true;
+    } catch (error: any) {
+      console.error('Error resuming reconciliation:', error);
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     activeSession,
     items,
@@ -404,6 +429,7 @@ export function useReconciliation(restaurantId: string | null) {
     calculateSummary,
     cancelReconciliation,
     deleteReconciliation,
+    resumeReconciliation,
     refreshSession: fetchActiveSession,
   };
 }

@@ -103,7 +103,7 @@ export const Inventory: React.FC = () => {
     }
   };
   const [reconciliationView, setReconciliationView] = useState<'history' | 'session' | 'summary'>('history');
-  const { activeSession, startReconciliation, refreshSession } = useReconciliation(selectedRestaurant?.restaurant_id || null);
+  const { activeSession, startReconciliation, resumeReconciliation, refreshSession } = useReconciliation(selectedRestaurant?.restaurant_id || null);
 
   // Check if user has permission to delete products
   const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
@@ -1772,6 +1772,10 @@ export const Inventory: React.FC = () => {
                     restaurantId={selectedRestaurant.restaurant_id}
                     onStartNew={async () => {
                       await startReconciliation();
+                      setReconciliationView('session');
+                    }}
+                    onResume={async (sessionId) => {
+                      await resumeReconciliation(sessionId);
                       setReconciliationView('session');
                     }}
                   />

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Plus, Eye } from 'lucide-react';
+import { Plus, Eye, Edit } from 'lucide-react';
 import { useReconciliationHistory } from '@/hooks/useReconciliationHistory';
 import { format } from 'date-fns';
 import { ReconciliationReport } from './ReconciliationReport';
@@ -10,9 +10,10 @@ import { ReconciliationReport } from './ReconciliationReport';
 interface ReconciliationHistoryProps {
   restaurantId: string;
   onStartNew: () => void;
+  onResume?: (sessionId: string) => void;
 }
 
-export function ReconciliationHistory({ restaurantId, onStartNew }: ReconciliationHistoryProps) {
+export function ReconciliationHistory({ restaurantId, onStartNew, onResume }: ReconciliationHistoryProps) {
   const { reconciliations, loading } = useReconciliationHistory(restaurantId);
   const [selectedReconciliationId, setSelectedReconciliationId] = useState<string | null>(null);
 
@@ -102,14 +103,27 @@ export function ReconciliationHistory({ restaurantId, onStartNew }: Reconciliati
                   </td>
                   <td className="text-center p-3">{getStatusBadge(rec.status)}</td>
                   <td className="text-center p-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setSelectedReconciliationId(rec.id)}
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      View
-                    </Button>
+                    <div className="flex items-center justify-center gap-2">
+                      {(rec.status === 'draft' || rec.status === 'in_progress') && onResume ? (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => onResume(rec.id)}
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Resume
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedReconciliationId(rec.id)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

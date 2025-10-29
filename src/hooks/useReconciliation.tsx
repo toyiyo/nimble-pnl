@@ -157,6 +157,32 @@ export function useReconciliation(restaurantId: string | null) {
 
   const updateItemCount = async (itemId: string, actualQty: number | null, notes?: string) => {
     try {
+      // Find the item to calculate variance before updating
+      const item = items.find(i => i.id === itemId);
+      if (!item) return false;
+      
+      const variance = actualQty !== null ? actualQty - item.expected_quantity : null;
+      const varianceValue = variance !== null && item.unit_cost 
+        ? variance * item.unit_cost 
+        : null;
+      
+      // Optimistically update local state FIRST
+      setItems(prevItems => 
+        prevItems.map(i => 
+          i.id === itemId 
+            ? {
+                ...i,
+                actual_quantity: actualQty,
+                variance,
+                variance_value: varianceValue,
+                notes: notes,
+                counted_at: actualQty !== null ? new Date().toISOString() : null,
+              }
+            : i
+        )
+      );
+
+      // Then save to database in background
       const { error } = await supabase
         .from('reconciliation_items')
         .update({
@@ -166,11 +192,12 @@ export function useReconciliation(restaurantId: string | null) {
         })
         .eq('id', itemId);
 
-      if (error) throw error;
-
-      // Refresh items
-      if (activeSession) {
-        await fetchSessionItems(activeSession.id);
+      if (error) {
+        // Rollback on error by refetching
+        if (activeSession) {
+          await fetchSessionItems(activeSession.id);
+        }
+        throw error;
       }
 
       return true;

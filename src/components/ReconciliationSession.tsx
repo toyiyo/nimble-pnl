@@ -36,20 +36,26 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [quickDialogOpen, setQuickDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [dirtyInputs, setDirtyInputs] = useState<Set<string>>(new Set());
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const { toast } = useToast();
 
-  // Sync input values with items from database whenever items change
+  // Sync input values with items from database, but respect user's active edits
   useEffect(() => {
     const newValues: Record<string, string> = {};
     items.forEach(item => {
-      // Only update if we don't have a local value or the item has been updated from database
-      if (item.actual_quantity !== null && item.actual_quantity !== undefined) {
-        newValues[item.id] = item.actual_quantity.toString();
+      // Only update if this input is not currently being edited
+      if (!dirtyInputs.has(item.id)) {
+        if (item.actual_quantity !== null && item.actual_quantity !== undefined) {
+          newValues[item.id] = item.actual_quantity.toString();
+        }
+      } else {
+        // Keep the current value if it's dirty
+        newValues[item.id] = inputValues[item.id] || '';
       }
     });
     setInputValues(newValues);
-  }, [items]);
+  }, [items, dirtyInputs]);
 
   const filteredItems = items.filter(item =>
     item.product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -80,6 +86,8 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
   };
 
   const handleInputChange = (itemId: string, value: string) => {
+    // Mark as dirty when user types
+    setDirtyInputs(prev => new Set(prev).add(itemId));
     // Update local state immediately for responsive UI
     setInputValues(prev => ({ ...prev, [itemId]: value }));
   };
@@ -107,6 +115,12 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
     const qty = value === '' ? null : parseFloat(value);
     if (!isNaN(qty as number) || qty === null) {
       await updateItemCount(itemId, qty);
+      // Clear dirty flag after successful save
+      setDirtyInputs(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(itemId);
+        return newSet;
+      });
     }
   };
 

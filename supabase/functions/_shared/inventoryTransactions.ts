@@ -80,8 +80,7 @@ export async function fetchInventoryTransactions(
       lot_number,
       expiry_date,
       product:products(id, name, sku, category, individual_unit),
-      supplier:suppliers(id, name),
-      performed_by_user:profiles!performed_by(user_id, email, full_name)
+      supplier:suppliers(id, name)
     `)
     .eq('restaurant_id', restaurantId)
     .order('created_at', { ascending: false });
@@ -128,7 +127,6 @@ export async function fetchInventoryTransactions(
     ...item,
     product: Array.isArray(item.product) ? item.product[0] : item.product,
     supplier: Array.isArray(item.supplier) ? item.supplier[0] : item.supplier,
-    performed_by_user: Array.isArray(item.performed_by_user) ? item.performed_by_user[0] : item.performed_by_user,
   }));
 }
 

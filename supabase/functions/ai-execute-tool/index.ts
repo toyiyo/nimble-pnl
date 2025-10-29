@@ -1090,7 +1090,7 @@ async function executeGetInventoryTransactions(
     lot_number: t.lot_number,
     expiry_date: t.expiry_date,
     location: t.location,
-    performed_by: t.performed_by_user?.full_name || t.performed_by_user?.email || 'Unknown',
+    performed_by: t.performed_by || 'Unknown',
     date: t.created_at,
   }));
 

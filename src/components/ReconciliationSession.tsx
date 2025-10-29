@@ -14,9 +14,10 @@ import { useToast } from '@/hooks/use-toast';
 interface ReconciliationSessionProps {
   restaurantId: string;
   onComplete: () => void;
+  onCancel?: () => void;
 }
 
-export function ReconciliationSession({ restaurantId, onComplete }: ReconciliationSessionProps) {
+export function ReconciliationSession({ restaurantId, onComplete, onCancel }: ReconciliationSessionProps) {
   const { items, loading, updateItemCount, saveProgress, calculateSummary } = useReconciliation(restaurantId);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState<any>(null);

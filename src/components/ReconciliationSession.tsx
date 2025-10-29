@@ -12,7 +12,14 @@ import {
   AlertDialogHeader, 
   AlertDialogTitle 
 } from '@/components/ui/alert-dialog';
-import { Search, Save, CheckCircle, ScanBarcode, X, Eye, AlertTriangle } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Search, Save, CheckCircle, ScanBarcode, X, Eye, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { ReconciliationItemDetail } from './ReconciliationItemDetail';
 import { useReconciliation } from '@/hooks/useReconciliation';
 import { EnhancedBarcodeScanner } from './EnhancedBarcodeScanner';
@@ -27,6 +34,9 @@ interface ReconciliationSessionProps {
   onCancel?: () => void;
 }
 
+type SortField = 'name' | 'unit' | 'expected' | 'actual' | 'variance' | 'status';
+type SortDirection = 'asc' | 'desc';
+
 export function ReconciliationSession({ restaurantId, onComplete, onCancel }: ReconciliationSessionProps) {
   const { items, loading, updateItemCount, saveProgress, calculateSummary, cancelReconciliation } = useReconciliation(restaurantId);
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,6 +48,8 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [dirtyInputs, setDirtyInputs] = useState<Set<string>>(new Set());
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const { toast } = useToast();
 
   // Sync input values with items from database, but respect user's active edits
@@ -57,10 +69,43 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
     setInputValues(newValues);
   }, [items, dirtyInputs]);
 
-  const filteredItems = items.filter(item =>
-    item.product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.product?.sku.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredAndSortedItems = items
+    .filter(item =>
+      item.product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.product?.sku.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortField) {
+        case 'name':
+          comparison = (a.product?.name || '').localeCompare(b.product?.name || '');
+          break;
+        case 'unit':
+          comparison = (a.product?.uom_purchase || '').localeCompare(b.product?.uom_purchase || '');
+          break;
+        case 'expected':
+          comparison = (a.expected_quantity || 0) - (b.expected_quantity || 0);
+          break;
+        case 'actual':
+          const aActual = a.actual_quantity ?? -Infinity;
+          const bActual = b.actual_quantity ?? -Infinity;
+          comparison = aActual - bActual;
+          break;
+        case 'variance':
+          const aVariance = a.variance ?? -Infinity;
+          const bVariance = b.variance ?? -Infinity;
+          comparison = aVariance - bVariance;
+          break;
+        case 'status':
+          const aStatus = a.actual_quantity === null ? 0 : 1;
+          const bStatus = b.actual_quantity === null ? 0 : 1;
+          comparison = aStatus - bStatus;
+          break;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
 
   const summary = calculateSummary();
   const progress = items.length > 0 ? (summary.total_items_counted / items.length) * 100 : 0;
@@ -275,16 +320,45 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
         </div>
       )}
 
-      {/* Search Bar */}
+      {/* Search and Sort Controls */}
       {!scannerMode && (
-        <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-        <Input
-          placeholder="Search products..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <Input
+              placeholder="Search products..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Select value={sortField} onValueChange={(value) => setSortField(value as SortField)}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">Name</SelectItem>
+                <SelectItem value="unit">Unit</SelectItem>
+                <SelectItem value="expected">Expected</SelectItem>
+                <SelectItem value="actual">Actual</SelectItem>
+                <SelectItem value="variance">Variance</SelectItem>
+                <SelectItem value="status">Status</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+              aria-label={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'}`}
+            >
+              {sortDirection === 'asc' ? (
+                <ArrowUp className="h-4 w-4" />
+              ) : (
+                <ArrowDown className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -304,7 +378,7 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
                 </tr>
               </thead>
               <tbody>
-                {filteredItems.map((item) => {
+                {filteredAndSortedItems.map((item) => {
                   const liveVariance = calculateLiveVariance(item);
                   const displayVariance = liveVariance.variance !== null ? liveVariance.variance : item.variance;
                   const displayVarianceValue = liveVariance.varianceValue !== null ? liveVariance.varianceValue : item.variance_value;
@@ -354,7 +428,7 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
 
           {/* Items List - Mobile */}
           <div className="md:hidden space-y-3">
-            {filteredItems.map((item) => {
+            {filteredAndSortedItems.map((item) => {
               const liveVariance = calculateLiveVariance(item);
               const displayVariance = liveVariance.variance !== null ? liveVariance.variance : item.variance;
               const displayVarianceValue = liveVariance.varianceValue !== null ? liveVariance.varianceValue : item.variance_value;

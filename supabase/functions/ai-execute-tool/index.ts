@@ -9,7 +9,7 @@ import {
   calculateTransactionsSummary,
   groupTransactions,
   type InventoryTransactionQuery 
-} from "../../src/services/inventoryTransactions.service.ts";
+} from "../_shared/inventoryTransactions.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';

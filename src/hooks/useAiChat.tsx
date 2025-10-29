@@ -362,30 +362,37 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
               switch (event.type) {
                 case 'message_start':
                   assistantMessageId = event.id || `assistant_${Date.now()}`;
-                  setMessages(prev => [
-                    ...prev,
-                    {
-                      id: assistantMessageId,
-                      role: 'assistant',
-                      content: '',
-                      created_at: new Date().toISOString(),
-                    },
-                  ]);
+                  console.log('[AI Chat] Starting new message with ID:', assistantMessageId);
+                  currentMessageRef.current = ''; // Reset the content accumulator
+                  setMessages(prev => {
+                    console.log('[AI Chat] Current messages count before adding:', prev.length);
+                    return [
+                      ...prev,
+                      {
+                        id: assistantMessageId,
+                        role: 'assistant',
+                        content: '',
+                        created_at: new Date().toISOString(),
+                      },
+                    ];
+                  });
                   break;
 
                 case 'message_delta':
                   if (event.delta) {
                     console.log('[AI Chat] Received delta:', JSON.stringify(event.delta));
                     currentMessageRef.current += event.delta;
+                    console.log('[AI Chat] Current accumulated content length:', currentMessageRef.current.length);
                     setMessages(prev => {
                       const msgIndex = prev.findIndex(msg => msg.id === assistantMessageId);
+                      console.log('[AI Chat] Looking for message ID:', assistantMessageId, 'Found at index:', msgIndex, 'Total messages:', prev.length);
                       if (msgIndex === -1) {
-                        // Message not found yet, it might still be being added
-                        console.warn('[AI Chat] Message not found for delta, ID:', assistantMessageId);
+                        console.error('[AI Chat] Message not found! Available IDs:', prev.map(m => m.id));
                         return prev;
                       }
                       const updated = [...prev];
                       updated[msgIndex] = { ...updated[msgIndex], content: currentMessageRef.current };
+                      console.log('[AI Chat] Updated message content length:', updated[msgIndex].content.length);
                       return updated;
                     });
                   }

@@ -220,7 +220,8 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
 
                 case 'message_end':
                   console.log('[Follow-up] Message end, final content:', currentMessageRef.current.substring(0, 100));
-                  currentMessageRef.current = '';
+                  // Don't reset currentMessageRef here - let it persist until stream is fully done
+                  // currentMessageRef.current = '';
                   break;
                   
                 case 'error':

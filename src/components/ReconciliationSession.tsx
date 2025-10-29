@@ -18,7 +18,7 @@ interface ReconciliationSessionProps {
 }
 
 export function ReconciliationSession({ restaurantId, onComplete, onCancel }: ReconciliationSessionProps) {
-  const { items, loading, updateItemCount, saveProgress, calculateSummary } = useReconciliation(restaurantId);
+  const { items, loading, updateItemCount, saveProgress, calculateSummary, cancelReconciliation } = useReconciliation(restaurantId);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -26,6 +26,7 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [quickDialogOpen, setQuickDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
   const { toast } = useToast();
 
   // Sync input values with items from database whenever items change
@@ -168,6 +169,23 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
     });
   };
 
+  const handleCancel = () => {
+    const currentSummary = calculateSummary();
+    if (currentSummary.total_items_counted > 0) {
+      setShowCancelDialog(true);
+    } else {
+      handleConfirmCancel();
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    const success = await cancelReconciliation();
+    if (success && onCancel) {
+      onCancel();
+    }
+    setShowCancelDialog(false);
+  };
+
   return (
     <div className="space-y-4">
       {/* Progress Header */}
@@ -180,6 +198,15 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={handleCancel}
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive flex-1 md:flex-none"
+            >
+              <X className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Cancel</span>
+            </Button>
             <Button 
               onClick={() => setScannerMode(!scannerMode)} 
               variant={scannerMode ? "default" : "outline"}
@@ -372,6 +399,29 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
           onUpdate={updateItemCount}
           restaurantId={restaurantId}
         />
+      )}
+
+      {/* Cancel Confirmation Dialog */}
+      {showCancelDialog && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card rounded-lg border shadow-lg max-w-md w-full p-6 space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold">Cancel Reconciliation?</h3>
+              <p className="text-sm text-muted-foreground mt-2">
+                You have counted {calculateSummary().total_items_counted} items. All progress will be lost if you cancel.
+                Are you sure you want to cancel this reconciliation?
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setShowCancelDialog(false)}>
+                Keep Counting
+              </Button>
+              <Button variant="destructive" onClick={handleConfirmCancel}>
+                Yes, Cancel Reconciliation
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

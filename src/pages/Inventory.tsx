@@ -1650,7 +1650,7 @@ export const Inventory: React.FC = () => {
                 <CardContent className="py-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <MetricIcon icon={AlertTriangle} variant="red" className="animate-pulse" />
+                      <MetricIcon icon={AlertTriangle} variant="red" />
                       <div>
                         <h2 className="text-xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
                           Low Stock Alert

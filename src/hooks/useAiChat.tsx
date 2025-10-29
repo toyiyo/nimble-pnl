@@ -201,11 +201,14 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                         return prev;
                       }
                       
-                      return prev.map(msg =>
-                        msg.id === assistantMessageId
-                          ? { ...msg, content: currentMessageRef.current }
-                          : msg
-                      );
+                      // Create completely new array to ensure React detects the change
+                      const updated = [...prev];
+                      updated[messageIndex] = {
+                        ...updated[messageIndex],
+                        content: currentMessageRef.current,
+                      };
+                      console.log('[Follow-up] Updated message content to:', updated[messageIndex].content.substring(0, 50));
+                      return updated;
                     });
                   } else {
                     console.warn('[Follow-up] Skipping delta - missing data:', {

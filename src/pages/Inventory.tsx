@@ -1767,7 +1767,7 @@ export const Inventory: React.FC = () => {
           <TabsContent value="reconciliation" className="mt-6">
             {selectedRestaurant && (
               <>
-                {reconciliationView === 'history' && !activeSession && (
+                {reconciliationView === 'history' && (
                   <ReconciliationHistory
                     restaurantId={selectedRestaurant.restaurant_id}
                     onStartNew={async () => {

@@ -2,7 +2,17 @@ import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Save, CheckCircle, ScanBarcode, X, Eye } from 'lucide-react';
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from '@/components/ui/alert-dialog';
+import { Search, Save, CheckCircle, ScanBarcode, X, Eye, AlertTriangle } from 'lucide-react';
 import { ReconciliationItemDetail } from './ReconciliationItemDetail';
 import { useReconciliation } from '@/hooks/useReconciliation';
 import { EnhancedBarcodeScanner } from './EnhancedBarcodeScanner';
@@ -180,10 +190,10 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
 
   const handleConfirmCancel = async () => {
     const success = await cancelReconciliation();
+    setShowCancelDialog(false);
     if (success && onCancel) {
       onCancel();
     }
-    setShowCancelDialog(false);
   };
 
   return (
@@ -402,27 +412,42 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
       )}
 
       {/* Cancel Confirmation Dialog */}
-      {showCancelDialog && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card rounded-lg border shadow-lg max-w-md w-full p-6 space-y-4">
-            <div>
-              <h3 className="text-lg font-semibold">Cancel Reconciliation?</h3>
-              <p className="text-sm text-muted-foreground mt-2">
-                You have counted {calculateSummary().total_items_counted} items. All progress will be lost if you cancel.
-                Are you sure you want to cancel this reconciliation?
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Cancel Inventory Count?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <div>
+                <strong>You are about to cancel this inventory count.</strong>
+              </div>
+              <div className="bg-muted p-3 rounded-md space-y-2">
+                <p className="font-medium">Impact of canceling:</p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  <li>{calculateSummary().total_items_counted} items have been counted</li>
+                  <li>All progress will be permanently deleted</li>
+                  <li>No inventory adjustments will be made</li>
+                  <li>Product stock levels will remain unchanged</li>
+                </ul>
+              </div>
+              <p className="text-destructive font-medium">
+                This action cannot be undone.
               </p>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setShowCancelDialog(false)}>
-                Keep Counting
-              </Button>
-              <Button variant="destructive" onClick={handleConfirmCancel}>
-                Yes, Cancel Reconciliation
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Counting</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmCancel}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Yes, Cancel Count
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

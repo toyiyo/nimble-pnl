@@ -1776,13 +1776,12 @@ export const Inventory: React.FC = () => {
                     }}
                   />
                 )}
-                {(reconciliationView === 'session' || activeSession) && (
+                {reconciliationView === 'session' && activeSession && (
                   <ReconciliationSession
                     restaurantId={selectedRestaurant.restaurant_id}
                     onComplete={() => setReconciliationView('summary')}
                     onCancel={() => {
                       setReconciliationView('history');
-                      refreshSession();
                     }}
                   />
                 )}

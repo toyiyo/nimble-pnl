@@ -69,10 +69,12 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
     setInputValues(newValues);
   }, [items, dirtyInputs]);
 
+  const normalizedSearchTerm = (searchTerm || '').toLowerCase();
+  
   const filteredAndSortedItems = items
     .filter(item =>
-      item.product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.product?.sku.toLowerCase().includes(searchTerm.toLowerCase())
+      (item.product?.name || '').toLowerCase().includes(normalizedSearchTerm) ||
+      (item.product?.sku || '').toLowerCase().includes(normalizedSearchTerm)
     )
     .sort((a, b) => {
       let comparison = 0;

@@ -51,7 +51,7 @@ export function CriticalAlertsBar({ alerts }: CriticalAlertsBarProps) {
                 : "border-orange-500/50 bg-orange-500/10"
             }
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-4 w-4" aria-hidden="true" />
             <AlertDescription className="flex items-center justify-between gap-4">
               <div className="flex-1">
                 <span className="font-semibold">{alert.title}</span>
@@ -61,6 +61,7 @@ export function CriticalAlertsBar({ alerts }: CriticalAlertsBarProps) {
                 <button
                   onClick={() => navigate(alert.action!.path)}
                   className="text-sm font-medium hover:underline whitespace-nowrap"
+                  aria-label={alert.action!.label}
                 >
                   {alert.action.label} →
                 </button>

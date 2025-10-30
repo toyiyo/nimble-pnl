@@ -62,7 +62,8 @@ export async function callModel(
           "X-Title": "Nimble PnL AI",
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30000) // 30 second timeout
       });
 
       if (response.ok) {
@@ -80,6 +81,10 @@ export async function callModel(
         break;
       }
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error(`❌ ${modelConfig.name} timed out after 30 seconds`);
+        break; // Don't retry timeouts
+      }
       console.error(`❌ ${modelConfig.name} error:`, error);
       retryCount++;
       if (retryCount < modelConfig.maxRetries) {

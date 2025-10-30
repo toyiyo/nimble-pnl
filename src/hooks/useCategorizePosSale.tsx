@@ -61,6 +61,10 @@ export const useCategorizePosSale = (restaurantId: string | null) => {
     },
     onSuccess: () => {
       // Invalidate related queries for consistency
+      queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
+      if (restaurantId) {
+        queryClient.invalidateQueries({ queryKey: ['unified-sales', restaurantId] });
+      }
       queryClient.invalidateQueries({ queryKey: ['income-statement'] });
       queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
       toast.success("Sale categorized successfully.");

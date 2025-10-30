@@ -22,7 +22,15 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       
       let query = supabase
         .from('unified_sales')
-        .select('*')
+        .select(`
+          *,
+          chart_account:chart_of_accounts!suggested_category_id (
+            id,
+            account_code,
+            account_name,
+            account_type
+          )
+        `)
         .eq('restaurant_id', restaurantId)
         .order('sale_date', { ascending: false })
         .order('created_at', { ascending: false });
@@ -54,6 +62,14 @@ export const useUnifiedSales = (restaurantId: string | null) => {
         rawData: sale.raw_data,
         syncedAt: sale.synced_at,
         createdAt: sale.created_at,
+        source: sale.pos_system,
+        // AI Categorization fields
+        suggested_category_id: sale.suggested_category_id,
+        ai_confidence: sale.ai_confidence as "high" | "medium" | "low" | undefined,
+        ai_reasoning: sale.ai_reasoning,
+        item_type: sale.item_type as "sale" | "tip" | "tax" | "discount" | "comp" | "service_charge" | "other" | undefined,
+        is_categorized: sale.is_categorized || false,
+        chart_account: sale.chart_account,
       }));
 
       setSales(transformedSales);

@@ -2,39 +2,29 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface RevenueCategory {
-  category_id: string | null;
+  account_id: string;
   account_code: string;
   account_name: string;
-  total: number;
+  account_type: string;
+  account_subtype: string;
+  total_amount: number;
+  transaction_count: number;
 }
 
-export interface RevenueBreakdown {
-  revenueCategories: RevenueCategory[];
-  discountsAndComps: number;
-  refunds: number;
-  tips: number;
-  salesTax: number;
-  grossRevenue: number;
-  netRevenue: number;
-  hasCategorizationData: boolean;
-}
-
-export const useRevenueBreakdown = (
-  restaurantId: string | null,
-  dateFrom: Date,
+export function useRevenueBreakdown(
+  restaurantId: string | null, 
+  dateFrom: Date, 
   dateTo: Date
-) => {
+) {
   return useQuery({
-    queryKey: ['revenue-breakdown', restaurantId, dateFrom.toISOString(), dateTo.toISOString()],
-    queryFn: async (): Promise<RevenueBreakdown> => {
-      if (!restaurantId) {
-        throw new Error('Restaurant ID is required');
-      }
+    queryKey: ['revenue-breakdown', restaurantId, dateFrom, dateTo],
+    queryFn: async () => {
+      if (!restaurantId) return null;
 
       const fromStr = dateFrom.toISOString().split('T')[0];
       const toStr = dateTo.toISOString().split('T')[0];
 
-      // Query unified_sales with categorization data
+      // Query unified_sales with category info
       const { data: sales, error } = await supabase
         .from('unified_sales')
         .select(`
@@ -43,11 +33,12 @@ export const useRevenueBreakdown = (
           item_type,
           category_id,
           is_categorized,
-          chart_account:chart_of_accounts(
+          chart_account:chart_of_accounts!category_id (
             id,
             account_code,
             account_name,
-            account_type
+            account_type,
+            account_subtype
           )
         `)
         .eq('restaurant_id', restaurantId)
@@ -57,93 +48,71 @@ export const useRevenueBreakdown = (
 
       if (error) throw error;
 
-      // Check if we have any categorized data
-      const hasCategorizationData = sales && sales.length > 0;
+      // Group by account
+      const categoryMap = new Map<string, RevenueCategory>();
 
-      if (!hasCategorizationData) {
-        return {
-          revenueCategories: [],
-          discountsAndComps: 0,
-          refunds: 0,
-          tips: 0,
-          salesTax: 0,
-          grossRevenue: 0,
-          netRevenue: 0,
-          hasCategorizationData: false,
-        };
-      }
+      sales?.forEach((sale: any) => {
+        if (!sale.chart_account) return;
 
-      // Aggregate by category and item type
-      const categoryMap = new Map<string, { account_code: string; account_name: string; total: number }>();
-      let discountsTotal = 0;
-      let refundsTotal = 0;
-      let tipsTotal = 0;
-      let salesTaxTotal = 0;
-      let grossRevenueTotal = 0;
+        const key = sale.chart_account.id;
+        const existing = categoryMap.get(key);
 
-      sales.forEach((sale: any) => {
-        const amount = sale.total_price || 0;
-        const itemType = sale.item_type || 'sale';
-        const chartAccount = sale.chart_account;
-
-        // Categorize by item type
-        switch (itemType) {
-          case 'discount':
-          case 'comp':
-            discountsTotal += amount;
-            break;
-          case 'tip':
-            tipsTotal += amount;
-            break;
-          case 'tax':
-            salesTaxTotal += amount;
-            break;
-          case 'sale':
-          default:
-            // Regular sales - group by category
-            if (chartAccount && sale.category_id) {
-              const key = `${chartAccount.account_code}-${chartAccount.account_name}`;
-              const existing = categoryMap.get(key);
-              if (existing) {
-                existing.total += amount;
-              } else {
-                categoryMap.set(key, {
-                  account_code: chartAccount.account_code,
-                  account_name: chartAccount.account_name,
-                  total: amount,
-                });
-              }
-              grossRevenueTotal += amount;
-            }
-            break;
+        if (existing) {
+          existing.total_amount += sale.total_price || 0;
+          existing.transaction_count += 1;
+        } else {
+          categoryMap.set(key, {
+            account_id: sale.chart_account.id,
+            account_code: sale.chart_account.account_code,
+            account_name: sale.chart_account.account_name,
+            account_type: sale.chart_account.account_type,
+            account_subtype: sale.chart_account.account_subtype,
+            total_amount: sale.total_price || 0,
+            transaction_count: 1,
+          });
         }
       });
 
-      // Convert map to array and sort by account code
-      const revenueCategories: RevenueCategory[] = Array.from(categoryMap.values())
-        .map((cat) => ({
-          category_id: null, // We don't need the ID for display
-          account_code: cat.account_code,
-          account_name: cat.account_name,
-          total: cat.total,
-        }))
-        .sort((a, b) => a.account_code.localeCompare(b.account_code));
+      const categories = Array.from(categoryMap.values());
 
-      const netRevenue = grossRevenueTotal - discountsTotal - refundsTotal;
+      // Separate into revenue types
+      const revenueCategories = categories.filter(c => c.account_type === 'revenue');
+      const discountCategories = categories.filter(c => 
+        c.account_subtype === 'discounts' || 
+        c.account_name.toLowerCase().includes('discount') ||
+        c.account_name.toLowerCase().includes('comp')
+      );
+      const taxCategories = categories.filter(c => 
+        c.account_subtype === 'sales_tax' ||
+        c.account_name.toLowerCase().includes('tax')
+      );
+      const tipCategories = categories.filter(c => 
+        c.account_subtype === 'tips' ||
+        c.account_name.toLowerCase().includes('tip')
+      );
+
+      // Calculate totals
+      const grossRevenue = revenueCategories.reduce((sum, c) => sum + c.total_amount, 0);
+      const totalDiscounts = discountCategories.reduce((sum, c) => sum + Math.abs(c.total_amount), 0);
+      const totalTax = taxCategories.reduce((sum, c) => sum + c.total_amount, 0);
+      const totalTips = tipCategories.reduce((sum, c) => sum + c.total_amount, 0);
+      const netRevenue = grossRevenue - totalDiscounts;
 
       return {
-        revenueCategories,
-        discountsAndComps: discountsTotal,
-        refunds: refundsTotal,
-        tips: tipsTotal,
-        salesTax: salesTaxTotal,
-        grossRevenue: grossRevenueTotal,
-        netRevenue,
-        hasCategorizationData: true,
+        revenue_categories: revenueCategories.sort((a, b) => a.account_code.localeCompare(b.account_code)),
+        discount_categories: discountCategories,
+        tax_categories: taxCategories,
+        tip_categories: tipCategories,
+        totals: {
+          gross_revenue: grossRevenue,
+          total_discounts: totalDiscounts,
+          net_revenue: netRevenue,
+          sales_tax: totalTax,
+          tips: totalTips,
+        },
       };
     },
     enabled: !!restaurantId,
-    staleTime: 30000, // 30 seconds
-    refetchOnWindowFocus: true,
+    staleTime: 30000,
   });
-};
+}

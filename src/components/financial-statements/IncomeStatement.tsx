@@ -1,6 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -8,8 +7,6 @@ import { useToast } from '@/hooks/use-toast';
 import { ExportDropdown } from './shared/ExportDropdown';
 import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
-import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
 
 interface IncomeStatementProps {
   restaurantId: string;
@@ -19,7 +16,6 @@ interface IncomeStatementProps {
 
 export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatementProps) {
   const { toast } = useToast();
-  const navigate = useNavigate();
 
   // Fetch revenue breakdown from categorized POS sales
   const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
@@ -123,75 +119,33 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     }).format(amount);
   };
 
-  // Use categorized POS sales data if available, otherwise fall back to journal entries
-  const usePOSData = revenueBreakdown?.hasCategorizationData;
-  
-  const totalRevenue = usePOSData 
-    ? revenueBreakdown.netRevenue 
-    : incomeData?.revenue.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
+  const totalRevenue = incomeData?.revenue.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
   const totalCOGS = incomeData?.cogs.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
   const totalExpenses = incomeData?.expenses.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
   const grossProfit = totalRevenue - totalCOGS;
   const netIncome = grossProfit - totalExpenses;
 
   const handleExportCSV = () => {
-    const csvRows: string[][] = [
+    const csvContent = [
       ['Income Statement'],
       [`Period: ${format(dateFrom, 'MMM dd, yyyy')} - ${format(dateTo, 'MMM dd, yyyy')}`],
       [''],
       ['Revenue'],
-    ];
-
-    // Add revenue section based on data source
-    if (usePOSData) {
-      // Enhanced revenue with POS categorization
-      revenueBreakdown.revenueCategories.forEach(cat => {
-        csvRows.push([cat.account_code, cat.account_name, cat.total.toString()]);
-      });
-      csvRows.push(['', 'Gross Revenue', revenueBreakdown.grossRevenue.toString()]);
-      
-      if (revenueBreakdown.discountsAndComps > 0) {
-        csvRows.push(['', 'Less: Discounts & Comps', (-revenueBreakdown.discountsAndComps).toString()]);
-      }
-      if (revenueBreakdown.refunds > 0) {
-        csvRows.push(['', 'Less: Refunds & Returns', (-revenueBreakdown.refunds).toString()]);
-      }
-      csvRows.push(['', 'Net Sales Revenue', revenueBreakdown.netRevenue.toString()]);
-      
-      // Add pass-through items if present
-      if (revenueBreakdown.salesTax > 0 || revenueBreakdown.tips > 0) {
-        csvRows.push([''], ['Other Collections (Pass-Through)']);
-        if (revenueBreakdown.salesTax > 0) {
-          csvRows.push(['', 'Sales Tax Collected (Liability)', revenueBreakdown.salesTax.toString()]);
-        }
-        if (revenueBreakdown.tips > 0) {
-          csvRows.push(['', 'Tips Collected (Liability)', revenueBreakdown.tips.toString()]);
-        }
-      }
-    } else {
-      // Traditional journal entry based revenue
-      incomeData!.revenue.forEach(acc => {
-        csvRows.push([acc.account_code, acc.account_name, acc.current_balance.toString()]);
-      });
-      csvRows.push(['', 'Total Revenue', totalRevenue.toString()]);
-    }
-
-    csvRows.push(
+      ...incomeData!.revenue.map(acc => [acc.account_code, acc.account_name, acc.current_balance]),
+      ['', 'Total Revenue', totalRevenue],
       [''],
       ['Cost of Goods Sold'],
-      ...incomeData!.cogs.map(acc => [acc.account_code, acc.account_name, acc.current_balance.toString()]),
-      ['', 'Total COGS', totalCOGS.toString()],
+      ...incomeData!.cogs.map(acc => [acc.account_code, acc.account_name, acc.current_balance]),
+      ['', 'Total COGS', totalCOGS],
       [''],
-      ['', 'Gross Profit', grossProfit.toString()],
+      ['', 'Gross Profit', grossProfit],
       [''],
       ['Operating Expenses'],
-      ...incomeData!.expenses.map(acc => [acc.account_code, acc.account_name, acc.current_balance.toString()]),
-      ['', 'Total Expenses', totalExpenses.toString()],
+      ...incomeData!.expenses.map(acc => [acc.account_code, acc.account_name, acc.current_balance]),
+      ['', 'Total Expenses', totalExpenses],
       [''],
-      ['', 'Net Income', netIncome.toString()],
-    );
-
-    const csvContent = csvRows.map(row => row.join(',')).join('\n');
+      ['', 'Net Income', netIncome],
+    ].map(row => row.join(',')).join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -216,76 +170,13 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   };
 
   const handleExportPDF = () => {
-    const data: any[] = [];
-
-    // Revenue section based on data source
-    if (usePOSData) {
-      data.push({ label: 'Revenue', amount: undefined, isBold: true });
-      
-      // Individual categories
-      revenueBreakdown.revenueCategories.forEach(cat => {
-        data.push({
-          label: `${cat.account_code} - ${cat.account_name}`,
-          amount: cat.total,
-          indent: 1,
-        });
-      });
-      
-      data.push({ label: 'Gross Revenue', amount: revenueBreakdown.grossRevenue, isSubtotal: true });
-      
-      if (revenueBreakdown.discountsAndComps > 0) {
-        data.push({
-          label: 'Less: Discounts & Comps',
-          amount: -revenueBreakdown.discountsAndComps,
-          indent: 1,
-        });
-      }
-      
-      if (revenueBreakdown.refunds > 0) {
-        data.push({
-          label: 'Less: Refunds & Returns',
-          amount: -revenueBreakdown.refunds,
-          indent: 1,
-        });
-      }
-      
-      data.push({ label: 'Net Sales Revenue', amount: revenueBreakdown.netRevenue, isTotal: true });
-      
-      // Pass-through items
-      if (revenueBreakdown.salesTax > 0 || revenueBreakdown.tips > 0) {
-        data.push({ label: '', amount: undefined });
-        data.push({ label: 'Other Collections (Pass-Through)', amount: undefined, isBold: true });
-        
-        if (revenueBreakdown.salesTax > 0) {
-          data.push({
-            label: 'Sales Tax Collected (Liability)',
-            amount: revenueBreakdown.salesTax,
-            indent: 1,
-          });
-        }
-        
-        if (revenueBreakdown.tips > 0) {
-          data.push({
-            label: 'Tips Collected (Liability)',
-            amount: revenueBreakdown.tips,
-            indent: 1,
-          });
-        }
-      }
-    } else {
-      // Traditional revenue
-      data.push(
-        ...incomeData!.revenue.map(acc => ({
-          label: `${acc.account_code} - ${acc.account_name}`,
-          amount: acc.current_balance,
-          indent: 1,
-        })),
-        { label: 'Total Revenue', amount: totalRevenue, isSubtotal: true }
-      );
-    }
-
-    // COGS, Expenses, and totals
-    data.push(
+    const data = [
+      ...incomeData!.revenue.map(acc => ({
+        label: `${acc.account_code} - ${acc.account_name}`,
+        amount: acc.current_balance,
+        indent: 1,
+      })),
+      { label: 'Total Revenue', amount: totalRevenue, isSubtotal: true },
       { label: '', amount: undefined },
       { label: 'Cost of Goods Sold', amount: undefined, isBold: true },
       ...incomeData!.cogs.map(acc => ({
@@ -306,7 +197,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       { label: 'Total Expenses', amount: totalExpenses, isSubtotal: true },
       { label: '', amount: undefined },
       { label: 'Net Income', amount: netIncome, isTotal: true },
-    );
+    ];
 
     const filename = generateStandardFilename(
       'income-statement',
@@ -354,67 +245,86 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
-          {/* Revenue Section - Enhanced with POS Categorization */}
+          {/* Revenue Section - Enhanced with POS Sales Breakdown */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-lg">Revenue</h3>
-              {!usePOSData && (
-                <Badge variant="outline" className="gap-1.5">
-                  <AlertCircle className="h-3 w-3" />
-                  Journal Entry Based
-                </Badge>
-              )}
-            </div>
-            
-            {usePOSData ? (
-              <div className="space-y-2">
-                {/* Individual Revenue Categories from POS */}
-                {revenueBreakdown.revenueCategories.map((category, idx) => (
-                  <div key={idx} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                      <span>{category.account_name}</span>
+            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+              <div className="h-1 w-8 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full" />
+              REVENUE
+            </h3>
+            <div className="space-y-2">
+              {revenueBreakdown && revenueBreakdown.revenue_categories.length > 0 ? (
+                <>
+                  {/* Revenue Categories from POS Sales */}
+                  {revenueBreakdown.revenue_categories.map((category) => (
+                    <div key={category.account_id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
+                        <span>{category.account_name}</span>
+                      </div>
+                      <span className="font-medium">{formatCurrency(category.total_amount)}</span>
                     </div>
-                    <span className="font-medium">{formatCurrency(category.total)}</span>
+                  ))}
+                  <div className="flex justify-between items-center py-2 px-3 border-t text-sm">
+                    <span>Gross Revenue</span>
+                    <span className="font-semibold">{formatCurrency(revenueBreakdown.totals.gross_revenue)}</span>
                   </div>
-                ))}
-                
-                {/* Gross Revenue Subtotal */}
-                <div className="flex justify-between items-center py-2 px-3 border-t font-semibold bg-muted/30">
-                  <span>Gross Revenue</span>
-                  <span>{formatCurrency(revenueBreakdown.grossRevenue)}</span>
-                </div>
 
-                {/* Deductions */}
-                {revenueBreakdown.discountsAndComps > 0 && (
-                  <div className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50 text-destructive">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono text-muted-foreground">-</span>
-                      <span>Less: Discounts & Comps</span>
+                  {/* Discounts & Comps */}
+                  {revenueBreakdown.discount_categories.length > 0 && (
+                    <div className="mt-2">
+                      <div className="text-sm text-muted-foreground mb-1 px-3">Less: Deductions</div>
+                      {revenueBreakdown.discount_categories.map((category) => (
+                        <div key={category.account_id} className="flex justify-between items-center py-1 px-3">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
+                            <span className="text-sm text-red-600">{category.account_name}</span>
+                          </div>
+                          <span className="font-medium text-red-600">({formatCurrency(Math.abs(category.total_amount))})</span>
+                        </div>
+                      ))}
                     </div>
-                    <span className="font-medium">({formatCurrency(revenueBreakdown.discountsAndComps)})</span>
-                  </div>
-                )}
-                
-                {revenueBreakdown.refunds > 0 && (
-                  <div className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50 text-destructive">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono text-muted-foreground">-</span>
-                      <span>Less: Refunds & Returns</span>
-                    </div>
-                    <span className="font-medium">({formatCurrency(revenueBreakdown.refunds)})</span>
-                  </div>
-                )}
+                  )}
 
-                {/* Net Sales Revenue */}
-                <div className="flex justify-between items-center py-2 px-3 border-t-2 font-bold text-lg bg-gradient-to-r from-primary/5 to-transparent">
-                  <span>Net Sales Revenue</span>
-                  <span className="text-success">{formatCurrency(revenueBreakdown.netRevenue)}</span>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
+                  {/* Net Revenue */}
+                  <div className="flex justify-between items-center py-2 px-3 border-t-2 font-semibold">
+                    <span>Net Sales Revenue</span>
+                    <span>{formatCurrency(revenueBreakdown.totals.net_revenue)}</span>
+                  </div>
+
+                  {/* Pass-Through Collections */}
+                  {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) && (
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide px-3">
+                        OTHER COLLECTIONS (Pass-Through)
+                      </div>
+                      <div className="bg-muted/30 rounded-lg p-3 space-y-1">
+                        {revenueBreakdown.tax_categories.map((category) => (
+                          <div key={category.account_id} className="flex justify-between items-center py-1">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
+                              <span className="text-sm">{category.account_name}</span>
+                              <span className="text-xs text-amber-600 font-medium">(Liability)</span>
+                            </div>
+                            <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
+                          </div>
+                        ))}
+                        {revenueBreakdown.tip_categories.map((category) => (
+                          <div key={category.account_id} className="flex justify-between items-center py-1">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
+                              <span className="text-sm">{category.account_name}</span>
+                              <span className="text-xs text-amber-600 font-medium">(Liability)</span>
+                            </div>
+                            <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Fallback to journal entries if no POS categorization */
+                <>
                   {incomeData?.revenue.map((account) => (
                     <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
                       <div className="flex items-center gap-3">
@@ -428,59 +338,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                     <span>Total Revenue</span>
                     <span>{formatCurrency(totalRevenue)}</span>
                   </div>
-                </div>
-                
-                {/* Prompt to categorize POS sales */}
-                <div className="mt-4 p-4 rounded-lg bg-gradient-to-br from-primary/5 to-transparent border border-primary/20">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 text-primary mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium mb-1">Enhanced Revenue Breakdown Available</p>
-                      <p className="text-xs text-muted-foreground mb-3">
-                        Categorize your POS sales to see detailed revenue by category (Food, Beverages, Alcohol, etc.)
-                      </p>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => navigate('/pos-sales')}
-                        className="gap-2"
-                      >
-                        Categorize Sales
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Other Collections (Pass-Through Items) - Only show if POS data available */}
-          {usePOSData && (revenueBreakdown.salesTax > 0 || revenueBreakdown.tips > 0) && (
-            <div>
-              <h3 className="font-semibold text-lg mb-3">Other Collections (Pass-Through)</h3>
-              <div className="space-y-2">
-                {revenueBreakdown.salesTax > 0 && (
-                  <div className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                    <div className="flex items-center gap-3">
-                      <span>Sales Tax Collected</span>
-                      <Badge variant="outline" className="text-xs">Liability</Badge>
-                    </div>
-                    <span className="font-medium text-muted-foreground">{formatCurrency(revenueBreakdown.salesTax)}</span>
-                  </div>
-                )}
-                
-                {revenueBreakdown.tips > 0 && (
-                  <div className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                    <div className="flex items-center gap-3">
-                      <span>Tips Collected</span>
-                      <Badge variant="outline" className="text-xs">Liability</Badge>
-                    </div>
-                    <span className="font-medium text-muted-foreground">{formatCurrency(revenueBreakdown.tips)}</span>
-                  </div>
-                )}
-              </div>
+                </>
+              )}
             </div>
-          )}
+          </div>
 
           {/* COGS Section */}
           <div>

@@ -6,7 +6,6 @@ import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { ExportDropdown } from './shared/ExportDropdown';
 import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
-import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 
 interface IncomeStatementProps {
   restaurantId: string;
@@ -16,13 +15,6 @@ interface IncomeStatementProps {
 
 export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatementProps) {
   const { toast } = useToast();
-
-  // Fetch revenue breakdown from categorized POS sales
-  const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
-    restaurantId,
-    dateFrom,
-    dateTo
-  );
 
   // Fetch restaurant name for exports
   const { data: restaurant } = useQuery({
@@ -220,7 +212,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     });
   };
 
-  if (isLoading || revenueLoading) {
+  if (isLoading) {
     return (
       <Card>
         <CardContent className="pt-6 flex items-center justify-center py-12">
@@ -245,101 +237,23 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
-          {/* Revenue Section - Enhanced with POS Sales Breakdown */}
+          {/* Revenue Section */}
           <div>
-            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
-              <div className="h-1 w-8 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full" />
-              REVENUE
-            </h3>
+            <h3 className="font-semibold text-lg mb-3">Revenue</h3>
             <div className="space-y-2">
-              {revenueBreakdown && revenueBreakdown.revenue_categories.length > 0 ? (
-                <>
-                  {/* Revenue Categories from POS Sales */}
-                  {revenueBreakdown.revenue_categories.map((category) => (
-                    <div key={category.account_id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                        <span>{category.account_name}</span>
-                      </div>
-                      <span className="font-medium">{formatCurrency(category.total_amount)}</span>
-                    </div>
-                  ))}
-                  <div className="flex justify-between items-center py-2 px-3 border-t text-sm">
-                    <span>Gross Revenue</span>
-                    <span className="font-semibold">{formatCurrency(revenueBreakdown.totals.gross_revenue)}</span>
+              {incomeData?.revenue.map((account) => (
+                <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
+                    <span>{account.account_name}</span>
                   </div>
-
-                  {/* Discounts & Comps */}
-                  {revenueBreakdown.discount_categories.length > 0 && (
-                    <div className="mt-2">
-                      <div className="text-sm text-muted-foreground mb-1 px-3">Less: Deductions</div>
-                      {revenueBreakdown.discount_categories.map((category) => (
-                        <div key={category.account_id} className="flex justify-between items-center py-1 px-3">
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                            <span className="text-sm text-red-600">{category.account_name}</span>
-                          </div>
-                          <span className="font-medium text-red-600">({formatCurrency(Math.abs(category.total_amount))})</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Net Revenue */}
-                  <div className="flex justify-between items-center py-2 px-3 border-t-2 font-semibold">
-                    <span>Net Sales Revenue</span>
-                    <span>{formatCurrency(revenueBreakdown.totals.net_revenue)}</span>
-                  </div>
-
-                  {/* Pass-Through Collections */}
-                  {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) && (
-                    <div className="mt-4 pt-4 border-t">
-                      <div className="text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide px-3">
-                        OTHER COLLECTIONS (Pass-Through)
-                      </div>
-                      <div className="bg-muted/30 rounded-lg p-3 space-y-1">
-                        {revenueBreakdown.tax_categories.map((category) => (
-                          <div key={category.account_id} className="flex justify-between items-center py-1">
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                              <span className="text-sm">{category.account_name}</span>
-                              <span className="text-xs text-amber-600 font-medium">(Liability)</span>
-                            </div>
-                            <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
-                          </div>
-                        ))}
-                        {revenueBreakdown.tip_categories.map((category) => (
-                          <div key={category.account_id} className="flex justify-between items-center py-1">
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                              <span className="text-sm">{category.account_name}</span>
-                              <span className="text-xs text-amber-600 font-medium">(Liability)</span>
-                            </div>
-                            <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                /* Fallback to journal entries if no POS categorization */
-                <>
-                  {incomeData?.revenue.map((account) => (
-                    <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
-                        <span>{account.account_name}</span>
-                      </div>
-                      <span className="font-medium">{formatCurrency(account.current_balance)}</span>
-                    </div>
-                  ))}
-                  <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
-                    <span>Total Revenue</span>
-                    <span>{formatCurrency(totalRevenue)}</span>
-                  </div>
-                </>
-              )}
+                  <span className="font-medium">{formatCurrency(account.current_balance)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
+                <span>Total Revenue</span>
+                <span>{formatCurrency(totalRevenue)}</span>
+              </div>
             </div>
           </div>
 

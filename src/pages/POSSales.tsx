@@ -40,7 +40,7 @@ export default function POSSales() {
     loading: restaurantsLoading,
     createRestaurant,
   } = useRestaurantContext();
-  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, deleteManualSale } =
+  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, deleteManualSale, fetchUnifiedSales } =
     useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(
     selectedRestaurant?.restaurant_id || null,
@@ -74,7 +74,7 @@ export default function POSSales() {
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
   const { mutate: categorizePosSales, isPending: isCategorizingPending } = useCategorizePosSales();
-  const { mutate: categorizePosSale } = useCategorizePosSale();
+  const { mutate: categorizePosSale } = useCategorizePosSale(fetchUnifiedSales);
   const { mutate: splitPosSale } = useSplitPosSale();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const [saleToSplit, setSaleToSplit] = useState<any>(null);

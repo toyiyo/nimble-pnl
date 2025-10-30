@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-export const useCategorizePosSale = () => {
+export const useCategorizePosSale = (onSuccess?: () => void) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -27,6 +27,11 @@ export const useCategorizePosSale = () => {
       queryClient.invalidateQueries({ queryKey: ['income-statement'] });
       queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
       toast.success("Sale categorized successfully.");
+      
+      // Call the custom callback to refetch data
+      if (onSuccess) {
+        onSuccess();
+      }
     },
     onError: (error: Error) => {
       toast.error(`Failed to categorize sale: ${error.message}`);

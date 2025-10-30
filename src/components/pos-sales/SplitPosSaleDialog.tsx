@@ -24,7 +24,7 @@ interface SplitFormData {
 import { UnifiedSaleItem } from "@/types/pos";
 
 interface SplitPosSaleDialogProps {
-  sale: UnifiedSaleItem;
+  sale: UnifiedSaleItem | null;
   isOpen: boolean;
   onClose: () => void;
   restaurantId: string;
@@ -42,6 +42,11 @@ const splitFormSchema = z.object({
 
 export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: SplitPosSaleDialogProps) {
   const { mutate: splitSale, isPending } = useSplitPosSale();
+  
+  // Early return if no sale is provided
+  if (!sale) {
+    return null;
+  }
   
   const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<SplitFormData>({
     resolver: zodResolver(splitFormSchema),

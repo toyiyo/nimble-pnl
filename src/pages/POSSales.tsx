@@ -74,7 +74,7 @@ export default function POSSales() {
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
   const { mutate: categorizePosSales, isPending: isCategorizingPending } = useCategorizePosSales();
-  const { mutate: categorizePosSale } = useCategorizePosSale(fetchUnifiedSales);
+  const { mutate: categorizePosSale } = useCategorizePosSale();
   const { mutate: splitPosSale } = useSplitPosSale();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const [saleToSplit, setSaleToSplit] = useState<any>(null);
@@ -806,7 +806,14 @@ export default function POSSales() {
                                       size="sm"
                                       variant="default"
                                       className="text-xs h-7 px-2"
-                                      onClick={() => categorizePosSale({ saleId: sale.id, categoryId: sale.suggested_category_id! })}
+                                     onClick={() => categorizePosSale({ 
+                                       saleId: sale.id, 
+                                       categoryId: sale.suggested_category_id!,
+                                       accountInfo: {
+                                         account_name: sale.chart_account.account_name,
+                                         account_code: sale.chart_account.account_code,
+                                       }
+                                     })}
                                     >
                                       <Check className="h-3 w-3 mr-1" />
                                       Approve
@@ -827,15 +834,23 @@ export default function POSSales() {
                               <div className="mt-2 p-2 bg-muted/50 border border-border rounded-md">
                                 <div className="flex items-center gap-2">
                                   <div className="flex-1">
-                                    <SearchableAccountSelector
-                                      value={sale.category_id || sale.suggested_category_id || ""}
-                                      onValueChange={(categoryId) => {
-                                        categorizePosSale({ saleId: sale.id, categoryId });
-                                        setEditingCategoryForSale(null);
-                                      }}
-                                      placeholder="Select category"
-                                      filterByTypes={['revenue', 'liability']}
-                                    />
+                                     <SearchableAccountSelector
+                                       value={sale.category_id || sale.suggested_category_id || ""}
+                                       onValueChange={(categoryId) => {
+                                         const selectedAccount = accounts.find(acc => acc.id === categoryId);
+                                         categorizePosSale({ 
+                                           saleId: sale.id, 
+                                           categoryId,
+                                           accountInfo: selectedAccount ? {
+                                             account_name: selectedAccount.account_name,
+                                             account_code: selectedAccount.account_code,
+                                           } : undefined
+                                         });
+                                         setEditingCategoryForSale(null);
+                                       }}
+                                       placeholder="Select category"
+                                       filterByTypes={['revenue', 'liability']}
+                                     />
                                   </div>
                                   <Button
                                     size="sm"

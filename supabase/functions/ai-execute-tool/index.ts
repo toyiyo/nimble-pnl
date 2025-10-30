@@ -85,10 +85,11 @@ async function executeGetKpis(
     case 'month':
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       break;
-    case 'quarter':
+    case 'quarter': {
       const quarter = Math.floor(now.getMonth() / 3);
       startDate = new Date(now.getFullYear(), quarter * 3, 1);
       break;
+    }
     case 'year':
       startDate = new Date(now.getFullYear(), 0, 1);
       break;
@@ -276,6 +277,283 @@ async function executeGetRecipeAnalytics(
 }
 
 /**
+ * Helper: Calculate cash flow metrics
+ */
+async function calculateCashFlow(
+  args: any,
+  restaurantId: string,
+  supabase: any,
+  results: any
+): Promise<void> {
+  const { start_date, end_date, bank_account_id } = args;
+  
+  // Fetch bank transactions
+  let query = supabase
+    .from('bank_transactions')
+    .select('amount, transaction_date, category_id')
+    .eq('restaurant_id', restaurantId)
+    .gte('transaction_date', start_date)
+    .lte('transaction_date', end_date);
+  
+  if (bank_account_id) {
+    query = query.eq('bank_account_id', bank_account_id);
+  }
+  
+  const { data: transactions, error } = await query;
+  
+  if (error) throw new Error(`Failed to fetch transactions: ${error.message}`);
+  
+  const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
+  const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+  const netCashFlow = inflows - outflows;
+  
+  // Calculate daily average
+  const days = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24));
+  const avgDailyCashFlow = days > 0 ? netCashFlow / days : 0;
+  
+  // Calculate volatility (standard deviation)
+  const dailyFlows: Record<string, number> = {};
+  transactions?.forEach((t: any) => {
+    const date = t.transaction_date;
+    dailyFlows[date] = (dailyFlows[date] || 0) + t.amount;
+  });
+  
+  const flowValues = Object.values(dailyFlows);
+  const mean = flowValues.reduce((sum: number, val: number) => sum + val, 0) / (flowValues.length || 1);
+  const variance = flowValues.reduce((sum: number, val: number) => sum + Math.pow(val - mean, 2), 0) / (flowValues.length || 1);
+  const volatility = Math.sqrt(variance);
+  
+  results.cash_flow = {
+    inflows_7d: inflows,
+    outflows_7d: outflows,
+    net_cash_flow_7d: netCashFlow,
+    avg_daily_cash_flow: avgDailyCashFlow,
+    volatility: volatility,
+    transaction_count: transactions?.length || 0,
+  };
+}
+
+/**
+ * Helper: Calculate revenue health metrics
+ */
+async function calculateRevenueHealth(
+  args: any,
+  restaurantId: string,
+  supabase: any,
+  results: any
+): Promise<void> {
+  const { start_date, end_date, bank_account_id } = args;
+  
+  // Fetch bank transactions that look like revenue deposits
+  let query = supabase
+    .from('bank_transactions')
+    .select('amount, transaction_date, description')
+    .eq('restaurant_id', restaurantId)
+    .gte('transaction_date', start_date)
+    .lte('transaction_date', end_date)
+    .gt('amount', 0);
+  
+  if (bank_account_id) {
+    query = query.eq('bank_account_id', bank_account_id);
+  }
+  
+  const { data: deposits, error } = await query;
+  
+  if (error) throw new Error(`Failed to fetch deposits: ${error.message}`);
+  
+  // Filter for likely revenue deposits (excluding small transfers/refunds)
+  const revenueDeposits = deposits?.filter((d: any) => d.amount > 10) || [];
+  
+  const totalRevenue = revenueDeposits.reduce((sum: number, d: any) => sum + d.amount, 0);
+  const avgDeposit = revenueDeposits.length > 0 ? totalRevenue / revenueDeposits.length : 0;
+  const largestDeposit = revenueDeposits.reduce((max: number, d: any) => Math.max(max, d.amount), 0);
+  
+  // Calculate deposit frequency
+  const dates = revenueDeposits.map((d: any) => new Date(d.transaction_date).getTime()).sort((a, b) => a - b);
+  let totalGap = 0;
+  for (let i = 1; i < dates.length; i++) {
+    totalGap += (dates[i] - dates[i-1]) / (1000 * 60 * 60 * 24); // Convert to days
+  }
+  const avgDaysBetweenDeposits = dates.length > 1 ? totalGap / (dates.length - 1) : 0;
+  
+  results.revenue_health = {
+    deposit_count: revenueDeposits.length,
+    avg_deposit_size: avgDeposit,
+    largest_deposit: largestDeposit,
+    total_revenue: totalRevenue,
+    avg_days_between_deposits: avgDaysBetweenDeposits,
+    deposit_frequency_score: avgDaysBetweenDeposits < 2 ? 5 : avgDaysBetweenDeposits < 4 ? 4 : avgDaysBetweenDeposits < 7 ? 3 : 2,
+  };
+}
+
+/**
+ * Helper: Calculate spending metrics
+ */
+async function calculateSpending(
+  args: any,
+  restaurantId: string,
+  supabase: any,
+  results: any
+): Promise<void> {
+  const { start_date, end_date, bank_account_id } = args;
+  
+  // Fetch expense transactions
+  let query = supabase
+    .from('bank_transactions')
+    .select(`
+      amount, 
+      transaction_date, 
+      description,
+      merchant_name,
+      category:chart_of_accounts!category_id(id, account_name, account_code)
+    `)
+    .eq('restaurant_id', restaurantId)
+    .gte('transaction_date', start_date)
+    .lte('transaction_date', end_date)
+    .lt('amount', 0);
+  
+  if (bank_account_id) {
+    query = query.eq('bank_account_id', bank_account_id);
+  }
+  
+  const { data: expenses, error } = await query;
+  
+  if (error) throw new Error(`Failed to fetch expenses: ${error.message}`);
+  
+  const totalExpenses = Math.abs(expenses?.reduce((sum: number, e: any) => sum + e.amount, 0) || 0);
+  
+  // Group by merchant/vendor
+  const byVendor: Record<string, number> = {};
+  expenses?.forEach((e: any) => {
+    const vendor = e.merchant_name || e.description || 'Unknown';
+    byVendor[vendor] = (byVendor[vendor] || 0) + Math.abs(e.amount);
+  });
+  
+  const topVendors = Object.entries(byVendor)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 10)
+    .map(([name, amount]) => ({ name, amount }));
+  
+  // Group by category
+  const byCategory: Record<string, number> = {};
+  expenses?.forEach((e: any) => {
+    const category = e.category?.account_name || 'Uncategorized';
+    byCategory[category] = (byCategory[category] || 0) + Math.abs(e.amount);
+  });
+  
+  results.spending = {
+    total_expenses: totalExpenses,
+    expense_count: expenses?.length || 0,
+    avg_transaction: expenses?.length ? totalExpenses / expenses.length : 0,
+    top_vendors: topVendors,
+    by_category: Object.entries(byCategory).map(([name, amount]) => ({ name, amount })),
+  };
+}
+
+/**
+ * Helper: Calculate liquidity metrics
+ */
+async function calculateLiquidity(
+  args: any,
+  restaurantId: string,
+  supabase: any,
+  results: any
+): Promise<void> {
+  const { bank_account_id } = args;
+  
+  // Fetch current bank balances
+  const { data: banks, error: banksError } = await supabase
+    .from('connected_banks')
+    .select(`
+      id,
+      institution_name,
+      bank_account_balances (
+        account_name,
+        current_balance
+      )
+    `)
+    .eq('restaurant_id', restaurantId)
+    .eq('status', 'connected');
+  
+  if (banksError) throw new Error(`Failed to fetch banks: ${banksError.message}`);
+  
+  const totalCash = banks?.reduce((sum: number, bank: any) => {
+    const balance = bank.bank_account_balances?.[0]?.current_balance || 0;
+    return sum + balance;
+  }, 0) || 0;
+  
+  // Calculate burn rate from recent outflows
+  let outflowQuery = supabase
+    .from('bank_transactions')
+    .select('amount, transaction_date')
+    .eq('restaurant_id', restaurantId)
+    .lt('amount', 0)
+    .gte('transaction_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+  
+  if (bank_account_id) {
+    outflowQuery = outflowQuery.eq('bank_account_id', bank_account_id);
+  }
+  
+  const { data: recentOutflows } = await outflowQuery;
+  
+  const totalOutflows = Math.abs(recentOutflows?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+  const avgDailyOutflow = totalOutflows / 30;
+  const daysOfCash = avgDailyOutflow > 0 ? totalCash / avgDailyOutflow : 999;
+  
+  results.liquidity = {
+    current_balance: totalCash,
+    avg_daily_outflow: avgDailyOutflow,
+    days_of_cash: Math.round(daysOfCash),
+    runway_status: daysOfCash > 60 ? 'healthy' : daysOfCash > 30 ? 'caution' : 'critical',
+    projected_zero_date: daysOfCash < 999 ? new Date(Date.now() + daysOfCash * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : null,
+  };
+}
+
+/**
+ * Helper: Calculate prediction metrics
+ */
+async function calculatePredictions(
+  args: any,
+  restaurantId: string,
+  supabase: any,
+  results: any
+): Promise<void> {
+  const { bank_account_id } = args;
+  
+  // Simple predictions based on historical patterns
+  let query = supabase
+    .from('bank_transactions')
+    .select('amount, transaction_date, description, merchant_name')
+    .eq('restaurant_id', restaurantId)
+    .gte('transaction_date', new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+  
+  if (bank_account_id) {
+    query = query.eq('bank_account_id', bank_account_id);
+  }
+  
+  const { data: historical } = await query;
+  
+  // Find recurring patterns
+  const depositPattern = historical?.filter((t: any) => t.amount > 100);
+  const avgDepositSize = depositPattern?.reduce((sum: number, t: any) => sum + t.amount, 0) / (depositPattern?.length || 1);
+  
+  // Calculate days since last deposit
+  const lastDepositDate = depositPattern?.reduce((latest: string, t: any) => {
+    return t.transaction_date > latest ? t.transaction_date : latest;
+  }, '1970-01-01');
+  
+  const daysSinceDeposit = Math.floor((Date.now() - new Date(lastDepositDate).getTime()) / (1000 * 60 * 60 * 24));
+  
+  results.predictions = {
+    next_deposit_prediction: {
+      expected_days_from_now: Math.max(0, 7 - daysSinceDeposit), // Assume weekly deposits
+      expected_amount: avgDepositSize,
+      confidence: depositPattern?.length > 4 ? 'high' : depositPattern?.length > 2 ? 'medium' : 'low',
+    },
+  };
+}
+
+/**
  * Execute get_financial_intelligence tool
  */
 async function executeGetFinancialIntelligence(
@@ -288,255 +566,25 @@ async function executeGetFinancialIntelligence(
   const results: any = {};
   
   try {
-    // Helper to calculate metrics based on type
-    const calculateMetrics = async (type: string) => {
-      switch (type) {
-        case 'cash_flow':
-        case 'all': {
-          // Fetch bank transactions
-          let query = supabase
-            .from('bank_transactions')
-            .select('amount, transaction_date, category_id')
-            .eq('restaurant_id', restaurantId)
-            .gte('transaction_date', start_date)
-            .lte('transaction_date', end_date);
-          
-          if (bank_account_id) {
-            query = query.eq('bank_account_id', bank_account_id);
-          }
-          
-          const { data: transactions, error } = await query;
-          
-          if (error) throw new Error(`Failed to fetch transactions: ${error.message}`);
-          
-          const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-          const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
-          const netCashFlow = inflows - outflows;
-          
-          // Calculate daily average
-          const days = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24));
-          const avgDailyCashFlow = days > 0 ? netCashFlow / days : 0;
-          
-          // Calculate volatility (standard deviation)
-          const dailyFlows: Record<string, number> = {};
-          transactions?.forEach((t: any) => {
-            const date = t.transaction_date;
-            dailyFlows[date] = (dailyFlows[date] || 0) + t.amount;
-          });
-          
-          const flowValues = Object.values(dailyFlows);
-          const mean = flowValues.reduce((sum: number, val: number) => sum + val, 0) / (flowValues.length || 1);
-          const variance = flowValues.reduce((sum: number, val: number) => sum + Math.pow(val - mean, 2), 0) / (flowValues.length || 1);
-          const volatility = Math.sqrt(variance);
-          
-          results.cash_flow = {
-            inflows_7d: inflows,
-            outflows_7d: outflows,
-            net_cash_flow_7d: netCashFlow,
-            avg_daily_cash_flow: avgDailyCashFlow,
-            volatility: volatility,
-            transaction_count: transactions?.length || 0,
-          };
-          
-          if (type !== 'all') return;
-        }
-        
-        case 'revenue_health':
-        case 'all': {
-          // Fetch bank transactions that look like revenue deposits
-          let query = supabase
-            .from('bank_transactions')
-            .select('amount, transaction_date, description')
-            .eq('restaurant_id', restaurantId)
-            .gte('transaction_date', start_date)
-            .lte('transaction_date', end_date)
-            .gt('amount', 0);
-          
-          if (bank_account_id) {
-            query = query.eq('bank_account_id', bank_account_id);
-          }
-          
-          const { data: deposits, error } = await query;
-          
-          if (error) throw new Error(`Failed to fetch deposits: ${error.message}`);
-          
-          // Filter for likely revenue deposits (excluding small transfers/refunds)
-          const revenueDeposits = deposits?.filter((d: any) => d.amount > 10) || [];
-          
-          const totalRevenue = revenueDeposits.reduce((sum: number, d: any) => sum + d.amount, 0);
-          const avgDeposit = revenueDeposits.length > 0 ? totalRevenue / revenueDeposits.length : 0;
-          const largestDeposit = revenueDeposits.reduce((max: number, d: any) => Math.max(max, d.amount), 0);
-          
-          // Calculate deposit frequency
-          const dates = revenueDeposits.map((d: any) => new Date(d.transaction_date).getTime()).sort((a, b) => a - b);
-          let totalGap = 0;
-          for (let i = 1; i < dates.length; i++) {
-            totalGap += (dates[i] - dates[i-1]) / (1000 * 60 * 60 * 24); // Convert to days
-          }
-          const avgDaysBetweenDeposits = dates.length > 1 ? totalGap / (dates.length - 1) : 0;
-          
-          results.revenue_health = {
-            deposit_count: revenueDeposits.length,
-            avg_deposit_size: avgDeposit,
-            largest_deposit: largestDeposit,
-            total_revenue: totalRevenue,
-            avg_days_between_deposits: avgDaysBetweenDeposits,
-            deposit_frequency_score: avgDaysBetweenDeposits < 2 ? 5 : avgDaysBetweenDeposits < 4 ? 4 : avgDaysBetweenDeposits < 7 ? 3 : 2,
-          };
-          
-          if (type !== 'all') return;
-        }
-        
-        case 'spending':
-        case 'all': {
-          // Fetch expense transactions
-          let query = supabase
-            .from('bank_transactions')
-            .select(`
-              amount, 
-              transaction_date, 
-              description,
-              merchant_name,
-              category:chart_of_accounts!category_id(id, account_name, account_code)
-            `)
-            .eq('restaurant_id', restaurantId)
-            .gte('transaction_date', start_date)
-            .lte('transaction_date', end_date)
-            .lt('amount', 0);
-          
-          if (bank_account_id) {
-            query = query.eq('bank_account_id', bank_account_id);
-          }
-          
-          const { data: expenses, error } = await query;
-          
-          if (error) throw new Error(`Failed to fetch expenses: ${error.message}`);
-          
-          const totalExpenses = Math.abs(expenses?.reduce((sum: number, e: any) => sum + e.amount, 0) || 0);
-          
-          // Group by merchant/vendor
-          const byVendor: Record<string, number> = {};
-          expenses?.forEach((e: any) => {
-            const vendor = e.merchant_name || e.description || 'Unknown';
-            byVendor[vendor] = (byVendor[vendor] || 0) + Math.abs(e.amount);
-          });
-          
-          const topVendors = Object.entries(byVendor)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, 10)
-            .map(([name, amount]) => ({ name, amount }));
-          
-          // Group by category
-          const byCategory: Record<string, number> = {};
-          expenses?.forEach((e: any) => {
-            const category = e.category?.account_name || 'Uncategorized';
-            byCategory[category] = (byCategory[category] || 0) + Math.abs(e.amount);
-          });
-          
-          results.spending = {
-            total_expenses: totalExpenses,
-            expense_count: expenses?.length || 0,
-            avg_transaction: expenses?.length ? totalExpenses / expenses.length : 0,
-            top_vendors: topVendors,
-            by_category: Object.entries(byCategory).map(([name, amount]) => ({ name, amount })),
-          };
-          
-          if (type !== 'all') return;
-        }
-        
-        case 'liquidity':
-        case 'all': {
-          // Fetch current bank balances
-          const { data: banks, error: banksError } = await supabase
-            .from('connected_banks')
-            .select(`
-              id,
-              institution_name,
-              bank_account_balances (
-                account_name,
-                current_balance
-              )
-            `)
-            .eq('restaurant_id', restaurantId)
-            .eq('status', 'connected');
-          
-          if (banksError) throw new Error(`Failed to fetch banks: ${banksError.message}`);
-          
-          const totalCash = banks?.reduce((sum: number, bank: any) => {
-            const balance = bank.bank_account_balances?.[0]?.current_balance || 0;
-            return sum + balance;
-          }, 0) || 0;
-          
-          // Calculate burn rate from recent outflows
-          let outflowQuery = supabase
-            .from('bank_transactions')
-            .select('amount, transaction_date')
-            .eq('restaurant_id', restaurantId)
-            .lt('amount', 0)
-            .gte('transaction_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-          
-          if (bank_account_id) {
-            outflowQuery = outflowQuery.eq('bank_account_id', bank_account_id);
-          }
-          
-          const { data: recentOutflows } = await outflowQuery;
-          
-          const totalOutflows = Math.abs(recentOutflows?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
-          const avgDailyOutflow = totalOutflows / 30;
-          const daysOfCash = avgDailyOutflow > 0 ? totalCash / avgDailyOutflow : 999;
-          
-          results.liquidity = {
-            current_balance: totalCash,
-            avg_daily_outflow: avgDailyOutflow,
-            days_of_cash: Math.round(daysOfCash),
-            runway_status: daysOfCash > 60 ? 'healthy' : daysOfCash > 30 ? 'caution' : 'critical',
-            projected_zero_date: daysOfCash < 999 ? new Date(Date.now() + daysOfCash * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : null,
-          };
-          
-          if (type !== 'all') return;
-        }
-        
-        case 'predictions':
-        case 'all': {
-          // Simple predictions based on historical patterns
-          let query = supabase
-            .from('bank_transactions')
-            .select('amount, transaction_date, description, merchant_name')
-            .eq('restaurant_id', restaurantId)
-            .gte('transaction_date', new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-          
-          if (bank_account_id) {
-            query = query.eq('bank_account_id', bank_account_id);
-          }
-          
-          const { data: historical } = await query;
-          
-          // Find recurring patterns
-          const depositPattern = historical?.filter((t: any) => t.amount > 100);
-          const avgDepositSize = depositPattern?.reduce((sum: number, t: any) => sum + t.amount, 0) / (depositPattern?.length || 1);
-          
-          // Calculate days since last deposit
-          const lastDepositDate = depositPattern?.reduce((latest: string, t: any) => {
-            return t.transaction_date > latest ? t.transaction_date : latest;
-          }, '1970-01-01');
-          
-          const daysSinceDeposit = Math.floor((Date.now() - new Date(lastDepositDate).getTime()) / (1000 * 60 * 60 * 24));
-          
-          results.predictions = {
-            next_deposit_prediction: {
-              expected_days_from_now: Math.max(0, 7 - daysSinceDeposit), // Assume weekly deposits
-              expected_amount: avgDepositSize,
-              confidence: depositPattern?.length > 4 ? 'high' : depositPattern?.length > 2 ? 'medium' : 'low',
-            },
-          };
-        }
-      }
-    };
+    // Call appropriate metric calculation functions based on analysis_type
+    if (analysis_type === 'all' || analysis_type === 'cash_flow') {
+      await calculateCashFlow(args, restaurantId, supabase, results);
+    }
     
-    if (analysis_type === 'all') {
-      await calculateMetrics('all');
-    } else {
-      await calculateMetrics(analysis_type);
+    if (analysis_type === 'all' || analysis_type === 'revenue_health') {
+      await calculateRevenueHealth(args, restaurantId, supabase, results);
+    }
+    
+    if (analysis_type === 'all' || analysis_type === 'spending') {
+      await calculateSpending(args, restaurantId, supabase, results);
+    }
+    
+    if (analysis_type === 'all' || analysis_type === 'liquidity') {
+      await calculateLiquidity(args, restaurantId, supabase, results);
+    }
+    
+    if (analysis_type === 'all' || analysis_type === 'predictions') {
+      await calculatePredictions(args, restaurantId, supabase, results);
     }
     
     return {

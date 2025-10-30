@@ -437,6 +437,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                   break;
 
                 case 'message_end':
+                  console.log('[AI Chat] Message end, final content length:', currentMessageRef.current.length);
                   // If we have tool calls, we need to update the assistant message and continue the conversation
                   if (toolCalls.length > 0) {
                     setMessages(prev => 
@@ -447,7 +448,9 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                       )
                     );
                   }
-                  currentMessageRef.current = '';
+                  // Don't reset currentMessageRef here - let it persist until all batched state updates complete
+                  // It will be reset in message_start when the next message begins
+                  // currentMessageRef.current = '';
                   break;
 
                 case 'error':

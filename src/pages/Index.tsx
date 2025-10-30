@@ -41,7 +41,7 @@ const Index = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, getMonthlyData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
   const { lowStockItems, reorderAlerts, loading: alertsLoading } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
-  const { data: connectedBanks } = useConnectedBanks(selectedRestaurant?.restaurant_id || null);
+  const { data: connectedBanks, isLoading: banksLoading } = useConnectedBanks(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
@@ -314,12 +314,12 @@ const Index = () => {
               />
 
               {/* Bank Snapshot Section */}
-              {connectedBanks && connectedBanks.length > 0 ? (
+              {!banksLoading && connectedBanks && connectedBanks.length > 0 ? (
                 <BankSnapshotSection 
                   restaurantId={selectedRestaurant.restaurant_id}
                   selectedPeriod={selectedPeriod}
                 />
-              ) : (
+              ) : !banksLoading && (!connectedBanks || connectedBanks.length === 0) ? (
                 <Card className="border-dashed border-2 border-cyan-500/30 bg-gradient-to-br from-cyan-500/5 to-transparent">
                   <CardContent className="py-12 text-center">
                     <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-transparent mb-4">
@@ -338,7 +338,7 @@ const Index = () => {
                     </Button>
                   </CardContent>
                 </Card>
-              )}
+              ) : null}
 
               {/* Key Metrics */}
               <div className="space-y-4">

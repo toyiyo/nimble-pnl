@@ -63,6 +63,7 @@ export async function fetchInventoryTransactions(
     supplierId,
     minCost,
     maxCost,
+    searchTerm,
   } = query;
 
   // Build base query
@@ -114,6 +115,18 @@ export async function fetchInventoryTransactions(
 
   if (maxCost !== undefined) {
     dbQuery = dbQuery.lte('total_cost', maxCost);
+  }
+
+  // Apply search term filter across relevant text fields
+  if (searchTerm) {
+    const term = searchTerm.trim();
+    if (term) {
+      // Filter on direct columns: reason, reference_id, performed_by
+      // Note: Product and supplier names would require an RPC function for efficient filtering
+      dbQuery = dbQuery.or(
+        `reason.ilike.%${term}%,reference_id.ilike.%${term}%,performed_by.ilike.%${term}%`
+      );
+    }
   }
 
   dbQuery = dbQuery.limit(limit);

@@ -21,6 +21,7 @@ import { usePnLAnalytics } from '@/hooks/usePnLAnalytics';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 
 interface DetailedPnLBreakdownProps {
   restaurantId: string;
@@ -47,6 +48,13 @@ interface PnLRow {
 
 export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo }: DetailedPnLBreakdownProps) {
   const { data, loading } = usePnLAnalytics(restaurantId, { days, dateFrom, dateTo });
+  
+  // Fetch revenue breakdown
+  const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
+    restaurantId,
+    dateFrom || new Date(new Date().setDate(new Date().getDate() - days)),
+    dateTo || new Date()
+  );
   
   // Calculate actual days if dates are provided (inclusive, minimum 1)
   const actualDays = dateFrom && dateTo 
@@ -104,19 +112,64 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
     };
 
     return [
-      // SALES SECTION
+      // SALES SECTION - Enhanced with Revenue Breakdown
       {
         id: 'sales',
-        label: 'Total Sales',
-        value: current.revenue,
+        label: revenueBreakdown && revenueBreakdown.has_categorization_data 
+          ? 'Total Sales (Gross Revenue)' 
+          : 'Total Sales',
+        value: revenueBreakdown && revenueBreakdown.has_categorization_data
+          ? revenueBreakdown.totals.gross_revenue
+          : current.revenue,
         percentage: 100,
         previousValue: previous.revenue,
         previousPercentage: 100,
         type: 'header',
         level: 0,
         trend: getTrend('net_revenue'),
-        insight: `Revenue ${data.comparison.change.revenue_pct >= 0 ? 'up' : 'down'} ${Math.abs(data.comparison.change.revenue_pct).toFixed(1)}% vs previous ${actualDays} days`,
+        insight: revenueBreakdown && revenueBreakdown.has_categorization_data
+          ? `Gross revenue from ${revenueBreakdown.revenue_categories.reduce((sum, c) => sum + c.transaction_count, 0)} transactions across ${revenueBreakdown.revenue_categories.length} categories`
+          : `Revenue ${data.comparison.change.revenue_pct >= 0 ? 'up' : 'down'} ${Math.abs(data.comparison.change.revenue_pct).toFixed(1)}% vs previous ${actualDays} days`,
         status: data.comparison.change.revenue_pct >= 0 ? 'good' : 'warning',
+        // Add revenue categories as children if available
+        children: revenueBreakdown && revenueBreakdown.has_categorization_data
+          ? [
+              ...revenueBreakdown.revenue_categories.map(cat => ({
+                id: `sales-${cat.account_id}`,
+                label: `${cat.account_code} - ${cat.account_name}`,
+                value: cat.total_amount,
+                percentage: (cat.total_amount / revenueBreakdown.totals.gross_revenue) * 100,
+                type: 'line-item' as const,
+                level: 1,
+                insight: `${cat.transaction_count} transactions • ${(cat.total_amount / revenueBreakdown.totals.gross_revenue * 100).toFixed(1)}% of gross`,
+                status: 'neutral' as const,
+              })),
+              ...(revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories.length > 0 
+                ? [
+                    {
+                      id: 'sales-deductions',
+                      label: 'Less: Discounts & Refunds',
+                      value: -(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds),
+                      percentage: -((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue) * 100,
+                      type: 'line-item' as const,
+                      level: 1,
+                      insight: `${((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue * 100).toFixed(1)}% of gross revenue`,
+                      status: (revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue > 0.03 ? 'warning' as const : 'neutral' as const,
+                    },
+                  ]
+                : []),
+              {
+                id: 'sales-net',
+                label: 'Net Sales Revenue',
+                value: revenueBreakdown.totals.net_revenue,
+                percentage: (revenueBreakdown.totals.net_revenue / revenueBreakdown.totals.gross_revenue) * 100,
+                type: 'subtotal' as const,
+                level: 1,
+                insight: `Final revenue after all deductions`,
+                status: 'good' as const,
+              },
+            ]
+          : undefined,
       },
       
       // COGS SECTION
@@ -392,7 +445,12 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
                           )}
                         </button>
                       )}
-                      <span className="text-sm">{row.label}</span>
+                      <span className={cn(
+                        "text-sm",
+                        row.type === 'subtotal' && "font-semibold italic"
+                      )}>
+                        {row.label}
+                      </span>
                     </div>
 
                     <div className="col-span-2 text-right text-sm font-mono">
@@ -487,6 +545,50 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
                   </div>
                   );
                 })}
+                
+                {/* Render children (line items) if section is expanded */}
+                {pnlStructure.map((row) => 
+                  row.children && expandedSections.has(row.id) && row.children.map((child) => {
+                    const childLevelIndentClass = ['pl-0','pl-4','pl-8','pl-12','pl-16'][Math.min(child.level, 4)];
+                    return (
+                      <div
+                        key={child.id}
+                        className={cn(
+                          "grid grid-cols-12 gap-2 px-4 py-2 rounded-lg transition-colors hover:bg-muted/30",
+                          child.type === 'subtotal' && "font-semibold bg-muted/20 border-t mt-1"
+                        )}
+                      >
+                        <div className={cn("col-span-4 flex items-center gap-2", childLevelIndentClass)}>
+                          <span className={cn(
+                            "text-sm",
+                            child.type === 'subtotal' && "font-semibold italic"
+                          )}>
+                            {child.label}
+                          </span>
+                        </div>
+
+                        <div className={cn(
+                          "col-span-2 text-right text-sm font-mono",
+                          child.value < 0 && "text-red-600"
+                        )}>
+                          {child.value < 0 ? '-' : ''}${Math.abs(child.value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+
+                        <div className="col-span-1 text-right text-sm font-mono">
+                          {child.percentage.toFixed(1)}%
+                        </div>
+
+                        <div className="col-span-1" />
+                        <div className="col-span-1" />
+                        <div className="col-span-2" />
+
+                        <div className="col-span-1 flex items-center justify-center">
+                          {getStatusIcon(child.status)}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </TooltipProvider>
             </div>
           </div>

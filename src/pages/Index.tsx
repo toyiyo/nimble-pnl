@@ -9,6 +9,7 @@ import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
+import { MetricIcon } from '@/components/MetricIcon';
 import { DashboardQuickActions } from '@/components/DashboardQuickActions';
 import { DashboardInsights } from '@/components/DashboardInsights';
 import { DashboardMiniChart } from '@/components/DashboardMiniChart';
@@ -18,6 +19,7 @@ import { PeriodSelector, Period } from '@/components/PeriodSelector';
 import { MonthlyBreakdownTable } from '@/components/MonthlyBreakdownTable';
 import { BankSnapshotSection } from '@/components/BankSnapshotSection';
 import { useConnectedBanks } from '@/hooks/useConnectedBanks';
+import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import { format, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import {
   DollarSign, 
@@ -50,6 +52,13 @@ const Index = () => {
     to: endOfDay(new Date()),
     label: 'Today',
   });
+
+  // Fetch revenue breakdown for selected period
+  const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
+    selectedRestaurant?.restaurant_id || null,
+    selectedPeriod.from,
+    selectedPeriod.to
+  );
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -494,6 +503,132 @@ const Index = () => {
 
               {/* Quick Actions */}
               <DashboardQuickActions restaurantId={selectedRestaurant.restaurant_id} />
+
+              {/* Revenue Mix Section - Enhanced with Categorized POS Sales */}
+              {!revenueLoading && revenueBreakdown && revenueBreakdown.has_categorization_data && (
+                <Card className="bg-gradient-to-br from-emerald-50/50 via-background to-emerald-50/30 dark:from-emerald-950/20 dark:via-background dark:to-emerald-950/10 border-emerald-200 dark:border-emerald-900">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <MetricIcon icon={DollarSign} variant="emerald" />
+                        <div>
+                          <CardTitle className="text-lg">Revenue Mix</CardTitle>
+                          <CardDescription>
+                            Breakdown by category • {selectedPeriod.label}
+                          </CardDescription>
+                        </div>
+                      </div>
+                      {revenueBreakdown.categorization_rate < 100 && (
+                        <Badge variant="outline" className="gap-1">
+                          <Activity className="h-3 w-3" />
+                          {revenueBreakdown.categorization_rate.toFixed(0)}% categorized
+                        </Badge>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Gross vs Net Revenue */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="p-4 rounded-lg bg-background/50">
+                        <p className="text-sm text-muted-foreground mb-1">Gross Revenue</p>
+                        <p className="text-2xl font-bold text-emerald-600">
+                          ${revenueBreakdown.totals.gross_revenue.toLocaleString()}
+                        </p>
+                      </div>
+                      {(revenueBreakdown.totals.total_discounts > 0 || revenueBreakdown.totals.total_refunds > 0) && (
+                        <div className="p-4 rounded-lg bg-background/50">
+                          <p className="text-sm text-muted-foreground mb-1">
+                            Discounts & Refunds
+                          </p>
+                          <p className="text-2xl font-bold text-red-600">
+                            -${(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds).toLocaleString()}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue * 100).toFixed(1)}% of gross
+                          </p>
+                        </div>
+                      )}
+                      <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-200 dark:border-emerald-800">
+                        <p className="text-sm text-muted-foreground mb-1">Net Revenue</p>
+                        <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+                          ${revenueBreakdown.totals.net_revenue.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Top Revenue Categories */}
+                    {revenueBreakdown.revenue_categories.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                          <div className="h-1 w-6 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full" />
+                          Revenue by Category
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {revenueBreakdown.revenue_categories.slice(0, 6).map((category) => (
+                            <div 
+                              key={category.account_id}
+                              className="p-3 rounded-lg bg-background/50 hover:bg-background/80 transition-colors"
+                            >
+                              <div className="flex items-start justify-between mb-1">
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium truncate">{category.account_name}</p>
+                                  <p className="text-xs text-muted-foreground">{category.account_code}</p>
+                                </div>
+                                <Badge variant="outline" className="ml-2 shrink-0">
+                                  {(category.total_amount / revenueBreakdown.totals.gross_revenue * 100).toFixed(0)}%
+                                </Badge>
+                              </div>
+                              <p className="text-lg font-bold text-emerald-600">
+                                ${category.total_amount.toLocaleString()}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {category.transaction_count} transactions
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Pass-Through Collections */}
+                    {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) && (
+                      <div className="pt-4 border-t">
+                        <h4 className="text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">
+                          Other Collections (Pass-Through)
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {revenueBreakdown.totals.sales_tax > 0 && (
+                            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-sm font-medium">Sales Tax Collected</p>
+                                <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                                  Liability
+                                </Badge>
+                              </div>
+                              <p className="text-xl font-bold text-amber-700 dark:text-amber-400">
+                                ${revenueBreakdown.totals.sales_tax.toLocaleString()}
+                              </p>
+                            </div>
+                          )}
+                          {revenueBreakdown.totals.tips > 0 && (
+                            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-sm font-medium">Tips Collected</p>
+                                <Badge variant="outline" className="text-xs text-blue-600 border-blue-300">
+                                  Liability
+                                </Badge>
+                              </div>
+                              <p className="text-xl font-bold text-blue-700 dark:text-blue-400">
+                                ${revenueBreakdown.totals.tips.toLocaleString()}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Monthly Performance Table */}
               <MonthlyBreakdownTable monthlyData={monthlyData} />

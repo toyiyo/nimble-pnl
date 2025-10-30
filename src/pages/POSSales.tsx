@@ -742,7 +742,7 @@ export default function POSSales() {
                               )}
                               {sale.is_categorized && sale.chart_account && (
                                 <div className="flex items-center gap-2">
-                                  <Badge variant="default" className="bg-primary/10 text-primary-foreground border-primary/30">
+                                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
                                     {sale.chart_account.account_code} - {sale.chart_account.account_name}
                                   </Badge>
                                   <Button

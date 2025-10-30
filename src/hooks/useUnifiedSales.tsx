@@ -24,7 +24,13 @@ export const useUnifiedSales = (restaurantId: string | null) => {
         .from('unified_sales')
         .select(`
           *,
-          chart_account:chart_of_accounts!suggested_category_id (
+          suggested_chart_account:chart_of_accounts!suggested_category_id (
+            id,
+            account_code,
+            account_name,
+            account_type
+          ),
+          approved_chart_account:chart_of_accounts!category_id (
             id,
             account_code,
             account_name,
@@ -64,12 +70,15 @@ export const useUnifiedSales = (restaurantId: string | null) => {
         createdAt: sale.created_at,
         source: sale.pos_system,
         // AI Categorization fields
+        category_id: sale.category_id,
         suggested_category_id: sale.suggested_category_id,
         ai_confidence: sale.ai_confidence as "high" | "medium" | "low" | undefined,
         ai_reasoning: sale.ai_reasoning,
         item_type: sale.item_type as "sale" | "tip" | "tax" | "discount" | "comp" | "service_charge" | "other" | undefined,
         is_categorized: sale.is_categorized || false,
-        chart_account: sale.chart_account,
+        is_split: sale.is_split || false,
+        // Use approved_chart_account if categorized, otherwise suggested_chart_account
+        chart_account: sale.is_categorized ? sale.approved_chart_account : sale.suggested_chart_account,
       }));
 
       setSales(transformedSales);

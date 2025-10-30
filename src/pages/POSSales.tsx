@@ -730,6 +730,28 @@ export default function POSSales() {
                                   No Recipe
                                 </Badge>
                               )}
+                              {sale.suggested_category_id && !sale.is_categorized && (
+                                <Badge className="text-xs bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">
+                                  <Sparkles className="h-3 w-3 mr-1" />
+                                  AI Suggested
+                                </Badge>
+                              )}
+                              {sale.is_categorized && (
+                                <Badge className="text-xs bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
+                                  Categorized
+                                </Badge>
+                              )}
+                              {sale.ai_confidence && sale.suggested_category_id && !sale.is_categorized && (
+                                <Badge className={`text-xs ${
+                                  sale.ai_confidence === 'high' 
+                                    ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20'
+                                    : sale.ai_confidence === 'medium'
+                                    ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20'
+                                    : 'bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20'
+                                }`}>
+                                  {sale.ai_confidence}
+                                </Badge>
+                              )}
                             </div>
                             <div className="text-sm text-muted-foreground">
                               {(() => {
@@ -746,6 +768,41 @@ export default function POSSales() {
                                 </>
                               )}
                             </div>
+                            {sale.suggested_category_id && !sale.is_categorized && sale.chart_account && (
+                              <div className="mt-2 p-2 bg-primary/5 border border-primary/10 rounded-md">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="text-xs text-muted-foreground flex-1">
+                                    <span className="font-medium text-foreground">AI Suggestion:</span> {sale.chart_account.account_name} ({sale.chart_account.account_code})
+                                    {sale.ai_reasoning && <div className="mt-1 text-xs">{sale.ai_reasoning}</div>}
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="default"
+                                      className="text-xs h-7 px-2"
+                                      onClick={() => {
+                                        const { mutate } = useCategorizePosSale();
+                                        mutate({ saleId: sale.id, categoryId: sale.suggested_category_id! });
+                                      }}
+                                    >
+                                      <Check className="h-3 w-3 mr-1" />
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-xs h-7 px-2"
+                                      onClick={() => {
+                                        const { mutate } = useCategorizePosSale();
+                                        mutate({ saleId: sale.id, categoryId: sale.suggested_category_id! });
+                                      }}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
                             {(sale.posSystem === "manual" || sale.posSystem === "manual_upload") &&

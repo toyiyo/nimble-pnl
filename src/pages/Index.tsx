@@ -3,10 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
+import { useBankTransactions } from '@/hooks/useBankTransactions';
+import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -20,6 +23,9 @@ import { MonthlyBreakdownTable } from '@/components/MonthlyBreakdownTable';
 import { BankSnapshotSection } from '@/components/BankSnapshotSection';
 import { useConnectedBanks } from '@/hooks/useConnectedBanks';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
+import { CriticalAlertsBar } from '@/components/dashboard/CriticalAlertsBar';
+import { TodaysPulseWidget } from '@/components/dashboard/TodaysPulseWidget';
+import { OperationsHealthCard } from '@/components/dashboard/OperationsHealthCard';
 import { format, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import {
   DollarSign, 
@@ -35,7 +41,9 @@ import {
   Calendar,
   CheckCircle2,
   Sparkles,
-  Landmark
+  Landmark,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 const Index = () => {
@@ -44,7 +52,15 @@ const Index = () => {
   const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, getMonthlyData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
   const { lowStockItems, reorderAlerts, loading: alertsLoading } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
   const { data: connectedBanks, isLoading: banksLoading } = useConnectedBanks(selectedRestaurant?.restaurant_id || null);
+  const { data: transactionsData } = useBankTransactions('for_review');
+  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
+
+  // Collapsible section states
+  const [metricsOpen, setMetricsOpen] = useState(true);
+  const [trendsOpen, setTrendsOpen] = useState(true);
+  const [revenueOpen, setRevenueOpen] = useState(true);
+  const [monthlyOpen, setMonthlyOpen] = useState(false);
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
     type: 'today',
@@ -138,6 +154,85 @@ const Index = () => {
   const todaysData = getTodaysData();
   const averages = getAverages(7);
   const recentData = getGroupedPnLData().slice(0, 30);
+
+  // Calculate available cash from connected banks
+  const availableCash = useMemo(() => {
+    return connectedBanks?.reduce((total, bank) => {
+      const latestBalance = bank.bank_account_balances?.[0]?.current_balance || 0;
+      return total + latestBalance;
+    }, 0) || 0;
+  }, [connectedBanks]);
+
+  // Calculate Today's estimated profit
+  const todayEstimatedProfit = useMemo(() => {
+    if (!todaysData) return 0;
+    return todaysData.net_revenue - todaysData.food_cost - todaysData.labor_cost;
+  }, [todaysData]);
+
+  // Generate Critical Alerts
+  const criticalAlerts = useMemo(() => {
+    const alerts: Array<{
+      id: string;
+      type: "cash" | "cost" | "inventory" | "operations";
+      severity: "critical" | "warning";
+      title: string;
+      description: string;
+      action?: { label: string; path: string };
+    }> = [];
+
+    // Cash runway alert
+    const dailyAvgSpending = 2000; // This should be calculated from actual data
+    const runway = availableCash / dailyAvgSpending;
+    if (runway < 30 && runway > 0) {
+      alerts.push({
+        id: "cash-runway",
+        type: "cash",
+        severity: runway < 14 ? "critical" : "warning",
+        title: `${Math.floor(runway)} days of cash runway`,
+        description: "Monitor cash flow closely",
+        action: { label: "View Banking", path: "/banking" },
+      });
+    }
+
+    // Prime cost alert
+    if (periodData && periodData.prime_cost_percentage > 65) {
+      alerts.push({
+        id: "prime-cost",
+        type: "cost",
+        severity: periodData.prime_cost_percentage > 70 ? "critical" : "warning",
+        title: "Prime cost above target",
+        description: `At ${periodData.prime_cost_percentage.toFixed(1)}% (target: 60-65%)`,
+        action: { label: "View Reports", path: "/reports" },
+      });
+    }
+
+    // Inventory alerts
+    if (reorderAlerts.length > 10) {
+      alerts.push({
+        id: "reorder",
+        type: "inventory",
+        severity: reorderAlerts.length > 20 ? "critical" : "warning",
+        title: `${reorderAlerts.length} items need reorder`,
+        description: "Prevent stockouts",
+        action: { label: "View Inventory", path: "/inventory" },
+      });
+    }
+
+    // Unmapped POS items
+    const unmappedCount = unmappedItems?.length || 0;
+    if (unmappedCount > 20) {
+      alerts.push({
+        id: "unmapped-pos",
+        type: "operations",
+        severity: unmappedCount > 50 ? "critical" : "warning",
+        title: `${unmappedCount} POS items unmapped`,
+        description: "Map items for accurate cost tracking",
+        action: { label: "Map Items", path: "/pos-sales" },
+      });
+    }
+
+    return alerts;
+  }, [availableCash, periodData, reorderAlerts, unmappedItems]);
 
   // Monthly data (recomputed only when pnlData changes)
   const monthlyData = useMemo(() => getMonthlyData(), [getMonthlyData]);
@@ -313,6 +408,19 @@ const Index = () => {
             <DashboardSkeleton />
           ) : (
             <>
+              {/* Critical Alerts Bar */}
+              <CriticalAlertsBar alerts={criticalAlerts} />
+
+              {/* Today's Pulse Widget */}
+              <TodaysPulseWidget
+                todaySales={todaysData?.net_revenue || 0}
+                todayFoodCost={todaysData?.food_cost || 0}
+                todayLaborCost={todaysData?.labor_cost || 0}
+                availableCash={availableCash}
+                estimatedProfit={todayEstimatedProfit}
+                lastUpdated={format(new Date(), 'h:mm a')}
+              />
+
               {/* AI Insights */}
               <DashboardInsights insights={insights} />
 
@@ -349,13 +457,32 @@ const Index = () => {
                 </Card>
               ) : null}
 
-              {/* Key Metrics */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="h-1 w-8 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
-                  <h2 className="text-2xl font-bold tracking-tight">Performance Overview</h2>
-                  <Sparkles className="h-5 w-5 text-primary/60" />
-                </div>
+              {/* Operations Health Card */}
+              <OperationsHealthCard
+                primeCost={periodData?.prime_cost_percentage || 0}
+                primeCostTarget={62}
+                lowInventoryCount={lowStockItems.length}
+                unmappedPOSCount={unmappedItems?.length || 0}
+                uncategorizedTransactions={transactionsData?.length || 0}
+              />
+
+              {/* Key Metrics - Collapsible */}
+              <Collapsible open={metricsOpen} onOpenChange={setMetricsOpen}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-8 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
+                      <h2 className="text-2xl font-bold tracking-tight">Performance Overview</h2>
+                      <Sparkles className="h-5 w-5 text-primary/60" />
+                    </div>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        {metricsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        {metricsOpen ? "Collapse" : "Expand"}
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  <CollapsibleContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" role="region" aria-label="Performance metrics">
                   <DashboardMetricCard
                     title="Net Revenue"
@@ -422,9 +549,26 @@ const Index = () => {
                     );
                   })()}
                 </div>
-              </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
 
-              {/* Alerts & Trends */}
+              {/* Alerts & Trends - Collapsible */}
+              <Collapsible open={trendsOpen} onOpenChange={setTrendsOpen}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-8 bg-gradient-to-r from-accent to-accent/50 rounded-full" />
+                      <h2 className="text-2xl font-bold tracking-tight">Trends & Alerts</h2>
+                    </div>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        {trendsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        {trendsOpen ? "Collapse" : "Expand"}
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  <CollapsibleContent>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Enhanced Alerts */}
                 <Card className={`group transition-all duration-300 hover:shadow-xl hover:scale-[1.02] hover:-translate-y-1 animate-fade-in ${
@@ -500,12 +644,30 @@ const Index = () => {
                   suffix="%"
                 />
               </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
 
               {/* Quick Actions */}
               <DashboardQuickActions restaurantId={selectedRestaurant.restaurant_id} />
 
-              {/* Revenue Mix Section - Enhanced with Categorized POS Sales */}
+              {/* Revenue Mix Section - Collapsible */}
               {!revenueLoading && revenueBreakdown && revenueBreakdown.has_categorization_data && (
+                <Collapsible open={revenueOpen} onOpenChange={setRevenueOpen}>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1 w-8 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full" />
+                        <h2 className="text-2xl font-bold tracking-tight">Revenue Mix</h2>
+                      </div>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="sm" className="gap-2">
+                          {revenueOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          {revenueOpen ? "Collapse" : "Expand"}
+                        </Button>
+                      </CollapsibleTrigger>
+                    </div>
+                    <CollapsibleContent>
                 <Card className="bg-gradient-to-br from-emerald-50/50 via-background to-emerald-50/30 dark:from-emerald-950/20 dark:via-background dark:to-emerald-950/10 border-emerald-200 dark:border-emerald-900">
                   <CardHeader>
                     <div className="flex items-center justify-between">
@@ -628,10 +790,31 @@ const Index = () => {
                     )}
                   </CardContent>
                 </Card>
+                    </CollapsibleContent>
+                  </div>
+                </Collapsible>
               )}
 
-              {/* Monthly Performance Table */}
-              <MonthlyBreakdownTable monthlyData={monthlyData} />
+              {/* Monthly Performance Table - Collapsible */}
+              <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" />
+                      <h2 className="text-2xl font-bold tracking-tight">Monthly Performance</h2>
+                    </div>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        {monthlyOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        {monthlyOpen ? "Collapse" : "Expand"}
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  <CollapsibleContent>
+                    <MonthlyBreakdownTable monthlyData={monthlyData} />
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
             </>
           )}
         </div>

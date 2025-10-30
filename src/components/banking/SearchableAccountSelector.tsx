@@ -99,8 +99,8 @@ export function SearchableAccountSelector({
         <Command>
           <CommandInput placeholder="Search accounts..." />
           <CommandList 
-            className="max-h-72 overflow-y-auto overscroll-contain"
-            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            className="max-h-72 overflow-y-auto overscroll-contain pointer-events-auto"
+            style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin' } as React.CSSProperties}
           >
             {isEmpty ? (
               <div className="py-6 px-4 text-center text-sm text-muted-foreground">

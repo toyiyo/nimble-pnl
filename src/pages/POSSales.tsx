@@ -79,9 +79,9 @@ export default function POSSales() {
   const [saleToSplit, setSaleToSplit] = useState<any>(null);
   const [editingCategoryForSale, setEditingCategoryForSale] = useState<string | null>(null);
 
-  // Filter only revenue accounts for categorization
-  const revenueAccounts = useMemo(() => {
-    return accounts.filter(acc => acc.account_type === 'revenue');
+  // Filter revenue and liability accounts for categorization (matching split dialog)
+  const categoryAccounts = useMemo(() => {
+    return accounts.filter(acc => acc.account_type === 'revenue' || acc.account_type === 'liability');
   }, [accounts]);
 
   const handleMapPOSItem = (itemName: string) => {
@@ -836,7 +836,7 @@ export default function POSSales() {
                                       <SelectValue placeholder="Select category" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {revenueAccounts.map((account) => (
+                                      {categoryAccounts.map((account) => (
                                         <SelectItem key={account.id} value={account.id}>
                                           {account.account_code} - {account.account_name}
                                         </SelectItem>

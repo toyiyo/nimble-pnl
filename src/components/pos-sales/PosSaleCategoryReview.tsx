@@ -16,23 +16,26 @@ interface PosSaleCategoryReviewProps {
 }
 
 export function PosSaleCategoryReview({ sales, restaurantId, onRefresh }: PosSaleCategoryReviewProps) {
-  const { mutate: categorizeSale } = useCategorizePosSale();
+  const { mutate: categorizeSale } = useCategorizePosSale(restaurantId);
   const [splitDialogSale, setSplitDialogSale] = useState<UnifiedSaleItem | null>(null);
 
   const handleApprove = (sale: UnifiedSaleItem) => {
     if (!sale.suggested_category_id) return;
-    categorizeSale(
-      { saleId: sale.id, categoryId: sale.suggested_category_id },
-      { onSuccess: onRefresh }
-    );
+    categorizeSale({
+      saleId: sale.id,
+      categoryId: sale.suggested_category_id,
+      accountInfo: sale.chart_account ? {
+        account_name: sale.chart_account.account_name,
+        account_code: sale.chart_account.account_code,
+      } : undefined
+    });
   };
 
   const handleReject = (sale: UnifiedSaleItem) => {
-    // Clear the suggestion
-    categorizeSale(
-      { saleId: sale.id, categoryId: sale.suggested_category_id },
-      { onSuccess: onRefresh }
-    );
+    if (!sale.suggested_category_id) return;
+    // Clear the suggestion by setting it back to null (we'd need a different RPC for this)
+    // For now, just close the suggestion without categorizing
+    // TODO: Implement a way to reject/hide suggestions
   };
 
   const getConfidenceBadge = (confidence: string) => {

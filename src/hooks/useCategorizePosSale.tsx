@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-export const useCategorizePosSale = () => {
+export const useCategorizePosSale = (restaurantId: string | null) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -25,13 +25,13 @@ export const useCategorizePosSale = () => {
     },
     onMutate: async ({ saleId, categoryId, accountInfo }) => {
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['unified-sales'] });
+      await queryClient.cancelQueries({ queryKey: ['unified-sales', restaurantId] });
 
       // Snapshot the previous value
-      const previousSales = queryClient.getQueryData(['unified-sales']);
+      const previousSales = queryClient.getQueryData(['unified-sales', restaurantId]);
 
       // Optimistically update the cache
-      queryClient.setQueryData(['unified-sales'], (old: any) => {
+      queryClient.setQueryData(['unified-sales', restaurantId], (old: any) => {
         if (!old) return old;
         
         return old.map((sale: any) => {
@@ -55,7 +55,7 @@ export const useCategorizePosSale = () => {
     onError: (error: Error, variables, context) => {
       // Rollback on error
       if (context?.previousSales) {
-        queryClient.setQueryData(['unified-sales'], context.previousSales);
+        queryClient.setQueryData(['unified-sales', restaurantId], context.previousSales);
       }
       toast.error(`Failed to categorize sale: ${error.message}`);
     },

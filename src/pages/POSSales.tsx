@@ -74,7 +74,7 @@ export default function POSSales() {
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
   const { mutate: categorizePosSales, isPending: isCategorizingPending } = useCategorizePosSales();
-  const { mutate: categorizePosSale } = useCategorizePosSale();
+  const { mutate: categorizePosSale } = useCategorizePosSale(selectedRestaurant?.restaurant_id || null);
   const { mutate: splitPosSale } = useSplitPosSale();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const [saleToSplit, setSaleToSplit] = useState<any>(null);

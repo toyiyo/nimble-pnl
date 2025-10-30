@@ -6,7 +6,6 @@ import { useToast } from '@/hooks/use-toast';
 import { UnifiedSaleItem, POSSystemType } from '@/types/pos';
 
 export const useUnifiedSales = (restaurantId: string | null) => {
-  const [unmappedItems, setUnmappedItems] = useState<string[]>([]);
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -83,38 +82,35 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     refetchOnMount: true,
   });
 
-  // Fetch unmapped items
-  useEffect(() => {
-    const fetchUnmappedItems = async () => {
+  // Fetch unmapped items using useMemo to avoid infinite loops
+  const unmappedItemsQuery = useQuery({
+    queryKey: ['unmapped-items', restaurantId, sales.length],
+    queryFn: async () => {
       if (!restaurantId || sales.length === 0) {
-        setUnmappedItems([]);
-        return;
+        return [];
       }
 
-      try {
-        const uniqueItemNames = [...new Set(sales.map(sale => sale.itemName))];
-        
-        const { data: recipes } = await supabase
-          .from('recipes')
-          .select('pos_item_name, name')
-          .eq('restaurant_id', restaurantId)
-          .eq('is_active', true);
+      const uniqueItemNames = [...new Set(sales.map(sale => sale.itemName))];
+      
+      const { data: recipes } = await supabase
+        .from('recipes')
+        .select('pos_item_name, name')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true);
 
-        const mappedItems = new Set<string>();
-        recipes?.forEach(r => {
-          if (r.pos_item_name) mappedItems.add(r.pos_item_name);
-          if (r.name) mappedItems.add(r.name);
-        });
-        
-        const unmapped = uniqueItemNames.filter(name => !mappedItems.has(name));
-        setUnmappedItems(unmapped);
-      } catch (error) {
-        console.error('Error fetching unmapped items:', error);
-      }
-    };
+      const mappedItems = new Set<string>();
+      recipes?.forEach(r => {
+        if (r.pos_item_name) mappedItems.add(r.pos_item_name);
+        if (r.name) mappedItems.add(r.name);
+      });
+      
+      return uniqueItemNames.filter(name => !mappedItems.has(name));
+    },
+    enabled: !!restaurantId && sales.length > 0,
+    staleTime: 60000, // 1 minute
+  });
 
-    fetchUnmappedItems();
-  }, [restaurantId, sales]);
+  const unmappedItems = unmappedItemsQuery.data || [];
 
   // Show error toast
   useEffect(() => {

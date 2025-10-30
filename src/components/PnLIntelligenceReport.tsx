@@ -489,7 +489,9 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
                         -${(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds).toLocaleString()}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue * 100).toFixed(1)}% of gross revenue
+                        {revenueBreakdown.totals.gross_revenue > 0 
+                          ? ((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue * 100).toFixed(1) 
+                          : '0.0'}% of gross revenue
                       </p>
                     </CardContent>
                   </Card>
@@ -528,7 +530,12 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
                           cx="50%"
                           cy="50%"
                           labelLine={false}
-                          label={(entry) => `${entry.name}: ${(entry.value / revenueBreakdown.totals.gross_revenue * 100).toFixed(0)}%`}
+                          label={(entry) => {
+                            const percent = revenueBreakdown.totals.gross_revenue > 0 
+                              ? (entry.value / revenueBreakdown.totals.gross_revenue * 100).toFixed(0)
+                              : '0';
+                            return `${entry.name}: ${percent}%`;
+                          }}
                           outerRadius={80}
                           fill="#8884d8"
                           dataKey="value"
@@ -569,7 +576,9 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
                               ${category.total_amount.toLocaleString()}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {(category.total_amount / revenueBreakdown.totals.gross_revenue * 100).toFixed(1)}%
+                              {revenueBreakdown.totals.gross_revenue > 0 
+                                ? (category.total_amount / revenueBreakdown.totals.gross_revenue * 100).toFixed(1) 
+                                : '0.0'}%
                             </p>
                           </div>
                         </div>

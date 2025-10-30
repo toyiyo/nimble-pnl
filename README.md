@@ -1,10 +1,10 @@
-# Nimble PnL
+# EasyShiftHQ
 
 A modern web application for managing restaurant profit and loss calculations with Square integration.
 
 ## Project Overview
 
-Nimble PnL is a comprehensive solution that helps restaurants track and analyze their profit and loss data. It integrates with Square for real-time data synchronization and provides AI-powered insights for better business decisions.
+EasyShiftHQ is a comprehensive solution that helps restaurants track and analyze their profit and loss data. It integrates with Square for real-time data synchronization and provides AI-powered insights for better business decisions.
 
 ## 📚 Documentation
 
@@ -108,8 +108,8 @@ OPENAI_API_KEY=your_openai_key
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/toyiyo/nimble-pnl.git
-   cd nimble-pnl
+   git clone https://github.com/toyiyo/easyshifthq.git
+   cd easyshifthq
    ```
 
 2. Install dependencies:

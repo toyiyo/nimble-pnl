@@ -1,6 +1,6 @@
 # Integration Patterns & Best Practices
 
-> **Purpose**: This document outlines the patterns, conventions, and best practices used for integrating with third-party services in Nimble PnL. These patterns ensure security, reliability, and maintainability while keeping the system real-time.
+> **Purpose**: This document outlines the patterns, conventions, and best practices used for integrating with third-party services in EasyShiftHQ. These patterns ensure security, reliability, and maintainability while keeping the system real-time.
 
 ---
 

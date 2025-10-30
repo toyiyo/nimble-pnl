@@ -161,3 +161,106 @@ iframe[name^="__privateStripe"] {
   0% { background-position: -1000px 0; }
   100% { background-position: 1000px 0; }
 }
+
+/* Prose styles for markdown in chat */
+.prose {
+  @apply text-foreground max-w-full;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  @apply text-foreground font-semibold;
+  word-wrap: break-word;
+}
+
+.prose h1 {
+  @apply text-xl md:text-2xl mb-4 mt-6;
+}
+
+.prose h2 {
+  @apply text-lg md:text-xl mb-3 mt-5;
+}
+
+.prose h3 {
+  @apply text-base md:text-lg mb-2 mt-4;
+}
+
+.prose p {
+  @apply mb-3;
+  word-wrap: break-word;
+}
+
+.prose strong {
+  @apply font-semibold text-foreground;
+}
+
+.prose code {
+  @apply text-sm;
+  word-wrap: break-word;
+}
+
+.prose pre {
+  @apply my-4;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-primary pl-4 italic my-4;
+  word-wrap: break-word;
+}
+
+.prose hr {
+  @apply my-6 border-border;
+}
+
+.prose ul {
+  @apply my-2;
+}
+
+.prose ol {
+  @apply my-2;
+}
+
+.prose li {
+  @apply my-1;
+  word-wrap: break-word;
+}
+
+.prose a {
+  word-wrap: break-word;
+}
+
+.prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Dark mode prose */
+.dark .prose {
+  @apply text-foreground;
+}
+
+.dark .prose h1,
+.dark .prose h2,
+.dark .prose h3,
+.dark .prose h4 {
+  @apply text-foreground;
+}
+
+.dark .prose strong {
+  @apply text-foreground;
+}
+
+.dark .prose code {
+  @apply bg-muted;
+}
+
+.dark .prose blockquote {
+  @apply border-primary;
+}

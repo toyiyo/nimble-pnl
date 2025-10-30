@@ -12,6 +12,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -30,7 +31,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Upload, Calculator, Package } from 'lucide-react';
-import { InventoryLevelInput } from '@/components/InventoryLevelInput';
+
 import { CreateProductData, Product } from '@/hooks/useProducts';
 import { useUnitConversion } from '@/hooks/useUnitConversion';
 import { normalizeUnitName, suggestRecipeUnits } from '@/lib/unitConversion';
@@ -591,44 +592,77 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                 )}
               />
 
-              <InventoryLevelInput
-                label="Reorder Point"
-                value={form.watch('reorder_point') || 0}
-                onChange={(val) => form.setValue('reorder_point', val)}
-                product={{
-                  uom_purchase: form.watch('uom_purchase'),
-                  size_value: form.watch('size_value'),
-                  size_unit: form.watch('size_unit'),
-                  name: form.watch('name')
-                }}
-                helpText="When stock falls to this level, you'll get an alert to reorder"
+              <FormField
+                control={form.control}
+                name="reorder_point"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Reorder Point</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      When stock falls to this level, you'll get an alert to reorder
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <InventoryLevelInput
-                  label="Minimum Par Level"
-                  value={form.watch('par_level_min') || 0}
-                  onChange={(val) => form.setValue('par_level_min', val)}
-                  product={{
-                    uom_purchase: form.watch('uom_purchase'),
-                    size_value: form.watch('size_value'),
-                    size_unit: form.watch('size_unit'),
-                    name: form.watch('name')
-                  }}
-                  helpText="Minimum stock you want to maintain"
+                <FormField
+                  control={form.control}
+                  name="par_level_min"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Minimum Par Level</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0"
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Minimum stock you want to maintain
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
                 
-                <InventoryLevelInput
-                  label="Maximum Par Level"
-                  value={form.watch('par_level_max') || 0}
-                  onChange={(val) => form.setValue('par_level_max', val)}
-                  product={{
-                    uom_purchase: form.watch('uom_purchase'),
-                    size_value: form.watch('size_value'),
-                    size_unit: form.watch('size_unit'),
-                    name: form.watch('name')
-                  }}
-                  helpText="Maximum stock level (useful for space management)"
+                <FormField
+                  control={form.control}
+                  name="par_level_max"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Maximum Par Level</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0"
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Maximum stock level (useful for space management)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
             </div>

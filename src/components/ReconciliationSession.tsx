@@ -2,7 +2,24 @@ import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Save, CheckCircle, ScanBarcode, X, Eye } from 'lucide-react';
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Search, Save, CheckCircle, ScanBarcode, X, Eye, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { ReconciliationItemDetail } from './ReconciliationItemDetail';
 import { useReconciliation } from '@/hooks/useReconciliation';
 import { EnhancedBarcodeScanner } from './EnhancedBarcodeScanner';
@@ -14,10 +31,14 @@ import { useToast } from '@/hooks/use-toast';
 interface ReconciliationSessionProps {
   restaurantId: string;
   onComplete: () => void;
+  onCancel?: () => void;
 }
 
-export function ReconciliationSession({ restaurantId, onComplete }: ReconciliationSessionProps) {
-  const { items, loading, updateItemCount, saveProgress, calculateSummary } = useReconciliation(restaurantId);
+type SortField = 'name' | 'unit' | 'expected' | 'actual' | 'variance' | 'status';
+type SortDirection = 'asc' | 'desc';
+
+export function ReconciliationSession({ restaurantId, onComplete, onCancel }: ReconciliationSessionProps) {
+  const { items, loading, updateItemCount, saveProgress, calculateSummary, cancelReconciliation } = useReconciliation(restaurantId);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -25,24 +46,68 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [quickDialogOpen, setQuickDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [dirtyInputs, setDirtyInputs] = useState<Set<string>>(new Set());
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const { toast } = useToast();
 
-  // Sync input values with items from database whenever items change
+  // Sync input values with items from database, but respect user's active edits
   useEffect(() => {
     const newValues: Record<string, string> = {};
     items.forEach(item => {
-      // Only update if we don't have a local value or the item has been updated from database
-      if (item.actual_quantity !== null && item.actual_quantity !== undefined) {
-        newValues[item.id] = item.actual_quantity.toString();
+      // Only update if this input is not currently being edited
+      if (!dirtyInputs.has(item.id)) {
+        if (item.actual_quantity !== null && item.actual_quantity !== undefined) {
+          newValues[item.id] = item.actual_quantity.toString();
+        }
+      } else {
+        // Keep the current value if it's dirty
+        newValues[item.id] = inputValues[item.id] || '';
       }
     });
     setInputValues(newValues);
-  }, [items]);
+  }, [items, dirtyInputs]);
 
-  const filteredItems = items.filter(item =>
-    item.product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.product?.sku.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const normalizedSearchTerm = (searchTerm || '').toLowerCase();
+  
+  const filteredAndSortedItems = items
+    .filter(item =>
+      (item.product?.name || '').toLowerCase().includes(normalizedSearchTerm) ||
+      (item.product?.sku || '').toLowerCase().includes(normalizedSearchTerm)
+    )
+    .sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortField) {
+        case 'name':
+          comparison = (a.product?.name || '').localeCompare(b.product?.name || '');
+          break;
+        case 'unit':
+          comparison = (a.product?.uom_purchase || '').localeCompare(b.product?.uom_purchase || '');
+          break;
+        case 'expected':
+          comparison = (a.expected_quantity || 0) - (b.expected_quantity || 0);
+          break;
+        case 'actual':
+          const aActual = a.actual_quantity ?? -Infinity;
+          const bActual = b.actual_quantity ?? -Infinity;
+          comparison = aActual - bActual;
+          break;
+        case 'variance':
+          const aVariance = a.variance ?? -Infinity;
+          const bVariance = b.variance ?? -Infinity;
+          comparison = aVariance - bVariance;
+          break;
+        case 'status':
+          const aStatus = a.actual_quantity === null ? 0 : 1;
+          const bStatus = b.actual_quantity === null ? 0 : 1;
+          comparison = aStatus - bStatus;
+          break;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
 
   const summary = calculateSummary();
   const progress = items.length > 0 ? (summary.total_items_counted / items.length) * 100 : 0;
@@ -57,17 +122,21 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
     // If we have a price, use monetary variance
     if (varianceValue !== null && unitCost !== null && unitCost > 0) {
       const absValue = Math.abs(varianceValue);
-      if (absValue < 50) return <Badge className="bg-yellow-500">🟡 -${absValue.toFixed(2)}</Badge>;
-      return <Badge variant="destructive">🔴 -${absValue.toFixed(2)}</Badge>;
+      const sign = varianceValue >= 0 ? '+' : '';
+      if (absValue < 50) return <Badge className="bg-yellow-500">🟡 {sign}${varianceValue.toFixed(2)}</Badge>;
+      return <Badge variant="destructive">🔴 {sign}${varianceValue.toFixed(2)}</Badge>;
     }
     
     // No price but we have quantity variance - use quantity
     const absQty = Math.abs(varianceQty);
-    if (absQty < 10) return <Badge className="bg-yellow-500">🟡 -{absQty.toFixed(2)} units</Badge>;
-    return <Badge variant="destructive">🔴 -{absQty.toFixed(2)} units</Badge>;
+    const sign = varianceQty >= 0 ? '+' : '';
+    if (absQty < 10) return <Badge className="bg-yellow-500">🟡 {sign}{varianceQty.toFixed(2)} units</Badge>;
+    return <Badge variant="destructive">🔴 {sign}{varianceQty.toFixed(2)} units</Badge>;
   };
 
   const handleInputChange = (itemId: string, value: string) => {
+    // Mark as dirty when user types
+    setDirtyInputs(prev => new Set(prev).add(itemId));
     // Update local state immediately for responsive UI
     setInputValues(prev => ({ ...prev, [itemId]: value }));
   };
@@ -95,6 +164,12 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
     const qty = value === '' ? null : parseFloat(value);
     if (!isNaN(qty as number) || qty === null) {
       await updateItemCount(itemId, qty);
+      // Clear dirty flag after successful save
+      setDirtyInputs(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(itemId);
+        return newSet;
+      });
     }
   };
 
@@ -167,6 +242,23 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
     });
   };
 
+  const handleCancel = () => {
+    const currentSummary = calculateSummary();
+    if (currentSummary.total_items_counted > 0) {
+      setShowCancelDialog(true);
+    } else {
+      handleConfirmCancel();
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    const success = await cancelReconciliation();
+    setShowCancelDialog(false);
+    if (success && onCancel) {
+      onCancel();
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Progress Header */}
@@ -179,6 +271,15 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={handleCancel}
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive flex-1 md:flex-none"
+            >
+              <X className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Cancel</span>
+            </Button>
             <Button 
               onClick={() => setScannerMode(!scannerMode)} 
               variant={scannerMode ? "default" : "outline"}
@@ -221,16 +322,45 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
         </div>
       )}
 
-      {/* Search Bar */}
+      {/* Search and Sort Controls */}
       {!scannerMode && (
-        <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-        <Input
-          placeholder="Search products..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <Input
+              placeholder="Search products..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Select value={sortField} onValueChange={(value) => setSortField(value as SortField)}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">Name</SelectItem>
+                <SelectItem value="unit">Unit</SelectItem>
+                <SelectItem value="expected">Expected</SelectItem>
+                <SelectItem value="actual">Actual</SelectItem>
+                <SelectItem value="variance">Variance</SelectItem>
+                <SelectItem value="status">Status</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+              aria-label={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'}`}
+            >
+              {sortDirection === 'asc' ? (
+                <ArrowUp className="h-4 w-4" />
+              ) : (
+                <ArrowDown className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -250,7 +380,7 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
                 </tr>
               </thead>
               <tbody>
-                {filteredItems.map((item) => {
+                {filteredAndSortedItems.map((item) => {
                   const liveVariance = calculateLiveVariance(item);
                   const displayVariance = liveVariance.variance !== null ? liveVariance.variance : item.variance;
                   const displayVarianceValue = liveVariance.varianceValue !== null ? liveVariance.varianceValue : item.variance_value;
@@ -300,7 +430,7 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
 
           {/* Items List - Mobile */}
           <div className="md:hidden space-y-3">
-            {filteredItems.map((item) => {
+            {filteredAndSortedItems.map((item) => {
               const liveVariance = calculateLiveVariance(item);
               const displayVariance = liveVariance.variance !== null ? liveVariance.variance : item.variance;
               const displayVarianceValue = liveVariance.varianceValue !== null ? liveVariance.varianceValue : item.variance_value;
@@ -372,6 +502,44 @@ export function ReconciliationSession({ restaurantId, onComplete }: Reconciliati
           restaurantId={restaurantId}
         />
       )}
+
+      {/* Cancel Confirmation Dialog */}
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Cancel Inventory Count?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <div>
+                <strong>You are about to cancel this inventory count.</strong>
+              </div>
+              <div className="bg-muted p-3 rounded-md space-y-2">
+                <p className="font-medium">Impact of canceling:</p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  <li>{calculateSummary().total_items_counted} items have been counted</li>
+                  <li>All progress will be permanently deleted</li>
+                  <li>No inventory adjustments will be made</li>
+                  <li>Product stock levels will remain unchanged</li>
+                </ul>
+              </div>
+              <p className="text-destructive font-medium">
+                This action cannot be undone.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Counting</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmCancel}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Yes, Cancel Count
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

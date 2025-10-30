@@ -48,7 +48,7 @@ export default function FinancialIntelligence() {
             connectedBanks={connectedBanks}
           />
         ) : null}
-        
+
         <BankingIntelligenceDashboard 
           selectedPeriod={selectedPeriod} 
           selectedBankAccount={selectedBankAccount}

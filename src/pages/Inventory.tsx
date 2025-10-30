@@ -103,7 +103,7 @@ export const Inventory: React.FC = () => {
     }
   };
   const [reconciliationView, setReconciliationView] = useState<'history' | 'session' | 'summary'>('history');
-  const { activeSession, startReconciliation } = useReconciliation(selectedRestaurant?.restaurant_id || null);
+  const { activeSession, startReconciliation, resumeReconciliation, refreshSession } = useReconciliation(selectedRestaurant?.restaurant_id || null);
 
   // Check if user has permission to delete products
   const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
@@ -1650,7 +1650,7 @@ export const Inventory: React.FC = () => {
                 <CardContent className="py-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <MetricIcon icon={AlertTriangle} variant="red" className="animate-pulse" />
+                      <MetricIcon icon={AlertTriangle} variant="red" />
                       <div>
                         <h2 className="text-xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
                           Low Stock Alert
@@ -1767,19 +1767,26 @@ export const Inventory: React.FC = () => {
           <TabsContent value="reconciliation" className="mt-6">
             {selectedRestaurant && (
               <>
-                {reconciliationView === 'history' && !activeSession && (
+                {reconciliationView === 'history' && (
                   <ReconciliationHistory
                     restaurantId={selectedRestaurant.restaurant_id}
                     onStartNew={async () => {
                       await startReconciliation();
                       setReconciliationView('session');
                     }}
+                    onResume={async (sessionId) => {
+                      await resumeReconciliation(sessionId);
+                      setReconciliationView('session');
+                    }}
                   />
                 )}
-                {(reconciliationView === 'session' || activeSession) && (
+                {reconciliationView === 'session' && activeSession && (
                   <ReconciliationSession
                     restaurantId={selectedRestaurant.restaurant_id}
                     onComplete={() => setReconciliationView('summary')}
+                    onCancel={() => {
+                      setReconciliationView('history');
+                    }}
                   />
                 )}
                 {reconciliationView === 'summary' && (

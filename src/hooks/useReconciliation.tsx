@@ -157,6 +157,32 @@ export function useReconciliation(restaurantId: string | null) {
 
   const updateItemCount = async (itemId: string, actualQty: number | null, notes?: string) => {
     try {
+      // Find the item to calculate variance before updating
+      const item = items.find(i => i.id === itemId);
+      if (!item) return false;
+      
+      const variance = actualQty !== null ? actualQty - item.expected_quantity : null;
+      const varianceValue = variance !== null && item.unit_cost 
+        ? variance * item.unit_cost 
+        : null;
+      
+      // Optimistically update local state FIRST
+      setItems(prevItems => 
+        prevItems.map(i => 
+          i.id === itemId 
+            ? {
+                ...i,
+                actual_quantity: actualQty,
+                variance,
+                variance_value: varianceValue,
+                notes: notes,
+                counted_at: actualQty !== null ? new Date().toISOString() : null,
+              }
+            : i
+        )
+      );
+
+      // Then save to database in background
       const { error } = await supabase
         .from('reconciliation_items')
         .update({
@@ -166,11 +192,12 @@ export function useReconciliation(restaurantId: string | null) {
         })
         .eq('id', itemId);
 
-      if (error) throw error;
-
-      // Refresh items
-      if (activeSession) {
-        await fetchSessionItems(activeSession.id);
+      if (error) {
+        // Rollback on error by refetching
+        if (activeSession) {
+          await fetchSessionItems(activeSession.id);
+        }
+        throw error;
       }
 
       return true;
@@ -232,35 +259,37 @@ export function useReconciliation(restaurantId: string | null) {
 
       if (updateError) throw updateError;
 
-      // Create inventory transactions for each variance and update product stock
+      // Update product stock and create inventory transactions
       const { data: { user } } = await supabase.auth.getUser();
       
       for (const item of items) {
-        if (item.variance !== null && item.variance !== 0 && item.actual_quantity !== null) {
-          // Create inventory transaction
-          const { error: txError } = await supabase
-            .from('inventory_transactions')
-            .insert({
-              restaurant_id: restaurantId,
-              product_id: item.product_id,
-              quantity: item.variance,
-              unit_cost: item.unit_cost,
-              total_cost: item.variance_value,
-              transaction_type: 'adjustment',
-              reason: `Reconciliation ${activeSession.reconciliation_date}${item.notes ? `: ${item.notes}` : ''}`,
-              reference_id: `RECON-${activeSession.id}`,
-              performed_by: user?.id,
-            });
-
-          if (txError) throw txError;
-
-          // Update product stock
+        if (item.actual_quantity !== null) {
+          // Always update product stock to actual count
           const { error: stockError } = await supabase
             .from('products')
             .update({ current_stock: item.actual_quantity })
             .eq('id', item.product_id);
 
           if (stockError) throw stockError;
+
+          // Only create inventory transaction if there's a variance
+          if (item.variance !== null && item.variance !== 0) {
+            const { error: txError } = await supabase
+              .from('inventory_transactions')
+              .insert({
+                restaurant_id: restaurantId,
+                product_id: item.product_id,
+                quantity: item.variance,
+                unit_cost: item.unit_cost,
+                total_cost: item.variance_value,
+                transaction_type: 'adjustment',
+                reason: `Reconciliation ${activeSession.reconciliation_date}${item.notes ? `: ${item.notes}` : ''}`,
+                reference_id: `RECON-${activeSession.id}`,
+                performed_by: user?.id,
+              });
+
+            if (txError) throw txError;
+          }
         }
       }
 
@@ -306,6 +335,40 @@ export function useReconciliation(restaurantId: string | null) {
     };
   };
 
+  const cancelReconciliation = async () => {
+    if (!activeSession) return;
+
+    setLoading(true);
+    try {
+      // Delete reconciliation items first
+      const { error: itemsError } = await supabase
+        .from('reconciliation_items')
+        .delete()
+        .eq('reconciliation_id', activeSession.id);
+
+      if (itemsError) throw itemsError;
+
+      // Delete the reconciliation session
+      const { error: sessionError } = await supabase
+        .from('inventory_reconciliations')
+        .delete()
+        .eq('id', activeSession.id);
+
+      if (sessionError) throw sessionError;
+
+      setActiveSession(null);
+      setItems([]);
+      toast({ title: 'Reconciliation cancelled', description: 'All progress has been discarded' });
+      return true;
+    } catch (error: any) {
+      console.error('Error cancelling reconciliation:', error);
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const deleteReconciliation = async (id: string) => {
     try {
       const { error } = await supabase
@@ -330,6 +393,31 @@ export function useReconciliation(restaurantId: string | null) {
     }
   };
 
+  const resumeReconciliation = async (sessionId: string) => {
+    setLoading(true);
+    try {
+      const { data: session, error } = await supabase
+        .from('inventory_reconciliations')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+
+      if (error) throw error;
+
+      setActiveSession(session as ReconciliationSession);
+      await fetchSessionItems(sessionId);
+      
+      toast({ title: 'Success', description: 'Resumed reconciliation session' });
+      return true;
+    } catch (error: any) {
+      console.error('Error resuming reconciliation:', error);
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     activeSession,
     items,
@@ -339,7 +427,9 @@ export function useReconciliation(restaurantId: string | null) {
     saveProgress,
     submitReconciliation,
     calculateSummary,
+    cancelReconciliation,
     deleteReconciliation,
+    resumeReconciliation,
     refreshSession: fetchActiveSession,
   };
 }

@@ -429,9 +429,9 @@ Tool Usage Guidelines:
 🔴 REMEMBER: ANY question about numbers, data, or restaurant operations REQUIRES a tool call. NEVER make up data, even if it seems plausible. Real restaurants depend on accurate data.`,
     };
 
-    const messagesWithSystem = messages[0]?.role === 'system' 
-      ? messages 
-      : [systemMessage, ...messages];
+    // Filter out any caller-provided system messages and ensure our system message is always first
+    const filteredMessages = messages.filter(msg => msg.role !== 'system');
+    const messagesWithSystem = [systemMessage, ...filteredMessages];
 
     // Call OpenRouter with fallback logic
     const modelList = getModelFallbackList(true);

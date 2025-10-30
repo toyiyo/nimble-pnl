@@ -424,17 +424,10 @@ const Index = () => {
               {/* AI Insights */}
               <DashboardInsights insights={insights} />
 
-              {/* Period Selector */}
-              <PeriodSelector
-                selectedPeriod={selectedPeriod}
-                onPeriodChange={setSelectedPeriod}
-              />
-
-              {/* Bank Snapshot Section */}
+              {/* Bank Snapshot Section - Current State (Real-time) */}
               {!banksLoading && connectedBanks && connectedBanks.length > 0 ? (
                 <BankSnapshotSection 
                   restaurantId={selectedRestaurant.restaurant_id}
-                  selectedPeriod={selectedPeriod}
                 />
               ) : !banksLoading && (!connectedBanks || connectedBanks.length === 0) ? (
                 <Card className="border-dashed border-2 border-cyan-500/30 bg-gradient-to-br from-cyan-500/5 to-transparent">
@@ -465,6 +458,21 @@ const Index = () => {
                 unmappedPOSCount={unmappedItems?.length || 0}
                 uncategorizedTransactions={transactionsData?.length || 0}
               />
+
+              {/* Period Selector - Positioned before period-dependent sections */}
+              <div className="flex flex-col gap-3 p-6 rounded-xl bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50">
+                <div className="flex items-center gap-2">
+                  <div className="h-1 w-8 bg-gradient-to-r from-primary to-accent rounded-full" />
+                  <h2 className="text-xl font-semibold">Analyze Period</h2>
+                  <Badge variant="outline" className="text-xs">
+                    Select time range to analyze
+                  </Badge>
+                </div>
+                <PeriodSelector
+                  selectedPeriod={selectedPeriod}
+                  onPeriodChange={setSelectedPeriod}
+                />
+              </div>
 
               {/* Key Metrics - Collapsible */}
               <Collapsible open={metricsOpen} onOpenChange={setMetricsOpen}>

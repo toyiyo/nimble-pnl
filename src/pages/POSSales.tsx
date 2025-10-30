@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,8 @@ import { ExportDropdown } from "@/components/financial-statements/shared/ExportD
 import { generateTablePDF } from "@/utils/pdfExport";
 import Papa from "papaparse";
 import { useToast } from "@/hooks/use-toast";
+import { useCategorizePosSales } from "@/hooks/useCategorizePosSales";
+import { PosSaleCategoryReview } from "@/components/pos-sales/PosSaleCategoryReview";
 
 export default function POSSales() {
   const {
@@ -67,6 +69,7 @@ export default function POSSales() {
   const [selectedPOSItemForMapping, setSelectedPOSItemForMapping] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
+  const { mutate: categorizePosSales, isPending: isCategorizingPending } = useCategorizePosSales();
 
   const handleMapPOSItem = (itemName: string) => {
     setSelectedPOSItemForMapping(itemName);
@@ -141,6 +144,20 @@ export default function POSSales() {
     
     return filtered;
   }, [sales, searchTerm, startDate, endDate, sortBy, sortDirection]);
+
+  // Get sales with AI suggestions
+  const suggestedSales = useMemo(() => {
+    return sales.filter(sale => 
+      sale.suggested_category_id && !sale.is_categorized
+    );
+  }, [sales]);
+
+  // Count uncategorized sales
+  const uncategorizedSalesCount = useMemo(() => {
+    return sales.filter(sale => 
+      !sale.is_categorized && !sale.suggested_category_id
+    ).length;
+  }, [sales]);
 
   const dateFilteredSales = filteredSales;
 
@@ -459,6 +476,53 @@ export default function POSSales() {
         uniqueItems={dashboardMetrics.uniqueItems}
         unmappedCount={dashboardMetrics.unmappedCount}
       />
+
+      {/* AI Categorization Section */}
+      <Card className="border-border/50">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                AI Categorization
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Automatically categorize POS sales to chart of accounts
+              </p>
+            </div>
+            <Button 
+              onClick={() => categorizePosSales(selectedRestaurant.restaurant_id)}
+              disabled={isCategorizingPending || uncategorizedSalesCount === 0}
+              className="gap-2"
+            >
+              <Sparkles className="h-4 w-4" />
+              {isCategorizingPending ? "Categorizing..." : "AI Categorize Sales"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4 text-sm">
+            <Badge variant="secondary" className="gap-1">
+              {uncategorizedSalesCount} uncategorized
+            </Badge>
+            {suggestedSales.length > 0 && (
+              <Badge variant="default" className="gap-1 bg-gradient-to-r from-blue-500 to-purple-500">
+                <Sparkles className="h-3 w-3" />
+                {suggestedSales.length} pending review
+              </Badge>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* AI Suggestions Review */}
+      {suggestedSales.length > 0 && (
+        <PosSaleCategoryReview
+          sales={suggestedSales}
+          restaurantId={selectedRestaurant.restaurant_id}
+          onRefresh={() => syncAllSystems()}
+        />
+      )}
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "manual" | "import")} className="w-full">
         <TabsList className="grid w-full grid-cols-2">

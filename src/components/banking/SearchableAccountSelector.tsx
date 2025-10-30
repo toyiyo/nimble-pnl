@@ -23,6 +23,7 @@ interface SearchableAccountSelectorProps {
   onValueChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  filterByTypes?: string[];
 }
 
 export function SearchableAccountSelector({
@@ -30,6 +31,7 @@ export function SearchableAccountSelector({
   onValueChange,
   placeholder = "Select account",
   disabled = false,
+  filterByTypes,
 }: SearchableAccountSelectorProps) {
   const [open, setOpen] = useState(false);
   const { selectedRestaurant } = useRestaurantContext();
@@ -40,21 +42,28 @@ export function SearchableAccountSelector({
     [accounts, value]
   );
 
+  // Filter accounts by type if specified
+  const filteredAccounts = useMemo(() => {
+    if (!accounts) return [];
+    if (!filterByTypes || filterByTypes.length === 0) return accounts;
+    return accounts.filter(acc => filterByTypes.includes(acc.account_type));
+  }, [accounts, filterByTypes]);
+
   // Group accounts by type with useMemo for better performance
   const groupedAccounts = useMemo(() => {
-    if (!accounts) return {};
+    if (!filteredAccounts) return {};
     
-    return accounts.reduce((acc, account) => {
+    return filteredAccounts.reduce((acc, account) => {
       const type = account.account_type;
       if (!acc[type]) {
         acc[type] = [];
       }
       acc[type].push(account);
       return acc;
-    }, {} as Record<string, typeof accounts>);
-  }, [accounts]);
+    }, {} as Record<string, typeof filteredAccounts>);
+  }, [filteredAccounts]);
 
-  const isEmpty = !loading && accounts.length === 0;
+  const isEmpty = !loading && filteredAccounts.length === 0;
   const isDisabled = disabled || loading;
 
   return (

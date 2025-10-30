@@ -22,8 +22,10 @@ export const useCategorizePosSale = () => {
       return data;
     },
     onSuccess: () => {
+      // Invalidate queries to refresh the data
       queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
       queryClient.invalidateQueries({ queryKey: ['income-statement'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
       toast.success("Sale categorized successfully.");
     },
     onError: (error: Error) => {

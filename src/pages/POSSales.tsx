@@ -27,6 +27,9 @@ import Papa from "papaparse";
 import { useToast } from "@/hooks/use-toast";
 import { useCategorizePosSales } from "@/hooks/useCategorizePosSales";
 import { useCategorizePosSale } from "@/hooks/useCategorizePosSale";
+import { useSplitPosSale } from "@/hooks/useSplitPosSale";
+import { SplitPosSaleDialog } from "@/components/pos-sales/SplitPosSaleDialog";
+import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 
 export default function POSSales() {
   const {
@@ -71,6 +74,15 @@ export default function POSSales() {
   const { toast } = useToast();
   const { mutate: categorizePosSales, isPending: isCategorizingPending } = useCategorizePosSales();
   const { mutate: categorizePosSale } = useCategorizePosSale();
+  const { mutate: splitPosSale } = useSplitPosSale();
+  const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
+  const [saleToSplit, setSaleToSplit] = useState<any>(null);
+  const [editingCategoryForSale, setEditingCategoryForSale] = useState<string | null>(null);
+
+  // Filter only revenue accounts for categorization
+  const revenueAccounts = useMemo(() => {
+    return accounts.filter(acc => acc.account_type === 'revenue');
+  }, [accounts]);
 
   const handleMapPOSItem = (itemName: string) => {
     setSelectedPOSItemForMapping(itemName);
@@ -723,24 +735,45 @@ export default function POSSales() {
                                 </Badge>
                               )}
                               {sale.suggested_category_id && !sale.is_categorized && (
-                                <Badge className="text-xs bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">
+                                <Badge variant="outline" className="bg-accent/10 text-accent-foreground border-accent/30">
                                   <Sparkles className="h-3 w-3 mr-1" />
                                   AI Suggested
                                 </Badge>
                               )}
-                              {sale.is_categorized && (
-                                <Badge className="text-xs bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
-                                  Categorized
-                                </Badge>
+                              {sale.is_categorized && sale.chart_account && (
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="default" className="bg-primary/10 text-primary-foreground border-primary/30">
+                                    {sale.chart_account.account_code} - {sale.chart_account.account_name}
+                                  </Badge>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={() => setEditingCategoryForSale(sale.id)}
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={() => setSaleToSplit(sale)}
+                                  >
+                                    Split
+                                  </Button>
+                                </div>
                               )}
                               {sale.ai_confidence && sale.suggested_category_id && !sale.is_categorized && (
-                                <Badge className={`text-xs ${
-                                  sale.ai_confidence === 'high' 
-                                    ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20'
-                                    : sale.ai_confidence === 'medium'
-                                    ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20'
-                                    : 'bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20'
-                                }`}>
+                                <Badge 
+                                  variant="outline"
+                                  className={
+                                    sale.ai_confidence === 'high' 
+                                      ? 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30'
+                                      : sale.ai_confidence === 'medium'
+                                      ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border-yellow-500/30'
+                                      : 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30'
+                                  }
+                                >
                                   {sale.ai_confidence}
                                 </Badge>
                               )}
@@ -761,7 +794,7 @@ export default function POSSales() {
                               )}
                             </div>
                             {sale.suggested_category_id && !sale.is_categorized && sale.chart_account && (
-                              <div className="mt-2 p-2 bg-primary/5 border border-primary/10 rounded-md">
+                              <div className="mt-2 p-2 bg-accent/5 border border-accent/20 rounded-md">
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
                                   <div className="text-xs text-muted-foreground flex-1">
                                     <span className="font-medium text-foreground">AI Suggestion:</span> {sale.chart_account.account_name} ({sale.chart_account.account_code})
@@ -781,11 +814,42 @@ export default function POSSales() {
                                       size="sm"
                                       variant="ghost"
                                       className="text-xs h-7 px-2"
-                                      onClick={() => categorizePosSale({ saleId: sale.id, categoryId: sale.suggested_category_id! })}
+                                      onClick={() => setEditingCategoryForSale(sale.id)}
                                     >
                                       <X className="h-3 w-3" />
                                     </Button>
                                   </div>
+                                </div>
+                              </div>
+                            )}
+                            {editingCategoryForSale === sale.id && (
+                              <div className="mt-2 p-2 bg-muted/50 border border-border rounded-md">
+                                <div className="flex items-center gap-2">
+                                  <Select
+                                    value={sale.category_id || sale.suggested_category_id || ""}
+                                    onValueChange={(categoryId) => {
+                                      categorizePosSale({ saleId: sale.id, categoryId });
+                                      setEditingCategoryForSale(null);
+                                    }}
+                                  >
+                                    <SelectTrigger className="flex-1">
+                                      <SelectValue placeholder="Select category" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {revenueAccounts.map((account) => (
+                                        <SelectItem key={account.id} value={account.id}>
+                                          {account.account_code} - {account.account_name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setEditingCategoryForSale(null)}
+                                  >
+                                    Cancel
+                                  </Button>
                                 </div>
                               </div>
                             )}
@@ -970,6 +1034,14 @@ export default function POSSales() {
           onMappingComplete={handleMappingComplete}
         />
       )}
+
+      {/* Split POS Sale Dialog */}
+      <SplitPosSaleDialog
+        sale={saleToSplit}
+        isOpen={!!saleToSplit}
+        onClose={() => setSaleToSplit(null)}
+        restaurantId={selectedRestaurant?.restaurant_id || ""}
+      />
     </div>
   );
 }

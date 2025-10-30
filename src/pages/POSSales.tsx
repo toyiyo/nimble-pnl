@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
 import { useUnifiedSales } from "@/hooks/useUnifiedSales";
 import { usePOSIntegrations } from "@/hooks/usePOSIntegrations";
 import { useInventoryDeduction } from "@/hooks/useInventoryDeduction";
@@ -825,24 +826,17 @@ export default function POSSales() {
                             {editingCategoryForSale === sale.id && (
                               <div className="mt-2 p-2 bg-muted/50 border border-border rounded-md">
                                 <div className="flex items-center gap-2">
-                                  <Select
-                                    value={sale.category_id || sale.suggested_category_id || ""}
-                                    onValueChange={(categoryId) => {
-                                      categorizePosSale({ saleId: sale.id, categoryId });
-                                      setEditingCategoryForSale(null);
-                                    }}
-                                  >
-                                    <SelectTrigger className="flex-1">
-                                      <SelectValue placeholder="Select category" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {categoryAccounts.map((account) => (
-                                        <SelectItem key={account.id} value={account.id}>
-                                          {account.account_code} - {account.account_name}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
+                                  <div className="flex-1">
+                                    <SearchableAccountSelector
+                                      value={sale.category_id || sale.suggested_category_id || ""}
+                                      onValueChange={(categoryId) => {
+                                        categorizePosSale({ saleId: sale.id, categoryId });
+                                        setEditingCategoryForSale(null);
+                                      }}
+                                      placeholder="Select category"
+                                      filterByTypes={['revenue', 'liability']}
+                                    />
+                                  </div>
                                   <Button
                                     size="sm"
                                     variant="ghost"

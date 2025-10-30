@@ -43,11 +43,6 @@ const splitFormSchema = z.object({
 export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: SplitPosSaleDialogProps) {
   const { mutate: splitSale, isPending } = useSplitPosSale();
   
-  // Early return if no sale is provided
-  if (!sale) {
-    return null;
-  }
-  
   const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<SplitFormData>({
     resolver: zodResolver(splitFormSchema),
     defaultValues: {
@@ -64,6 +59,12 @@ export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: Spli
   });
 
   const splits = watch("splits");
+  
+  // Early return if no sale is provided (after all hooks)
+  if (!sale) {
+    return null;
+  }
+  
   const allocatedAmount = splits.reduce((sum, split) => sum + (Number(split.amount) || 0), 0);
   const remainingAmount = (sale.totalPrice || 0) - allocatedAmount;
   const isBalanced = Math.abs(remainingAmount) < 0.01;

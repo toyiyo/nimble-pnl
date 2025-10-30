@@ -84,28 +84,39 @@ export async function calculateRecipeProfitability(
     .toISOString()
     .split('T')[0];
 
-  // Fetch sales data for all recipes
+  // Batch fetch sales data for all recipes in a single query
+  const itemNames = recipes.map(r => r.pos_item_name || r.name);
+  
+  const { data: allSalesData, error: salesError } = await supabase
+    .from('unified_sales')
+    .select('item_name, quantity, total_price, unit_price')
+    .eq('restaurant_id', restaurantId)
+    .in('item_name', itemNames)
+    .gte('sale_date', startDate);
+
+  if (salesError) {
+    console.error('Error fetching batch sales data:', salesError);
+    throw new Error(`Failed to fetch sales data: ${salesError.message}`);
+  }
+
+  // Create lookup map: item_name -> sales records
+  const salesByItem = new Map<string, any[]>();
+  (allSalesData || []).forEach(sale => {
+    const existing = salesByItem.get(sale.item_name) || [];
+    existing.push(sale);
+    salesByItem.set(sale.item_name, existing);
+  });
+
+  // Process each recipe with its sales data from the lookup map
   const recipeProfitability: RecipeProfitabilityResult[] = [];
 
   for (const recipe of recipes) {
-    // Match by pos_item_name or recipe name
     const itemName = recipe.pos_item_name || recipe.name;
-    
-    const { data: salesData, error: salesError } = await supabase
-      .from('unified_sales')
-      .select('quantity, total_price, unit_price')
-      .eq('restaurant_id', restaurantId)
-      .eq('item_name', itemName)
-      .gte('sale_date', startDate);
-
-    if (salesError) {
-      console.error('Error fetching sales data for recipe:', recipe.name, salesError);
-      continue;
-    }
+    const salesData = salesByItem.get(itemName) || [];
 
     // Calculate sales metrics
-    const totalQuantitySold = salesData?.reduce((sum: number, sale: any) => sum + (sale.quantity || 0), 0) || 0;
-    const totalSales = salesData?.reduce((sum: number, sale: any) => sum + (sale.total_price || 0), 0) || 0;
+    const totalQuantitySold = salesData.reduce((sum: number, sale: any) => sum + (sale.quantity || 0), 0);
+    const totalSales = salesData.reduce((sum: number, sale: any) => sum + (sale.total_price || 0), 0);
     const averageSellingPrice = totalQuantitySold > 0 ? totalSales / totalQuantitySold : 0;
     const hasSalesData = totalQuantitySold > 0 && averageSellingPrice > 0;
 

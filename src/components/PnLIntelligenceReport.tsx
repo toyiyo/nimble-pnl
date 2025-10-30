@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -62,11 +62,20 @@ interface PnLIntelligenceReportProps {
 export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLIntelligenceReportProps) {
   const { data, loading } = usePnLAnalytics(restaurantId, { dateFrom, dateTo });
   
+  // Memoize fallback dates to prevent unnecessary React Query refetches
+  const defaultDateFrom = useMemo(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 30);
+    return date;
+  }, []);
+  
+  const defaultDateTo = useMemo(() => new Date(), []);
+  
   // Fetch revenue breakdown if dates are provided
   const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
     restaurantId,
-    dateFrom || new Date(new Date().setDate(new Date().getDate() - 30)),
-    dateTo || new Date()
+    dateFrom || defaultDateFrom,
+    dateTo || defaultDateTo
   );
   
   const [isExporting, setIsExporting] = useState(false);

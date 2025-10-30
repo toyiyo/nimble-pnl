@@ -251,14 +251,27 @@ serve(async (req) => {
     console.log(`✅ Successfully categorized ${categorizations.length} sales using ${successfulModel}`);
 
     let successCount = 0;
+    let failedCount = 0;
     const accountCodeMap = new Map(
       chartOfAccounts.map(acc => [acc.account_code, acc.id])
     );
 
+    // Create a map of valid sale IDs for validation
+    const validSaleIds = new Set(sales.map(s => s.id));
+
     for (const cat of categorizations) {
+      // Trim and validate sale_id
+      const saleId = cat.sale_id?.trim();
+      if (!saleId || !validSaleIds.has(saleId)) {
+        console.warn(`Invalid or unknown sale_id: ${cat.sale_id}`);
+        failedCount++;
+        continue;
+      }
+
       const accountId = accountCodeMap.get(cat.account_code);
       if (!accountId) {
-        console.warn(`Invalid account code: ${cat.account_code}`);
+        console.warn(`Invalid account code: ${cat.account_code} for sale ${saleId}`);
+        failedCount++;
         continue;
       }
 
@@ -270,15 +283,18 @@ serve(async (req) => {
           ai_reasoning: cat.reasoning,
           item_type: cat.item_type || 'sale'
         })
-        .eq('id', cat.sale_id)
+        .eq('id', saleId)
         .eq('restaurant_id', restaurantId);
 
       if (updateError) {
-        console.error(`Error updating sale ${cat.sale_id}:`, updateError);
+        console.error(`Error updating sale ${saleId}:`, updateError);
+        failedCount++;
       } else {
         successCount++;
       }
     }
+
+    console.log(`📊 Results: ${successCount} succeeded, ${failedCount} failed`);
 
     return new Response(
       JSON.stringify({ 

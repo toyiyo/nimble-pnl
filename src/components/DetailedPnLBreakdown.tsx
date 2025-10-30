@@ -79,6 +79,10 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
 
     const current = data.comparison.current_period;
     const previous = data.comparison.previous_period;
+    
+    // Safe denominator for revenue breakdown calculations
+    const grossRevenue = revenueBreakdown?.totals?.gross_revenue || 0;
+    const safeGrossRevenue = grossRevenue > 0 ? grossRevenue : 1;
 
     // Helper to calculate trend from daily data
     const getTrend = (metric: 'net_revenue' | 'food_cost' | 'labor_cost' | 'prime_cost') => {
@@ -134,14 +138,14 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         // Add revenue categories as children if available
         children: revenueBreakdown && revenueBreakdown.has_categorization_data
           ? [
-              ...revenueBreakdown.revenue_categories.map(cat => ({
+               ...revenueBreakdown.revenue_categories.map(cat => ({
                 id: `sales-${cat.account_id}`,
                 label: `${cat.account_code} - ${cat.account_name}`,
                 value: cat.total_amount,
-                percentage: (cat.total_amount / revenueBreakdown.totals.gross_revenue) * 100,
+                percentage: grossRevenue > 0 ? (cat.total_amount / safeGrossRevenue) * 100 : 0,
                 type: 'line-item' as const,
                 level: 1,
-                insight: `${cat.transaction_count} transactions • ${(cat.total_amount / revenueBreakdown.totals.gross_revenue * 100).toFixed(1)}% of gross`,
+                insight: `${cat.transaction_count} transactions • ${grossRevenue > 0 ? (cat.total_amount / safeGrossRevenue * 100).toFixed(1) : '0.0'}% of gross`,
                 status: 'neutral' as const,
               })),
               ...(revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories.length > 0 
@@ -150,11 +154,11 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
                       id: 'sales-deductions',
                       label: 'Less: Discounts & Refunds',
                       value: -(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds),
-                      percentage: -((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue) * 100,
+                      percentage: grossRevenue > 0 ? -((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / safeGrossRevenue) * 100 : 0,
                       type: 'line-item' as const,
                       level: 1,
-                      insight: `${((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue * 100).toFixed(1)}% of gross revenue`,
-                      status: (revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue > 0.03 ? 'warning' as const : 'neutral' as const,
+                      insight: `${grossRevenue > 0 ? ((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / safeGrossRevenue * 100).toFixed(1) : '0.0'}% of gross revenue`,
+                      status: grossRevenue > 0 && (revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / safeGrossRevenue > 0.03 ? 'warning' as const : 'neutral' as const,
                     },
                   ]
                 : []),
@@ -162,7 +166,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
                 id: 'sales-net',
                 label: 'Net Sales Revenue',
                 value: revenueBreakdown.totals.net_revenue,
-                percentage: (revenueBreakdown.totals.net_revenue / revenueBreakdown.totals.gross_revenue) * 100,
+                percentage: grossRevenue > 0 ? (revenueBreakdown.totals.net_revenue / safeGrossRevenue) * 100 : 0,
                 type: 'subtotal' as const,
                 level: 1,
                 insight: `Final revenue after all deductions`,
@@ -260,7 +264,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         status: 'neutral',
       },
     ];
-  }, [data, actualDays]);
+  }, [data, actualDays, revenueBreakdown]);
 
   const getStatusIcon = (status?: PnLRow['status']) => {
     switch (status) {

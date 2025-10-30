@@ -123,7 +123,8 @@ export function getModelFallbackList(requiresTools = true): string[] {
     ? MODELS.filter(m => m.supportsTools)
     : MODELS;
   
-  return models
+  // Create a shallow copy to avoid mutating the original MODELS array
+  return [...models]
     .sort((a, b) => {
       // Prioritize reliable tool-calling models over cost
       if (requiresTools && a.reliableTools !== b.reliableTools) {

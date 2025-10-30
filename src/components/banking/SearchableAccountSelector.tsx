@@ -96,13 +96,14 @@ export function SearchableAccountSelector({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-full p-0 bg-background z-50" align="start">
-        <Command className="max-h-[400px]">
+        <Command>
           <CommandInput placeholder="Search accounts..." />
           <CommandList 
-            className="max-h-80 overflow-auto"
+            className="max-h-80"
             style={{ 
-              overflowY: 'auto',
-              WebkitOverflowScrolling: 'touch'
+              overflowY: 'scroll',
+              overscrollBehavior: 'contain',
+              WebkitOverflowScrolling: 'touch',
             } as React.CSSProperties}
           >
             {isEmpty ? (

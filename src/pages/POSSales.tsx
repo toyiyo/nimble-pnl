@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,7 +26,7 @@ import { generateTablePDF } from "@/utils/pdfExport";
 import Papa from "papaparse";
 import { useToast } from "@/hooks/use-toast";
 import { useCategorizePosSales } from "@/hooks/useCategorizePosSales";
-import { PosSaleCategoryReview } from "@/components/pos-sales/PosSaleCategoryReview";
+import { useCategorizePosSale } from "@/hooks/useCategorizePosSale";
 
 export default function POSSales() {
   const {
@@ -70,6 +70,7 @@ export default function POSSales() {
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
   const { mutate: categorizePosSales, isPending: isCategorizingPending } = useCategorizePosSales();
+  const { mutate: categorizePosSale } = useCategorizePosSale();
 
   const handleMapPOSItem = (itemName: string) => {
     setSelectedPOSItemForMapping(itemName);
@@ -515,15 +516,6 @@ export default function POSSales() {
         </CardContent>
       </Card>
 
-      {/* AI Suggestions Review */}
-      {suggestedSales.length > 0 && (
-        <PosSaleCategoryReview
-          sales={suggestedSales}
-          restaurantId={selectedRestaurant.restaurant_id}
-          onRefresh={() => syncAllSystems()}
-        />
-      )}
-
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "manual" | "import")} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="manual">View Sales</TabsTrigger>
@@ -780,10 +772,7 @@ export default function POSSales() {
                                       size="sm"
                                       variant="default"
                                       className="text-xs h-7 px-2"
-                                      onClick={() => {
-                                        const { mutate } = useCategorizePosSale();
-                                        mutate({ saleId: sale.id, categoryId: sale.suggested_category_id! });
-                                      }}
+                                      onClick={() => categorizePosSale({ saleId: sale.id, categoryId: sale.suggested_category_id! })}
                                     >
                                       <Check className="h-3 w-3 mr-1" />
                                       Approve
@@ -792,10 +781,7 @@ export default function POSSales() {
                                       size="sm"
                                       variant="ghost"
                                       className="text-xs h-7 px-2"
-                                      onClick={() => {
-                                        const { mutate } = useCategorizePosSale();
-                                        mutate({ saleId: sale.id, categoryId: sale.suggested_category_id! });
-                                      }}
+                                      onClick={() => categorizePosSale({ saleId: sale.id, categoryId: sale.suggested_category_id! })}
                                     >
                                       <X className="h-3 w-3" />
                                     </Button>

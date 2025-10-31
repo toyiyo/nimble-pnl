@@ -61,7 +61,6 @@ const Index = () => {
 
   // Collapsible section states
   const [metricsOpen, setMetricsOpen] = useState(true);
-  const [trendsOpen, setTrendsOpen] = useState(true);
   const [revenueOpen, setRevenueOpen] = useState(true);
   const [monthlyOpen, setMonthlyOpen] = useState(true);
 
@@ -604,100 +603,6 @@ const Index = () => {
                 </div>
               </Collapsible>
 
-              {/* Alerts & Trends - Collapsible */}
-              <Collapsible open={trendsOpen} onOpenChange={setTrendsOpen}>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-8 bg-gradient-to-r from-accent to-accent/50 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">Trends & Alerts</h2>
-                    </div>
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-2">
-                        {trendsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        {trendsOpen ? "Collapse" : "Expand"}
-                      </Button>
-                    </CollapsibleTrigger>
-                  </div>
-                  <CollapsibleContent>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* Enhanced Alerts */}
-                <Card className={`group transition-all duration-300 hover:shadow-xl hover:scale-[1.02] hover:-translate-y-1 animate-fade-in ${
-                  reorderAlerts.length > 0 
-                    ? 'border-red-200 dark:border-red-900 bg-gradient-to-br from-red-50/50 via-background to-red-50/30 dark:from-red-950/20 dark:via-background dark:to-red-950/10' 
-                    : 'bg-gradient-to-br from-green-50/50 via-background to-green-50/30 dark:from-green-950/20 dark:via-background dark:to-green-950/10'
-                }`}>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      {reorderAlerts.length > 0 ? (
-                        <div className="rounded-lg p-2 bg-gradient-to-br from-red-500 to-red-600 shadow-lg shadow-red-500/30">
-                          <AlertTriangle className="h-4 w-4 text-white" />
-                        </div>
-                      ) : (
-                        <div className="rounded-lg p-2 bg-gradient-to-br from-green-500 to-green-600 shadow-lg shadow-green-500/30">
-                          <CheckCircle2 className="h-4 w-4 text-white" />
-                        </div>
-                      )}
-                      <span>Inventory Alerts</span>
-                    </CardTitle>
-                    <CardDescription>Items needing attention</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {reorderAlerts.length === 0 ? (
-                      <div className="text-center py-4 space-y-2">
-                        <p className="text-sm font-medium text-green-700 dark:text-green-400">
-                          All inventory levels are healthy
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Great job maintaining stock levels! 🎉
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between p-3 rounded-lg bg-background/50">
-                          <span className="text-sm font-medium">Reorder Needed</span>
-                          <Badge variant="destructive" className="animate-pulse">
-                            {reorderAlerts.length}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between p-3 rounded-lg bg-background/50">
-                          <span className="text-sm font-medium">Low Stock</span>
-                          <Badge variant="outline">{lowStockItems.length}</Badge>
-                        </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="w-full mt-2 hover:bg-red-50 dark:hover:bg-red-950/20 hover:border-red-300 dark:hover:border-red-800 transition-all"
-                          onClick={() => navigate('/inventory?tab=low-stock')}
-                        >
-                          View All Alerts
-                        </Button>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Revenue Trend */}
-                <DashboardMiniChart
-                  title="Revenue Trend"
-                  description="Last 14 days"
-                  data={[{ date: format(new Date(), 'yyyy-MM-dd'), value: periodMetrics?.netRevenue || 0 }]}
-                  color="#10b981"
-                  suffix="$"
-                />
-
-                {/* Food Cost Trend */}
-                <DashboardMiniChart
-                  title="Food Cost Trend"
-                  description="Last 14 days"
-                  data={[{ date: format(new Date(), 'yyyy-MM-dd'), value: periodMetrics?.foodCostPercentage || 0 }]}
-                  color="#f59e0b"
-                  suffix="%"
-                />
-              </div>
-                  </CollapsibleContent>
-                </div>
-              </Collapsible>
 
               {/* Quick Actions */}
               <DashboardQuickActions restaurantId={selectedRestaurant.restaurant_id} />

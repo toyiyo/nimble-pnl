@@ -42,11 +42,23 @@ export function SearchableAccountSelector({
     [accounts, value]
   );
 
-  // Filter accounts by type if specified
+  // Filter accounts by type if specified (include sub-accounts of matching parents)
   const filteredAccounts = useMemo(() => {
     if (!accounts) return [];
     if (!filterByTypes || filterByTypes.length === 0) return accounts;
-    return accounts.filter(acc => filterByTypes.includes(acc.account_type));
+    
+    // Include accounts that match the filter type OR whose parent matches the filter type
+    return accounts.filter(acc => {
+      // If account itself matches the filter, include it
+      if (filterByTypes.includes(acc.account_type)) return true;
+      
+      // If it's a sub-account, check if parent matches filter
+      if (acc.parent_account_id && acc.parent_account) {
+        return filterByTypes.includes(acc.parent_account.account_type);
+      }
+      
+      return false;
+    });
   }, [accounts, filterByTypes]);
 
   // Organize accounts with parent-child relationships

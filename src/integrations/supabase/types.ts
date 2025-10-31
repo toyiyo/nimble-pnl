@@ -322,7 +322,9 @@ export type Database = {
         Row: {
           account_code: string
           account_name: string
-          account_subtype: Database["public"]["Enums"]["account_subtype_enum"]
+          account_subtype:
+            | Database["public"]["Enums"]["account_subtype_enum"]
+            | null
           account_type: Database["public"]["Enums"]["account_type_enum"]
           created_at: string
           current_balance: number
@@ -339,7 +341,9 @@ export type Database = {
         Insert: {
           account_code: string
           account_name: string
-          account_subtype: Database["public"]["Enums"]["account_subtype_enum"]
+          account_subtype?:
+            | Database["public"]["Enums"]["account_subtype_enum"]
+            | null
           account_type: Database["public"]["Enums"]["account_type_enum"]
           created_at?: string
           current_balance?: number
@@ -356,7 +360,9 @@ export type Database = {
         Update: {
           account_code?: string
           account_name?: string
-          account_subtype?: Database["public"]["Enums"]["account_subtype_enum"]
+          account_subtype?:
+            | Database["public"]["Enums"]["account_subtype_enum"]
+            | null
           account_type?: Database["public"]["Enums"]["account_type_enum"]
           created_at?: string
           current_balance?: number

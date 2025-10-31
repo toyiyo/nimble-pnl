@@ -50,7 +50,7 @@ export interface DailyLaborCosts {
   total_hours?: number;
 }
 
-export function useDailyPnL(restaurantId: string | null) {
+export function useDailyPnL(restaurantId: string | null, dateRange?: { from: Date; to: Date }) {
   const [pnlData, setPnlData] = useState<DailyPnL[]>([]);
   const [loading, setLoading] = useState(true);
   const [restaurantTimezone, setRestaurantTimezone] = useState<string>('UTC');
@@ -402,9 +402,21 @@ export function useDailyPnL(restaurantId: string | null) {
 
   useEffect(() => {
     if (restaurantId) {
-      fetchPnLData();
+      // If dateRange is provided, use it; otherwise fetch last 90 days for monthly view
+      if (dateRange) {
+        const from = dateRange.from.toISOString().split('T')[0];
+        const to = dateRange.to.toISOString().split('T')[0];
+        fetchPnLData({ from, to });
+      } else {
+        // Default to last 90 days to show multiple months
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        const from = ninetyDaysAgo.toISOString().split('T')[0];
+        const to = new Date().toISOString().split('T')[0];
+        fetchPnLData({ from, to });
+      }
     }
-  }, [restaurantId, fetchPnLData]);
+  }, [restaurantId, dateRange?.from, dateRange?.to, fetchPnLData]);
 
   return {
     pnlData,

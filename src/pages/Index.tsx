@@ -49,7 +49,6 @@ import {
 const Index = () => {
   const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
-  const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, getMonthlyData } = useDailyPnL(selectedRestaurant?.restaurant_id || null);
   const { lowStockItems, reorderAlerts, loading: alertsLoading } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
   const { data: connectedBanks, isLoading: banksLoading } = useConnectedBanks(selectedRestaurant?.restaurant_id || null);
   const { data: transactionsData } = useBankTransactions('for_review');
@@ -69,6 +68,12 @@ const Index = () => {
     to: endOfDay(new Date()),
     label: 'Today',
   });
+
+  // Now fetch PnL data with the selected period
+  const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, getMonthlyData } = useDailyPnL(
+    selectedRestaurant?.restaurant_id || null,
+    selectedPeriod
+  );
 
   // Fetch revenue breakdown for selected period
   const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(

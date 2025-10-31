@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -813,6 +813,16 @@ export default function POSSales() {
                                   {sale.ai_confidence}
                                 </Badge>
                               )}
+                              {!sale.is_categorized && !sale.suggested_category_id && editingCategoryForSale !== sale.id && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 px-2 text-xs border-primary/50 hover:bg-primary/10"
+                                  onClick={() => setEditingCategoryForSale(sale.id)}
+                                >
+                                  Categorize
+                                </Button>
+                              )}
                             </div>
                             <div className="text-sm text-muted-foreground">
                               {(() => {
@@ -855,11 +865,21 @@ export default function POSSales() {
                                     </Button>
                                     <Button
                                       size="sm"
+                                      variant="outline"
+                                      className="text-xs h-7 px-2"
+                                      onClick={() => setSaleToSplit(sale)}
+                                    >
+                                      <Split className="h-3 w-3 mr-1" />
+                                      Split
+                                    </Button>
+                                    <Button
+                                      size="sm"
                                       variant="ghost"
                                       className="text-xs h-7 px-2"
                                       onClick={() => setEditingCategoryForSale(sale.id)}
                                     >
-                                      <X className="h-3 w-3" />
+                                      <X className="h-3 w-3 mr-1" />
+                                      Change
                                     </Button>
                                   </div>
                                 </div>

@@ -3505,10 +3505,7 @@ export type Database = {
       }
       split_pos_sale: {
         Args: { p_sale_id: string; p_splits: Json }
-        Returns: {
-          message: string
-          success: boolean
-        }[]
+        Returns: undefined
       }
       suggest_supplier_for_payee: {
         Args: { p_payee_name: string; p_restaurant_id: string }

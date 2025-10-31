@@ -722,14 +722,28 @@ const Index = () => {
                         </div>
                       </div>
                       {revenueBreakdown.categorization_rate < 100 && (
-                        <Badge variant="outline" className="gap-1">
-                          <Activity className="h-3 w-3" />
+                        <Badge variant="outline" className="gap-1 bg-amber-50 dark:bg-amber-950/20 border-amber-300 text-amber-700">
+                          <AlertTriangle className="h-3 w-3" />
                           {revenueBreakdown.categorization_rate.toFixed(0)}% categorized
                         </Badge>
                       )}
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                   <CardContent className="space-y-4">
+                    {/* Categorization Warning */}
+                    {revenueBreakdown.categorization_rate < 100 && (
+                      <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <div className="text-xs text-amber-700 dark:text-amber-400">
+                          <p className="font-semibold mb-1">Incomplete Data</p>
+                          <p>
+                            Only {revenueBreakdown.categorization_rate.toFixed(0)}% of sales are categorized. 
+                            These totals only reflect categorized sales and may not represent your complete revenue.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Gross vs Net Revenue */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="p-4 rounded-lg bg-background/50">
@@ -796,9 +810,17 @@ const Index = () => {
                     {/* Pass-Through Collections */}
                     {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0 || revenueBreakdown.totals.other_liabilities > 0) && (
                       <div className="pt-4 border-t">
-                        <h4 className="text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">
-                          Other Collections (Pass-Through)
-                        </h4>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            Pass-Through Collections
+                          </h4>
+                          <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-600">
+                            Not Revenue
+                          </Badge>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mb-3">
+                          These amounts are collected but not included in your revenue totals above.
+                        </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {revenueBreakdown.totals.sales_tax > 0 && (
                             <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">

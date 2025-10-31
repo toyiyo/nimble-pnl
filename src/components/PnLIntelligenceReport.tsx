@@ -463,11 +463,25 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
             </Card>
           ) : (
             <>
+              {/* Categorization Warning */}
+              {revenueBreakdown.categorization_rate < 100 && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                  <Info className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-amber-700 dark:text-amber-400">
+                    <p className="font-semibold mb-1">Incomplete Data</p>
+                    <p>
+                      Only {revenueBreakdown.categorization_rate.toFixed(0)}% of sales are categorized. 
+                      These totals only reflect categorized sales and may not represent your complete revenue.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Summary Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Gross Revenue</CardTitle>
+                    <CardTitle className="text-sm">Gross Revenue (Categorized)</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-3xl font-bold text-emerald-600">
@@ -592,12 +606,17 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
               {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) && (
                 <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
                   <CardHeader>
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Info className="h-4 w-4" />
-                      Other Collections (Pass-Through Liabilities)
-                    </CardTitle>
+                    <div className="flex items-center gap-2 mb-1">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Info className="h-4 w-4" />
+                        Pass-Through Collections
+                      </CardTitle>
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-600">
+                        Not Revenue
+                      </Badge>
+                    </div>
                     <CardDescription>
-                      These amounts are collected but not included in revenue
+                      These amounts are collected on behalf of others and excluded from your revenue totals
                     </CardDescription>
                   </CardHeader>
                   <CardContent>

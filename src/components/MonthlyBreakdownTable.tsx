@@ -63,11 +63,11 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
   const dataWithComparison: MonthlyRow[] = useMemo(() => {
     return monthlyData.map((month, index) => {
       const priorMonth = monthlyData[index + 1];
-      const currentBreakdown = getBreakdownForMonth(month.period);
-      const priorBreakdown = priorMonth ? getBreakdownForMonth(priorMonth.period) : null;
-      
-      const currentNet = currentBreakdown?.totals?.net_revenue || month.net_revenue;
-      const priorNet = priorBreakdown?.totals?.net_revenue || priorMonth?.net_revenue || 0;
+    const currentBreakdown = getBreakdownForMonth(month.period);
+    const priorBreakdown = priorMonth ? getBreakdownForMonth(priorMonth.period) : null;
+    
+    const currentNet = currentBreakdown?.totals?.net_revenue || 0;
+    const priorNet = priorBreakdown?.totals?.net_revenue || 0;
       
       const profitChange = priorNet !== 0
         ? ((currentNet - priorNet) / Math.abs(priorNet)) * 100
@@ -230,7 +230,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           <span className="font-semibold text-xs sm:text-sm text-blue-600">
                             {(() => {
                               const breakdown = getBreakdownForMonth(month.period);
-                              return formatCurrency(breakdown?.totals?.total_collected_at_pos || month.net_revenue);
+                              return formatCurrency(breakdown?.totals?.total_collected_at_pos || 0);
                             })()}
                           </span>
                         </td>
@@ -238,7 +238,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           <span className="font-semibold text-xs sm:text-sm text-emerald-600">
                             {(() => {
                               const breakdown = getBreakdownForMonth(month.period);
-                              return formatCurrency(breakdown?.totals?.gross_revenue || month.net_revenue);
+                              return formatCurrency(breakdown?.totals?.gross_revenue || 0);
                             })()}
                           </span>
                         </td>
@@ -255,7 +255,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           <span className="font-semibold text-xs sm:text-sm">
                             {(() => {
                               const breakdown = getBreakdownForMonth(month.period);
-                              return formatCurrency(breakdown?.totals?.net_revenue || month.net_revenue);
+                              return formatCurrency(breakdown?.totals?.net_revenue || 0);
                             })()}
                           </span>
                         </td>
@@ -278,7 +278,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           {(() => {
                             const breakdown = getBreakdownForMonth(month.period);
-                            const netRevenue = breakdown?.totals?.net_revenue || month.net_revenue;
+                            const netRevenue = breakdown?.totals?.net_revenue || 0;
                             const profit = netRevenue - month.food_cost - month.labor_cost;
                             
                             return (

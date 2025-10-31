@@ -3028,6 +3028,7 @@ export type Database = {
           is_split: boolean | null
           item_name: string
           item_type: string | null
+          parent_sale_id: string | null
           pos_category: string | null
           pos_system: string
           quantity: number
@@ -3039,6 +3040,7 @@ export type Database = {
           synced_at: string
           total_price: number | null
           unit_price: number | null
+          updated_at: string | null
         }
         Insert: {
           ai_confidence?: string | null
@@ -3052,6 +3054,7 @@ export type Database = {
           is_split?: boolean | null
           item_name: string
           item_type?: string | null
+          parent_sale_id?: string | null
           pos_category?: string | null
           pos_system: string
           quantity?: number
@@ -3063,6 +3066,7 @@ export type Database = {
           synced_at?: string
           total_price?: number | null
           unit_price?: number | null
+          updated_at?: string | null
         }
         Update: {
           ai_confidence?: string | null
@@ -3076,6 +3080,7 @@ export type Database = {
           is_split?: boolean | null
           item_name?: string
           item_type?: string | null
+          parent_sale_id?: string | null
           pos_category?: string | null
           pos_system?: string
           quantity?: number
@@ -3087,6 +3092,7 @@ export type Database = {
           synced_at?: string
           total_price?: number | null
           unit_price?: number | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -3094,6 +3100,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unified_sales_parent_sale_id_fkey"
+            columns: ["parent_sale_id"]
+            isOneToOne: false
+            referencedRelation: "unified_sales"
             referencedColumns: ["id"]
           },
           {

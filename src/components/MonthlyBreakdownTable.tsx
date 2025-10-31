@@ -11,10 +11,17 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 
 interface MonthlyData {
   period: string;
+  gross_revenue: number;
+  total_collected_at_pos: number;
   net_revenue: number;
+  discounts: number;
+  refunds: number;
+  sales_tax: number;
+  tips: number;
+  other_liabilities: number;
   food_cost: number;
   labor_cost: number;
-  gross_profit: number;
+  has_data: boolean;
 }
 
 interface MonthlyBreakdownTableProps {
@@ -210,17 +217,17 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-blue-600">
-                            {formatCurrency(month.net_revenue)}
+                            {formatCurrency(month.total_collected_at_pos)}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-emerald-600">
-                            {formatCurrency(month.net_revenue)}
+                            {formatCurrency(month.gross_revenue)}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-red-600">
-                            $0
+                            {formatCurrency(month.discounts)}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
@@ -293,10 +300,32 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                             </Badge>
                           )}
                         </td>
-                      </tr>
-                      
-                      {/* Expanded Revenue Detail Row */}
-                      {isExpanded && (() => {
+                       </tr>
+                       
+                       {/* Pass-through collections row (collapsed view) */}
+                       {!isExpanded && (month.sales_tax > 0 || month.tips > 0 || month.other_liabilities > 0) && (
+                         <tr className="border-b border-border/30 bg-amber-50/30 dark:bg-amber-950/10">
+                           <td colSpan={2} className="py-1 px-4 text-xs text-muted-foreground">
+                             <span className="ml-6">Pass-Through Collections:</span>
+                           </td>
+                           <td colSpan={8} className="py-1 px-2 text-xs">
+                             <div className="flex gap-4 text-amber-600 dark:text-amber-400">
+                               {month.sales_tax > 0 && (
+                                 <span>Sales Tax: {formatCurrency(month.sales_tax)}</span>
+                               )}
+                               {month.tips > 0 && (
+                                 <span>Tips: {formatCurrency(month.tips)}</span>
+                               )}
+                               {month.other_liabilities > 0 && (
+                                 <span>Other: {formatCurrency(month.other_liabilities)}</span>
+                               )}
+                             </div>
+                           </td>
+                         </tr>
+                       )}
+
+                       {/* Expanded Revenue Detail Row */}
+                       {isExpanded && (() => {
                         const breakdown = getBreakdownForMonth(month.period);
                         if (!breakdown) return null;
                         
@@ -304,7 +333,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           <tr className="bg-primary/5 border-b border-border/50">
                             <td colSpan={10} className="py-4 px-4 sm:px-8">
                               <div className="space-y-4">
-                                {!breakdown.has_categorization_data ? (
+                                {!month.has_data ? (
                                 <div className="text-center py-8 space-y-2">
                                   <p className="text-sm font-medium text-muted-foreground">
                                     No categorized sales data for this month

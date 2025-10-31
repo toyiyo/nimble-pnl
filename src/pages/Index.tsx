@@ -11,6 +11,7 @@ import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
 import { useBankTransactions } from '@/hooks/useBankTransactions';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
+import { useMonthlyMetrics } from '@/hooks/useMonthlyMetrics';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -86,10 +87,11 @@ const Index = () => {
     selectedPeriod.to
   );
 
-  // Keep useDailyPnL only for historical monthly breakdown data
-  const { getMonthlyData } = useDailyPnL(
+  // Fetch monthly metrics from unified_sales + daily_pnl
+  const { data: monthlyMetrics, isLoading: monthlyLoading } = useMonthlyMetrics(
     selectedRestaurant?.restaurant_id || null,
-    selectedPeriod
+    selectedPeriod.from,
+    selectedPeriod.to
   );
 
   // Fetch revenue breakdown for selected period (still needed for detailed breakdown)
@@ -254,8 +256,8 @@ const Index = () => {
     return alerts;
   }, [availableCash, periodData, reorderAlerts, unmappedItems]);
 
-  // Monthly data (recomputed only when pnlData changes)
-  const monthlyData = useMemo(() => getMonthlyData(), [getMonthlyData]);
+  // Monthly data from new metrics hook
+  const monthlyData = monthlyMetrics || [];
 
   // Generate AI insights with memoization
   const insights = useMemo(() => {

@@ -709,14 +709,24 @@ const Index = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="h-1 w-8 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full" />
-                        <h2 className="text-2xl font-bold tracking-tight">Revenue Mix</h2>
+                        <h2 className="text-2xl font-bold tracking-tight">💰 Where Your Sales Come From</h2>
                       </div>
                       <CollapsibleTrigger asChild>
                         <Button variant="ghost" size="sm" className="gap-2">
-                          {revenueOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          {revenueOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4" />}
                           {revenueOpen ? "Collapse" : "Expand"}
                         </Button>
                       </CollapsibleTrigger>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      This shows what products are driving your sales.
+                    </p>
+                    {/* Header Summary */}
+                    <div className="p-3 rounded-lg bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50">
+                      <p className="text-sm text-foreground">
+                        <span className="font-semibold">{revenueBreakdown.categorization_rate.toFixed(0)}% of sales are categorized.</span>{' '}
+                        These totals cover mapped items only.
+                      </p>
                     </div>
                     <CollapsibleContent>
                 <Card className="bg-gradient-to-br from-emerald-50/50 via-background to-emerald-50/30 dark:from-emerald-950/20 dark:via-background dark:to-emerald-950/10 border-emerald-200 dark:border-emerald-900">
@@ -725,34 +735,15 @@ const Index = () => {
                       <div className="flex items-center gap-3">
                         <MetricIcon icon={DollarSign} variant="emerald" />
                         <div>
-                          <CardTitle className="text-lg">Revenue Mix</CardTitle>
+                          <CardTitle className="text-lg">Revenue by Category</CardTitle>
                           <CardDescription>
                             Breakdown by category • {selectedPeriod.label}
                           </CardDescription>
                         </div>
                       </div>
-                      {revenueBreakdown.categorization_rate < 100 && (
-                        <Badge variant="outline" className="gap-1 bg-amber-50 dark:bg-amber-950/20 border-amber-300 text-amber-700">
-                          <AlertTriangle className="h-3 w-3" />
-                          {revenueBreakdown.categorization_rate.toFixed(0)}% categorized
-                        </Badge>
-                      )}
                     </div>
                   </CardHeader>
                    <CardContent className="space-y-4">
-                    {/* Categorization Warning */}
-                    {revenueBreakdown.categorization_rate < 100 && (
-                      <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                        <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                        <div className="text-xs text-amber-700 dark:text-amber-400">
-                          <p className="font-semibold mb-1">Incomplete Data</p>
-                          <p>
-                            Only {revenueBreakdown.categorization_rate.toFixed(0)}% of sales are categorized. 
-                            These totals only reflect categorized sales and may not represent your complete revenue.
-                          </p>
-                        </div>
-                      </div>
-                    )}
 
                     {/* Gross vs Net Revenue */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

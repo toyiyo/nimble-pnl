@@ -53,6 +53,7 @@ const Index = () => {
   const { lowStockItems, reorderAlerts, loading: alertsLoading } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
   const { data: connectedBanks, isLoading: banksLoading } = useConnectedBanks(selectedRestaurant?.restaurant_id || null);
   const { data: transactionsData } = useBankTransactions('for_review');
+  const { data: allTransactions } = useBankTransactions(); // Fetch all transactions for spending calculation
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
 
@@ -171,6 +172,37 @@ const Index = () => {
     return todaysData.net_revenue - todaysData.food_cost - todaysData.labor_cost;
   }, [todaysData]);
 
+  // Calculate daily average spending from actual transaction history
+  const dailyAvgSpending = useMemo(() => {
+    if (!allTransactions || allTransactions.length === 0) return 0;
+
+    // Filter for expenses: negative amounts, not transfers, not excluded, from last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const expenses = allTransactions.filter(t => {
+      const transactionDate = new Date(t.transaction_date);
+      return (
+        t.amount < 0 && // Expenses are negative
+        !t.is_transfer && // Exclude transfers
+        !t.excluded_reason && // Exclude transactions marked as excluded
+        transactionDate >= thirtyDaysAgo // Last 30 days only
+      );
+    });
+
+    if (expenses.length === 0) return 0;
+
+    // Calculate total spending (absolute values)
+    const totalSpending = expenses.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+    // Calculate actual number of days with data
+    const dates = new Set(expenses.map(t => format(new Date(t.transaction_date), 'yyyy-MM-dd')));
+    const daysWithData = dates.size;
+
+    // Return average daily spending
+    return daysWithData > 0 ? totalSpending / daysWithData : 0;
+  }, [allTransactions]);
+
   // Generate Critical Alerts
   const criticalAlerts = useMemo(() => {
     const alerts: Array<{
@@ -183,8 +215,7 @@ const Index = () => {
     }> = [];
 
     // Cash runway alert
-    const dailyAvgSpending = 2000; // This should be calculated from actual data
-    const runway = availableCash / dailyAvgSpending;
+    const runway = dailyAvgSpending > 0 ? availableCash / dailyAvgSpending : 0;
     if (runway < 30 && runway > 0) {
       alerts.push({
         id: "cash-runway",

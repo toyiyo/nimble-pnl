@@ -20,6 +20,7 @@ export interface RevenueBreakdownData {
   other_liability_categories: RevenueCategory[];
   uncategorized_revenue: number;
   totals: {
+    total_collected_at_pos: number;
     gross_revenue: number;
     categorized_revenue: number;
     uncategorized_revenue: number;
@@ -109,6 +110,7 @@ export function useRevenueBreakdown(
           other_liability_categories: [],
           uncategorized_revenue: 0,
           totals: {
+            total_collected_at_pos: 0,
             gross_revenue: 0,
             categorized_revenue: 0,
             uncategorized_revenue: 0,
@@ -218,6 +220,10 @@ export function useRevenueBreakdown(
       const totalTips = fromC(totalTipsC);
       const totalOtherLiabilities = fromC(totalOtherLiabilitiesC);
       
+      // Calculate total collected at POS (revenue + pass-through collections)
+      const totalCollectedAtPOSC = grossRevenueC + totalTaxC + totalTipsC + totalOtherLiabilitiesC;
+      const totalCollectedAtPOS = fromC(totalCollectedAtPOSC);
+      
       // Calculate categorization rate based on revenue dollars
       const categorizationRate = grossRevenueC > 0 ? (categorizedRevenueC / grossRevenueC) * 100 : 0;
 
@@ -246,6 +252,7 @@ export function useRevenueBreakdown(
         ),
         uncategorized_revenue: uncategorizedRevenue,
         totals: {
+          total_collected_at_pos: totalCollectedAtPOS,
           gross_revenue: grossRevenue,
           categorized_revenue: categorizedRevenue,
           uncategorized_revenue: uncategorizedRevenue,

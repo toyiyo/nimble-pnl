@@ -159,6 +159,10 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                     Month
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                    <span className="hidden sm:inline">Collected at POS</span>
+                    <span className="sm:hidden">POS</span>
+                  </th>
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
                     Gross Revenue
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
@@ -221,6 +225,14 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                         <td className="py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-medium text-xs sm:text-sm">{formatMonth(month.period)}</span>
+                        </td>
+                        <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
+                          <span className="font-semibold text-xs sm:text-sm text-blue-600">
+                            {(() => {
+                              const breakdown = getBreakdownForMonth(month.period);
+                              return formatCurrency(breakdown?.totals?.total_collected_at_pos || month.net_revenue);
+                            })()}
+                          </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-emerald-600">
@@ -322,7 +334,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         
                         return (
                           <tr className="bg-primary/5 border-b border-border/50">
-                            <td colSpan={9} className="py-4 px-4 sm:px-8">
+                            <td colSpan={10} className="py-4 px-4 sm:px-8">
                               <div className="space-y-4">
                                 {!breakdown.has_categorization_data ? (
                                 <div className="text-center py-8 space-y-2">
@@ -442,6 +454,46 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                         <span className="font-medium">Refunds</span>
                                         <span className="font-semibold text-red-600">
                                           -{formatCurrency(breakdown.totals.total_refunds)}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Collected at POS Summary */}
+                              {breakdown?.has_categorization_data && breakdown?.totals && (
+                                <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                                  <div className="flex justify-between items-center mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <Info className="h-4 w-4 text-blue-600" />
+                                      <span className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                                        Total Collected at POS
+                                      </span>
+                                    </div>
+                                    <span className="text-lg font-bold text-blue-600">
+                                      {formatCurrency(breakdown.totals.total_collected_at_pos)}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-blue-700 dark:text-blue-300 mb-3">
+                                    This is the total amount of money collected through your POS system
+                                  </p>
+                                  <div className="space-y-2 pl-6">
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-blue-700 dark:text-blue-300">Revenue (Your Money):</span>
+                                      <span className="font-semibold text-emerald-600">
+                                        {formatCurrency(breakdown.totals.gross_revenue)}
+                                      </span>
+                                    </div>
+                                    {(breakdown.totals.sales_tax > 0 || breakdown.totals.tips > 0 || breakdown.totals.other_liabilities > 0) && (
+                                      <div className="flex justify-between text-xs">
+                                        <span className="text-blue-700 dark:text-blue-300">Pass-Through Collections:</span>
+                                        <span className="font-semibold text-amber-600">
+                                          {formatCurrency(
+                                            breakdown.totals.sales_tax + 
+                                            breakdown.totals.tips + 
+                                            breakdown.totals.other_liabilities
+                                          )}
                                         </span>
                                       </div>
                                     )}

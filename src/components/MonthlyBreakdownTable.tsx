@@ -23,42 +23,62 @@ interface MonthlyBreakdownTableProps {
 
 type MonthlyRow = MonthlyData & { profitChangePercent: number | null };
 
+// Helper hook to fetch revenue breakdown for all months at once
+const useMonthlyRevenueBreakdowns = (
+  restaurantId: string | null,
+  months: string[]
+) => {
+  // Fetch all month breakdowns in parallel
+  const breakdowns = months.map(monthStr => {
+    const monthDate = parse(monthStr, 'yyyy-MM', new Date());
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const { data } = useRevenueBreakdown(
+      restaurantId,
+      startOfMonth(monthDate),
+      endOfMonth(monthDate)
+    );
+    return { period: monthStr, data };
+  });
+  
+  return breakdowns;
+};
+
 export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProps) => {
   const { selectedRestaurant } = useRestaurantContext();
   const navigate = useNavigate();
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
-  // Get revenue breakdown for the expanded month
-  const expandedMonthDate = useMemo(() => {
-    if (!expandedMonth) return null;
-    try {
-      return parse(expandedMonth, 'yyyy-MM', new Date());
-    } catch {
-      return null;
-    }
-  }, [expandedMonth]);
-
-  const { data: expandedMonthRevenue } = useRevenueBreakdown(
+  // Fetch revenue breakdown for ALL months (for consistent display)
+  const allMonthBreakdowns = useMonthlyRevenueBreakdowns(
     selectedRestaurant?.restaurant_id || null,
-    expandedMonthDate ? startOfMonth(expandedMonthDate) : new Date(),
-    expandedMonthDate ? endOfMonth(expandedMonthDate) : new Date()
+    monthlyData.map(m => m.period)
   );
 
-  // Calculate profit change vs prior period (using net revenue as base since costs may be incomplete)
-  const dataWithComparison: MonthlyRow[] = useMemo(
-    () => monthlyData.map((month, index) => {
+  // Helper to get breakdown for a specific month
+  const getBreakdownForMonth = (period: string) => {
+    return allMonthBreakdowns.find(b => b.period === period)?.data || null;
+  };
+
+  // Calculate profit change vs prior period using consistent revenue breakdown data
+  const dataWithComparison: MonthlyRow[] = useMemo(() => {
+    return monthlyData.map((month, index) => {
       const priorMonth = monthlyData[index + 1];
-      const profitChange = priorMonth && priorMonth.net_revenue !== 0
-        ? ((month.net_revenue - priorMonth.net_revenue) / Math.abs(priorMonth.net_revenue)) * 100
+      const currentBreakdown = getBreakdownForMonth(month.period);
+      const priorBreakdown = priorMonth ? getBreakdownForMonth(priorMonth.period) : null;
+      
+      const currentNet = currentBreakdown?.totals?.net_revenue || month.net_revenue;
+      const priorNet = priorBreakdown?.totals?.net_revenue || priorMonth?.net_revenue || 0;
+      
+      const profitChange = priorNet !== 0
+        ? ((currentNet - priorNet) / Math.abs(priorNet)) * 100
         : null;
       
       return {
         ...month,
         profitChangePercent: profitChange,
       };
-    }),
-    [monthlyData]
-  );
+    });
+  }, [monthlyData, allMonthBreakdowns]);
 
   const toggleMonthExpansion = (period: string) => {
     setExpandedMonth(expandedMonth === period ? null : period);
@@ -204,26 +224,27 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-emerald-600">
-                            {isExpanded && expandedMonthRevenue?.totals?.gross_revenue 
-                              ? formatCurrency(expandedMonthRevenue.totals.gross_revenue)
-                              : formatCurrency(month.net_revenue)
-                            }
+                            {(() => {
+                              const breakdown = getBreakdownForMonth(month.period);
+                              return formatCurrency(breakdown?.totals?.gross_revenue || month.net_revenue);
+                            })()}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-red-600">
-                            {isExpanded && expandedMonthRevenue?.totals?.total_discounts 
-                              ? `-${formatCurrency(expandedMonthRevenue.totals.total_discounts)}` 
-                              : '$0'
-                            }
+                            {(() => {
+                              const breakdown = getBreakdownForMonth(month.period);
+                              const discounts = breakdown?.totals?.total_discounts || 0;
+                              return discounts > 0 ? `-${formatCurrency(discounts)}` : '$0';
+                            })()}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm">
-                            {isExpanded && expandedMonthRevenue?.totals?.net_revenue 
-                              ? formatCurrency(expandedMonthRevenue.totals.net_revenue)
-                              : formatCurrency(month.net_revenue)
-                            }
+                            {(() => {
+                              const breakdown = getBreakdownForMonth(month.period);
+                              return formatCurrency(breakdown?.totals?.net_revenue || month.net_revenue);
+                            })()}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
@@ -244,10 +265,9 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           {(() => {
-                            // Calculate profit from expanded data if available, otherwise use daily_pnl value
-                            const profit = (isExpanded && expandedMonthRevenue?.totals?.net_revenue) 
-                              ? expandedMonthRevenue.totals.net_revenue - month.food_cost - month.labor_cost
-                              : month.gross_profit;
+                            const breakdown = getBreakdownForMonth(month.period);
+                            const netRevenue = breakdown?.totals?.net_revenue || month.net_revenue;
+                            const profit = netRevenue - month.food_cost - month.labor_cost;
                             
                             return (
                               <span className={`font-bold text-xs sm:text-sm ${
@@ -296,11 +316,15 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                       </tr>
                       
                       {/* Expanded Revenue Detail Row */}
-                      {isExpanded && expandedMonthRevenue && (
-                        <tr className="bg-primary/5 border-b border-border/50">
-                          <td colSpan={9} className="py-4 px-4 sm:px-8">
-                            <div className="space-y-4">
-                              {!expandedMonthRevenue.has_categorization_data ? (
+                      {isExpanded && (() => {
+                        const breakdown = getBreakdownForMonth(month.period);
+                        if (!breakdown) return null;
+                        
+                        return (
+                          <tr className="bg-primary/5 border-b border-border/50">
+                            <td colSpan={9} className="py-4 px-4 sm:px-8">
+                              <div className="space-y-4">
+                                {!breakdown.has_categorization_data ? (
                                 <div className="text-center py-8 space-y-2">
                                   <p className="text-sm font-medium text-muted-foreground">
                                     No categorized sales data for this month
@@ -323,13 +347,13 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                   )}
 
                                   {/* Uncategorized Revenue Warning */}
-                                  {expandedMonthRevenue.uncategorized_revenue > 0 && (
+                                  {breakdown.uncategorized_revenue > 0 && (
                                     <div className="flex items-start gap-2 p-3 rounded bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
                                       <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
                                       <div className="text-xs text-amber-700 dark:text-amber-400 space-y-2">
                                         <div>
-                                          <span className="font-semibold">Uncategorized Sales: {formatCurrency(expandedMonthRevenue.uncategorized_revenue)}</span>
-                                          <span className="ml-1">({(100 - expandedMonthRevenue.categorization_rate).toFixed(0)}% of total)</span>
+                                          <span className="font-semibold">Uncategorized Sales: {formatCurrency(breakdown.uncategorized_revenue)}</span>
+                                          <span className="ml-1">({(100 - breakdown.categorization_rate).toFixed(0)}% of total)</span>
                                         </div>
                                         <p>These sales haven't been categorized yet. Categorize them to see detailed revenue breakdown and accurate profit calculations.</p>
                                         <Button 
@@ -344,19 +368,19 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                     </div>
                                   )}
 
-                                  {/* Revenue Breakdown */}
-                                  {expandedMonthRevenue.revenue_categories.length > 0 && (
+                                   {/* Revenue Breakdown */}
+                                  {breakdown.revenue_categories.length > 0 && (
                                     <div>
                                       <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                                         Revenue Breakdown
-                                        {expandedMonthRevenue.uncategorized_revenue > 0 && (
+                                        {breakdown.uncategorized_revenue > 0 && (
                                           <span className="ml-2 text-[10px] text-amber-600">
-                                            (Categorized: {formatCurrency(expandedMonthRevenue.totals.categorized_revenue)})
+                                            (Categorized: {formatCurrency(breakdown.totals.categorized_revenue)})
                                           </span>
                                         )}
                                       </h4>
                                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                                        {expandedMonthRevenue.revenue_categories.map((cat) => (
+                                        {breakdown.revenue_categories.map((cat) => (
                                           <div 
                                             key={cat.account_id}
                                             className="flex items-center justify-between p-2 rounded bg-background/50 text-xs"
@@ -374,21 +398,21 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                       <div className="mt-2 flex justify-between text-xs">
                                         <span className="text-muted-foreground">Categorized Total:</span>
                                         <span className="font-semibold text-emerald-600">
-                                          {formatCurrency(expandedMonthRevenue.totals.categorized_revenue)}
+                                          {formatCurrency(breakdown.totals.categorized_revenue)}
                                         </span>
                                       </div>
-                                      {expandedMonthRevenue.uncategorized_revenue > 0 && (
+                                      {breakdown.uncategorized_revenue > 0 && (
                                         <>
                                           <div className="mt-1 flex justify-between text-xs">
                                             <span className="text-amber-600">Uncategorized:</span>
                                             <span className="font-semibold text-amber-600">
-                                              {formatCurrency(expandedMonthRevenue.uncategorized_revenue)}
+                                              {formatCurrency(breakdown.uncategorized_revenue)}
                                             </span>
                                           </div>
                                           <div className="mt-1 pt-1 border-t flex justify-between text-xs">
                                             <span className="font-semibold text-muted-foreground">Gross Revenue:</span>
                                             <span className="font-bold text-emerald-600">
-                                              {formatCurrency(expandedMonthRevenue.totals.gross_revenue)}
+                                              {formatCurrency(breakdown.totals.gross_revenue)}
                                             </span>
                                           </div>
                                         </>
@@ -399,25 +423,25 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                               )}
 
                               {/* Deductions */}
-                              {expandedMonthRevenue?.totals && (expandedMonthRevenue.totals.total_discounts > 0 || expandedMonthRevenue.totals.total_refunds > 0) && (
+                              {breakdown?.totals && (breakdown.totals.total_discounts > 0 || breakdown.totals.total_refunds > 0) && (
                                 <div>
                                   <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                                     Deductions
                                   </h4>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {expandedMonthRevenue.totals.total_discounts > 0 && (
+                                    {breakdown.totals.total_discounts > 0 && (
                                       <div className="flex items-center justify-between p-2 rounded bg-red-50 dark:bg-red-950/20 text-xs">
                                         <span className="font-medium">Discounts & Comps</span>
                                         <span className="font-semibold text-red-600">
-                                          -{formatCurrency(expandedMonthRevenue.totals.total_discounts)}
+                                          -{formatCurrency(breakdown.totals.total_discounts)}
                                         </span>
                                       </div>
                                     )}
-                                    {expandedMonthRevenue.totals.total_refunds > 0 && (
+                                    {breakdown.totals.total_refunds > 0 && (
                                       <div className="flex items-center justify-between p-2 rounded bg-red-50 dark:bg-red-950/20 text-xs">
                                         <span className="font-medium">Refunds</span>
                                         <span className="font-semibold text-red-600">
-                                          -{formatCurrency(expandedMonthRevenue.totals.total_refunds)}
+                                          -{formatCurrency(breakdown.totals.total_refunds)}
                                         </span>
                                       </div>
                                     )}
@@ -426,7 +450,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                               )}
 
                               {/* Pass-Through Collections */}
-                              {expandedMonthRevenue?.has_categorization_data && expandedMonthRevenue?.totals && (expandedMonthRevenue.totals.sales_tax > 0 || expandedMonthRevenue.totals.tips > 0 || expandedMonthRevenue.totals.other_liabilities > 0) && (
+                              {breakdown?.has_categorization_data && breakdown?.totals && (breakdown.totals.sales_tax > 0 || breakdown.totals.tips > 0 || breakdown.totals.other_liabilities > 0) && (
                                 <div>
                                   <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                                     Pass-Through Collections (Not Revenue)
@@ -435,7 +459,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                     These amounts are collected on behalf of others and should not be included in your revenue totals.
                                   </p>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {expandedMonthRevenue.totals.sales_tax > 0 && (
+                                    {breakdown.totals.sales_tax > 0 && (
                                       <div className="flex items-center justify-between p-2 rounded bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-xs">
                                         <div className="flex items-center gap-2">
                                           <span className="font-medium">Sales Tax Collected</span>
@@ -444,11 +468,11 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                           </Badge>
                                         </div>
                                         <span className="font-semibold text-amber-700">
-                                          {formatCurrency(expandedMonthRevenue.totals.sales_tax)}
+                                          {formatCurrency(breakdown.totals.sales_tax)}
                                         </span>
                                       </div>
                                     )}
-                                    {expandedMonthRevenue.totals.tips > 0 && (
+                                    {breakdown.totals.tips > 0 && (
                                       <div className="flex items-center justify-between p-2 rounded bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 text-xs">
                                         <div className="flex items-center gap-2">
                                           <span className="font-medium">Tips Collected</span>
@@ -457,11 +481,11 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                           </Badge>
                                         </div>
                                         <span className="font-semibold text-blue-700">
-                                          {formatCurrency(expandedMonthRevenue.totals.tips)}
+                                          {formatCurrency(breakdown.totals.tips)}
                                         </span>
                                       </div>
                                     )}
-                                    {expandedMonthRevenue.other_liability_categories.map((category) => (
+                                    {breakdown.other_liability_categories.map((category) => (
                                       <div key={category.account_id} className="flex items-center justify-between p-2 rounded bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 text-xs">
                                         <div className="flex items-center gap-2">
                                           <span className="font-medium">{category.account_name}</span>
@@ -480,7 +504,8 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                             </div>
                           </td>
                         </tr>
-                      )}
+                        );
+                      })()}
                     </>
                   );
                 })}

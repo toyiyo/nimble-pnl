@@ -808,19 +808,19 @@ const Index = () => {
                       </div>
                     )}
 
-                    {/* Pass-Through Collections */}
+                    {/* Collected but Owed */}
                     {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0 || revenueBreakdown.totals.other_liabilities > 0) && (
                       <div className="pt-4 border-t">
                         <div className="flex items-center gap-2 mb-2">
                           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                            Pass-Through Collections
+                            🧾 Collected but Owed
                           </h4>
                           <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-600">
                             Not Revenue
                           </Badge>
                         </div>
                         <p className="text-[10px] text-muted-foreground mb-3">
-                          These amounts are collected but not included in your revenue totals above.
+                          This money was collected at POS but belongs to staff or government agencies.
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {revenueBreakdown.totals.sales_tax > 0 && (

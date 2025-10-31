@@ -269,11 +269,20 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                     <span className="font-semibold">{formatCurrency(revenueBreakdown.totals.gross_revenue)}</span>
                   </div>
 
-                  {/* Discounts & Comps */}
-                  {revenueBreakdown.discount_categories.length > 0 && (
+                  {/* Discounts, Refunds & Comps */}
+                  {(revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories?.length > 0) && (
                     <div className="mt-2">
                       <div className="text-sm text-muted-foreground mb-1 px-3">Less: Deductions</div>
                       {revenueBreakdown.discount_categories.map((category) => (
+                        <div key={category.account_id} className="flex justify-between items-center py-1 px-3">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
+                            <span className="text-sm text-red-600">{category.account_name}</span>
+                          </div>
+                          <span className="font-medium text-red-600">({formatCurrency(Math.abs(category.total_amount))})</span>
+                        </div>
+                      ))}
+                      {revenueBreakdown.refund_categories?.map((category) => (
                         <div key={category.account_id} className="flex justify-between items-center py-1 px-3">
                           <div className="flex items-center gap-3">
                             <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>

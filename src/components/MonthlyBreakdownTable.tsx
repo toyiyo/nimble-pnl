@@ -276,11 +276,11 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                       </tr>
                       
                       {/* Expanded Revenue Detail Row */}
-                      {isExpanded && (
+                      {isExpanded && expandedMonthRevenue && (
                         <tr className="bg-primary/5 border-b border-border/50">
                           <td colSpan={9} className="py-4 px-4 sm:px-8">
                             <div className="space-y-4">
-                              {!expandedMonthRevenue?.has_categorization_data ? (
+                              {!expandedMonthRevenue.has_categorization_data ? (
                                 <div className="text-center py-8 space-y-2">
                                   <p className="text-sm font-medium text-muted-foreground">
                                     No categorized sales data for this month
@@ -333,7 +333,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                               )}
 
                               {/* Deductions */}
-                              {(expandedMonthRevenue.totals.total_discounts > 0 || expandedMonthRevenue.totals.total_refunds > 0) && (
+                              {expandedMonthRevenue?.totals && (expandedMonthRevenue.totals.total_discounts > 0 || expandedMonthRevenue.totals.total_refunds > 0) && (
                                 <div>
                                   <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                                     Deductions
@@ -360,7 +360,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                               )}
 
                               {/* Pass-Through Collections */}
-                              {expandedMonthRevenue?.has_categorization_data && (expandedMonthRevenue.totals.sales_tax > 0 || expandedMonthRevenue.totals.tips > 0 || expandedMonthRevenue.totals.other_liabilities > 0) && (
+                              {expandedMonthRevenue?.has_categorization_data && expandedMonthRevenue?.totals && (expandedMonthRevenue.totals.sales_tax > 0 || expandedMonthRevenue.totals.tips > 0 || expandedMonthRevenue.totals.other_liabilities > 0) && (
                                 <div>
                                   <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                                     Pass-Through Collections (Not Revenue)

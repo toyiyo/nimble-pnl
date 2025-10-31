@@ -202,12 +202,12 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                          <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-emerald-600">
-                            {formatCurrency((expandedMonthRevenue?.totals.gross_revenue || month.net_revenue))}
+                            {formatCurrency((isExpanded && expandedMonthRevenue?.totals?.gross_revenue) || month.net_revenue)}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-red-600">
-                            {expandedMonthRevenue?.totals.total_discounts 
+                            {isExpanded && expandedMonthRevenue?.totals?.total_discounts 
                               ? `-${formatCurrency(expandedMonthRevenue.totals.total_discounts)}` 
                               : '$0'
                             }

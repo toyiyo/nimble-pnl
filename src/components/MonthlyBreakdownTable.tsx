@@ -328,7 +328,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                               )}
 
                               {/* Pass-Through Collections */}
-                              {(expandedMonthRevenue.totals.sales_tax > 0 || expandedMonthRevenue.totals.tips > 0) && (
+                              {(expandedMonthRevenue.totals.sales_tax > 0 || expandedMonthRevenue.totals.tips > 0 || expandedMonthRevenue.totals.other_liabilities > 0) && (
                                 <div>
                                   <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                                     Other Collections (Pass-Through)
@@ -360,6 +360,19 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                         </span>
                                       </div>
                                     )}
+                                    {expandedMonthRevenue.other_liability_categories.map((category) => (
+                                      <div key={category.account_id} className="flex items-center justify-between p-2 rounded bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 text-xs">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-medium">{category.account_name}</span>
+                                          <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-purple-600">
+                                            Liability
+                                          </Badge>
+                                        </div>
+                                        <span className="font-semibold text-purple-700">
+                                          {formatCurrency(category.total_amount)}
+                                        </span>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
                               )}

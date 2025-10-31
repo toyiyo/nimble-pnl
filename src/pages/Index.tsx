@@ -881,7 +881,7 @@ const Index = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="h-1 w-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">📅 Monthly Profit Breakdown</h2>
+                      <h2 className="text-2xl font-bold tracking-tight">Monthly Performance</h2>
                     </div>
                     <CollapsibleTrigger asChild>
                       <Button variant="ghost" size="sm" className="gap-2">

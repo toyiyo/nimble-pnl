@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, AlertTriangle, Info } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { format, parse, startOfMonth, endOfMonth } from "date-fns";
 import { useRevenueBreakdown } from "@/hooks/useRevenueBreakdown";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
@@ -24,6 +25,7 @@ type MonthlyRow = MonthlyData & { profitChangePercent: number | null };
 
 export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProps) => {
   const { selectedRestaurant } = useRestaurantContext();
+  const navigate = useNavigate();
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
   // Get revenue breakdown for the expanded month
@@ -200,9 +202,12 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         <td className="py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-medium text-xs sm:text-sm">{formatMonth(month.period)}</span>
                         </td>
-                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
+                        <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-emerald-600">
-                            {formatCurrency((isExpanded && expandedMonthRevenue?.totals?.gross_revenue) || month.net_revenue)}
+                            {isExpanded && expandedMonthRevenue?.totals?.gross_revenue 
+                              ? formatCurrency(expandedMonthRevenue.totals.gross_revenue)
+                              : formatCurrency(month.net_revenue)
+                            }
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
@@ -214,7 +219,12 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          <span className="font-semibold text-xs sm:text-sm">{formatCurrency(month.net_revenue)}</span>
+                          <span className="font-semibold text-xs sm:text-sm">
+                            {isExpanded && expandedMonthRevenue?.totals?.net_revenue 
+                              ? formatCurrency(expandedMonthRevenue.totals.net_revenue)
+                              : formatCurrency(month.net_revenue)
+                            }
+                          </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <div className="flex flex-col items-end gap-0.5 sm:gap-1">
@@ -267,9 +277,10 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                               </span>
                             </Badge>
                           ) : (
-                            <Badge variant="secondary" className="gap-0.5 sm:gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2.5" aria-label="No prior period data">
+                            <Badge variant="outline" className="gap-0.5 sm:gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2.5" aria-label="First month">
                               <Minus aria-hidden="true" className="h-2 w-2 sm:h-3 sm:w-3" />
-                              N/A
+                              <span className="hidden sm:inline">First Month</span>
+                              <span className="sm:hidden">N/A</span>
                             </Badge>
                           )}
                         </td>
@@ -291,44 +302,90 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                 </div>
                               ) : (
                                 <>
-                                  {/* Categorization Status */}
-                                  {expandedMonthRevenue.categorization_rate < 100 && (
-                                    <div className="flex items-center gap-2 p-2 rounded bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                                      <AlertTriangle className="h-4 w-4 text-amber-600" />
-                                      <span className="text-xs text-amber-700 dark:text-amber-400">
-                                        Only {expandedMonthRevenue.categorization_rate.toFixed(0)}% of sales are categorized. 
-                                        <span className="font-semibold"> Categorize remaining items for accurate breakdown.</span>
-                                      </span>
+                                  {/* Data Availability Warnings */}
+                                  {(month.food_cost === 0 && month.labor_cost === 0) && (
+                                    <div className="flex items-start gap-2 p-3 rounded bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                                      <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                      <div className="text-xs text-blue-700 dark:text-blue-400 space-y-1">
+                                        <p className="font-semibold">No cost data available for this month</p>
+                                        <p>Profit calculation requires food costs (from inventory/suppliers) and labor costs (from integrations or manual entry).</p>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Uncategorized Revenue Warning */}
+                                  {expandedMonthRevenue.uncategorized_revenue > 0 && (
+                                    <div className="flex items-start gap-2 p-3 rounded bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                                      <div className="text-xs text-amber-700 dark:text-amber-400 space-y-2">
+                                        <div>
+                                          <span className="font-semibold">Uncategorized Sales: {formatCurrency(expandedMonthRevenue.uncategorized_revenue)}</span>
+                                          <span className="ml-1">({(100 - expandedMonthRevenue.categorization_rate).toFixed(0)}% of total)</span>
+                                        </div>
+                                        <p>These sales haven't been categorized yet. Categorize them to see detailed revenue breakdown and accurate profit calculations.</p>
+                                        <Button 
+                                          size="sm" 
+                                          variant="outline"
+                                          className="h-7 text-xs"
+                                          onClick={() => navigate('/pos-sales')}
+                                        >
+                                          Categorize Sales →
+                                        </Button>
+                                      </div>
                                     </div>
                                   )}
 
                                   {/* Revenue Breakdown */}
-                                  <div>
-                                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                                      Revenue Breakdown (Categorized Sales)
-                                    </h4>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                                      {expandedMonthRevenue.revenue_categories.map((cat) => (
-                                        <div 
-                                          key={cat.account_id}
-                                          className="flex items-center justify-between p-2 rounded bg-background/50 text-xs"
-                                        >
-                                          <div className="flex-1 min-w-0">
-                                            <span className="font-medium truncate block">{cat.account_name}</span>
-                                            <span className="text-[10px] text-muted-foreground">{cat.account_code}</span>
-                                          </div>
-                                          <span className="font-semibold text-emerald-600 ml-2">
-                                            {formatCurrency(cat.total_amount)}
+                                  {expandedMonthRevenue.revenue_categories.length > 0 && (
+                                    <div>
+                                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                                        Revenue Breakdown
+                                        {expandedMonthRevenue.uncategorized_revenue > 0 && (
+                                          <span className="ml-2 text-[10px] text-amber-600">
+                                            (Categorized: {formatCurrency(expandedMonthRevenue.totals.categorized_revenue)})
                                           </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    <div className="mt-2 flex justify-end">
-                                      <div className="text-xs text-muted-foreground">
-                                        Total: <span className="font-semibold text-emerald-600">{formatCurrency(expandedMonthRevenue.totals.gross_revenue)}</span>
+                                        )}
+                                      </h4>
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                        {expandedMonthRevenue.revenue_categories.map((cat) => (
+                                          <div 
+                                            key={cat.account_id}
+                                            className="flex items-center justify-between p-2 rounded bg-background/50 text-xs"
+                                          >
+                                            <div className="flex-1 min-w-0">
+                                              <span className="font-medium truncate block">{cat.account_name}</span>
+                                              <span className="text-[10px] text-muted-foreground">{cat.account_code}</span>
+                                            </div>
+                                            <span className="font-semibold text-emerald-600 ml-2">
+                                              {formatCurrency(cat.total_amount)}
+                                            </span>
+                                          </div>
+                                        ))}
                                       </div>
+                                      <div className="mt-2 flex justify-between text-xs">
+                                        <span className="text-muted-foreground">Categorized Total:</span>
+                                        <span className="font-semibold text-emerald-600">
+                                          {formatCurrency(expandedMonthRevenue.totals.categorized_revenue)}
+                                        </span>
+                                      </div>
+                                      {expandedMonthRevenue.uncategorized_revenue > 0 && (
+                                        <>
+                                          <div className="mt-1 flex justify-between text-xs">
+                                            <span className="text-amber-600">Uncategorized:</span>
+                                            <span className="font-semibold text-amber-600">
+                                              {formatCurrency(expandedMonthRevenue.uncategorized_revenue)}
+                                            </span>
+                                          </div>
+                                          <div className="mt-1 pt-1 border-t flex justify-between text-xs">
+                                            <span className="font-semibold text-muted-foreground">Gross Revenue:</span>
+                                            <span className="font-bold text-emerald-600">
+                                              {formatCurrency(expandedMonthRevenue.totals.gross_revenue)}
+                                            </span>
+                                          </div>
+                                        </>
+                                      )}
                                     </div>
-                                  </div>
+                                  )}
                                 </>
                               )}
 

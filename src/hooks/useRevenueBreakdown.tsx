@@ -18,8 +18,11 @@ export interface RevenueBreakdownData {
   tax_categories: RevenueCategory[];
   tip_categories: RevenueCategory[];
   other_liability_categories: RevenueCategory[];
+  uncategorized_revenue: number;
   totals: {
     gross_revenue: number;
+    categorized_revenue: number;
+    uncategorized_revenue: number;
     total_discounts: number;
     total_refunds: number;
     net_revenue: number;
@@ -54,7 +57,7 @@ export function useRevenueBreakdown(
 
       if (totalError) throw totalError;
 
-      // Query unified_sales with category info for categorized sales only
+      // Query ALL unified_sales (both categorized and uncategorized)
       const { data: sales, error } = await supabase
         .from('unified_sales')
         .select(`
@@ -73,16 +76,24 @@ export function useRevenueBreakdown(
         `)
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', fromStr)
-        .lte('sale_date', toStr)
-        .eq('is_categorized', true);
+        .lte('sale_date', toStr);
 
       if (error) throw error;
 
-      const categorizedCount = sales?.length || 0;
+      // Separate categorized and uncategorized sales
+      const categorizedSales = sales?.filter((s: any) => s.is_categorized && s.chart_account) || [];
+      const uncategorizedSales = sales?.filter((s: any) => !s.is_categorized) || [];
+      
+      const categorizedCount = categorizedSales.length;
       const categorizationRate = (totalCount ?? 0) > 0 ? (categorizedCount / (totalCount ?? 0)) * 100 : 0;
       const hasCategorizationData = categorizedCount > 0;
 
-      if (!hasCategorizationData) {
+      // Calculate uncategorized revenue
+      const uncategorizedRevenue = uncategorizedSales.reduce((sum: number, sale: any) => 
+        sum + (sale.total_price || 0), 0
+      );
+
+      if (!hasCategorizationData && uncategorizedRevenue === 0) {
         return {
           revenue_categories: [],
           discount_categories: [],
@@ -90,8 +101,11 @@ export function useRevenueBreakdown(
           tax_categories: [],
           tip_categories: [],
           other_liability_categories: [],
+          uncategorized_revenue: 0,
           totals: {
             gross_revenue: 0,
+            categorized_revenue: 0,
+            uncategorized_revenue: 0,
             total_discounts: 0,
             total_refunds: 0,
             net_revenue: 0,
@@ -104,10 +118,10 @@ export function useRevenueBreakdown(
         };
       }
 
-      // Group by account and item type
+      // Group by account and item type (only categorized sales)
       const categoryMap = new Map<string, RevenueCategory>();
 
-      sales?.forEach((sale: any) => {
+      categorizedSales.forEach((sale: any) => {
         if (!sale.chart_account) return;
 
         const key = `${sale.chart_account.id}-${sale.item_type || 'sale'}`;
@@ -177,13 +191,28 @@ export function useRevenueBreakdown(
       );
 
       // Calculate totals
-      const grossRevenue = revenueCategories.reduce((sum, c) => sum + c.total_amount, 0);
+      const categorizedRevenue = revenueCategories.reduce((sum, c) => sum + c.total_amount, 0);
       const totalDiscounts = discountCategories.reduce((sum, c) => sum + Math.abs(c.total_amount), 0);
       const totalRefunds = refundCategories.reduce((sum, c) => sum + Math.abs(c.total_amount), 0);
       const totalTax = taxCategories.reduce((sum, c) => sum + c.total_amount, 0);
       const totalTips = tipCategories.reduce((sum, c) => sum + c.total_amount, 0);
       const totalOtherLiabilities = otherLiabilityCategories.reduce((sum, c) => sum + c.total_amount, 0);
+      
+      // Total gross revenue = categorized + uncategorized
+      const grossRevenue = categorizedRevenue + uncategorizedRevenue;
       const netRevenue = grossRevenue - totalDiscounts - totalRefunds;
+
+      // Validation: Check arithmetic
+      const calculatedGross = categorizedRevenue + uncategorizedRevenue;
+      if (Math.abs(calculatedGross - grossRevenue) > 0.01) {
+        console.error('Revenue breakdown arithmetic error:', {
+          categorizedRevenue,
+          uncategorizedRevenue,
+          calculatedGross,
+          reportedGross: grossRevenue,
+          difference: calculatedGross - grossRevenue
+        });
+      }
 
       return {
         revenue_categories: revenueCategories.sort((a, b) => 
@@ -196,8 +225,11 @@ export function useRevenueBreakdown(
         other_liability_categories: otherLiabilityCategories.sort((a, b) => 
           a.account_code.localeCompare(b.account_code)
         ),
+        uncategorized_revenue: uncategorizedRevenue,
         totals: {
           gross_revenue: grossRevenue,
+          categorized_revenue: categorizedRevenue,
+          uncategorized_revenue: uncategorizedRevenue,
           total_discounts: totalDiscounts,
           total_refunds: totalRefunds,
           net_revenue: netRevenue,
@@ -205,7 +237,7 @@ export function useRevenueBreakdown(
           tips: totalTips,
           other_liabilities: totalOtherLiabilities,
         },
-        has_categorization_data: true,
+        has_categorization_data: hasCategorizationData,
         categorization_rate: categorizationRate,
       };
     },

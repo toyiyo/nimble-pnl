@@ -158,8 +158,10 @@ const Index = () => {
   // Calculate available cash from connected banks
   const availableCash = useMemo(() => {
     return connectedBanks?.reduce((total, bank) => {
-      const latestBalance = bank.bank_account_balances?.[0]?.current_balance || 0;
-      return total + latestBalance;
+      const bankTotal = bank.bank_account_balances?.reduce((sum, balance) => {
+        return sum + (balance.current_balance || 0);
+      }, 0) || 0;
+      return total + bankTotal;
     }, 0) || 0;
   }, [connectedBanks]);
 

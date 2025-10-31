@@ -170,7 +170,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
       {/* Quick Glance Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <DashboardMetricCard
-          title="Available Cash"
+          title="Cash Available to Spend"
           value={formatCurrency(metrics.availableCash)}
           icon={Wallet}
           variant={metrics.availableCash > 10000 ? 'success' : metrics.availableCash < 2000 ? 'danger' : 'warning'}
@@ -179,7 +179,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
         />
 
         <DashboardMetricCard
-          title="Net Cash Flow (MTD)"
+          title="Change in Cash This Month"
           value={formatCurrency(metrics.netCashFlowMTD)}
           icon={TrendingUp}
           variant={metrics.netCashFlowMTD > 0 ? 'success' : 'danger'}
@@ -188,7 +188,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
         />
 
         <DashboardMetricCard
-          title="Runway"
+          title="Days of Cash Left"
           value={metrics.runway !== Infinity ? `${Math.floor(metrics.runway)} days` : '∞'}
           icon={Timer}
           variant={
@@ -207,7 +207,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-              Top 3 Spending
+              Where the Money Went
             </CardTitle>
             <CardDescription className="text-xs">Last 30 days</CardDescription>
           </CardHeader>
@@ -224,8 +224,8 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
             )}
             <div className="pt-2 border-t border-border/50">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Vendor concentration</span>
-                <Badge 
+                <span className="text-muted-foreground">% of Spend by Top Vendor</span>
+                <Badge
                   variant={metrics.vendorConcentration > 50 ? 'destructive' : 'outline'}
                   className="text-xs"
                 >

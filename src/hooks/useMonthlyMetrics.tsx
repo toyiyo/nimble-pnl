@@ -93,24 +93,25 @@ export function useMonthlyMetrics(
         month.has_data = true;
 
         // Categorize based on item_type and account_type
+        // Use cents to avoid floating-point precision errors
         if (sale.item_type === 'sale') {
           if (sale.chart_of_accounts?.account_type === 'revenue') {
-            month.gross_revenue += sale.total_price;
+            month.gross_revenue += Math.round(sale.total_price * 100);
           } else if (sale.chart_of_accounts?.account_type === 'liability') {
             // Categorize liabilities by checking subtype
             const subtype = sale.chart_of_accounts?.account_subtype?.toLowerCase() || '';
             if (subtype.includes('sales') && subtype.includes('tax')) {
-              month.sales_tax += sale.total_price;
+              month.sales_tax += Math.round(sale.total_price * 100);
             } else if (subtype.includes('tip')) {
-              month.tips += sale.total_price;
+              month.tips += Math.round(sale.total_price * 100);
             } else {
-              month.other_liabilities += sale.total_price;
+              month.other_liabilities += Math.round(sale.total_price * 100);
             }
           }
         } else if (sale.item_type === 'discount') {
-          month.discounts += Math.abs(sale.total_price);
+          month.discounts += Math.round(Math.abs(sale.total_price) * 100);
         } else if (sale.item_type === 'refund') {
-          month.refunds += Math.abs(sale.total_price);
+          month.refunds += Math.round(Math.abs(sale.total_price) * 100);
         }
       });
 
@@ -146,16 +147,26 @@ export function useMonthlyMetrics(
         }
 
         const month = monthlyMap.get(monthKey)!;
-        month.food_cost += day.food_cost || 0;
-        month.labor_cost += day.labor_cost || 0;
+        // Use cents to avoid floating-point precision errors
+        month.food_cost += Math.round((day.food_cost || 0) * 100);
+        month.labor_cost += Math.round((day.labor_cost || 0) * 100);
       });
 
       // Calculate net_revenue and total_collected_at_pos for each month
+      // Convert from cents back to dollars
       const result = Array.from(monthlyMap.values()).map((month) => ({
-        ...month,
-        net_revenue: month.gross_revenue - month.discounts - month.refunds,
-        total_collected_at_pos:
-          month.gross_revenue + month.sales_tax + month.tips + month.other_liabilities,
+        period: month.period,
+        gross_revenue: Math.round(month.gross_revenue) / 100,
+        discounts: Math.round(month.discounts) / 100,
+        refunds: Math.round(month.refunds) / 100,
+        sales_tax: Math.round(month.sales_tax) / 100,
+        tips: Math.round(month.tips) / 100,
+        other_liabilities: Math.round(month.other_liabilities) / 100,
+        food_cost: Math.round(month.food_cost) / 100,
+        labor_cost: Math.round(month.labor_cost) / 100,
+        has_data: month.has_data,
+        net_revenue: Math.round(month.gross_revenue - month.discounts - month.refunds) / 100,
+        total_collected_at_pos: Math.round(month.gross_revenue + month.sales_tax + month.tips + month.other_liabilities) / 100,
       }));
 
       // Sort by period descending (most recent first)

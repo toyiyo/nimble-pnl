@@ -25,12 +25,13 @@ interface BankSnapshotSectionProps {
 }
 
 export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) {
-  const { data: connectedBanks, isLoading: banksLoading } = useConnectedBanks(restaurantId);
-
   // Use fixed date ranges for current state (not period-dependent)
   const today = endOfDay(new Date());
   const thirtyDaysAgo = subDays(today, 30);
   const monthStart = startOfMonth(today);
+
+  // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS
+  const { data: connectedBanks, isLoading: banksLoading } = useConnectedBanks(restaurantId);
 
   // Fetch all metrics with fixed date ranges
   const { data: liquidityMetrics, isLoading: liquidityLoading } = useLiquidityMetrics(
@@ -129,6 +130,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
     return 'high';
   };
 
+  // NOW we can do conditional returns after all hooks are called
   if (!connectedBanks || connectedBanks.length === 0) {
     return null; // Don't show section if no banks connected
   }

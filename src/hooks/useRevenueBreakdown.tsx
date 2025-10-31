@@ -53,16 +53,19 @@ export function useRevenueBreakdown(
       const toStr = dateTo.toISOString().split('T')[0];
 
       // First, check total sales vs categorized sales to calculate categorization rate
+      // CRITICAL: Exclude child splits to get accurate count
       const { count: totalCount, error: totalError } = await supabase
         .from('unified_sales')
         .select('*', { count: 'exact', head: true })
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', fromStr)
-        .lte('sale_date', toStr);
+        .lte('sale_date', toStr)
+        .is('parent_sale_id', null); // Exclude child splits
 
       if (totalError) throw totalError;
 
       // Query ALL unified_sales (both categorized and uncategorized)
+      // CRITICAL: Exclude child splits (parent_sale_id IS NOT NULL) to avoid double-counting
       const { data: sales, error } = await supabase
         .from('unified_sales')
         .select(`
@@ -81,7 +84,8 @@ export function useRevenueBreakdown(
         `)
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', fromStr)
-        .lte('sale_date', toStr);
+        .lte('sale_date', toStr)
+        .is('parent_sale_id', null); // Exclude child splits
 
       if (error) throw error;
 

@@ -152,21 +152,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                     <span className="sm:hidden">POS</span>
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
-                    Gross Revenue
-                  </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
-                    <span className="hidden sm:inline">Discounts</span>
-                    <span className="sm:hidden">Disc</span>
-                  </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
-                    Net Revenue
-                  </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
-                    <span className="hidden sm:inline">Food Cost</span>
-                    <span className="sm:hidden">COGS</span>
-                  </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
-                    Labor
+                    Revenue
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
                     Profit
@@ -221,35 +207,9 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          <span className="font-semibold text-xs sm:text-sm text-emerald-600">
-                            {formatCurrency(month.gross_revenue)}
-                          </span>
-                        </td>
-                        <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          <span className="font-semibold text-xs sm:text-sm text-red-600">
-                            {formatCurrency(month.discounts)}
-                          </span>
-                        </td>
-                        <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm">
                             {formatCurrency(month.net_revenue)}
                           </span>
-                        </td>
-                        <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          <div className="flex flex-col items-end gap-0.5 sm:gap-1">
-                            <span className="font-semibold text-xs sm:text-sm">{formatCurrency(month.food_cost)}</span>
-                            <span className="text-[10px] sm:text-xs text-muted-foreground">
-                              {foodCostPercent.toFixed(1)}%
-                            </span>
-                          </div>
-                        </td>
-                        <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          <div className="flex flex-col items-end gap-0.5 sm:gap-1">
-                            <span className="font-semibold text-xs sm:text-sm">{formatCurrency(month.labor_cost)}</span>
-                            <span className="text-[10px] sm:text-xs text-muted-foreground">
-                              {laborCostPercent.toFixed(1)}%
-                            </span>
-                          </div>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           {(() => {
@@ -271,44 +231,38 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           {month.profitChangePercent !== null ? (
-                            <Badge 
-                              variant={getTrendVariant(month.profitChangePercent)}
-                              className="gap-0.5 sm:gap-1 font-semibold text-[10px] sm:text-xs px-1.5 sm:px-2.5"
-                              aria-label={`${
-                                month.profitChangePercent > 0 
-                                  ? 'Profit up' 
-                                  : month.profitChangePercent < 0 
-                                  ? 'Profit down' 
-                                  : 'No change'
-                              } ${Math.abs(month.profitChangePercent).toFixed(1)}% versus prior month`}
-                            >
-                              {getTrendIcon(month.profitChangePercent)}
-                              <span className="hidden sm:inline">
+                            <div className="flex items-center justify-end gap-1">
+                              <Badge 
+                                variant={getTrendVariant(month.profitChangePercent)}
+                                className="gap-1 font-semibold text-xs px-2.5"
+                                aria-label={`${
+                                  month.profitChangePercent > 0 
+                                    ? 'Profit up' 
+                                    : month.profitChangePercent < 0 
+                                    ? 'Profit down' 
+                                    : 'No change'
+                                } ${Math.abs(month.profitChangePercent).toFixed(1)}% versus prior month`}
+                              >
+                                {month.profitChangePercent > 0 ? '⬆️' : month.profitChangePercent < 0 ? '⬇️' : '➡️'}
                                 {month.profitChangePercent > 0 ? '+' : ''}
                                 {month.profitChangePercent.toFixed(1)}%
-                              </span>
-                              <span className="sm:hidden">
-                                {month.profitChangePercent > 0 ? '+' : ''}
-                                {Math.round(month.profitChangePercent)}%
-                              </span>
-                            </Badge>
+                              </Badge>
+                            </div>
                           ) : (
-                            <Badge variant="outline" className="gap-0.5 sm:gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2.5" aria-label="First month">
-                              <Minus aria-hidden="true" className="h-2 w-2 sm:h-3 sm:w-3" />
-                              <span className="hidden sm:inline">First Month</span>
-                              <span className="sm:hidden">N/A</span>
+                            <Badge variant="outline" className="gap-1 text-xs px-2.5" aria-label="First month">
+                              —
                             </Badge>
                           )}
                         </td>
                        </tr>
                        
-                       {/* Pass-through collections row (collapsed view) */}
+                       {/* Collected but Owed row (collapsed view) */}
                        {!isExpanded && (month.sales_tax > 0 || month.tips > 0 || month.other_liabilities > 0) && (
                          <tr className="border-b border-border/30 bg-amber-50/30 dark:bg-amber-950/10">
                            <td colSpan={2} className="py-1 px-4 text-xs text-muted-foreground">
-                             <span className="ml-6">Pass-Through Collections:</span>
+                             <span className="ml-6">Collected but Owed:</span>
                            </td>
-                           <td colSpan={8} className="py-1 px-2 text-xs">
+                           <td colSpan={4} className="py-1 px-2 text-xs">
                              <div className="flex gap-4 text-amber-600 dark:text-amber-400">
                                {month.sales_tax > 0 && (
                                  <span>Sales Tax: {formatCurrency(month.sales_tax)}</span>
@@ -331,7 +285,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         
                         return (
                           <tr className="bg-primary/5 border-b border-border/50">
-                            <td colSpan={10} className="py-4 px-4 sm:px-8">
+                            <td colSpan={6} className="py-4 px-4 sm:px-8">
                               <div className="space-y-4">
                                 {!month.has_data ? (
                                 <div className="text-center py-8 space-y-2">

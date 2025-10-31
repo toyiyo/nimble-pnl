@@ -33,6 +33,20 @@ export function DashboardQuickActions({ restaurantId }: DashboardQuickActionsPro
       color: "text-orange-600 dark:text-orange-400",
     },
     {
+      title: "Import POS Sales",
+      description: "Import sales data",
+      icon: ShoppingCart,
+      onClick: () => navigate("/pos-sales"),
+      color: "text-pink-600 dark:text-pink-400",
+    },
+    {
+      title: "Categorize Transactions",
+      description: "Review bank transactions",
+      icon: FileText,
+      onClick: () => navigate("/transactions"),
+      color: "text-cyan-600 dark:text-cyan-400",
+    },
+    {
       title: "View Reports",
       description: "Analytics & insights",
       icon: TrendingUp,
@@ -40,32 +54,11 @@ export function DashboardQuickActions({ restaurantId }: DashboardQuickActionsPro
       color: "text-green-600 dark:text-green-400",
     },
     {
-      title: "POS Sales",
-      description: "Import sales data",
-      icon: ShoppingCart,
-      onClick: () => navigate("/pos-sales"),
-      color: "text-pink-600 dark:text-pink-400",
-    },
-    {
-      title: "Bank Accounts",
-      description: "Connect banks",
+      title: "Connect Banks / Integrations",
+      description: "Connect systems & banks",
       icon: Wallet,
-      onClick: () => navigate("/banking"),
-      color: "text-emerald-600 dark:text-emerald-400",
-    },
-    {
-      title: "Integrations",
-      description: "Connect systems",
-      icon: Users,
       onClick: () => navigate("/integrations"),
       color: "text-indigo-600 dark:text-indigo-400",
-    },
-    {
-      title: "Settings",
-      description: "Restaurant config",
-      icon: Settings,
-      onClick: () => navigate("/settings"),
-      color: "text-gray-600 dark:text-gray-400",
     },
   ];
 
@@ -74,7 +67,7 @@ export function DashboardQuickActions({ restaurantId }: DashboardQuickActionsPro
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <div className="h-1 w-8 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
-          Quick Actions
+          ⚡ Take Action
         </CardTitle>
         <CardDescription>Common tasks and shortcuts</CardDescription>
       </CardHeader>

@@ -503,8 +503,7 @@ const Index = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="h-1 w-8 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">Performance Overview</h2>
-                      <Sparkles className="h-5 w-5 text-primary/60" />
+                      <h2 className="text-2xl font-bold tracking-tight">📈 This Month's Performance</h2>
                     </div>
                     <CollapsibleTrigger asChild>
                       <Button variant="ghost" size="sm" className="gap-2">
@@ -516,7 +515,7 @@ const Index = () => {
                   <CollapsibleContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" role="region" aria-label="Performance metrics">
                   <DashboardMetricCard
-                    title="Net Revenue"
+                    title="Your Sales (after discounts/refunds)"
                     value={periodData ? `$${periodData.net_revenue.toFixed(0)}` : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.net_revenue, previousPeriodData.net_revenue),
@@ -528,7 +527,7 @@ const Index = () => {
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
-                    title="Food Cost"
+                    title="Food Cost (COGS)"
                     value={periodData ? `$${periodData.food_cost.toFixed(0)}` : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.food_cost_percentage, previousPeriodData.food_cost_percentage),
@@ -541,7 +540,7 @@ const Index = () => {
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
-                    title="Labor Cost"
+                    title="Labor Cost (Wages + Payroll)"
                     value={periodData ? `$${periodData.labor_cost.toFixed(0)}` : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.labor_cost_percentage, previousPeriodData.labor_cost_percentage),
@@ -561,7 +560,7 @@ const Index = () => {
                     
                     return (
                       <DashboardMetricCard
-                        title="Profit"
+                        title="Gross Profit"
                         value={periodData ? `$${profit.toFixed(0)}` : '--'}
                         trend={periodData && previousPeriodData ? {
                           value: getTrendValue(profit, previousProfit),
@@ -573,13 +572,34 @@ const Index = () => {
                             ? profitMargin > 15 ? 'success' : profitMargin < 5 ? 'danger' : profitMargin < 10 ? 'warning' : 'default'
                             : 'default'
                         }
-                        subtitle={periodData && periodData.net_revenue > 0 ? `${profitMargin.toFixed(1)}% margin` : undefined}
+                        subtitle={periodData && periodData.net_revenue > 0 ? `${profitMargin.toFixed(1)}% Gross Profit Margin` : undefined}
                         sparklineData={undefined}
                         periodLabel={selectedPeriod.label}
                       />
                     );
                   })()}
                 </div>
+                {/* Simple Context */}
+                {periodData && (
+                  <div className="mt-4 p-4 rounded-lg bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50">
+                    <p className="text-sm text-foreground">
+                      <span className="font-semibold">
+                        You've earned ${(periodData.net_revenue - periodData.food_cost - periodData.labor_cost).toFixed(0)}
+                      </span>{' '}
+                      after food and labor costs.
+                    </p>
+                    {periodData.net_revenue > 0 && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        That's a {((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue * 100).toFixed(1)}% gross margin
+                        {((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue * 100) >= 15 
+                          ? ' — solid for your concept.' 
+                          : ((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue * 100) >= 10
+                          ? ' — room for improvement.'
+                          : ' — needs attention.'}
+                      </p>
+                    )}
+                  </div>
+                )}
                   </CollapsibleContent>
                 </div>
               </Collapsible>

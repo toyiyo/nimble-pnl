@@ -44,12 +44,12 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
     expandedMonthDate ? endOfMonth(expandedMonthDate) : new Date()
   );
 
-  // Calculate profit change vs prior period
+  // Calculate profit change vs prior period (using net revenue as base since costs may be incomplete)
   const dataWithComparison: MonthlyRow[] = useMemo(
     () => monthlyData.map((month, index) => {
       const priorMonth = monthlyData[index + 1];
-      const profitChange = priorMonth && priorMonth.gross_profit !== 0
-        ? ((month.gross_profit - priorMonth.gross_profit) / Math.abs(priorMonth.gross_profit)) * 100
+      const profitChange = priorMonth && priorMonth.net_revenue !== 0
+        ? ((month.net_revenue - priorMonth.net_revenue) / Math.abs(priorMonth.net_revenue)) * 100
         : null;
       
       return {
@@ -243,15 +243,24 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           </div>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          <span className={`font-bold text-xs sm:text-sm ${
-                            month.gross_profit > 0 
-                              ? 'text-primary' 
-                              : month.gross_profit < 0 
-                              ? 'text-destructive'
-                              : 'text-foreground'
-                          }`}>
-                            {formatCurrency(month.gross_profit)}
-                          </span>
+                          {(() => {
+                            // Calculate profit from expanded data if available, otherwise use daily_pnl value
+                            const profit = (isExpanded && expandedMonthRevenue?.totals?.net_revenue) 
+                              ? expandedMonthRevenue.totals.net_revenue - month.food_cost - month.labor_cost
+                              : month.gross_profit;
+                            
+                            return (
+                              <span className={`font-bold text-xs sm:text-sm ${
+                                profit > 0 
+                                  ? 'text-primary' 
+                                  : profit < 0 
+                                  ? 'text-destructive'
+                                  : 'text-foreground'
+                              }`}>
+                                {formatCurrency(profit)}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           {month.profitChangePercent !== null ? (

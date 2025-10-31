@@ -84,14 +84,18 @@ export function useRevenueBreakdown(
       const categorizedSales = sales?.filter((s: any) => s.is_categorized && s.chart_account) || [];
       const uncategorizedSales = sales?.filter((s: any) => !s.is_categorized) || [];
       
-      const categorizedCount = categorizedSales.length;
-      const categorizationRate = (totalCount ?? 0) > 0 ? (categorizedCount / (totalCount ?? 0)) * 100 : 0;
-      const hasCategorizationData = categorizedCount > 0;
-
-      // Calculate uncategorized revenue
+      // Calculate revenue amounts for categorization rate
+      const totalCategorizedAmount = categorizedSales.reduce((sum: number, sale: any) => 
+        sum + (sale.total_price || 0), 0
+      );
       const uncategorizedRevenue = uncategorizedSales.reduce((sum: number, sale: any) => 
         sum + (sale.total_price || 0), 0
       );
+      const totalRevenue = totalCategorizedAmount + uncategorizedRevenue;
+      
+      // Calculate categorization rate based on dollar amounts (not count)
+      const categorizationRate = totalRevenue > 0 ? (totalCategorizedAmount / totalRevenue) * 100 : 0;
+      const hasCategorizationData = categorizedSales.length > 0;
 
       if (!hasCategorizationData && uncategorizedRevenue === 0) {
         return {

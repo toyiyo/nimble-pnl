@@ -50,6 +50,16 @@ export interface DailyLaborCosts {
   total_hours?: number;
 }
 
+/**
+ * @deprecated Use usePeriodMetrics instead for revenue calculations.
+ * This hook is maintained only for historical monthly breakdown data.
+ * 
+ * ⚠️ WARNING: Do NOT use this hook for revenue calculations!
+ * - net_revenue in daily_pnl includes liabilities (incorrect)
+ * - Use usePeriodMetrics which calculates revenue from unified_sales
+ * 
+ * @see usePeriodMetrics - The correct hook for period financial metrics
+ */
 export function useDailyPnL(restaurantId: string | null, dateRange?: { from: Date; to: Date }) {
   const [pnlData, setPnlData] = useState<DailyPnL[]>([]);
   const [loading, setLoading] = useState(true);

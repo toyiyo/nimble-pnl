@@ -88,6 +88,15 @@ export interface PnLAnalytics {
   };
 }
 
+/**
+ * @deprecated Use usePeriodMetrics instead.
+ * This hook queries daily_pnl.net_revenue which includes liabilities.
+ * 
+ * For accurate revenue calculations, use:
+ * - usePeriodMetrics: Combines revenue (from unified_sales) + costs (from daily_pnl)
+ * 
+ * @see usePeriodMetrics - The correct hook for accurate financial metrics
+ */
 export function usePnLAnalytics(
   restaurantId: string | null, 
   options: { days?: number; dateFrom?: Date; dateTo?: Date } = { days: 30 }

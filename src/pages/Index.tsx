@@ -10,6 +10,7 @@ import { useDailyPnL } from '@/hooks/useDailyPnL';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
 import { useBankTransactions } from '@/hooks/useBankTransactions';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
+import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -69,13 +70,29 @@ const Index = () => {
     label: 'Today',
   });
 
-  // Now fetch PnL data with the selected period
-  const { pnlData, loading: pnlLoading, getTodaysData, getAverages, getGroupedPnLData, getMonthlyData } = useDailyPnL(
+  // Use new unified metrics hook for revenue + costs
+  const todayStart = startOfDay(new Date());
+  const todayEnd = endOfDay(new Date());
+  
+  const { data: todaysMetrics, isLoading: todaysLoading } = usePeriodMetrics(
+    selectedRestaurant?.restaurant_id || null,
+    todayStart,
+    todayEnd
+  );
+
+  const { data: periodMetrics, isLoading: periodLoading } = usePeriodMetrics(
+    selectedRestaurant?.restaurant_id || null,
+    selectedPeriod.from,
+    selectedPeriod.to
+  );
+
+  // Keep useDailyPnL only for historical monthly breakdown data
+  const { getMonthlyData } = useDailyPnL(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod
   );
 
-  // Fetch revenue breakdown for selected period
+  // Fetch revenue breakdown for selected period (still needed for detailed breakdown)
   const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,
@@ -86,80 +103,45 @@ const Index = () => {
     setSelectedRestaurant(restaurant);
   };
 
-  // Calculate period data
+  // Calculate period data from periodMetrics (no longer using daily_pnl for revenue)
   const periodData = useMemo(() => {
-    const allData = getGroupedPnLData();
-    const fromStr = format(selectedPeriod.from, 'yyyy-MM-dd');
-    const toStr = format(selectedPeriod.to, 'yyyy-MM-dd');
-    
-    const filtered = allData.filter(day => day.date >= fromStr && day.date <= toStr);
-    
-    if (filtered.length === 0) {
-      return null;
-    }
-
-    // Aggregate totals
-    const totalRevenue = filtered.reduce((sum, day) => sum + day.net_revenue, 0);
-    const totalFoodCost = filtered.reduce((sum, day) => sum + day.food_cost, 0);
-    const totalLaborCost = filtered.reduce((sum, day) => sum + day.labor_cost, 0);
-    const totalPrimeCost = filtered.reduce((sum, day) => sum + day.prime_cost, 0);
-    
-    // Calculate percentages from aggregated totals (guard against division by zero)
-    const avgFoodCostPercentage = totalRevenue > 0 ? (totalFoodCost / totalRevenue) * 100 : 0;
-    const avgLaborCostPercentage = totalRevenue > 0 ? (totalLaborCost / totalRevenue) * 100 : 0;
-    const avgPrimeCostPercentage = totalRevenue > 0 ? (totalPrimeCost / totalRevenue) * 100 : 0;
+    if (!periodMetrics) return null;
 
     return {
-      net_revenue: totalRevenue,
-      food_cost: totalFoodCost,
-      labor_cost: totalLaborCost,
-      food_cost_percentage: avgFoodCostPercentage,
-      labor_cost_percentage: avgLaborCostPercentage,
-      prime_cost_percentage: avgPrimeCostPercentage,
-      daily_data: filtered,
+      net_revenue: periodMetrics.netRevenue,
+      food_cost: periodMetrics.foodCost,
+      labor_cost: periodMetrics.laborCost,
+      food_cost_percentage: periodMetrics.foodCostPercentage,
+      labor_cost_percentage: periodMetrics.laborCostPercentage,
+      prime_cost_percentage: periodMetrics.primeCostPercentage,
     };
-  }, [getGroupedPnLData, selectedPeriod]);
+  }, [periodMetrics]);
 
   // Calculate previous period data for comparison
-  const previousPeriodData = useMemo(() => {
-    const allData = getGroupedPnLData();
-    const periodLength = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;
-    
-    const prevTo = new Date(selectedPeriod.from);
-    prevTo.setDate(prevTo.getDate() - 1);
-    const prevFrom = new Date(prevTo);
-    prevFrom.setDate(prevFrom.getDate() - periodLength + 1);
-    
-    const fromStr = format(prevFrom, 'yyyy-MM-dd');
-    const toStr = format(prevTo, 'yyyy-MM-dd');
-    
-    const filtered = allData.filter(day => day.date >= fromStr && day.date <= toStr);
-    
-    if (filtered.length === 0) {
-      return null;
-    }
+  const periodLength = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;
+  const prevTo = new Date(selectedPeriod.from);
+  prevTo.setDate(prevTo.getDate() - 1);
+  const prevFrom = new Date(prevTo);
+  prevFrom.setDate(prevFrom.getDate() - periodLength + 1);
 
-    const totalRevenue = filtered.reduce((sum, day) => sum + day.net_revenue, 0);
-    const totalFoodCost = filtered.reduce((sum, day) => sum + day.food_cost, 0);
-    const totalLaborCost = filtered.reduce((sum, day) => sum + day.labor_cost, 0);
-    const totalPrimeCost = filtered.reduce((sum, day) => sum + day.prime_cost, 0);
-    
-    // Calculate percentages from aggregated totals (guard against division by zero)
-    const avgFoodCostPercentage = totalRevenue > 0 ? (totalFoodCost / totalRevenue) * 100 : 0;
-    const avgLaborCostPercentage = totalRevenue > 0 ? (totalLaborCost / totalRevenue) * 100 : 0;
-    const avgPrimeCostPercentage = totalRevenue > 0 ? (totalPrimeCost / totalRevenue) * 100 : 0;
+  const { data: previousPeriodMetrics } = usePeriodMetrics(
+    selectedRestaurant?.restaurant_id || null,
+    prevFrom,
+    prevTo
+  );
+
+  const previousPeriodData = useMemo(() => {
+    if (!previousPeriodMetrics) return null;
 
     return {
-      net_revenue: totalRevenue,
-      food_cost_percentage: avgFoodCostPercentage,
-      labor_cost_percentage: avgLaborCostPercentage,
-      prime_cost_percentage: avgPrimeCostPercentage,
+      net_revenue: previousPeriodMetrics.netRevenue,
+      food_cost_percentage: previousPeriodMetrics.foodCostPercentage,
+      labor_cost_percentage: previousPeriodMetrics.laborCostPercentage,
+      prime_cost_percentage: previousPeriodMetrics.primeCostPercentage,
     };
-  }, [getGroupedPnLData, selectedPeriod]);
+  }, [previousPeriodMetrics]);
 
-  const todaysData = getTodaysData();
-  const averages = getAverages(7);
-  const recentData = getGroupedPnLData().slice(0, 30);
+  const todaysData = todaysMetrics;
 
   // Calculate available cash from connected banks
   const availableCash = useMemo(() => {
@@ -174,7 +156,7 @@ const Index = () => {
   // Calculate Today's estimated profit
   const todayEstimatedProfit = useMemo(() => {
     if (!todaysData) return 0;
-    return todaysData.net_revenue - todaysData.food_cost - todaysData.labor_cost;
+    return todaysData.grossProfit;
   }, [todaysData]);
 
   // Calculate daily average spending from actual transaction history
@@ -293,28 +275,28 @@ const Index = () => {
     }
 
     // Food cost performance
-    if (todaysData && averages) {
-      if (todaysData.food_cost_percentage > averages.avgFoodCostPercentage + 5) {
+    if (todaysData && previousPeriodData) {
+      if (todaysData.foodCostPercentage > previousPeriodData.food_cost_percentage + 5) {
         insightsArray.push({
           type: 'warning',
           title: 'Food Cost Above Average',
-          description: `Today's food cost (${todaysData.food_cost_percentage.toFixed(1)}%) is ${(todaysData.food_cost_percentage - averages.avgFoodCostPercentage).toFixed(1)}% higher than your 7-day average. Check for waste or price increases.`
+          description: `Today's food cost (${todaysData.foodCostPercentage.toFixed(1)}%) is ${(todaysData.foodCostPercentage - previousPeriodData.food_cost_percentage).toFixed(1)}% higher than previous period. Check for waste or price increases.`
         });
-      } else if (todaysData.food_cost_percentage < averages.avgFoodCostPercentage - 2) {
+      } else if (todaysData.foodCostPercentage < previousPeriodData.food_cost_percentage - 2) {
         insightsArray.push({
           type: 'success',
           title: 'Excellent Food Cost Control',
-          description: `Food cost is ${(averages.avgFoodCostPercentage - todaysData.food_cost_percentage).toFixed(1)}% below your average. Great work!`
+          description: `Food cost is ${(previousPeriodData.food_cost_percentage - todaysData.foodCostPercentage).toFixed(1)}% below previous period. Great work!`
         });
       }
     }
 
     // Prime cost check
-    if (todaysData && todaysData.prime_cost_percentage > 65) {
+    if (todaysData && todaysData.primeCostPercentage > 65) {
       insightsArray.push({
         type: 'warning',
         title: 'Prime Cost Above Target',
-        description: `Prime cost at ${todaysData.prime_cost_percentage.toFixed(1)}% exceeds the recommended 60-65% range. Consider reviewing labor schedules and food costs.`
+        description: `Prime cost at ${todaysData.primeCostPercentage.toFixed(1)}% exceeds the recommended 60-65% range. Consider reviewing labor schedules and food costs.`
       });
     }
 
@@ -337,17 +319,7 @@ const Index = () => {
     }
 
     return insightsArray;
-  }, [reorderAlerts, todaysData, averages, lowStockItems]);
-
-  // Prepare chart data with memoization
-  const getChartData = useMemo(() => {
-    return (key: 'net_revenue' | 'food_cost_percentage' | 'prime_cost_percentage') => {
-      return recentData.slice(0, 14).reverse().map(day => ({
-        date: day.date,
-        value: day[key]
-      }));
-    };
-  }, [recentData]);
+  }, [reorderAlerts, todaysData, previousPeriodData, lowStockItems]);
 
   const getTrendValue = (current: number, average: number) => {
     if (!average) return 0;
@@ -442,7 +414,7 @@ const Index = () => {
             </div>
           </div>
 
-          {pnlLoading || alertsLoading ? (
+          {todaysLoading || periodLoading || alertsLoading ? (
             <DashboardSkeleton />
           ) : (
             <>
@@ -450,14 +422,14 @@ const Index = () => {
               <CriticalAlertsBar alerts={criticalAlerts} />
 
               {/* Today's Pulse Widget */}
-              <TodaysPulseWidget
-                todaySales={todaysData?.net_revenue || 0}
-                todayFoodCost={todaysData?.food_cost || 0}
-                todayLaborCost={todaysData?.labor_cost || 0}
-                availableCash={availableCash}
-                estimatedProfit={todayEstimatedProfit}
-                lastUpdated={format(new Date(), 'h:mm a')}
-              />
+            <TodaysPulseWidget
+              todaySales={todaysData?.netRevenue || 0}
+              todayFoodCost={todaysData?.foodCost || 0}
+              todayLaborCost={todaysData?.laborCost || 0}
+              availableCash={availableCash}
+              estimatedProfit={todayEstimatedProfit}
+              lastUpdated={format(new Date(), 'h:mm a')}
+            />
 
               {/* AI Insights */}
               <DashboardInsights insights={insights} />
@@ -539,7 +511,7 @@ const Index = () => {
                     } : undefined}
                     icon={DollarSign}
                     variant={periodData && previousPeriodData && periodData.net_revenue > previousPeriodData.net_revenue ? 'success' : 'default'}
-                    sparklineData={periodData?.daily_data.map(d => ({ value: d.net_revenue }))}
+                    sparklineData={undefined}
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
@@ -552,7 +524,7 @@ const Index = () => {
                     icon={ShoppingCart}
                     variant={periodData && periodData.food_cost_percentage > 35 ? 'warning' : 'default'}
                     subtitle={periodData ? `${periodData.food_cost_percentage.toFixed(1)}% of revenue | Target: 28-32%` : undefined}
-                    sparklineData={periodData?.daily_data.map(d => ({ value: d.food_cost }))}
+                    sparklineData={undefined}
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
@@ -565,7 +537,7 @@ const Index = () => {
                     icon={Clock}
                     variant={periodData && periodData.labor_cost_percentage > 35 ? 'warning' : 'default'}
                     subtitle={periodData ? `${periodData.labor_cost_percentage.toFixed(1)}% of revenue | Target: 25-30%` : undefined}
-                    sparklineData={periodData?.daily_data.map(d => ({ value: d.labor_cost }))}
+                    sparklineData={undefined}
                     periodLabel={selectedPeriod.label}
                   />
                   {/* Profit Card (replaced Prime Cost) */}
@@ -589,7 +561,7 @@ const Index = () => {
                             : 'default'
                         }
                         subtitle={periodData && periodData.net_revenue > 0 ? `${profitMargin.toFixed(1)}% margin` : undefined}
-                        sparklineData={periodData?.daily_data.map(d => ({ value: d.net_revenue - d.food_cost - d.labor_cost }))}
+                        sparklineData={undefined}
                         periodLabel={selectedPeriod.label}
                       />
                     );
@@ -676,7 +648,7 @@ const Index = () => {
                 <DashboardMiniChart
                   title="Revenue Trend"
                   description="Last 14 days"
-                  data={getChartData('net_revenue')}
+                  data={[{ date: format(new Date(), 'yyyy-MM-dd'), value: periodMetrics?.netRevenue || 0 }]}
                   color="#10b981"
                   suffix="$"
                 />
@@ -685,7 +657,7 @@ const Index = () => {
                 <DashboardMiniChart
                   title="Food Cost Trend"
                   description="Last 14 days"
-                  data={getChartData('food_cost_percentage')}
+                  data={[{ date: format(new Date(), 'yyyy-MM-dd'), value: periodMetrics?.foodCostPercentage || 0 }]}
                   color="#f59e0b"
                   suffix="%"
                 />

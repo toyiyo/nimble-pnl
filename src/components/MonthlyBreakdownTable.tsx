@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -190,7 +190,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                     : 0;
                   
                   return (
-                    <>
+                    <Fragment key={month.period}>
                       <tr
                         key={month.period}
                         className={`border-b border-border/50 hover:bg-muted/50 transition-colors ${
@@ -555,7 +555,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </tr>
                         );
                       })()}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>

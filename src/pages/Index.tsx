@@ -763,7 +763,7 @@ const Index = () => {
                     )}
 
                     {/* Pass-Through Collections */}
-                    {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) && (
+                    {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0 || revenueBreakdown.totals.other_liabilities > 0) && (
                       <div className="pt-4 border-t">
                         <h4 className="text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">
                           Other Collections (Pass-Through)
@@ -795,6 +795,22 @@ const Index = () => {
                               </p>
                             </div>
                           )}
+                          {revenueBreakdown.other_liability_categories.map((category) => (
+                            <div key={category.account_id} className="p-3 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-sm font-medium">{category.account_name}</p>
+                                <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">
+                                  Liability
+                                </Badge>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
+                                <p className="text-xl font-bold text-purple-700 dark:text-purple-400">
+                                  ${category.total_amount.toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}

@@ -17,6 +17,7 @@ export interface RevenueBreakdownData {
   refund_categories: RevenueCategory[];
   tax_categories: RevenueCategory[];
   tip_categories: RevenueCategory[];
+  other_liability_categories: RevenueCategory[];
   totals: {
     gross_revenue: number;
     total_discounts: number;
@@ -24,6 +25,7 @@ export interface RevenueBreakdownData {
     net_revenue: number;
     sales_tax: number;
     tips: number;
+    other_liabilities: number;
   };
   has_categorization_data: boolean;
   categorization_rate: number;
@@ -87,6 +89,7 @@ export function useRevenueBreakdown(
           refund_categories: [],
           tax_categories: [],
           tip_categories: [],
+          other_liability_categories: [],
           totals: {
             gross_revenue: 0,
             total_discounts: 0,
@@ -94,6 +97,7 @@ export function useRevenueBreakdown(
             net_revenue: 0,
             sales_tax: 0,
             tips: 0,
+            other_liabilities: 0,
           },
           has_categorization_data: false,
           categorization_rate: 0,
@@ -157,12 +161,21 @@ export function useRevenueBreakdown(
         c.account_name.toLowerCase().includes('tip')
       );
 
+      // Other liability accounts (franchise fees, notes payable, etc.)
+      const otherLiabilityCategories = categories.filter(c =>
+        c.account_type === 'liability' &&
+        c.account_subtype !== 'sales_tax' &&
+        !c.account_name.toLowerCase().includes('tax') &&
+        !c.account_name.toLowerCase().includes('tip')
+      );
+
       // Calculate totals
       const grossRevenue = revenueCategories.reduce((sum, c) => sum + c.total_amount, 0);
       const totalDiscounts = discountCategories.reduce((sum, c) => sum + Math.abs(c.total_amount), 0);
       const totalRefunds = refundCategories.reduce((sum, c) => sum + Math.abs(c.total_amount), 0);
       const totalTax = taxCategories.reduce((sum, c) => sum + c.total_amount, 0);
       const totalTips = tipCategories.reduce((sum, c) => sum + c.total_amount, 0);
+      const totalOtherLiabilities = otherLiabilityCategories.reduce((sum, c) => sum + c.total_amount, 0);
       const netRevenue = grossRevenue - totalDiscounts - totalRefunds;
 
       return {
@@ -173,6 +186,9 @@ export function useRevenueBreakdown(
         refund_categories: refundCategories,
         tax_categories: taxCategories,
         tip_categories: tipCategories,
+        other_liability_categories: otherLiabilityCategories.sort((a, b) => 
+          a.account_code.localeCompare(b.account_code)
+        ),
         totals: {
           gross_revenue: grossRevenue,
           total_discounts: totalDiscounts,
@@ -180,6 +196,7 @@ export function useRevenueBreakdown(
           net_revenue: netRevenue,
           sales_tax: totalTax,
           tips: totalTips,
+          other_liabilities: totalOtherLiabilities,
         },
         has_categorization_data: true,
         categorization_rate: categorizationRate,

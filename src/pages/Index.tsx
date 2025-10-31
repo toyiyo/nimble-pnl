@@ -63,7 +63,7 @@ const Index = () => {
   const [metricsOpen, setMetricsOpen] = useState(true);
   const [trendsOpen, setTrendsOpen] = useState(true);
   const [revenueOpen, setRevenueOpen] = useState(true);
-  const [monthlyOpen, setMonthlyOpen] = useState(false);
+  const [monthlyOpen, setMonthlyOpen] = useState(true);
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
     type: 'today',

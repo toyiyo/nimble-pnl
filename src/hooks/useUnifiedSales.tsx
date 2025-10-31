@@ -19,6 +19,19 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       .from('unified_sales')
       .select(`
         *,
+        child_splits:unified_sales!parent_sale_id (
+          id,
+          item_name,
+          quantity,
+          total_price,
+          category_id,
+          is_categorized,
+          chart_account:chart_of_accounts!category_id (
+            id,
+            account_code,
+            account_name
+          )
+        ),
         suggested_chart_account:chart_of_accounts!suggested_category_id (
           id,
           account_code,
@@ -66,6 +79,24 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       item_type: sale.item_type as "sale" | "tip" | "tax" | "discount" | "comp" | "service_charge" | "other" | undefined,
       is_categorized: sale.is_categorized || false,
       is_split: sale.is_split || false,
+      parent_sale_id: sale.parent_sale_id,
+      // Map child splits if they exist
+      child_splits: Array.isArray(sale.child_splits) ? sale.child_splits.map((split: any) => ({
+        id: split.id,
+        itemName: split.item_name,
+        quantity: split.quantity,
+        totalPrice: split.total_price,
+        category_id: split.category_id,
+        is_categorized: split.is_categorized,
+        chart_account: split.chart_account,
+        restaurantId: sale.restaurant_id,
+        posSystem: sale.pos_system as POSSystemType,
+        externalOrderId: sale.external_order_id,
+        saleDate: sale.sale_date,
+        syncedAt: sale.synced_at,
+        createdAt: sale.created_at,
+        parent_sale_id: sale.id,
+      })) : undefined,
       // Use approved_chart_account if categorized, otherwise suggested_chart_account
       chart_account: sale.is_categorized ? sale.approved_chart_account : sale.suggested_chart_account,
     }));
@@ -124,13 +155,19 @@ export const useUnifiedSales = (restaurantId: string | null) => {
   }, [error, toast]);
 
   const getSalesByDateRange = useCallback((startDate: string, endDate: string) => {
+    // Exclude parent sales that have been split (to prevent double counting)
     return sales.filter(sale => 
-      sale.saleDate >= startDate && sale.saleDate <= endDate
+      sale.saleDate >= startDate && 
+      sale.saleDate <= endDate &&
+      !sale.parent_sale_id // Exclude child splits from aggregations
     );
   }, [sales]);
 
   const getSalesGroupedByItem = useCallback(() => {
-    const grouped = sales.reduce((acc, sale) => {
+    // Only include sales that are not child splits to prevent double counting
+    const nonSplitSales = sales.filter(sale => !sale.parent_sale_id);
+    
+    const grouped = nonSplitSales.reduce((acc, sale) => {
       const key = sale.itemName;
       if (!acc[key]) {
         acc[key] = {

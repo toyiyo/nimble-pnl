@@ -30,6 +30,7 @@ import { useCategorizePosSales } from "@/hooks/useCategorizePosSales";
 import { useCategorizePosSale } from "@/hooks/useCategorizePosSale";
 import { useSplitPosSale } from "@/hooks/useSplitPosSale";
 import { SplitPosSaleDialog } from "@/components/pos-sales/SplitPosSaleDialog";
+import { SplitSaleView } from "@/components/pos-sales/SplitSaleView";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 
 export default function POSSales() {
@@ -121,7 +122,10 @@ export default function POSSales() {
   }, [selectedRestaurant?.restaurant_id]); // Only re-run when restaurant changes
 
   const filteredSales = useMemo(() => {
-    let filtered = sales.filter((sale) => sale.itemName.toLowerCase().includes(searchTerm.toLowerCase()));
+    // Filter out child splits - only show parent sales or non-split sales
+    let filtered = sales
+      .filter((sale) => !sale.parent_sale_id) // Exclude child splits
+      .filter((sale) => sale.itemName.toLowerCase().includes(searchTerm.toLowerCase()));
     
     if (startDate) {
       filtered = filtered.filter((sale) => sale.saleDate >= startDate);
@@ -253,7 +257,19 @@ export default function POSSales() {
   // Calculate dashboard metrics - MUST be before conditional return to follow Rules of Hooks
   const dashboardMetrics = useMemo(() => {
     const totalSales = filteredSales.length;
-    const totalRevenue = filteredSales.reduce((sum, sale) => sum + (sale.totalPrice || 0), 0);
+    
+    // For revenue, use child splits totals if sale is split, otherwise use the sale's total
+    const totalRevenue = filteredSales.reduce((sum, sale) => {
+      if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
+        // Sum child split amounts for split sales
+        return sum + sale.child_splits.reduce((childSum, split) => 
+          childSum + (split.totalPrice || 0), 0
+        );
+      }
+      // Use parent sale amount for non-split sales
+      return sum + (sale.totalPrice || 0);
+    }, 0);
+    
     const uniqueItems = new Set(filteredSales.map(sale => sale.itemName)).size;
     
     return {
@@ -689,6 +705,25 @@ export default function POSSales() {
                 ) : (
                   <div className="space-y-3">
                     {dateFilteredSales.map((sale, index) => {
+                      // If sale is split, show the SplitSaleView component
+                      if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
+                        return (
+                          <div
+                            key={sale.id}
+                            className="animate-fade-in"
+                            style={{ animationDelay: `${index * 50}ms` }}
+                          >
+                            <SplitSaleView
+                              sale={sale}
+                              onEdit={handleEditSale}
+                              onSplit={(s) => setSaleToSplit(s)}
+                              formatCurrency={(amount) => `$${amount.toFixed(2)}`}
+                            />
+                          </div>
+                        );
+                      }
+                      
+                      // Regular sale card (non-split)
                       const posSystemColors: Record<string, string> = {
                         "Square": "border-l-blue-500",
                         "Clover": "border-l-green-500",

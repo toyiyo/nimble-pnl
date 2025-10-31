@@ -3096,6 +3096,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_parent_sale"
+            columns: ["parent_sale_id"]
+            isOneToOne: false
+            referencedRelation: "unified_sales"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "unified_sales_category_id_fkey"
             columns: ["category_id"]
             isOneToOne: false

@@ -25,6 +25,8 @@ export interface UnifiedSaleItem {
   ai_reasoning?: string;
   is_categorized?: boolean;
   is_split?: boolean;
+  parent_sale_id?: string | null;
+  child_splits?: UnifiedSaleItem[];
   item_type?: 'sale' | 'tip' | 'tax' | 'discount' | 'comp' | 'service_charge' | 'other';
   chart_account?: {
     id: string;

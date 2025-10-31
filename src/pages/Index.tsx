@@ -481,6 +481,9 @@ const Index = () => {
                 uncategorizedTransactions={transactionsData?.length || 0}
               />
 
+              {/* Quick Actions */}
+              <DashboardQuickActions restaurantId={selectedRestaurant.restaurant_id} />
+
               {/* Period Selector */}
               <PeriodSelector
                 selectedPeriod={selectedPeriod}
@@ -593,10 +596,6 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
-
-
-              {/* Quick Actions */}
-              <DashboardQuickActions restaurantId={selectedRestaurant.restaurant_id} />
 
               {/* Revenue Mix Section - Collapsible */}
               {!revenueLoading && revenueBreakdown && revenueBreakdown.has_categorization_data && (

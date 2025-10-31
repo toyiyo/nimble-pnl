@@ -62,9 +62,9 @@ export function DashboardInsights({ insights }: DashboardInsightsProps) {
     }
   };
 
-  if (insights.length === 0) {
-    return null;
-  }
+  // Check if all systems are healthy (no critical or warning alerts)
+  const hasIssues = insights.some(i => i.type === 'critical' || i.type === 'warning');
+  const showAllGood = insights.length === 0 || !hasIssues;
 
   const getGradientBorder = (type: Insight['type']) => {
     switch (type) {
@@ -88,13 +88,33 @@ export function DashboardInsights({ insights }: DashboardInsightsProps) {
           <div className="rounded-lg p-2 bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/30">
             <Lightbulb className="h-5 w-5 text-white" />
           </div>
-          AI-Powered Insights
+          Smart Alerts
         </CardTitle>
         <CardDescription>
-          Smart recommendations based on your restaurant's performance
+          Your trusted advisor for restaurant performance
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {showAllGood && (
+          <Alert 
+            variant="default"
+            className="border-l-4 border-l-green-500 dark:border-l-green-400 bg-gradient-to-r from-green-50/50 to-transparent dark:from-green-950/30 animate-fade-in"
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-green-100 to-green-50 dark:from-green-900/50 dark:to-green-950/30 text-green-600 dark:text-green-400">
+                <CheckCircle className="h-4 w-4" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <div className="font-semibold text-sm text-green-700 dark:text-green-400">
+                  Your restaurant looks healthy!
+                </div>
+                <AlertDescription className="text-xs leading-relaxed text-green-600 dark:text-green-500">
+                  Keep an eye on food cost trends this week as supplier prices shift.
+                </AlertDescription>
+              </div>
+            </div>
+          </Alert>
+        )}
         {insights.map((insight, index) => (
           <Alert 
             key={index} 

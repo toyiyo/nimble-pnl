@@ -135,9 +135,11 @@ export function useRevenueBreakdown(
       const revenueCategories = categories.filter(c => 
         c.account_type === 'revenue' && 
         c.account_subtype !== 'discounts' &&
+        c.account_subtype !== 'sales_tax' && // Exclude sales tax from revenue
         !c.account_name.toLowerCase().includes('discount') &&
         !c.account_name.toLowerCase().includes('comp') &&
-        !c.account_name.toLowerCase().includes('refund')
+        !c.account_name.toLowerCase().includes('refund') &&
+        !c.account_name.toLowerCase().includes('tax') // Exclude any tax-related accounts
       );
 
       const discountCategories = categories.filter(c => 
@@ -152,19 +154,24 @@ export function useRevenueBreakdown(
       );
 
       const taxCategories = categories.filter(c => 
-        c.account_subtype === 'sales_tax' ||
-        c.account_name.toLowerCase().includes('tax')
+        c.account_type === 'liability' && (
+          c.account_subtype === 'sales_tax' ||
+          c.account_name.toLowerCase().includes('tax')
+        )
       );
 
       const tipCategories = categories.filter(c => 
-        c.account_subtype === 'tips' ||
-        c.account_name.toLowerCase().includes('tip')
+        c.account_type === 'liability' && (
+          c.account_subtype === 'tips' ||
+          c.account_name.toLowerCase().includes('tip')
+        )
       );
 
       // Other liability accounts (franchise fees, notes payable, etc.)
       const otherLiabilityCategories = categories.filter(c =>
         c.account_type === 'liability' &&
         c.account_subtype !== 'sales_tax' &&
+        c.account_subtype !== 'tips' &&
         !c.account_name.toLowerCase().includes('tax') &&
         !c.account_name.toLowerCase().includes('tip')
       );

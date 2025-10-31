@@ -481,20 +481,11 @@ const Index = () => {
                 uncategorizedTransactions={transactionsData?.length || 0}
               />
 
-              {/* Period Selector - Positioned before period-dependent sections */}
-              <div className="flex flex-col gap-3 p-6 rounded-xl bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50">
-                <div className="flex items-center gap-2">
-                  <div className="h-1 w-8 bg-gradient-to-r from-primary to-accent rounded-full" />
-                  <h2 className="text-xl font-semibold">Analyze Period</h2>
-                  <Badge variant="outline" className="text-xs">
-                    Select time range to analyze
-                  </Badge>
-                </div>
-                <PeriodSelector
-                  selectedPeriod={selectedPeriod}
-                  onPeriodChange={setSelectedPeriod}
-                />
-              </div>
+              {/* Period Selector */}
+              <PeriodSelector
+                selectedPeriod={selectedPeriod}
+                onPeriodChange={setSelectedPeriod}
+              />
 
               {/* Key Metrics - Collapsible */}
               <Collapsible open={metricsOpen} onOpenChange={setMetricsOpen}>

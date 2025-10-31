@@ -44,8 +44,9 @@ export function useRevenueBreakdown(
     queryFn: async (): Promise<RevenueBreakdownData | null> => {
       if (!restaurantId) return null;
 
-      // Rounding helper to eliminate floating-point errors
-      const r2 = (n: number) => Math.round((n || 0) * 100) / 100;
+      // Integer cents helpers to eliminate floating-point errors
+      const toC = (n: number) => Math.round((n || 0) * 100);
+      const fromC = (c: number) => Math.round(c) / 100;
 
       const fromStr = dateFrom.toISOString().split('T')[0];
       const toStr = dateTo.toISOString().split('T')[0];
@@ -92,10 +93,11 @@ export function useRevenueBreakdown(
       
       const hasCategorizationData = categorizedSales.length > 0;
 
-      // Calculate uncategorized revenue early for empty state check
-      const uncategorizedRevenue = r2(uncategorizedSales.reduce((sum: number, sale: any) => 
-        sum + (sale.total_price || 0), 0
-      ));
+      // Calculate uncategorized revenue in cents early for empty state check
+      const uncategorizedRevenueC = uncategorizedSales.reduce((sum: number, sale: any) => 
+        sum + toC(sale.total_price || 0), 0
+      );
+      const uncategorizedRevenue = fromC(uncategorizedRevenueC);
 
       if (!hasCategorizationData && uncategorizedRevenue === 0) {
         return {
@@ -194,20 +196,30 @@ export function useRevenueBreakdown(
         !c.account_name.toLowerCase().includes('tip')
       );
 
-      // Calculate totals with rounding to eliminate floating-point errors
-      const categorizedRevenue = r2(revenueCategories.reduce((sum, c) => sum + (c.total_amount || 0), 0));
-      const totalDiscounts = r2(discountCategories.reduce((sum, c) => sum + Math.abs(c.total_amount || 0), 0));
-      const totalRefunds = r2(refundCategories.reduce((sum, c) => sum + Math.abs(c.total_amount || 0), 0));
-      const totalTax = r2(taxCategories.reduce((sum, c) => sum + (c.total_amount || 0), 0));
-      const totalTips = r2(tipCategories.reduce((sum, c) => sum + (c.total_amount || 0), 0));
-      const totalOtherLiabilities = r2(otherLiabilityCategories.reduce((sum, c) => sum + (c.total_amount || 0), 0));
+      // Calculate totals in cents (integers) to eliminate floating-point errors
+      const categorizedRevenueC = revenueCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
+      const totalDiscountsC = discountCategories.reduce((sum, c) => sum + Math.abs(toC(c.total_amount || 0)), 0);
+      const totalRefundsC = refundCategories.reduce((sum, c) => sum + Math.abs(toC(c.total_amount || 0)), 0);
+      const totalTaxC = taxCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
+      const totalTipsC = tipCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
+      const totalOtherLiabilitiesC = otherLiabilityCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
       
-      // Total gross revenue = categorized + uncategorized (both already rounded)
-      const grossRevenue = r2(categorizedRevenue + uncategorizedRevenue);
-      const netRevenue = r2(grossRevenue - totalDiscounts - totalRefunds);
+      // Totals in cents
+      const grossRevenueC = categorizedRevenueC + uncategorizedRevenueC;
+      const netRevenueC = grossRevenueC - totalDiscountsC - totalRefundsC;
+      
+      // Convert once to dollars for output
+      const categorizedRevenue = fromC(categorizedRevenueC);
+      const grossRevenue = fromC(grossRevenueC);
+      const totalDiscounts = fromC(totalDiscountsC);
+      const totalRefunds = fromC(totalRefundsC);
+      const netRevenue = fromC(netRevenueC);
+      const totalTax = fromC(totalTaxC);
+      const totalTips = fromC(totalTipsC);
+      const totalOtherLiabilities = fromC(totalOtherLiabilitiesC);
       
       // Calculate categorization rate based on revenue dollars
-      const categorizationRate = grossRevenue > 0 ? r2((categorizedRevenue / grossRevenue) * 100) : 0;
+      const categorizationRate = grossRevenueC > 0 ? (categorizedRevenueC / grossRevenueC) * 100 : 0;
 
       // Validation: Check arithmetic
       const calculatedGross = categorizedRevenue + uncategorizedRevenue;

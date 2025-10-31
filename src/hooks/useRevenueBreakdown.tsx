@@ -44,6 +44,9 @@ export function useRevenueBreakdown(
     queryFn: async (): Promise<RevenueBreakdownData | null> => {
       if (!restaurantId) return null;
 
+      // Rounding helper to eliminate floating-point errors
+      const r2 = (n: number) => Math.round((n || 0) * 100) / 100;
+
       const fromStr = dateFrom.toISOString().split('T')[0];
       const toStr = dateTo.toISOString().split('T')[0];
 
@@ -82,20 +85,17 @@ export function useRevenueBreakdown(
 
       // Separate categorized and uncategorized sales
       const categorizedSales = sales?.filter((s: any) => s.is_categorized && s.chart_account) || [];
-      const uncategorizedSales = sales?.filter((s: any) => !s.is_categorized) || [];
+      // Only include actual 'sale' items in uncategorized (exclude refunds, voids, pass-throughs)
+      const uncategorizedSales = sales?.filter((s: any) => 
+        !s.is_categorized && String(s.item_type || 'sale').toLowerCase() === 'sale'
+      ) || [];
       
-      // Calculate revenue amounts for categorization rate
-      const totalCategorizedAmount = categorizedSales.reduce((sum: number, sale: any) => 
-        sum + (sale.total_price || 0), 0
-      );
-      const uncategorizedRevenue = uncategorizedSales.reduce((sum: number, sale: any) => 
-        sum + (sale.total_price || 0), 0
-      );
-      const totalRevenue = totalCategorizedAmount + uncategorizedRevenue;
-      
-      // Calculate categorization rate based on dollar amounts (not count)
-      const categorizationRate = totalRevenue > 0 ? (totalCategorizedAmount / totalRevenue) * 100 : 0;
       const hasCategorizationData = categorizedSales.length > 0;
+
+      // Calculate uncategorized revenue early for empty state check
+      const uncategorizedRevenue = r2(uncategorizedSales.reduce((sum: number, sale: any) => 
+        sum + (sale.total_price || 0), 0
+      ));
 
       if (!hasCategorizationData && uncategorizedRevenue === 0) {
         return {
@@ -194,17 +194,20 @@ export function useRevenueBreakdown(
         !c.account_name.toLowerCase().includes('tip')
       );
 
-      // Calculate totals
-      const categorizedRevenue = revenueCategories.reduce((sum, c) => sum + c.total_amount, 0);
-      const totalDiscounts = discountCategories.reduce((sum, c) => sum + Math.abs(c.total_amount), 0);
-      const totalRefunds = refundCategories.reduce((sum, c) => sum + Math.abs(c.total_amount), 0);
-      const totalTax = taxCategories.reduce((sum, c) => sum + c.total_amount, 0);
-      const totalTips = tipCategories.reduce((sum, c) => sum + c.total_amount, 0);
-      const totalOtherLiabilities = otherLiabilityCategories.reduce((sum, c) => sum + c.total_amount, 0);
+      // Calculate totals with rounding to eliminate floating-point errors
+      const categorizedRevenue = r2(revenueCategories.reduce((sum, c) => sum + (c.total_amount || 0), 0));
+      const totalDiscounts = r2(discountCategories.reduce((sum, c) => sum + Math.abs(c.total_amount || 0), 0));
+      const totalRefunds = r2(refundCategories.reduce((sum, c) => sum + Math.abs(c.total_amount || 0), 0));
+      const totalTax = r2(taxCategories.reduce((sum, c) => sum + (c.total_amount || 0), 0));
+      const totalTips = r2(tipCategories.reduce((sum, c) => sum + (c.total_amount || 0), 0));
+      const totalOtherLiabilities = r2(otherLiabilityCategories.reduce((sum, c) => sum + (c.total_amount || 0), 0));
       
-      // Total gross revenue = categorized + uncategorized
-      const grossRevenue = categorizedRevenue + uncategorizedRevenue;
-      const netRevenue = grossRevenue - totalDiscounts - totalRefunds;
+      // Total gross revenue = categorized + uncategorized (both already rounded)
+      const grossRevenue = r2(categorizedRevenue + uncategorizedRevenue);
+      const netRevenue = r2(grossRevenue - totalDiscounts - totalRefunds);
+      
+      // Calculate categorization rate based on revenue dollars
+      const categorizationRate = grossRevenue > 0 ? r2((categorizedRevenue / grossRevenue) * 100) : 0;
 
       // Validation: Check arithmetic
       const calculatedGross = categorizedRevenue + uncategorizedRevenue;
@@ -220,14 +223,14 @@ export function useRevenueBreakdown(
 
       return {
         revenue_categories: revenueCategories.sort((a, b) => 
-          a.account_code.localeCompare(b.account_code)
+          (a.account_code || '').localeCompare(b.account_code || '')
         ),
         discount_categories: discountCategories,
         refund_categories: refundCategories,
         tax_categories: taxCategories,
         tip_categories: tipCategories,
         other_liability_categories: otherLiabilityCategories.sort((a, b) => 
-          a.account_code.localeCompare(b.account_code)
+          (a.account_code || '').localeCompare(b.account_code || '')
         ),
         uncategorized_revenue: uncategorizedRevenue,
         totals: {

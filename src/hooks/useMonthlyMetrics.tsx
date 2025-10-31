@@ -107,6 +107,9 @@ export function useMonthlyMetrics(
             } else {
               month.other_liabilities += Math.round(sale.total_price * 100);
             }
+          } else if (!sale.chart_of_accounts) {
+            // Treat uncategorized sales as revenue (default)
+            month.gross_revenue += Math.round(sale.total_price * 100);
           }
         } else if (sale.item_type === 'discount') {
           month.discounts += Math.round(Math.abs(sale.total_price) * 100);

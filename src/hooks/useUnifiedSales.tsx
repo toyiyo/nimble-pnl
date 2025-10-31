@@ -19,19 +19,6 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       .from('unified_sales')
       .select(`
         *,
-        child_splits:unified_sales!fk_parent_sale (
-          id,
-          item_name,
-          quantity,
-          total_price,
-          category_id,
-          is_categorized,
-          chart_account:chart_of_accounts!category_id (
-            id,
-            account_code,
-            account_name
-          )
-        ),
         suggested_chart_account:chart_of_accounts!suggested_category_id (
           id,
           account_code,
@@ -80,28 +67,21 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       is_categorized: sale.is_categorized || false,
       is_split: sale.is_split || false,
       parent_sale_id: sale.parent_sale_id,
-      // Map child splits if they exist
-      child_splits: Array.isArray(sale.child_splits) ? sale.child_splits.map((split: any) => ({
-        id: split.id,
-        itemName: split.item_name,
-        quantity: split.quantity,
-        totalPrice: split.total_price,
-        category_id: split.category_id,
-        is_categorized: split.is_categorized,
-        chart_account: split.chart_account,
-        restaurantId: sale.restaurant_id,
-        posSystem: sale.pos_system as POSSystemType,
-        externalOrderId: sale.external_order_id,
-        saleDate: sale.sale_date,
-        syncedAt: sale.synced_at,
-        createdAt: sale.created_at,
-        parent_sale_id: sale.id,
-      })) : undefined,
       // Use approved_chart_account if categorized, otherwise suggested_chart_account
       chart_account: sale.is_categorized ? sale.approved_chart_account : sale.suggested_chart_account,
     }));
 
-    return transformedSales;
+    // Compute child_splits from the flat data
+    const salesWithSplits = transformedSales.map(sale => {
+      if (sale.is_split) {
+        // Find all child splits for this parent
+        const children = transformedSales.filter(s => s.parent_sale_id === sale.id);
+        return { ...sale, child_splits: children.length > 0 ? children : undefined };
+      }
+      return sale;
+    });
+
+    return salesWithSplits;
   }, [restaurantId, user]);
 
   const { data: sales = [], isLoading: loading, error } = useQuery({

@@ -26,7 +26,8 @@ import { BankSnapshotSection } from '@/components/BankSnapshotSection';
 import { useConnectedBanks } from '@/hooks/useConnectedBanks';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import { CriticalAlertsBar } from '@/components/dashboard/CriticalAlertsBar';
-import { TodaysPulseWidget } from '@/components/dashboard/TodaysPulseWidget';
+import { OwnerSnapshotWidget } from '@/components/dashboard/OwnerSnapshotWidget';
+import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
 import { OperationsHealthCard } from '@/components/dashboard/OperationsHealthCard';
 import { format, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import {
@@ -145,6 +146,13 @@ const Index = () => {
 
   const todaysData = todaysMetrics;
 
+  // Fetch liquidity metrics for cash runway
+  const { data: liquidityMetrics } = useLiquidityMetrics(
+    todayStart,
+    todayEnd,
+    'all'
+  );
+
   // Calculate available cash from connected banks
   const availableCash = useMemo(() => {
     return connectedBanks?.reduce((total, bank) => {
@@ -155,11 +163,13 @@ const Index = () => {
     }, 0) || 0;
   }, [connectedBanks]);
 
-  // Calculate Today's estimated profit
-  const todayEstimatedProfit = useMemo(() => {
-    if (!todaysData) return 0;
-    return todaysData.grossProfit;
+  // Calculate profit margin for today
+  const todayProfitMargin = useMemo(() => {
+    if (!todaysData || todaysData.netRevenue === 0) return 0;
+    return (todaysData.grossProfit / todaysData.netRevenue) * 100;
   }, [todaysData]);
+
+  const cashRunway = liquidityMetrics?.daysOfCash || 0;
 
   // Calculate daily average spending from actual transaction history
   const dailyAvgSpending = useMemo(() => {
@@ -423,13 +433,14 @@ const Index = () => {
               {/* Critical Alerts Bar */}
               <CriticalAlertsBar alerts={criticalAlerts} />
 
-              {/* Today's Pulse Widget */}
-            <TodaysPulseWidget
+              {/* Owner Snapshot Widget */}
+            <OwnerSnapshotWidget
               todaySales={todaysData?.netRevenue || 0}
+              profitMargin={todayProfitMargin}
+              availableCash={availableCash}
+              cashRunway={cashRunway}
               todayFoodCost={todaysData?.foodCost || 0}
               todayLaborCost={todaysData?.laborCost || 0}
-              availableCash={availableCash}
-              estimatedProfit={todayEstimatedProfit}
               lastUpdated={format(new Date(), 'h:mm a')}
             />
 

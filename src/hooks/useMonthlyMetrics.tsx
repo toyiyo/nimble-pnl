@@ -34,13 +34,15 @@ export function useMonthlyMetrics(
     queryFn: async () => {
       if (!restaurantId) return [];
 
-      // Fetch all sales from unified_sales (excluding child splits)
+      // Fetch all sales to properly handle split sales
       const { data: salesData, error: salesError } = await supabase
         .from('unified_sales')
         .select(`
+          id,
           sale_date,
           total_price,
           item_type,
+          parent_sale_id,
           chart_of_accounts!unified_sales_category_id_fkey(
             account_type,
             account_subtype
@@ -48,15 +50,26 @@ export function useMonthlyMetrics(
         `)
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
-        .is('parent_sale_id', null); // Exclude child splits
+        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'));
 
       if (salesError) throw salesError;
+
+      // Filter out parent sales that have been split into children
+      // Include: unsplit sales (no children) + all child splits
+      const parentIdsWithChildren = new Set(
+        salesData
+          ?.filter((s: any) => s.parent_sale_id !== null)
+          .map((s: any) => s.parent_sale_id) || []
+      );
+
+      const filteredSales = salesData?.filter((s: any) => 
+        !parentIdsWithChildren.has(s.id)
+      ) || [];
 
       // Group sales by month and categorize
       const monthlyMap = new Map<string, MonthlyMetrics>();
 
-      salesData?.forEach((sale) => {
+      filteredSales?.forEach((sale) => {
         const monthKey = format(new Date(sale.sale_date), 'yyyy-MM');
 
         if (!monthlyMap.has(monthKey)) {

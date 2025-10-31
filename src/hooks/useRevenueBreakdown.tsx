@@ -52,20 +52,7 @@ export function useRevenueBreakdown(
       const fromStr = dateFrom.toISOString().split('T')[0];
       const toStr = dateTo.toISOString().split('T')[0];
 
-      // First, check total sales vs categorized sales to calculate categorization rate
-      // CRITICAL: Exclude child splits to get accurate count
-      const { count: totalCount, error: totalError } = await supabase
-        .from('unified_sales')
-        .select('*', { count: 'exact', head: true })
-        .eq('restaurant_id', restaurantId)
-        .gte('sale_date', fromStr)
-        .lte('sale_date', toStr)
-        .is('parent_sale_id', null); // Exclude child splits
-
-      if (totalError) throw totalError;
-
-      // Query ALL unified_sales (both categorized and uncategorized)
-      // CRITICAL: Exclude child splits (parent_sale_id IS NOT NULL) to avoid double-counting
+      // Query ALL unified_sales to properly handle split sales
       const { data: sales, error } = await supabase
         .from('unified_sales')
         .select(`
@@ -74,6 +61,7 @@ export function useRevenueBreakdown(
           item_type,
           category_id,
           is_categorized,
+          parent_sale_id,
           chart_account:chart_of_accounts!category_id (
             id,
             account_code,
@@ -84,15 +72,28 @@ export function useRevenueBreakdown(
         `)
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', fromStr)
-        .lte('sale_date', toStr)
-        .is('parent_sale_id', null); // Exclude child splits
+        .lte('sale_date', toStr);
 
       if (error) throw error;
 
+      // Filter out parent sales that have been split into children
+      // Include: unsplit sales (no children) + all child splits
+      const parentIdsWithChildren = new Set(
+        sales
+          ?.filter((s: any) => s.parent_sale_id !== null)
+          .map((s: any) => s.parent_sale_id) || []
+      );
+
+      const filteredSales = sales?.filter((s: any) => 
+        !parentIdsWithChildren.has(s.id)
+      ) || [];
+
+      const totalCount = filteredSales.length;
+
       // Separate categorized and uncategorized sales
-      const categorizedSales = sales?.filter((s: any) => s.is_categorized && s.chart_account) || [];
+      const categorizedSales = filteredSales?.filter((s: any) => s.is_categorized && s.chart_account) || [];
       // Only include actual 'sale' items in uncategorized (exclude refunds, voids, pass-throughs)
-      const uncategorizedSales = sales?.filter((s: any) => 
+      const uncategorizedSales = filteredSales?.filter((s: any) => 
         !s.is_categorized && String(s.item_type || 'sale').toLowerCase() === 'sale'
       ) || [];
       

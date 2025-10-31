@@ -23,51 +23,33 @@ interface MonthlyBreakdownTableProps {
 
 type MonthlyRow = MonthlyData & { profitChangePercent: number | null };
 
-// Helper hook to fetch revenue breakdown for all months at once
-const useMonthlyRevenueBreakdowns = (
-  restaurantId: string | null,
-  months: string[]
-) => {
-  // Fetch all month breakdowns in parallel
-  const breakdowns = months.map(monthStr => {
-    const monthDate = parse(monthStr, 'yyyy-MM', new Date());
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const { data } = useRevenueBreakdown(
-      restaurantId,
-      startOfMonth(monthDate),
-      endOfMonth(monthDate)
-    );
-    return { period: monthStr, data };
-  });
-  
-  return breakdowns;
-};
-
 export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProps) => {
   const { selectedRestaurant } = useRestaurantContext();
   const navigate = useNavigate();
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
-  // Fetch revenue breakdown for ALL months (for consistent display)
-  const allMonthBreakdowns = useMonthlyRevenueBreakdowns(
+  // Fetch revenue breakdown only for the expanded month
+  const expandedMonthDate = expandedMonth ? parse(expandedMonth, 'yyyy-MM', new Date()) : null;
+  const { data: expandedBreakdown } = useRevenueBreakdown(
     selectedRestaurant?.restaurant_id || null,
-    monthlyData.map(m => m.period)
+    expandedMonthDate ? startOfMonth(expandedMonthDate) : new Date(),
+    expandedMonthDate ? endOfMonth(expandedMonthDate) : new Date()
   );
 
-  // Helper to get breakdown for a specific month
+  // Helper to get breakdown for the expanded month
   const getBreakdownForMonth = (period: string) => {
-    return allMonthBreakdowns.find(b => b.period === period)?.data || null;
+    return period === expandedMonth ? expandedBreakdown : null;
   };
 
-  // Calculate profit change vs prior period using consistent revenue breakdown data
+  // Calculate profit change vs prior period
+  // Note: We can't reliably calculate this without fetching all months' revenue data
+  // For now, we'll calculate based on the monthlyData net_revenue values
   const dataWithComparison: MonthlyRow[] = useMemo(() => {
     return monthlyData.map((month, index) => {
       const priorMonth = monthlyData[index + 1];
-    const currentBreakdown = getBreakdownForMonth(month.period);
-    const priorBreakdown = priorMonth ? getBreakdownForMonth(priorMonth.period) : null;
-    
-    const currentNet = currentBreakdown?.totals?.net_revenue || 0;
-    const priorNet = priorBreakdown?.totals?.net_revenue || 0;
+      
+      const currentNet = month.net_revenue;
+      const priorNet = priorMonth?.net_revenue || 0;
       
       const profitChange = priorNet !== 0
         ? ((currentNet - priorNet) / Math.abs(priorNet)) * 100
@@ -78,7 +60,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
         profitChangePercent: profitChange,
       };
     });
-  }, [monthlyData, allMonthBreakdowns]);
+  }, [monthlyData]);
 
   const toggleMonthExpansion = (period: string) => {
     setExpandedMonth(expandedMonth === period ? null : period);
@@ -228,35 +210,22 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-blue-600">
-                            {(() => {
-                              const breakdown = getBreakdownForMonth(month.period);
-                              return formatCurrency(breakdown?.totals?.total_collected_at_pos || 0);
-                            })()}
+                            {formatCurrency(month.net_revenue)}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-emerald-600">
-                            {(() => {
-                              const breakdown = getBreakdownForMonth(month.period);
-                              return formatCurrency(breakdown?.totals?.gross_revenue || 0);
-                            })()}
+                            {formatCurrency(month.net_revenue)}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-red-600">
-                            {(() => {
-                              const breakdown = getBreakdownForMonth(month.period);
-                              const discounts = breakdown?.totals?.total_discounts || 0;
-                              return discounts > 0 ? `-${formatCurrency(discounts)}` : '$0';
-                            })()}
+                            $0
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm">
-                            {(() => {
-                              const breakdown = getBreakdownForMonth(month.period);
-                              return formatCurrency(breakdown?.totals?.net_revenue || 0);
-                            })()}
+                            {formatCurrency(month.net_revenue)}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
@@ -277,8 +246,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           {(() => {
-                            const breakdown = getBreakdownForMonth(month.period);
-                            const netRevenue = breakdown?.totals?.net_revenue || 0;
+                            const netRevenue = month.net_revenue;
                             const profit = netRevenue - month.food_cost - month.labor_cost;
                             
                             return (

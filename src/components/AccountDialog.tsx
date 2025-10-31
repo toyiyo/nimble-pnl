@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,6 +59,7 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const { data: accountSubtypes, isLoading: subtypesLoading } = useAccountSubtypes();
+  const [parentNormalBalance, setParentNormalBalance] = useState<string>('debit');
   
   const [formData, setFormData] = useState({
     account_name: '',
@@ -68,6 +69,46 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
     description: '',
     normal_balance: 'debit',
   });
+
+  // Fetch parent account details when creating a sub-account
+  useEffect(() => {
+    const fetchParentDetails = async () => {
+      if (parentAccount?.id) {
+        const { data, error } = await supabase
+          .from('chart_of_accounts')
+          .select('normal_balance, account_type')
+          .eq('id', parentAccount.id)
+          .single();
+        
+        if (data && !error) {
+          setParentNormalBalance(data.normal_balance);
+          // Reset form data with parent's type and normal balance
+          setFormData({
+            account_name: '',
+            account_code: `${parentAccount.code}-`,
+            account_type: data.account_type,
+            account_subtype: '',
+            description: '',
+            normal_balance: data.normal_balance,
+          });
+        }
+      } else {
+        // Reset to defaults for main account
+        setFormData({
+          account_name: '',
+          account_code: '',
+          account_type: 'expense',
+          account_subtype: '',
+          description: '',
+          normal_balance: 'debit',
+        });
+      }
+    };
+
+    if (open) {
+      fetchParentDetails();
+    }
+  }, [open, parentAccount]);
 
   // Build subtypes from dynamic data or fallback
   const subtypesByType: Record<string, string[]> = accountSubtypes
@@ -109,14 +150,6 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
 
       onSuccess();
       onOpenChange(false);
-      setFormData({
-        account_name: '',
-        account_code: parentAccount?.code ? `${parentAccount.code}-` : '',
-        account_type: parentAccount?.type || 'expense',
-        account_subtype: '',
-        description: '',
-        normal_balance: 'debit',
-      });
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -178,6 +211,20 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
                 Use format like 7800 for main accounts or 7800-01 for sub-accounts
               </p>
             </div>
+
+            {parentAccount && (
+              <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+                <p className="text-sm font-medium">Inherited from parent account:</p>
+                <div className="flex gap-4 text-sm text-muted-foreground">
+                  <div>
+                    <span className="font-medium">Type:</span> {formData.account_type}
+                  </div>
+                  <div>
+                    <span className="font-medium">Normal Balance:</span> {formData.normal_balance}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {!parentAccount && (
               <>

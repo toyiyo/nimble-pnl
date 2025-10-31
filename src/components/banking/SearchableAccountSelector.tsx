@@ -65,6 +65,9 @@ export function SearchableAccountSelector({
   const organizedAccounts = useMemo(() => {
     if (!filteredAccounts) return {};
     
+    console.log('[SearchableAccountSelector] Filtered accounts:', filteredAccounts);
+    console.log('[SearchableAccountSelector] Filter types:', filterByTypes);
+    
     // Separate parents and subs
     const parents = filteredAccounts.filter(acc => !acc.parent_account_id);
     const subsMap = filteredAccounts.reduce((map, acc) => {

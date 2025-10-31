@@ -61,6 +61,9 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
         throw error;
       }
 
+      console.log('[useChartOfAccounts] Fetched accounts:', data);
+      console.log('[useChartOfAccounts] Sample account with parent:', data?.find(a => a.parent_account_id));
+
       return data || [];
     },
     enabled: !!restaurantId,

@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAccountSubtypes } from '@/hooks/useAccountSubtypes';
 import { Loader2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface AccountDialogProps {
   open: boolean;
@@ -57,6 +58,7 @@ const fallbackSubtypesByType: Record<string, string[]> = {
 
 export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount, onSuccess }: AccountDialogProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const { data: accountSubtypes, isLoading: subtypesLoading } = useAccountSubtypes();
   const [parentNormalBalance, setParentNormalBalance] = useState<string>('debit');
@@ -142,6 +144,9 @@ export function AccountDialog({ open, onOpenChange, restaurantId, parentAccount,
         } as any);
 
       if (error) throw error;
+
+      // Invalidate all chart of accounts queries
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
 
       toast({
         title: 'Account created',

@@ -218,7 +218,7 @@ export default function ChartOfAccounts() {
         onOpenChange={setAccountDialogOpen}
         restaurantId={selectedRestaurant?.restaurant_id || ''}
         parentAccount={selectedParentAccount}
-        onSuccess={() => fetchAccounts()}
+        onSuccess={() => {}} 
       />
     </div>
   );

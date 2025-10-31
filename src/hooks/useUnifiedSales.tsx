@@ -19,7 +19,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       .from('unified_sales')
       .select(`
         *,
-        child_splits:unified_sales!parent_sale_id (
+        child_splits:unified_sales!fk_parent_sale (
           id,
           item_name,
           quantity,

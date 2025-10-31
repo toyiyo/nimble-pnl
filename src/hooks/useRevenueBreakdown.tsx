@@ -43,16 +43,14 @@ export function useRevenueBreakdown(
       const toStr = dateTo.toISOString().split('T')[0];
 
       // First, check total sales vs categorized sales to calculate categorization rate
-      const { data: totalSales, error: totalError } = await supabase
+      const { count: totalCount, error: totalError } = await supabase
         .from('unified_sales')
-        .select('id, total_price')
+        .select('*', { count: 'exact', head: true })
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', fromStr)
         .lte('sale_date', toStr);
 
       if (totalError) throw totalError;
-
-      const totalCount = totalSales?.length || 0;
 
       // Query unified_sales with category info for categorized sales only
       const { data: sales, error } = await supabase
@@ -79,7 +77,7 @@ export function useRevenueBreakdown(
       if (error) throw error;
 
       const categorizedCount = sales?.length || 0;
-      const categorizationRate = totalCount > 0 ? (categorizedCount / totalCount) * 100 : 0;
+      const categorizationRate = (totalCount ?? 0) > 0 ? (categorizedCount / (totalCount ?? 0)) * 100 : 0;
       const hasCategorizationData = categorizedCount > 0;
 
       if (!hasCategorizationData) {

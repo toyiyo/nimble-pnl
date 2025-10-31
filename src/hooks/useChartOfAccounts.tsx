@@ -10,8 +10,14 @@ export interface ChartAccount {
   account_code: string;
   account_name: string;
   account_type: AccountType;
-  account_subtype: string;
+  account_subtype: string | null;
   parent_account_id: string | null;
+  parent_account?: {
+    id: string;
+    account_name: string;
+    account_code: string;
+    account_type: AccountType;
+  };
   description: string | null;
   is_active: boolean;
   is_system_account: boolean;
@@ -32,7 +38,15 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
 
       const { data, error } = await supabase
         .from('chart_of_accounts')
-        .select('*')
+        .select(`
+          *,
+          parent_account:chart_of_accounts!parent_account_id(
+            id,
+            account_name,
+            account_code,
+            account_type
+          )
+        `)
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
         .order('account_code');

@@ -36,6 +36,7 @@ interface ReconciliationItemDetailProps {
   onOpenChange: (open: boolean) => void;
   onUpdate: (itemId: string, actualQty: number | null, notes?: string) => Promise<boolean>;
   onAddFind?: (itemId: string, quantity: number, location?: string) => Promise<void>;
+  onDeleteFind?: (findId: string) => Promise<void>;
   restaurantId: string;
 }
 
@@ -45,6 +46,7 @@ export function ReconciliationItemDetail({
   onOpenChange,
   onUpdate,
   onAddFind,
+  onDeleteFind,
   restaurantId,
 }: ReconciliationItemDetailProps) {
   const [notes, setNotes] = useState(item.notes || '');
@@ -255,6 +257,7 @@ export function ReconciliationItemDetail({
                 productName={currentItem.product?.name || 'Unknown'}
                 uom={currentItem.product?.uom_purchase || 'units'}
                 onFindsChange={handleFindsChange}
+                onDeleteFind={onDeleteFind}
                 refetchTrigger={findsRefetchTrigger}
               />
 

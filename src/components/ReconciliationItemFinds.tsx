@@ -12,7 +12,8 @@ interface ReconciliationItemFindsProps {
   productName: string;
   uom: string;
   onFindsChange: () => void;
-  refetchTrigger?: number; // Add trigger to force refetch
+  onDeleteFind?: (findId: string) => Promise<void>;
+  refetchTrigger?: number;
 }
 
 export function ReconciliationItemFinds({
@@ -20,6 +21,7 @@ export function ReconciliationItemFinds({
   productName,
   uom,
   onFindsChange,
+  onDeleteFind,
   refetchTrigger
 }: ReconciliationItemFindsProps) {
   const [finds, setFinds] = useState<ReconciliationItemFind[]>([]);
@@ -55,13 +57,18 @@ export function ReconciliationItemFinds({
 
   const handleDeleteFind = async (findId: string) => {
     try {
-      // Delete the find - database trigger will automatically update actual_quantity
-      const { error: deleteError } = await supabase
-        .from('reconciliation_item_finds')
-        .delete()
-        .eq('id', findId);
+      if (onDeleteFind) {
+        // Use the parent's deleteFind which refreshes the entire session
+        await onDeleteFind(findId);
+      } else {
+        // Fallback to direct delete if no parent handler
+        const { error: deleteError } = await supabase
+          .from('reconciliation_item_finds')
+          .delete()
+          .eq('id', findId);
 
-      if (deleteError) throw deleteError;
+        if (deleteError) throw deleteError;
+      }
 
       toast({
         title: 'Find deleted',

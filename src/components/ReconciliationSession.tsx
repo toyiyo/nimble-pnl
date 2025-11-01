@@ -47,7 +47,8 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
     submitReconciliation,
     cancelReconciliation,
     calculateSummary,
-    addFind
+    addFind,
+    deleteFind
   } = useReconciliation(restaurantId);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -511,6 +512,7 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
           onOpenChange={setDetailOpen}
           onUpdate={updateItemCount}
           onAddFind={addFind}
+          onDeleteFind={deleteFind}
           restaurantId={restaurantId}
         />
       )}

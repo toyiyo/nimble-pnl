@@ -131,12 +131,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   // Use useReducer for optimized state management
   const [state, dispatch] = useReducer(scannerReducer, initialState);
 
-  // Constants for performance optimization
-  const FRAME_SKIP_COUNT = 2; // Reduced from 4 - Android needs more frequent scanning
+  // Constants for performance optimization - REDUCED for memory efficiency
+  const FRAME_SKIP_COUNT = 5; // Increased to reduce memory usage
   const OCR_TIMEOUT = 2000; // 2 seconds before OCR fallback
-  const MAX_WIDTH = 800;
-  const MAX_HEIGHT = 600;
-  const JPEG_QUALITY = 0.7;
+  const MAX_WIDTH = 640; // Reduced from 800
+  const MAX_HEIGHT = 480; // Reduced from 600
+  const JPEG_QUALITY = 0.6; // Reduced from 0.7
 
   // Initialize reader once with Android-optimized hints
   useEffect(() => {
@@ -332,13 +332,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         readerRef.current = new BrowserMultiFormatReader(hints);
       }
 
-      // Android-optimized camera constraints
+      // Memory-optimized camera constraints - lower resolution to prevent memory issues
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
-          width: { ideal: 1920, max: 3840 },  // Higher resolution for Android
-          height: { ideal: 1080, max: 2160 },
-          frameRate: { ideal: 30, min: 15 }   // Ensure decent frame rate
+          width: { ideal: 1280, max: 1920 },  // Reduced for memory efficiency
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 15, max: 30 }   // Lower frame rate for memory efficiency
         }
       });
       
@@ -388,13 +388,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const stopScanning = useCallback(() => {
     dispatch({ type: 'STOP_SCANNING' });
     
-    // Cleanup all resources
+    // Cleanup all resources (stops video stream)
     cleanup();
     
     // Force clear the reader reference to ensure decode loop stops
-    if (readerRef.current) {
-      readerRef.current = null;
-    }
+    readerRef.current = null;
   }, [cleanup]);
 
   const toggleScanning = useCallback(() => {
@@ -409,7 +407,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     if (autoStart) {
       startScanning();
     }
-  }, [autoStart, startScanning]);
+    
+    // CRITICAL: Cleanup on unmount to prevent memory leaks
+    return () => {
+      stopScanning();
+    };
+  }, [autoStart, startScanning, stopScanning]);
 
   return (
     <Card className={cn(

@@ -40,8 +40,12 @@ export function useRevenueBreakdown(
   dateFrom: Date, 
   dateTo: Date
 ) {
+  // Format dates as strings for stable query key
+  const fromStr = dateFrom.toISOString().split('T')[0];
+  const toStr = dateTo.toISOString().split('T')[0];
+  
   return useQuery({
-    queryKey: ['revenue-breakdown', restaurantId, dateFrom, dateTo],
+    queryKey: ['revenue-breakdown', restaurantId, fromStr, toStr],
     queryFn: async (): Promise<RevenueBreakdownData | null> => {
       if (!restaurantId) return null;
 

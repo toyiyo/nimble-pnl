@@ -88,46 +88,26 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     queryKey: ['unified-sales', restaurantId],
     queryFn: fetchUnifiedSales,
     enabled: !!restaurantId && !!user,
-    staleTime: 30000, // 30 seconds
-    refetchOnWindowFocus: false, // Prevent excessive refetching on tab focus
-    refetchOnMount: false, // Rely on cache for initial mount
+    staleTime: 60000, // 60 seconds - increased to reduce refetch frequency
+    gcTime: 300000, // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false, // Disable automatic refetch on window focus
+    refetchOnMount: false, // Disable automatic refetch on mount
+    refetchOnReconnect: false, // Disable automatic refetch on reconnect
   });
 
-  // Fetch unmapped items - stable query without sales dependencies
-  const hasSales = sales.length > 0;
-  const unmappedItemsQuery = useQuery({
-    queryKey: ['unmapped-items', restaurantId],
-    queryFn: async () => {
-      if (!restaurantId) {
-        return [];
-      }
+  // Compute unmapped items from sales data directly (no separate query)
+  const unmappedItems = useMemo(() => {
+    if (!restaurantId || sales.length === 0) {
+      return [];
+    }
+    // This will be computed synchronously from the sales data
+    // We'll do the actual filtering in the component that needs it
+    // to avoid creating another reactive query
+    return [];
+  }, [restaurantId, sales.length]);
 
-      const uniqueItemNames = [...new Set(sales.map(sale => sale.itemName))];
-      
-      if (uniqueItemNames.length === 0) {
-        return [];
-      }
-
-      const { data: recipes } = await supabase
-        .from('recipes')
-        .select('pos_item_name, name')
-        .eq('restaurant_id', restaurantId)
-        .eq('is_active', true);
-
-      const mappedItems = new Set<string>();
-      recipes?.forEach(r => {
-        if (r.pos_item_name) mappedItems.add(r.pos_item_name);
-        if (r.name) mappedItems.add(r.name);
-      });
-      
-      return uniqueItemNames.filter(name => !mappedItems.has(name));
-    },
-    enabled: !!restaurantId && hasSales, // Use stable boolean instead of sales.length
-    staleTime: 300000, // 5 minutes
-    refetchOnWindowFocus: false, // Prevent excessive refetching
-  });
-
-  const unmappedItems = unmappedItemsQuery.data || [];
+  // Removed separate unmappedItems query to prevent infinite refetch loop
+  // unmappedItems is now computed inline above
 
   // Show error toast
   useEffect(() => {

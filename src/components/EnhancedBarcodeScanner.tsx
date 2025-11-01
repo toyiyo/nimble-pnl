@@ -23,6 +23,7 @@ export const EnhancedBarcodeScanner: React.FC<EnhancedBarcodeScannerProps> = ({
   autoStart = false
 }) => {
   const [scanMode, setScanMode] = useState<ScanMode>('camera');
+  const [key, setKey] = useState(0); // Force remount on mode change
 
   // Check if Web Bluetooth is supported and detect iOS (including iPadOS)
   const isIOS = typeof navigator !== 'undefined' && (
@@ -31,6 +32,12 @@ export const EnhancedBarcodeScanner: React.FC<EnhancedBarcodeScannerProps> = ({
   );
   const isBluetoothSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator && !isIOS;
 
+  // Force remount of scanner when mode changes to ensure cleanup
+  const handleModeChange = (mode: ScanMode) => {
+    setScanMode(mode);
+    setKey(prev => prev + 1);
+  };
+
   return (
     <div className={cn("space-y-4", className)}>
       {/* Enhanced Mode Toggle */}
@@ -38,7 +45,7 @@ export const EnhancedBarcodeScanner: React.FC<EnhancedBarcodeScannerProps> = ({
         <CardContent className="pt-4">
           <div className="grid grid-cols-3 gap-2">
             <button
-              onClick={() => setScanMode('camera')}
+              onClick={() => handleModeChange('camera')}
               className={cn(
                 'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
                 'border-2 hover:scale-[1.02] hover:shadow-lg',
@@ -69,7 +76,7 @@ export const EnhancedBarcodeScanner: React.FC<EnhancedBarcodeScannerProps> = ({
             </button>
 
             <button
-              onClick={() => setScanMode('keyboard')}
+              onClick={() => handleModeChange('keyboard')}
               className={cn(
                 'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
                 'border-2 hover:scale-[1.02] hover:shadow-lg',
@@ -100,7 +107,7 @@ export const EnhancedBarcodeScanner: React.FC<EnhancedBarcodeScannerProps> = ({
             </button>
 
             <button
-              onClick={() => setScanMode('bluetooth')}
+              onClick={() => handleModeChange('bluetooth')}
               disabled={!isBluetoothSupported}
               className={cn(
                 'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
@@ -138,18 +145,21 @@ export const EnhancedBarcodeScanner: React.FC<EnhancedBarcodeScannerProps> = ({
       {/* Scanner Component */}
       {scanMode === 'camera' ? (
         <BarcodeScanner
+          key={`camera-${key}`}
           onScan={onScan}
           onError={onError}
           autoStart={autoStart}
         />
       ) : scanMode === 'keyboard' ? (
         <KeyboardBarcodeScanner
+          key={`keyboard-${key}`}
           onScan={onScan}
           onError={onError}
           autoStart={autoStart}
         />
       ) : (
         <BluetoothBarcodeScanner
+          key={`bluetooth-${key}`}
           onScan={onScan}
           onError={onError}
           autoStart={autoStart}

@@ -174,13 +174,19 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       grokTimeoutRef.current = null;
     }
 
+    // Stop all media tracks - this is critical for memory cleanup
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+      });
       streamRef.current = null;
     }
 
+    // Clear video element properly
     if (videoRef.current) {
+      videoRef.current.pause();
       videoRef.current.srcObject = null;
+      videoRef.current.load(); // Force video element reset
     }
 
     CanvasPool.cleanup();
@@ -305,6 +311,27 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     dispatch({ type: 'START_SCANNING' });
 
     try {
+      // Recreate reader if it was cleared
+      if (!readerRef.current) {
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+          BarcodeFormat.CODE_93,
+          BarcodeFormat.ITF,
+          BarcodeFormat.QR_CODE,
+          BarcodeFormat.DATA_MATRIX,
+        ]);
+        hints.set(DecodeHintType.TRY_HARDER, true);
+        hints.set(DecodeHintType.PURE_BARCODE, false);
+        hints.set(DecodeHintType.ASSUME_GS1, false);
+        readerRef.current = new BrowserMultiFormatReader(hints);
+      }
+
       // Android-optimized camera constraints
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
@@ -351,7 +378,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       dispatch({ type: 'STOP_SCANNING' });
       onError?.(error.message);
     }
-  }, [handleScanSuccess, handleScanError, state.isPaused, state.isUsingAIMode, FRAME_SKIP_COUNT]);
+  }, [handleScanSuccess, handleScanError, state.isPaused, state.isUsingAIMode, FRAME_SKIP_COUNT, onError]);
 
   const resumeScanning = useCallback(() => {
     dispatch({ type: 'SET_PAUSED', payload: false });
@@ -360,7 +387,14 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
   const stopScanning = useCallback(() => {
     dispatch({ type: 'STOP_SCANNING' });
+    
+    // Cleanup all resources
     cleanup();
+    
+    // Force clear the reader reference to ensure decode loop stops
+    if (readerRef.current) {
+      readerRef.current = null;
+    }
   }, [cleanup]);
 
   const toggleScanning = useCallback(() => {

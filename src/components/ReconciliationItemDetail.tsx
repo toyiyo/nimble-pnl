@@ -51,15 +51,34 @@ export function ReconciliationItemDetail({
   const [transactionHistory, setTransactionHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [showAddFindDialog, setShowAddFindDialog] = useState(false);
-  const [findsRefetchTrigger, setFindsRefetchTrigger] = useState(0); // Trigger for refetching finds
+  const [findsRefetchTrigger, setFindsRefetchTrigger] = useState(0);
+  const [currentItem, setCurrentItem] = useState(item);
   const { toast } = useToast();
 
   useEffect(() => {
     setNotes(item.notes || '');
+    setCurrentItem(item);
     if (open) {
       fetchTransactionHistory();
     }
   }, [item, open]);
+
+  const refreshItemData = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reconciliation_items')
+        .select('*, product:products(*)')
+        .eq('id', item.id)
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        setCurrentItem(data);
+      }
+    } catch (error) {
+      console.error('Error refreshing item data:', error);
+    }
+  };
 
   const fetchTransactionHistory = async () => {
     setLoadingHistory(true);
@@ -100,23 +119,33 @@ export function ReconciliationItemDetail({
         title: 'Find added',
         description: `Added ${quantity} ${item.product?.uom_purchase || 'units'} @ ${location || 'unspecified'}`
       });
-      await fetchTransactionHistory();
-      setFindsRefetchTrigger(prev => prev + 1); // Trigger refetch of finds
+      await Promise.all([
+        fetchTransactionHistory(),
+        refreshItemData()
+      ]);
+      setFindsRefetchTrigger(prev => prev + 1);
     }
   };
 
+  const handleFindsChange = async () => {
+    await Promise.all([
+      fetchTransactionHistory(),
+      refreshItemData()
+    ]);
+  };
+
   const productForDialog: Product = {
-    id: item.product_id,
-    name: item.product?.name || 'Unknown Product',
-    uom_purchase: item.product?.uom_purchase || 'units',
-    current_stock: item.actual_quantity,
+    id: currentItem.product_id,
+    name: currentItem.product?.name || 'Unknown Product',
+    uom_purchase: currentItem.product?.uom_purchase || 'units',
+    current_stock: currentItem.actual_quantity,
     restaurant_id: restaurantId,
-    sku: item.product?.sku || '',
+    sku: currentItem.product?.sku || '',
     brand: null,
     category: null,
     created_at: '',
     updated_at: '',
-    cost_per_unit: item.unit_cost,
+    cost_per_unit: currentItem.unit_cost,
     gtin: undefined,
     size_value: null,
     size_unit: null,
@@ -128,10 +157,10 @@ export function ReconciliationItemDetail({
     image_url: null
   };
 
-  const variance = item.actual_quantity !== null 
-    ? item.actual_quantity - item.expected_quantity 
+  const variance = currentItem.actual_quantity !== null 
+    ? currentItem.actual_quantity - currentItem.expected_quantity 
     : null;
-  const varianceValue = variance !== null ? variance * (item.unit_cost || 0) : null;
+  const varianceValue = variance !== null ? variance * (currentItem.unit_cost || 0) : null;
 
   return (
     <>
@@ -140,13 +169,13 @@ export function ReconciliationItemDetail({
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
-              {item.product?.name}
+              {currentItem.product?.name}
             </SheetTitle>
             <SheetDescription>
-              {item.product?.sku && (
+              {currentItem.product?.sku && (
                 <div className="flex items-center gap-1 text-xs">
                   <Barcode className="h-3 w-3" />
-                  SKU: {item.product.sku}
+                  SKU: {currentItem.product.sku}
                 </div>
               )}
             </SheetDescription>
@@ -157,15 +186,15 @@ export function ReconciliationItemDetail({
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-muted rounded-lg">
                 <div className="text-sm text-muted-foreground mb-1">Expected</div>
-                <div className="text-2xl font-bold">{item.expected_quantity}</div>
-                <div className="text-xs text-muted-foreground">{item.product?.uom_purchase}</div>
+                <div className="text-2xl font-bold">{currentItem.expected_quantity}</div>
+                <div className="text-xs text-muted-foreground">{currentItem.product?.uom_purchase}</div>
               </div>
               <div className="p-4 bg-primary/5 border-2 border-primary/20 rounded-lg">
                 <div className="text-sm text-muted-foreground mb-1">Actual</div>
                 <div className="text-2xl font-bold text-primary">
-                  {item.actual_quantity || 0}
+                  {currentItem.actual_quantity || 0}
                 </div>
-                <div className="text-xs text-muted-foreground">{item.product?.uom_purchase}</div>
+                <div className="text-xs text-muted-foreground">{currentItem.product?.uom_purchase}</div>
               </div>
             </div>
 
@@ -189,7 +218,7 @@ export function ReconciliationItemDetail({
                       </span>
                     </div>
                     <div className="text-2xl font-bold">
-                      {variance > 0 ? '+' : ''}{variance.toFixed(2)} {item.product?.uom_purchase}
+                      {variance > 0 ? '+' : ''}{variance.toFixed(2)} {currentItem.product?.uom_purchase}
                     </div>
                   </div>
                   <div className="text-right">
@@ -222,15 +251,15 @@ export function ReconciliationItemDetail({
               </div>
               
               <ReconciliationItemFinds
-                itemId={item.id}
-                productName={item.product?.name || 'Unknown'}
-                uom={item.product?.uom_purchase || 'units'}
-                onFindsChange={fetchTransactionHistory}
+                itemId={currentItem.id}
+                productName={currentItem.product?.name || 'Unknown'}
+                uom={currentItem.product?.uom_purchase || 'units'}
+                onFindsChange={handleFindsChange}
                 refetchTrigger={findsRefetchTrigger}
               />
 
               <div className="text-sm text-muted-foreground">
-                Expected: {item.expected_quantity} {item.product?.uom_purchase || 'units'}
+                Expected: {currentItem.expected_quantity} {currentItem.product?.uom_purchase || 'units'}
               </div>
             </div>
 
@@ -310,7 +339,7 @@ export function ReconciliationItemDetail({
         product={productForDialog}
         mode="add"
         onSave={handleAddFind}
-        currentTotal={item.actual_quantity || 0}
+        currentTotal={currentItem.actual_quantity || 0}
       />
     </>
   );

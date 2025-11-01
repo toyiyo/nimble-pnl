@@ -38,7 +38,17 @@ type SortField = 'name' | 'unit' | 'expected' | 'actual' | 'variance' | 'status'
 type SortDirection = 'asc' | 'desc';
 
 export function ReconciliationSession({ restaurantId, onComplete, onCancel }: ReconciliationSessionProps) {
-  const { items, loading, updateItemCount, saveProgress, calculateSummary, cancelReconciliation } = useReconciliation(restaurantId);
+  const {
+    activeSession,
+    items,
+    loading,
+    updateItemCount,
+    saveProgress,
+    submitReconciliation,
+    cancelReconciliation,
+    calculateSummary,
+    addFind
+  } = useReconciliation(restaurantId);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -218,12 +228,10 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
     }
   };
 
-  const handleQuickInventorySave = async (quantity: number) => {
+  const handleQuickInventorySave = async (quantity: number, location?: string) => {
     if (!scannedProduct) return;
 
-    // Find the reconciliation item for this product
     const item = items.find(i => i.product_id === scannedProduct.id);
-    
     if (!item) {
       toast({
         title: 'Error',
@@ -233,13 +241,15 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
       return;
     }
 
-    // Update the item count
-    await updateItemCount(item.id, quantity);
+    // Add find instead of setting total
+    await addFind(item.id, quantity, location);
     
+    const newTotal = (item.actual_quantity || 0) + quantity;
     toast({
-      title: 'Count updated',
-      description: `${scannedProduct.name}: ${quantity} ${scannedProduct.uom_purchase || 'units'}`
+      title: 'Find added',
+      description: `${scannedProduct.name}: +${quantity} @ ${location || 'unspecified'} (Total: ${newTotal})`
     });
+    setQuickDialogOpen(false);
   };
 
   const handleCancel = () => {
@@ -500,6 +510,28 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
           onOpenChange={setDetailOpen}
           onUpdate={updateItemCount}
           restaurantId={restaurantId}
+        />
+      )}
+
+      {selectedItem && detailOpen && (
+        <ReconciliationItemDetail
+          item={selectedItem}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+          onUpdate={updateItemCount}
+          onAddFind={addFind}
+          restaurantId={restaurantId}
+        />
+      )}
+
+      {scannedProduct && quickDialogOpen && (
+        <QuickInventoryDialog
+          open={quickDialogOpen}
+          onOpenChange={setQuickDialogOpen}
+          product={scannedProduct}
+          mode="add"
+          onSave={handleQuickInventorySave}
+          currentTotal={items.find(i => i.product_id === scannedProduct.id)?.actual_quantity || 0}
         />
       )}
 

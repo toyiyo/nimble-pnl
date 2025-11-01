@@ -1896,6 +1896,47 @@ export type Database = {
           },
         ]
       }
+      reconciliation_item_finds: {
+        Row: {
+          created_at: string
+          found_at: string
+          found_by: string | null
+          id: string
+          location: string | null
+          notes: string | null
+          quantity: number
+          reconciliation_item_id: string
+        }
+        Insert: {
+          created_at?: string
+          found_at?: string
+          found_by?: string | null
+          id?: string
+          location?: string | null
+          notes?: string | null
+          quantity: number
+          reconciliation_item_id: string
+        }
+        Update: {
+          created_at?: string
+          found_at?: string
+          found_by?: string | null
+          id?: string
+          location?: string | null
+          notes?: string | null
+          quantity?: number
+          reconciliation_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reconciliation_item_finds_reconciliation_item_id_fkey"
+            columns: ["reconciliation_item_id"]
+            isOneToOne: false
+            referencedRelation: "reconciliation_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reconciliation_items: {
         Row: {
           actual_quantity: number | null

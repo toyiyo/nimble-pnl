@@ -16,6 +16,17 @@ interface ReconciliationSession {
   notes: string | null;
 }
 
+export interface ReconciliationItemFind {
+  id: string;
+  reconciliation_item_id: string;
+  quantity: number;
+  location: string | null;
+  notes: string | null;
+  found_at: string;
+  found_by: string | null;
+  created_at: string;
+}
+
 interface ReconciliationItem {
   id: string;
   reconciliation_id: string;
@@ -32,6 +43,7 @@ interface ReconciliationItem {
     uom_purchase: string;
     sku: string;
   };
+  finds?: { count: number }[];
 }
 
 interface ReconciliationSummary {
@@ -85,7 +97,8 @@ export function useReconciliation(restaurantId: string | null) {
         .from('reconciliation_items')
         .select(`
           *,
-          product:products(name, uom_purchase, sku)
+          product:products(name, uom_purchase, sku),
+          finds:reconciliation_item_finds(count)
         `)
         .eq('reconciliation_id', sessionId)
         .order('product(name)');
@@ -418,6 +431,60 @@ export function useReconciliation(restaurantId: string | null) {
     }
   };
 
+  // Add a new find for a reconciliation item
+  const addFind = async (
+    itemId: string, 
+    quantity: number, 
+    location?: string, 
+    notes?: string
+  ) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    const { error } = await supabase
+      .from('reconciliation_item_finds')
+      .insert({
+        reconciliation_item_id: itemId,
+        quantity,
+        location,
+        notes,
+        found_by: user?.id
+      });
+      
+    if (error) throw error;
+    
+    // Refresh items to get updated actual_quantity (from trigger)
+    if (activeSession) {
+      await fetchSessionItems(activeSession.id);
+    }
+  };
+
+  // Get all finds for a specific item
+  const getItemFinds = async (itemId: string) => {
+    const { data, error } = await supabase
+      .from('reconciliation_item_finds')
+      .select('*')
+      .eq('reconciliation_item_id', itemId)
+      .order('found_at', { ascending: true });
+      
+    if (error) throw error;
+    return data || [];
+  };
+
+  // Delete a specific find
+  const deleteFind = async (findId: string) => {
+    const { error } = await supabase
+      .from('reconciliation_item_finds')
+      .delete()
+      .eq('id', findId);
+      
+    if (error) throw error;
+    
+    // Refresh items
+    if (activeSession) {
+      await fetchSessionItems(activeSession.id);
+    }
+  };
+
   return {
     activeSession,
     items,
@@ -431,5 +498,8 @@ export function useReconciliation(restaurantId: string | null) {
     deleteReconciliation,
     resumeReconciliation,
     refreshSession: fetchActiveSession,
+    addFind,
+    getItemFinds,
+    deleteFind,
   };
 }

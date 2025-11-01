@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Package, Check } from 'lucide-react';
 import { Product } from '@/hooks/useProducts';
 
@@ -10,7 +12,8 @@ interface QuickInventoryDialogProps {
   onOpenChange: (open: boolean) => void;
   product: Product;
   mode: 'add' | 'reconcile';
-  onSave: (quantity: number) => Promise<void>;
+  onSave: (quantity: number, location?: string) => Promise<void>;
+  currentTotal?: number;
 }
 
 export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
@@ -18,9 +21,11 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
   onOpenChange,
   product,
   mode,
-  onSave
+  onSave,
+  currentTotal
 }) => {
   const [quantity, setQuantity] = useState<string>('');
+  const [location, setLocation] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
   const quickButtons = [6, 10, 20, 24];
@@ -50,8 +55,9 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
     
     setSaving(true);
     try {
-      await onSave(numValue);
+      await onSave(numValue, location || undefined);
       setQuantity('');
+      setLocation('');
       onOpenChange(false);
     } finally {
       setSaving(false);
@@ -94,6 +100,14 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
             )}
           </div>
 
+          {/* Current Total (if adding finds) */}
+          {mode === 'add' && currentTotal !== undefined && (
+            <div className="bg-muted p-3 rounded-lg">
+              <span className="text-sm text-muted-foreground">Current Total: </span>
+              <span className="font-semibold">{currentTotal} {product.uom_purchase || 'units'}</span>
+            </div>
+          )}
+
           {/* Quantity Display */}
           <div className="bg-primary/5 border-2 border-primary/20 rounded-lg p-4">
             <div className="text-center">
@@ -103,7 +117,26 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
               <div className="text-4xl font-bold text-primary">
                 {displayValue}
               </div>
+              {mode === 'add' && currentTotal !== undefined && quantity && (
+                <div className="text-sm text-muted-foreground mt-2">
+                  New total: <span className="font-semibold text-foreground">
+                    {(currentTotal + parseFloat(quantity || '0')).toFixed(2)}
+                  </span> {product.uom_purchase || 'units'}
+                </div>
+              )}
             </div>
+          </div>
+
+          {/* Location Input */}
+          <div className="space-y-2">
+            <Label htmlFor="location">Location (optional)</Label>
+            <Input
+              id="location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g., Bar, Fridge, Storage"
+              className="text-base"
+            />
           </div>
 
           {/* Quick Buttons */}
@@ -192,7 +225,7 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
               className="h-14 text-lg font-semibold"
             >
               <Check className="h-5 w-5 mr-2" />
-              {mode === 'add' ? 'Add' : 'Set'} {displayValue}
+              {saving ? 'Saving...' : mode === 'add' ? `Add ${displayValue}` : `Set to ${displayValue}`}
             </Button>
           </div>
 

@@ -497,8 +497,9 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
           open={quickDialogOpen}
           onOpenChange={setQuickDialogOpen}
           product={scannedProduct}
-          mode="reconcile"
+          mode="add"
           onSave={handleQuickInventorySave}
+          currentTotal={items.find(i => i.product_id === scannedProduct.id)?.actual_quantity || 0}
         />
       )}
 
@@ -509,29 +510,8 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
           open={detailOpen}
           onOpenChange={setDetailOpen}
           onUpdate={updateItemCount}
-          restaurantId={restaurantId}
-        />
-      )}
-
-      {selectedItem && detailOpen && (
-        <ReconciliationItemDetail
-          item={selectedItem}
-          open={detailOpen}
-          onOpenChange={setDetailOpen}
-          onUpdate={updateItemCount}
           onAddFind={addFind}
           restaurantId={restaurantId}
-        />
-      )}
-
-      {scannedProduct && quickDialogOpen && (
-        <QuickInventoryDialog
-          open={quickDialogOpen}
-          onOpenChange={setQuickDialogOpen}
-          product={scannedProduct}
-          mode="add"
-          onSave={handleQuickInventorySave}
-          currentTotal={items.find(i => i.product_id === scannedProduct.id)?.actual_quantity || 0}
         />
       )}
 

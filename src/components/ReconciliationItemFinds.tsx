@@ -12,13 +12,15 @@ interface ReconciliationItemFindsProps {
   productName: string;
   uom: string;
   onFindsChange: () => void;
+  refetchTrigger?: number; // Add trigger to force refetch
 }
 
 export function ReconciliationItemFinds({
   itemId,
   productName,
   uom,
-  onFindsChange
+  onFindsChange,
+  refetchTrigger
 }: ReconciliationItemFindsProps) {
   const [finds, setFinds] = useState<ReconciliationItemFind[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +28,7 @@ export function ReconciliationItemFinds({
 
   useEffect(() => {
     fetchFinds();
-  }, [itemId]);
+  }, [itemId, refetchTrigger]); // Refetch when trigger changes
 
   const fetchFinds = async () => {
     setLoading(true);

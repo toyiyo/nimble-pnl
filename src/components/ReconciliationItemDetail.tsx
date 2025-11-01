@@ -51,6 +51,7 @@ export function ReconciliationItemDetail({
   const [transactionHistory, setTransactionHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [showAddFindDialog, setShowAddFindDialog] = useState(false);
+  const [findsRefetchTrigger, setFindsRefetchTrigger] = useState(0); // Trigger for refetching finds
   const { toast } = useToast();
 
   useEffect(() => {
@@ -100,6 +101,7 @@ export function ReconciliationItemDetail({
         description: `Added ${quantity} ${item.product?.uom_purchase || 'units'} @ ${location || 'unspecified'}`
       });
       await fetchTransactionHistory();
+      setFindsRefetchTrigger(prev => prev + 1); // Trigger refetch of finds
     }
   };
 
@@ -224,6 +226,7 @@ export function ReconciliationItemDetail({
                 productName={item.product?.name || 'Unknown'}
                 uom={item.product?.uom_purchase || 'units'}
                 onFindsChange={fetchTransactionHistory}
+                refetchTrigger={findsRefetchTrigger}
               />
 
               <div className="text-sm text-muted-foreground">

@@ -89,20 +89,25 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     queryFn: fetchUnifiedSales,
     enabled: !!restaurantId && !!user,
     staleTime: 30000, // 30 seconds
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
+    refetchOnWindowFocus: false, // Prevent excessive refetching on tab focus
+    refetchOnMount: false, // Rely on cache for initial mount
   });
 
-  // Fetch unmapped items - removed sales.length from queryKey to prevent infinite loops
+  // Fetch unmapped items - stable query without sales dependencies
+  const hasSales = sales.length > 0;
   const unmappedItemsQuery = useQuery({
     queryKey: ['unmapped-items', restaurantId],
     queryFn: async () => {
-      if (!restaurantId || sales.length === 0) {
+      if (!restaurantId) {
         return [];
       }
 
       const uniqueItemNames = [...new Set(sales.map(sale => sale.itemName))];
       
+      if (uniqueItemNames.length === 0) {
+        return [];
+      }
+
       const { data: recipes } = await supabase
         .from('recipes')
         .select('pos_item_name, name')
@@ -117,8 +122,9 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       
       return uniqueItemNames.filter(name => !mappedItems.has(name));
     },
-    enabled: !!restaurantId && sales.length > 0,
-    staleTime: 300000, // 5 minutes - increased to reduce refetch frequency
+    enabled: !!restaurantId && hasSales, // Use stable boolean instead of sales.length
+    staleTime: 300000, // 5 minutes
+    refetchOnWindowFocus: false, // Prevent excessive refetching
   });
 
   const unmappedItems = unmappedItemsQuery.data || [];

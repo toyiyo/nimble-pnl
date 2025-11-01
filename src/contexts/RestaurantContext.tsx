@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -78,13 +78,14 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
     }
   };
 
-  const value = {
+  // Memoize context value to prevent unnecessary re-renders
+  const value = useMemo(() => ({
     selectedRestaurant,
     setSelectedRestaurant: handleSetSelectedRestaurant,
     restaurants,
     loading,
     createRestaurant,
-  };
+  }), [selectedRestaurant, restaurants, loading, createRestaurant]);
 
   return (
     <RestaurantContext.Provider value={value}>

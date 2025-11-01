@@ -93,9 +93,9 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     refetchOnMount: true,
   });
 
-  // Fetch unmapped items using useMemo to avoid infinite loops
+  // Fetch unmapped items - removed sales.length from queryKey to prevent infinite loops
   const unmappedItemsQuery = useQuery({
-    queryKey: ['unmapped-items', restaurantId, sales.length],
+    queryKey: ['unmapped-items', restaurantId],
     queryFn: async () => {
       if (!restaurantId || sales.length === 0) {
         return [];
@@ -118,7 +118,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       return uniqueItemNames.filter(name => !mappedItems.has(name));
     },
     enabled: !!restaurantId && sales.length > 0,
-    staleTime: 60000, // 1 minute
+    staleTime: 300000, // 5 minutes - increased to reduce refetch frequency
   });
 
   const unmappedItems = unmappedItemsQuery.data || [];

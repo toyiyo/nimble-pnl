@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -27,7 +27,8 @@ import {
   Award
 } from 'lucide-react';
 import { usePnLAnalytics } from '@/hooks/usePnLAnalytics';
-import { 
+import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
+import {
   LineChart, 
   Line, 
   BarChart, 
@@ -60,6 +61,23 @@ interface PnLIntelligenceReportProps {
 
 export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLIntelligenceReportProps) {
   const { data, loading } = usePnLAnalytics(restaurantId, { dateFrom, dateTo });
+  
+  // Memoize fallback dates to prevent unnecessary React Query refetches
+  const defaultDateFrom = useMemo(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 30);
+    return date;
+  }, []);
+  
+  const defaultDateTo = useMemo(() => new Date(), []);
+  
+  // Fetch revenue breakdown if dates are provided
+  const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
+    restaurantId,
+    dateFrom || defaultDateFrom,
+    dateTo || defaultDateTo
+  );
+  
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
@@ -350,8 +368,9 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
       </div>
 
       <Tabs defaultValue="trends" className="w-full">
-        <TabsList className="grid w-full grid-cols-5" role="tablist">
+        <TabsList className="grid w-full grid-cols-6" role="tablist">
           <TabsTrigger value="trends" aria-label="P&L trends analysis">Trends</TabsTrigger>
+          <TabsTrigger value="revenue-mix" aria-label="Revenue breakdown">Revenue Mix</TabsTrigger>
           <TabsTrigger value="comparison" aria-label="Period comparison">Comparison</TabsTrigger>
           <TabsTrigger value="patterns" aria-label="Cost patterns">Patterns</TabsTrigger>
           <TabsTrigger value="forecast" aria-label="Financial forecast">Forecast</TabsTrigger>
@@ -419,6 +438,213 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
               </ResponsiveContainer>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Revenue Mix Tab - NEW */}
+        <TabsContent value="revenue-mix" className="space-y-6">
+          {revenueLoading ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <div className="animate-pulse space-y-2">
+                  <div className="h-4 w-32 bg-muted rounded mx-auto" />
+                  <div className="h-8 w-48 bg-muted rounded mx-auto" />
+                </div>
+              </CardContent>
+            </Card>
+          ) : !revenueBreakdown || !revenueBreakdown.has_categorization_data ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Info className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No Revenue Categorization Data</h3>
+                <p className="text-muted-foreground mb-4">
+                  Start categorizing your POS sales to see detailed revenue breakdown
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Categorization Warning */}
+              {revenueBreakdown.categorization_rate < 100 && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                  <Info className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-amber-700 dark:text-amber-400">
+                    <p className="font-semibold mb-1">Incomplete Data</p>
+                    <p>
+                      Only {revenueBreakdown.categorization_rate.toFixed(0)}% of sales are categorized. 
+                      These totals only reflect categorized sales and may not represent your complete revenue.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Gross Revenue (Categorized)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-3xl font-bold text-emerald-600">
+                      ${revenueBreakdown.totals.gross_revenue.toLocaleString()}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      From {revenueBreakdown.revenue_categories.reduce((sum, c) => sum + c.transaction_count, 0)} transactions
+                    </p>
+                  </CardContent>
+                </Card>
+
+                {(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm">Discounts & Refunds</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-3xl font-bold text-red-600">
+                        -${(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {revenueBreakdown.totals.gross_revenue > 0 
+                          ? ((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue * 100).toFixed(1) 
+                          : '0.0'}% of gross revenue
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border-emerald-200 dark:border-emerald-800">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Net Revenue</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-3xl font-bold text-emerald-700 dark:text-emerald-400">
+                      ${revenueBreakdown.totals.net_revenue.toLocaleString()}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      After all deductions
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Revenue by Category - Pie Chart and Table */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Revenue Distribution</CardTitle>
+                    <CardDescription>By category</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={revenueBreakdown.revenue_categories.map(c => ({
+                            name: c.account_name,
+                            value: c.total_amount,
+                          }))}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={(entry) => {
+                            const percent = revenueBreakdown.totals.gross_revenue > 0 
+                              ? (entry.value / revenueBreakdown.totals.gross_revenue * 100).toFixed(0)
+                              : '0';
+                            return `${entry.name}: ${percent}%`;
+                          }}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {revenueBreakdown.revenue_categories.map((_, index) => (
+                            <Cell key={`cell-${index}`} fill={['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'][index % 6]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: any) => `$${value.toLocaleString()}`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Category Details</CardTitle>
+                    <CardDescription>Revenue breakdown</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {revenueBreakdown.revenue_categories.map((category, index) => (
+                        <div key={category.account_id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div 
+                              className="h-3 w-3 rounded-full" 
+                              style={{ backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'][index % 6] }}
+                            />
+                            <div>
+                              <p className="text-sm font-medium">{category.account_name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {category.account_code} • {category.transaction_count} txns
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold">
+                              ${category.total_amount.toLocaleString()}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {revenueBreakdown.totals.gross_revenue > 0 
+                                ? (category.total_amount / revenueBreakdown.totals.gross_revenue * 100).toFixed(1) 
+                                : '0.0'}%
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Pass-Through Collections */}
+              {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) && (
+                <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+                  <CardHeader>
+                    <div className="flex items-center gap-2 mb-1">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Info className="h-4 w-4" />
+                        Pass-Through Collections
+                      </CardTitle>
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-600">
+                        Not Revenue
+                      </Badge>
+                    </div>
+                    <CardDescription>
+                      These amounts are collected on behalf of others and excluded from your revenue totals
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {revenueBreakdown.totals.sales_tax > 0 && (
+                        <div className="p-4 rounded-lg bg-background">
+                          <p className="text-sm text-muted-foreground mb-1">Sales Tax</p>
+                          <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+                            ${revenueBreakdown.totals.sales_tax.toLocaleString()}
+                          </p>
+                          <Badge variant="outline" className="mt-2 text-xs">Liability</Badge>
+                        </div>
+                      )}
+                      {revenueBreakdown.totals.tips > 0 && (
+                        <div className="p-4 rounded-lg bg-background">
+                          <p className="text-sm text-muted-foreground mb-1">Tips</p>
+                          <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">
+                            ${revenueBreakdown.totals.tips.toLocaleString()}
+                          </p>
+                          <Badge variant="outline" className="mt-2 text-xs">Liability</Badge>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
         </TabsContent>
 
         {/* Comparison Tab */}

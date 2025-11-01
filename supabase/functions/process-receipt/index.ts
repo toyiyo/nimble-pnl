@@ -28,26 +28,19 @@ EXTRACTION METHODOLOGY:
 4. **Expand abbreviations**: Common food service abbreviations (CHKN=Chicken, DNA=Banana, BROC=Broccoli, etc.)
 5. **Standardize units**: Convert to standard restaurant units (lb, oz, case, each, gal, etc.)
 
-CONFIDENCE SCORING MATRIX:
-- **0.90-0.95**: Crystal clear text, complete information, standard formatting
-- **0.80-0.89**: Readable with minor ambiguity in abbreviations or formatting  
-- **0.65-0.79**: Partially clear, some guessing required for quantities or names
-- **0.40-0.64**: Poor quality text, significant interpretation needed
-- **0.20-0.39**: Very unclear, major uncertainty in parsing
+IMPORTANT FOR LARGE RECEIPTS:
+- If receipt has 100+ items, prioritize accuracy over verbosity
+- Keep rawText concise (max 50 chars per item)
+- Ensure JSON is complete - DO NOT truncate arrays mid-item
 
-PATTERN RECOGNITION:
-- Weight-based: "BEEF CHUCK 2.34 LB @ $8.99/LB = $20.96"
-- Case quantities: "TOMATOES 6/10# CASE $24.50"
-- Simple format: "MILK 1 GAL $4.99"
-- Abbreviated: "CHKN BRST BNLS 5LB $32.45"
+CONFIDENCE SCORING:
+- 0.90-0.95: Crystal clear, complete info
+- 0.80-0.89: Readable, minor ambiguity
+- 0.65-0.79: Partially clear, some guessing
+- 0.40-0.64: Poor quality, significant interpretation
+- 0.20-0.39: Very unclear, major uncertainty
 
-SUPPLIER DETECTION:
-Look for distributor indicators:
-- Company stamps (Sysco, US Foods, Performance Food Group)
-- "Distributed by" or "Packed for" text
-- Supplier codes or route numbers
-
-RESPONSE FORMAT (JSON ONLY):
+RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
 {
   "vendor": "Exact vendor/supplier name from receipt",
   "totalAmount": numeric_total,
@@ -58,18 +51,18 @@ RESPONSE FORMAT (JSON ONLY):
   },
   "lineItems": [
     {
-      "rawText": "exact text from receipt",
+      "rawText": "exact text from receipt (max 50 chars)",
       "parsedName": "standardized product name",
       "parsedQuantity": numeric_quantity,
       "parsedUnit": "standard_unit",
       "parsedPrice": numeric_price,
       "confidenceScore": realistic_score_0_to_1,
-      "category": "estimated category (Produce, Meat, Dairy, etc.)"
+      "category": "estimated category"
     }
   ]
 }
 
-CRITICAL: Assign confidence scores based on actual text clarity, not wishful thinking.`;
+CRITICAL: Return ONLY valid, complete JSON. Ensure all arrays are properly closed.`;
 
 // Model configurations (free models first, then paid fallbacks)
 const MODELS = [
@@ -142,7 +135,10 @@ function buildRequestBody(
           }
         ]
       }
-    ]
+    ],
+    // Set max tokens to ensure complete responses for large receipts
+    max_tokens: 16000,
+    temperature: 0.1 // Lower temperature for more consistent JSON output
   };
 
   // Add PDF parsing plugin if processing PDF
@@ -158,6 +154,34 @@ function buildRequestBody(
   }
 
   return requestBody;
+}
+
+// Helper function to detect and repair truncated JSON
+function repairTruncatedJSON(jsonContent: string): string {
+  let repaired = jsonContent.trim();
+  
+  // Count open and close braces/brackets
+  const openBraces = (repaired.match(/{/g) || []).length;
+  const closeBraces = (repaired.match(/}/g) || []).length;
+  const openBrackets = (repaired.match(/\[/g) || []).length;
+  const closeBrackets = (repaired.match(/]/g) || []).length;
+  
+  // If truncated mid-array or mid-object, try to close it
+  if (openBrackets > closeBrackets) {
+    console.log(`⚠️ Detected unclosed arrays. Adding ${openBrackets - closeBrackets} closing brackets.`);
+    // Remove trailing comma if present
+    repaired = repaired.replace(/,\s*$/, '');
+    repaired += ']'.repeat(openBrackets - closeBrackets);
+  }
+  
+  if (openBraces > closeBraces) {
+    console.log(`⚠️ Detected unclosed objects. Adding ${openBraces - closeBraces} closing braces.`);
+    // Remove trailing comma if present
+    repaired = repaired.replace(/,\s*$/, '');
+    repaired += '}'.repeat(openBraces - closeBraces);
+  }
+  
+  return repaired;
 }
 
 // Generic function to call a model with retries
@@ -364,7 +388,14 @@ serve(async (req) => {
     }
 
     const content = data.choices[0].message.content;
-    console.log('✅ AI parsing completed. Raw response:', content);
+    
+    // Check if response appears truncated
+    const isTruncated = !content.trim().endsWith('}') && !content.trim().endsWith(']');
+    if (isTruncated) {
+      console.warn('⚠️ Response appears truncated. Will attempt to repair JSON.');
+    }
+    
+    console.log('✅ AI parsing completed. Response length:', content.length);
 
     let parsedData;
     try {
@@ -385,6 +416,9 @@ serve(async (req) => {
       
       jsonContent = jsonContent.substring(firstBrace, lastBrace + 1);
       
+      // Attempt to repair truncated JSON
+      jsonContent = repairTruncatedJSON(jsonContent);
+      
       // Fix common JSON issues
       jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1'); // Remove trailing commas
       jsonContent = jsonContent.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3'); // Quote unquoted keys
@@ -397,15 +431,30 @@ serve(async (req) => {
         throw new Error('Invalid JSON structure: missing or invalid lineItems array');
       }
 
+      // If no line items were parsed, throw error
+      if (parsedData.lineItems.length === 0) {
+        throw new Error('No line items found in receipt. Response may be truncated.');
+      }
+
       // Validate each line item has required fields
-      parsedData.lineItems.forEach((item: any, index: number) => {
+      let validItemCount = 0;
+      parsedData.lineItems = parsedData.lineItems.filter((item: any, index: number) => {
         if (!item.parsedName || typeof item.parsedQuantity !== 'number' || typeof item.parsedPrice !== 'number') {
-          console.warn(`Line item ${index} missing required fields:`, item);
+          console.warn(`Line item ${index} missing required fields, skipping:`, item);
+          return false;
         }
         // Ensure confidence score is within valid range
         if (item.confidenceScore > 1.0) item.confidenceScore = 1.0;
         if (item.confidenceScore < 0.0) item.confidenceScore = 0.0;
+        validItemCount++;
+        return true;
       });
+      
+      console.log(`✅ Successfully parsed ${validItemCount} valid line items`);
+      
+      if (isTruncated) {
+        console.warn(`⚠️ Response was truncated. Parsed ${validItemCount} items but there may be more.`);
+      }
       
     } catch (parseError) {
       console.error('Failed to parse JSON from AI response:', parseError);

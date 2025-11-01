@@ -33,7 +33,19 @@ export default function ChartOfAccounts() {
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [selectedParentAccount, setSelectedParentAccount] = useState<{ id: string; name: string; type: string; code: string } | undefined>();
 
-  const groupedAccounts = accounts.reduce((acc, account) => {
+  // Separate parent and sub-accounts
+  const parentAccounts = accounts.filter(acc => !acc.parent_account_id);
+  const subAccountsMap = accounts.reduce((acc, account) => {
+    if (account.parent_account_id) {
+      if (!acc[account.parent_account_id]) {
+        acc[account.parent_account_id] = [];
+      }
+      acc[account.parent_account_id].push(account);
+    }
+    return acc;
+  }, {} as Record<string, typeof accounts>);
+
+  const groupedAccounts = parentAccounts.reduce((acc, account) => {
     if (!acc[account.account_type]) {
       acc[account.account_type] = [];
     }
@@ -123,46 +135,77 @@ export default function ChartOfAccounts() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {typeAccounts.map((account) => (
-                    <div
-                      key={account.id}
-                      className="flex flex-col md:flex-row items-start md:items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors group gap-3"
-                    >
-                      <div className="flex items-start md:items-center gap-3 flex-1 w-full">
-                        <Badge variant="outline" className="font-mono shrink-0">
-                          {account.account_code}
-                        </Badge>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium break-words">{account.account_name}</div>
-                          {account.description && (
-                            <div className="text-sm text-muted-foreground break-words">{account.description}</div>
-                          )}
+                  {typeAccounts.map((account) => {
+                    const subAccounts = subAccountsMap[account.id] || [];
+                    return (
+                      <div key={account.id} className="space-y-2">
+                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors group gap-3">
+                          <div className="flex items-start md:items-center gap-3 flex-1 w-full">
+                            <Badge variant="outline" className="font-mono shrink-0">
+                              {account.account_code}
+                            </Badge>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium break-words">{account.account_name}</div>
+                              {account.description && (
+                                <div className="text-sm text-muted-foreground break-words">{account.description}</div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-end gap-2 w-full md:w-auto">
+                            {account.is_system_account && (
+                              <Badge variant="secondary" className="text-xs">System</Badge>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0"
+                              onClick={() => {
+                                setSelectedParentAccount({
+                                  id: account.id,
+                                  name: account.account_name,
+                                  type: account.account_type,
+                                  code: account.account_code,
+                                });
+                                setAccountDialogOpen(true);
+                              }}
+                            >
+                              <FolderPlus className="h-4 w-4 md:mr-1" />
+                              <span className="hidden md:inline">Add Sub</span>
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center justify-end gap-2 w-full md:w-auto">
-                        {account.is_system_account && (
-                          <Badge variant="secondary" className="text-xs">System</Badge>
+                        
+                        {/* Sub-accounts */}
+                        {subAccounts.length > 0 && (
+                          <div className="ml-8 space-y-2">
+                            {subAccounts.map((subAccount) => (
+                              <div
+                                key={subAccount.id}
+                                className="flex flex-col md:flex-row items-start md:items-center justify-between p-3 rounded-lg border bg-muted/20 hover:bg-muted/40 transition-colors gap-3"
+                              >
+                                <div className="flex items-start md:items-center gap-3 flex-1 w-full">
+                                  <Badge variant="outline" className="font-mono shrink-0 text-xs">
+                                    {subAccount.account_code}
+                                  </Badge>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium break-words text-sm">{subAccount.account_name}</div>
+                                    {subAccount.description && (
+                                      <div className="text-xs text-muted-foreground break-words">{subAccount.description}</div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center justify-end gap-2 w-full md:w-auto">
+                                  {subAccount.is_system_account && (
+                                    <Badge variant="secondary" className="text-xs">System</Badge>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0"
-                          onClick={() => {
-                            setSelectedParentAccount({
-                              id: account.id,
-                              name: account.account_name,
-                              type: account.account_type,
-                              code: account.account_code,
-                            });
-                            setAccountDialogOpen(true);
-                          }}
-                        >
-                          <FolderPlus className="h-4 w-4 md:mr-1" />
-                          <span className="hidden md:inline">Add Sub</span>
-                        </Button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -175,7 +218,7 @@ export default function ChartOfAccounts() {
         onOpenChange={setAccountDialogOpen}
         restaurantId={selectedRestaurant?.restaurant_id || ''}
         parentAccount={selectedParentAccount}
-        onSuccess={() => fetchAccounts()}
+        onSuccess={() => {}} 
       />
     </div>
   );

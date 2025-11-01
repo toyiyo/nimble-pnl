@@ -8,7 +8,6 @@ import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
 import { useCashFlowMetrics } from '@/hooks/useCashFlowMetrics';
 import { useSpendingAnalysis } from '@/hooks/useSpendingAnalysis';
 import { useRevenueHealth } from '@/hooks/useRevenueHealth';
-import { Period } from '@/components/PeriodSelector';
 import {
   Wallet,
   TrendingUp,
@@ -19,43 +18,43 @@ import {
   AlertTriangle,
   Sparkles,
 } from 'lucide-react';
-import { differenceInDays, startOfMonth, subDays } from 'date-fns';
+import { differenceInDays, startOfMonth, subDays, endOfDay } from 'date-fns';
 
 interface BankSnapshotSectionProps {
   restaurantId: string;
-  selectedPeriod: Period;
 }
 
-export function BankSnapshotSection({ restaurantId, selectedPeriod }: BankSnapshotSectionProps) {
+export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) {
+  // Use fixed date ranges for current state (not period-dependent)
+  const today = endOfDay(new Date());
+  const thirtyDaysAgo = subDays(today, 30);
+  const monthStart = startOfMonth(today);
+
+  // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS
   const { data: connectedBanks, isLoading: banksLoading } = useConnectedBanks(restaurantId);
 
-  // Calculate date ranges for metrics
-  const periodEnd = selectedPeriod.to;
-  const thirtyDaysAgo = subDays(periodEnd, 30);
-  const monthStart = startOfMonth(periodEnd);
-
-  // Fetch all metrics
+  // Fetch all metrics with fixed date ranges
   const { data: liquidityMetrics, isLoading: liquidityLoading } = useLiquidityMetrics(
     thirtyDaysAgo,
-    periodEnd,
+    today,
     'all'
   );
 
   const { data: cashFlowMetrics, isLoading: cashFlowLoading } = useCashFlowMetrics(
     monthStart,
-    periodEnd,
+    today,
     'all'
   );
 
   const { data: spendingMetrics, isLoading: spendingLoading } = useSpendingAnalysis(
     thirtyDaysAgo,
-    periodEnd,
+    today,
     'all'
   );
 
   const { data: revenueMetrics, isLoading: revenueLoading } = useRevenueHealth(
     thirtyDaysAgo,
-    periodEnd,
+    today,
     'all'
   );
 
@@ -131,6 +130,7 @@ export function BankSnapshotSection({ restaurantId, selectedPeriod }: BankSnapsh
     return 'high';
   };
 
+  // NOW we can do conditional returns after all hooks are called
   if (!connectedBanks || connectedBanks.length === 0) {
     return null; // Don't show section if no banks connected
   }
@@ -157,16 +157,22 @@ export function BankSnapshotSection({ restaurantId, selectedPeriod }: BankSnapsh
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Section Header */}
-      <div className="flex items-center gap-2">
-        <div className="h-1 w-8 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full" />
-        <h2 className="text-2xl font-bold tracking-tight">Bank Snapshot</h2>
-        <Sparkles className="h-5 w-5 text-cyan-500/60" />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="h-1 w-8 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full" />
+          <h2 className="text-2xl font-bold tracking-tight">Cash & Banking Snapshot</h2>
+          <Sparkles className="h-5 w-5 text-cyan-500/60" />
+        </div>
+        <Badge variant="outline" className="gap-1.5 text-xs">
+          <Activity className="h-3 w-3" />
+          Real-time • Last 30 days
+        </Badge>
       </div>
 
       {/* Quick Glance Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <DashboardMetricCard
-          title="Available Cash"
+          title="Cash Available to Spend"
           value={formatCurrency(metrics.availableCash)}
           icon={Wallet}
           variant={metrics.availableCash > 10000 ? 'success' : metrics.availableCash < 2000 ? 'danger' : 'warning'}
@@ -175,7 +181,7 @@ export function BankSnapshotSection({ restaurantId, selectedPeriod }: BankSnapsh
         />
 
         <DashboardMetricCard
-          title="Net Cash Flow (MTD)"
+          title="Change in Cash This Month"
           value={formatCurrency(metrics.netCashFlowMTD)}
           icon={TrendingUp}
           variant={metrics.netCashFlowMTD > 0 ? 'success' : 'danger'}
@@ -184,7 +190,7 @@ export function BankSnapshotSection({ restaurantId, selectedPeriod }: BankSnapsh
         />
 
         <DashboardMetricCard
-          title="Runway"
+          title="Days of Cash Left"
           value={metrics.runway !== Infinity ? `${Math.floor(metrics.runway)} days` : '∞'}
           icon={Timer}
           variant={
@@ -203,7 +209,7 @@ export function BankSnapshotSection({ restaurantId, selectedPeriod }: BankSnapsh
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-              Top 3 Spending
+              Where the Money Went
             </CardTitle>
             <CardDescription className="text-xs">Last 30 days</CardDescription>
           </CardHeader>
@@ -220,8 +226,8 @@ export function BankSnapshotSection({ restaurantId, selectedPeriod }: BankSnapsh
             )}
             <div className="pt-2 border-t border-border/50">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Vendor concentration</span>
-                <Badge 
+                <span className="text-muted-foreground">% of Spend by Top Vendor</span>
+                <Badge
                   variant={metrics.vendorConcentration > 50 ? 'destructive' : 'outline'}
                   className="text-xs"
                 >

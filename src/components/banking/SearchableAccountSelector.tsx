@@ -23,6 +23,7 @@ interface SearchableAccountSelectorProps {
   onValueChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  filterByTypes?: string[];
 }
 
 export function SearchableAccountSelector({
@@ -30,6 +31,7 @@ export function SearchableAccountSelector({
   onValueChange,
   placeholder = "Select account",
   disabled = false,
+  filterByTypes,
 }: SearchableAccountSelectorProps) {
   const [open, setOpen] = useState(false);
   const { selectedRestaurant } = useRestaurantContext();
@@ -40,21 +42,55 @@ export function SearchableAccountSelector({
     [accounts, value]
   );
 
-  // Group accounts by type with useMemo for better performance
-  const groupedAccounts = useMemo(() => {
-    if (!accounts) return {};
+  // Filter accounts by type if specified (include sub-accounts of matching parents)
+  const filteredAccounts = useMemo(() => {
+    if (!accounts) return [];
+    if (!filterByTypes || filterByTypes.length === 0) return accounts;
     
-    return accounts.reduce((acc, account) => {
-      const type = account.account_type;
-      if (!acc[type]) {
-        acc[type] = [];
+    // Include accounts that match the filter type OR whose parent matches the filter type
+    return accounts.filter(acc => {
+      // If account itself matches the filter, include it
+      if (filterByTypes.includes(acc.account_type)) return true;
+      
+      // If it's a sub-account, check if parent matches filter
+      if (acc.parent_account_id && acc.parent_account) {
+        return filterByTypes.includes(acc.parent_account.account_type);
       }
-      acc[type].push(account);
-      return acc;
-    }, {} as Record<string, typeof accounts>);
-  }, [accounts]);
+      
+      return false;
+    });
+  }, [accounts, filterByTypes]);
 
-  const isEmpty = !loading && accounts.length === 0;
+  // Organize accounts with parent-child relationships
+  const organizedAccounts = useMemo(() => {
+    if (!filteredAccounts) return {};
+    
+    console.log('[SearchableAccountSelector] Filtered accounts:', filteredAccounts);
+    console.log('[SearchableAccountSelector] Filter types:', filterByTypes);
+    
+    // Separate parents and subs
+    const parents = filteredAccounts.filter(acc => !acc.parent_account_id);
+    const subsMap = filteredAccounts.reduce((map, acc) => {
+      if (acc.parent_account_id) {
+        if (!map[acc.parent_account_id]) map[acc.parent_account_id] = [];
+        map[acc.parent_account_id].push(acc);
+      }
+      return map;
+    }, {} as Record<string, typeof filteredAccounts>);
+    
+    // Group parents by type
+    return parents.reduce((acc, account) => {
+      const type = account.account_type;
+      if (!acc[type]) acc[type] = [];
+      acc[type].push({ 
+        account, 
+        subAccounts: subsMap[account.id] || [] 
+      });
+      return acc;
+    }, {} as Record<string, Array<{ account: any; subAccounts: any[] }>>);
+  }, [filteredAccounts]);
+
+  const isEmpty = !loading && filteredAccounts.length === 0;
   const isDisabled = disabled || loading;
 
   return (
@@ -90,8 +126,12 @@ export function SearchableAccountSelector({
         <Command>
           <CommandInput placeholder="Search accounts..." />
           <CommandList 
-            className="max-h-72 overflow-y-auto overscroll-contain"
-            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            className="max-h-80"
+            style={{ 
+              overflowY: 'scroll',
+              overscrollBehavior: 'contain',
+              WebkitOverflowScrolling: 'touch',
+            } as React.CSSProperties}
           >
             {isEmpty ? (
               <div className="py-6 px-4 text-center text-sm text-muted-foreground">
@@ -101,30 +141,59 @@ export function SearchableAccountSelector({
             ) : (
               <>
                 <CommandEmpty>No account found.</CommandEmpty>
-                {Object.entries(groupedAccounts).map(([type, typeAccounts]) => (
+                {Object.entries(organizedAccounts).map(([type, items]) => (
                   <CommandGroup key={type} heading={type}>
-                    {typeAccounts.map((account) => (
-                      <CommandItem
-                        key={account.id}
-                        value={`${account.account_code} ${account.account_name}`}
-                        onSelect={() => {
-                          onValueChange(account.id);
-                          setOpen(false);
-                        }}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            value === account.id ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <span className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-muted-foreground w-16">
-                            {account.account_code}
+                    {items.map(({ account, subAccounts }: any) => (
+                      <div key={account.id}>
+                        {/* Parent Account */}
+                        <CommandItem
+                          value={`${account.account_code} ${account.account_name}`}
+                          onSelect={() => {
+                            onValueChange(account.id);
+                            setOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              value === account.id ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <span className="flex items-center gap-2">
+                            <span className="font-mono text-xs text-muted-foreground w-16">
+                              {account.account_code}
+                            </span>
+                            <span>{account.account_name}</span>
                           </span>
-                          <span>{account.account_name}</span>
-                        </span>
-                      </CommandItem>
+                        </CommandItem>
+                        
+                        {/* Sub-Accounts */}
+                        {subAccounts.map((subAccount: any) => (
+                          <CommandItem
+                            key={subAccount.id}
+                            value={`${subAccount.account_code} ${subAccount.account_name} ${account.account_name}`}
+                            onSelect={() => {
+                              onValueChange(subAccount.id);
+                              setOpen(false);
+                            }}
+                            className="ml-4"
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                value === subAccount.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <span className="text-muted-foreground mr-2">↳</span>
+                            <span className="flex items-center gap-2">
+                              <span className="font-mono text-xs text-muted-foreground w-16">
+                                {subAccount.account_code}
+                              </span>
+                              <span className="text-sm">{subAccount.account_name}</span>
+                            </span>
+                          </CommandItem>
+                        ))}
+                      </div>
                     ))}
                   </CommandGroup>
                 ))}

@@ -88,6 +88,15 @@ export interface PnLAnalytics {
   };
 }
 
+/**
+ * @deprecated Use usePeriodMetrics instead.
+ * This hook queries daily_pnl.net_revenue which includes liabilities.
+ * 
+ * For accurate revenue calculations, use:
+ * - usePeriodMetrics: Combines revenue (from unified_sales) + costs (from daily_pnl)
+ * 
+ * @see usePeriodMetrics - The correct hook for accurate financial metrics
+ */
 export function usePnLAnalytics(
   restaurantId: string | null, 
   options: { days?: number; dateFrom?: Date; dateTo?: Date } = { days: 30 }
@@ -170,22 +179,14 @@ export function usePnLAnalytics(
         food_cost: acc.food_cost + day.food_cost,
         labor_cost: acc.labor_cost + day.labor_cost,
         prime_cost: acc.prime_cost + day.prime_cost,
-        food_cost_pct_sum: acc.food_cost_pct_sum + day.food_cost_percentage,
-        labor_cost_pct_sum: acc.labor_cost_pct_sum + day.labor_cost_percentage,
-        prime_cost_pct_sum: acc.prime_cost_pct_sum + day.prime_cost_percentage,
-        count: acc.count + 1,
-      }), { revenue: 0, food_cost: 0, labor_cost: 0, prime_cost: 0, food_cost_pct_sum: 0, labor_cost_pct_sum: 0, prime_cost_pct_sum: 0, count: 0 });
+      }), { revenue: 0, food_cost: 0, labor_cost: 0, prime_cost: 0 });
 
       const previousTotals = (previousPnL || []).reduce((acc: any, day: any) => ({
         revenue: acc.revenue + (Number(day.net_revenue) || 0),
         food_cost: acc.food_cost + (Number(day.food_cost) || 0),
         labor_cost: acc.labor_cost + (Number(day.labor_cost) || 0),
         prime_cost: acc.prime_cost + (Number(day.prime_cost) || 0),
-        food_cost_pct_sum: acc.food_cost_pct_sum + (Number(day.food_cost_percentage) || 0),
-        labor_cost_pct_sum: acc.labor_cost_pct_sum + (Number(day.labor_cost_percentage) || 0),
-        prime_cost_pct_sum: acc.prime_cost_pct_sum + (Number(day.prime_cost_percentage) || 0),
-        count: acc.count + 1,
-      }), { revenue: 0, food_cost: 0, labor_cost: 0, prime_cost: 0, food_cost_pct_sum: 0, labor_cost_pct_sum: 0, prime_cost_pct_sum: 0, count: 0 });
+      }), { revenue: 0, food_cost: 0, labor_cost: 0, prime_cost: 0 });
 
       const comparison: PnLComparison = {
         current_period: {
@@ -193,18 +194,18 @@ export function usePnLAnalytics(
           food_cost: currentTotals.food_cost,
           labor_cost: currentTotals.labor_cost,
           prime_cost: currentTotals.prime_cost,
-          avg_food_cost_pct: currentTotals.count > 0 ? currentTotals.food_cost_pct_sum / currentTotals.count : 0,
-          avg_labor_cost_pct: currentTotals.count > 0 ? currentTotals.labor_cost_pct_sum / currentTotals.count : 0,
-          avg_prime_cost_pct: currentTotals.count > 0 ? currentTotals.prime_cost_pct_sum / currentTotals.count : 0,
+          avg_food_cost_pct: currentTotals.revenue > 0 ? (currentTotals.food_cost / currentTotals.revenue) * 100 : 0,
+          avg_labor_cost_pct: currentTotals.revenue > 0 ? (currentTotals.labor_cost / currentTotals.revenue) * 100 : 0,
+          avg_prime_cost_pct: currentTotals.revenue > 0 ? (currentTotals.prime_cost / currentTotals.revenue) * 100 : 0,
         },
         previous_period: {
           revenue: previousTotals.revenue,
           food_cost: previousTotals.food_cost,
           labor_cost: previousTotals.labor_cost,
           prime_cost: previousTotals.prime_cost,
-          avg_food_cost_pct: previousTotals.count > 0 ? previousTotals.food_cost_pct_sum / previousTotals.count : 0,
-          avg_labor_cost_pct: previousTotals.count > 0 ? previousTotals.labor_cost_pct_sum / previousTotals.count : 0,
-          avg_prime_cost_pct: previousTotals.count > 0 ? previousTotals.prime_cost_pct_sum / previousTotals.count : 0,
+          avg_food_cost_pct: previousTotals.revenue > 0 ? (previousTotals.food_cost / previousTotals.revenue) * 100 : 0,
+          avg_labor_cost_pct: previousTotals.revenue > 0 ? (previousTotals.labor_cost / previousTotals.revenue) * 100 : 0,
+          avg_prime_cost_pct: previousTotals.revenue > 0 ? (previousTotals.prime_cost / previousTotals.revenue) * 100 : 0,
         },
         change: {
           revenue_pct: previousTotals.revenue > 0 

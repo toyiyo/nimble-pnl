@@ -322,7 +322,9 @@ export type Database = {
         Row: {
           account_code: string
           account_name: string
-          account_subtype: Database["public"]["Enums"]["account_subtype_enum"]
+          account_subtype:
+            | Database["public"]["Enums"]["account_subtype_enum"]
+            | null
           account_type: Database["public"]["Enums"]["account_type_enum"]
           created_at: string
           current_balance: number
@@ -339,7 +341,9 @@ export type Database = {
         Insert: {
           account_code: string
           account_name: string
-          account_subtype: Database["public"]["Enums"]["account_subtype_enum"]
+          account_subtype?:
+            | Database["public"]["Enums"]["account_subtype_enum"]
+            | null
           account_type: Database["public"]["Enums"]["account_type_enum"]
           created_at?: string
           current_balance?: number
@@ -356,7 +360,9 @@ export type Database = {
         Update: {
           account_code?: string
           account_name?: string
-          account_subtype?: Database["public"]["Enums"]["account_subtype_enum"]
+          account_subtype?:
+            | Database["public"]["Enums"]["account_subtype_enum"]
+            | null
           account_type?: Database["public"]["Enums"]["account_type_enum"]
           created_at?: string
           current_balance?: number
@@ -3017,11 +3023,18 @@ export type Database = {
       }
       unified_sales: {
         Row: {
+          ai_confidence: string | null
+          ai_reasoning: string | null
+          category_id: string | null
           created_at: string
           external_item_id: string | null
           external_order_id: string
           id: string
+          is_categorized: boolean | null
+          is_split: boolean | null
           item_name: string
+          item_type: string | null
+          parent_sale_id: string | null
           pos_category: string | null
           pos_system: string
           quantity: number
@@ -3029,16 +3042,25 @@ export type Database = {
           restaurant_id: string
           sale_date: string
           sale_time: string | null
+          suggested_category_id: string | null
           synced_at: string
           total_price: number | null
           unit_price: number | null
+          updated_at: string | null
         }
         Insert: {
+          ai_confidence?: string | null
+          ai_reasoning?: string | null
+          category_id?: string | null
           created_at?: string
           external_item_id?: string | null
           external_order_id: string
           id?: string
+          is_categorized?: boolean | null
+          is_split?: boolean | null
           item_name: string
+          item_type?: string | null
+          parent_sale_id?: string | null
           pos_category?: string | null
           pos_system: string
           quantity?: number
@@ -3046,16 +3068,25 @@ export type Database = {
           restaurant_id: string
           sale_date: string
           sale_time?: string | null
+          suggested_category_id?: string | null
           synced_at?: string
           total_price?: number | null
           unit_price?: number | null
+          updated_at?: string | null
         }
         Update: {
+          ai_confidence?: string | null
+          ai_reasoning?: string | null
+          category_id?: string | null
           created_at?: string
           external_item_id?: string | null
           external_order_id?: string
           id?: string
+          is_categorized?: boolean | null
+          is_split?: boolean | null
           item_name?: string
+          item_type?: string | null
+          parent_sale_id?: string | null
           pos_category?: string | null
           pos_system?: string
           quantity?: number
@@ -3063,11 +3094,84 @@ export type Database = {
           restaurant_id?: string
           sale_date?: string
           sale_time?: string | null
+          suggested_category_id?: string | null
           synced_at?: string
           total_price?: number | null
           unit_price?: number | null
+          updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_parent_sale"
+            columns: ["parent_sale_id"]
+            isOneToOne: false
+            referencedRelation: "unified_sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unified_sales_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unified_sales_parent_sale_id_fkey"
+            columns: ["parent_sale_id"]
+            isOneToOne: false
+            referencedRelation: "unified_sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unified_sales_suggested_category_id_fkey"
+            columns: ["suggested_category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      unified_sales_splits: {
+        Row: {
+          amount: number
+          category_id: string
+          created_at: string
+          description: string | null
+          id: string
+          sale_id: string
+        }
+        Insert: {
+          amount: number
+          category_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          sale_id: string
+        }
+        Update: {
+          amount?: number
+          category_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          sale_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unified_sales_splits_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unified_sales_splits_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "unified_sales"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       unit_conversions: {
         Row: {
@@ -3207,6 +3311,10 @@ export type Database = {
           p_transaction_id: string
         }
         Returns: Json
+      }
+      categorize_pos_sale: {
+        Args: { p_category_id: string; p_sale_id: string }
+        Returns: undefined
       }
       check_reconciliation_boundary: {
         Args: { p_restaurant_id: string }
@@ -3400,6 +3508,13 @@ export type Database = {
       split_bank_transaction: {
         Args: { p_splits: Json; p_transaction_id: string }
         Returns: Json
+      }
+      split_pos_sale: {
+        Args: { p_sale_id: string; p_splits: Json }
+        Returns: {
+          message: string
+          success: boolean
+        }[]
       }
       suggest_supplier_for_payee: {
         Args: { p_payee_name: string; p_restaurant_id: string }

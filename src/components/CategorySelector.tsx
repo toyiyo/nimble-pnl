@@ -49,18 +49,30 @@ export function CategorySelector({ restaurantId, value, onSelect, onAddNew }: Ca
 
   const selectedAccount = accounts?.find(acc => acc.id === value);
 
-  const groupedAccounts = useMemo(() => {
+  const organizedAccounts = useMemo(() => {
     if (!accounts) return {};
     
-    const groups: Record<string, typeof accounts> = {};
-    accounts.forEach(account => {
-      const type = account.account_type;
-      if (!groups[type]) {
-        groups[type] = [];
+    // Separate parents and subs
+    const parents = accounts.filter(acc => !acc.parent_account_id);
+    const subsMap = accounts.reduce((map, acc) => {
+      if (acc.parent_account_id) {
+        if (!map[acc.parent_account_id]) map[acc.parent_account_id] = [];
+        map[acc.parent_account_id].push(acc);
       }
-      groups[type].push(account);
-    });
-    return groups;
+      return map;
+    }, {} as Record<string, typeof accounts>);
+    
+    // Group parents by type
+    const grouped = parents.reduce((acc, account) => {
+      if (!acc[account.account_type]) acc[account.account_type] = [];
+      acc[account.account_type].push({ 
+        account, 
+        subAccounts: subsMap[account.id] || [] 
+      });
+      return acc;
+    }, {} as Record<string, Array<{ account: any; subAccounts: any[] }>>);
+    
+    return grouped;
   }, [accounts]);
 
   const typeLabels: Record<string, string> = {
@@ -73,20 +85,39 @@ export function CategorySelector({ restaurantId, value, onSelect, onAddNew }: Ca
   };
 
   const filteredGroups = useMemo(() => {
-    if (!searchQuery) return groupedAccounts;
+    if (!searchQuery) return organizedAccounts;
     
-    const filtered: Record<string, typeof accounts> = {};
-    Object.entries(groupedAccounts).forEach(([type, typeAccounts]) => {
-      const matches = typeAccounts.filter(acc =>
-        acc.account_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        acc.account_code.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+    const query = searchQuery.toLowerCase();
+    const filtered: typeof organizedAccounts = {};
+    
+    Object.entries(organizedAccounts).forEach(([type, items]) => {
+      const matches = items.map(({ account, subAccounts }) => {
+        const parentMatches = 
+          account.account_name.toLowerCase().includes(query) ||
+          account.account_code.toLowerCase().includes(query);
+        
+        const matchingSubAccounts = subAccounts.filter((sub: any) =>
+          sub.account_name.toLowerCase().includes(query) ||
+          sub.account_code.toLowerCase().includes(query) ||
+          account.account_name.toLowerCase().includes(query)
+        );
+        
+        if (parentMatches || matchingSubAccounts.length > 0) {
+          return {
+            account,
+            subAccounts: parentMatches ? subAccounts : matchingSubAccounts
+          };
+        }
+        return null;
+      }).filter(Boolean);
+      
       if (matches.length > 0) {
-        filtered[type] = matches;
+        filtered[type] = matches as any;
       }
     });
+    
     return filtered;
-  }, [groupedAccounts, searchQuery]);
+  }, [organizedAccounts, searchQuery]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -125,33 +156,62 @@ export function CategorySelector({ restaurantId, value, onSelect, onAddNew }: Ca
               <CommandEmpty>No categories found.</CommandEmpty>
             ) : (
               <>
-                {Object.entries(filteredGroups).map(([type, typeAccounts], idx) => (
+                {Object.entries(filteredGroups).map(([type, items], idx) => (
                   <div key={type}>
                     {idx > 0 && <CommandSeparator />}
                     <CommandGroup heading={typeLabels[type] || type}>
-                      {typeAccounts.map((account) => (
-                        <CommandItem
-                          key={account.id}
-                          value={account.id}
-                          onSelect={() => {
-                            onSelect(account.id);
-                            setOpen(false);
-                          }}
-                          className="cursor-pointer"
-                        >
-                          <Check
-                            className={cn(
-                              'mr-2 h-4 w-4',
-                              value === account.id ? 'opacity-100' : 'opacity-0'
-                            )}
-                          />
-                          <div className="flex items-center gap-2 flex-1">
-                            <span className="font-mono text-xs text-muted-foreground">
-                              {account.account_code}
-                            </span>
-                            <span>{account.account_name}</span>
-                          </div>
-                        </CommandItem>
+                      {items.map(({ account, subAccounts }: any) => (
+                        <div key={account.id}>
+                          {/* Parent Account */}
+                          <CommandItem
+                            value={account.id}
+                            onSelect={() => {
+                              onSelect(account.id);
+                              setOpen(false);
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <Check
+                              className={cn(
+                                'mr-2 h-4 w-4',
+                                value === account.id ? 'opacity-100' : 'opacity-0'
+                              )}
+                            />
+                            <div className="flex items-center gap-2 flex-1">
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {account.account_code}
+                              </span>
+                              <span>{account.account_name}</span>
+                            </div>
+                          </CommandItem>
+                          
+                          {/* Sub-Accounts */}
+                          {subAccounts.map((subAccount: any) => (
+                            <CommandItem
+                              key={subAccount.id}
+                              value={subAccount.id}
+                              onSelect={() => {
+                                onSelect(subAccount.id);
+                                setOpen(false);
+                              }}
+                              className="cursor-pointer ml-4"
+                            >
+                              <Check
+                                className={cn(
+                                  'mr-2 h-4 w-4',
+                                  value === subAccount.id ? 'opacity-100' : 'opacity-0'
+                                )}
+                              />
+                              <span className="text-muted-foreground mr-2">↳</span>
+                              <div className="flex items-center gap-2 flex-1">
+                                <span className="font-mono text-xs text-muted-foreground">
+                                  {subAccount.account_code}
+                                </span>
+                                <span className="text-sm">{subAccount.account_name}</span>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </div>
                       ))}
                     </CommandGroup>
                   </div>

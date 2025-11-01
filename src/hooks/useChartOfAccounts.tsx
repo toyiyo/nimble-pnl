@@ -10,8 +10,14 @@ export interface ChartAccount {
   account_code: string;
   account_name: string;
   account_type: AccountType;
-  account_subtype: string;
+  account_subtype: string | null;
   parent_account_id: string | null;
+  parent_account?: {
+    id: string;
+    account_name: string;
+    account_code: string;
+    account_type: AccountType;
+  };
   description: string | null;
   is_active: boolean;
   is_system_account: boolean;
@@ -32,7 +38,15 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
 
       const { data, error } = await supabase
         .from('chart_of_accounts')
-        .select('*')
+        .select(`
+          *,
+          parent_account:chart_of_accounts!parent_account_id(
+            id,
+            account_name,
+            account_code,
+            account_type
+          )
+        `)
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
         .order('account_code');
@@ -46,6 +60,9 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
         });
         throw error;
       }
+
+      console.log('[useChartOfAccounts] Fetched accounts:', data);
+      console.log('[useChartOfAccounts] Sample account with parent:', data?.find(a => a.parent_account_id));
 
       return data || [];
     },
@@ -65,6 +82,31 @@ export const useChartOfAccounts = (restaurantId: string | null) => {
     if (!restaurantId) return;
 
     try {
+      // Verify user has permission first
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Check user_restaurants relationship
+      const { data: userRestaurant, error: relationshipError } = await supabase
+        .from('user_restaurants')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('restaurant_id', restaurantId)
+        .single();
+
+      if (relationshipError || !userRestaurant) {
+        console.error('User restaurant relationship check failed:', relationshipError);
+        throw new Error('You do not have permission to manage this restaurant. Please ensure you are the owner or manager.');
+      }
+
+      if (!['owner', 'manager'].includes(userRestaurant.role)) {
+        throw new Error(`Insufficient permissions. Your role (${userRestaurant.role}) cannot create accounts.`);
+      }
+
+      console.log('User permissions verified:', { userId: user.id, restaurantId, role: userRestaurant.role });
+
       const defaultAccounts = [
         // ASSETS (1000-1999)
         { account_code: '1000', account_name: 'Cash & Cash Equivalents', account_type: 'asset', account_subtype: 'cash', normal_balance: 'debit', description: 'Total liquid funds available' },

@@ -18,9 +18,13 @@ import {
   BarChart3
 } from 'lucide-react';
 import { usePnLAnalytics } from '@/hooks/usePnLAnalytics';
+import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 interface DetailedPnLBreakdownProps {
   restaurantId: string;
@@ -46,12 +50,47 @@ interface PnLRow {
 }
 
 export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo }: DetailedPnLBreakdownProps) {
-  const { data, loading } = usePnLAnalytics(restaurantId, { days, dateFrom, dateTo });
+  // Calculate actual dates
+  const actualDateFrom = dateFrom || new Date(new Date().setDate(new Date().getDate() - days));
+  const actualDateTo = dateTo || new Date();
   
-  // Calculate actual days if dates are provided (inclusive, minimum 1)
-  const actualDays = dateFrom && dateTo 
-    ? Math.max(1, Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24)) + 1)
-    : days;
+  // Use new unified metrics hook (revenue from unified_sales + costs from daily_pnl)
+  const { data: periodMetrics, isLoading: metricsLoading } = usePeriodMetrics(
+    restaurantId,
+    actualDateFrom,
+    actualDateTo
+  );
+  
+  // Fetch revenue breakdown for detailed category display
+  const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
+    restaurantId,
+    actualDateFrom,
+    actualDateTo
+  );
+  
+  // Fetch daily cost data for trends (still from daily_pnl)
+  const { data: dailyCosts, isLoading: costsLoading } = useQuery({
+    queryKey: ['pnl-costs-breakdown', restaurantId, days, dateFrom, dateTo],
+    queryFn: async () => {
+      if (!restaurantId) return null;
+      
+      const { data, error } = await supabase
+        .from('daily_pnl')
+        .select('date, food_cost, labor_cost')
+        .eq('restaurant_id', restaurantId)
+        .gte('date', format(actualDateFrom, 'yyyy-MM-dd'))
+        .lte('date', format(actualDateTo, 'yyyy-MM-dd'))
+        .order('date', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!restaurantId,
+    staleTime: 30000,
+  });
+
+  const loading = metricsLoading || revenueLoading || costsLoading;
+  
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['sales', 'cogs', 'labor', 'prime', 'controllable'])
   );
@@ -67,14 +106,36 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
   };
 
   const pnlStructure = useMemo<PnLRow[]>(() => {
-    if (!data) return [];
+    if (!periodMetrics || !revenueBreakdown) return [];
 
-    const current = data.comparison.current_period;
-    const previous = data.comparison.previous_period;
+    // Use periodMetrics for current period data
+    const current = {
+      revenue: periodMetrics.netRevenue,
+      food_cost: periodMetrics.foodCost,
+      labor_cost: periodMetrics.laborCost,
+      prime_cost: periodMetrics.primeCost,
+      avg_food_cost_pct: periodMetrics.foodCostPercentage,
+      avg_labor_cost_pct: periodMetrics.laborCostPercentage,
+      avg_prime_cost_pct: periodMetrics.primeCostPercentage,
+    };
+    
+    // For previous period, we'd need to make another API call
+    // For now, use current as baseline (no comparison)
+    const previous = current;
+    
+    // Safe denominator for revenue breakdown calculations
+    const grossRevenue = revenueBreakdown.totals.gross_revenue;
+    const safeGrossRevenue = grossRevenue > 0 ? grossRevenue : 1;
 
-    // Helper to calculate trend from daily data
-    const getTrend = (metric: 'net_revenue' | 'food_cost' | 'labor_cost' | 'prime_cost') => {
-      return data.dailyData.slice(-7).map(d => d[metric]);
+    // Helper to calculate trend from daily cost data
+    const getTrend = (metric: 'food_cost' | 'labor_cost') => {
+      if (!dailyCosts || dailyCosts.length < 2) return [];
+      return dailyCosts.slice(-7).reverse().map(d => d[metric] || 0);
+    };
+
+    const getPrimeCostTrend = () => {
+      if (!dailyCosts || dailyCosts.length < 2) return [];
+      return dailyCosts.slice(-7).reverse().map(d => (d.food_cost || 0) + (d.labor_cost || 0));
     };
 
     const getInsight = (currentPct: number, previousPct: number, benchmark: number, metricName: string) => {
@@ -103,20 +164,71 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
       return 'neutral';
     };
 
+    // Industry benchmarks
+    const benchmarks = {
+      industry_avg_food_cost: 30,
+      industry_avg_labor_cost: 30,
+      industry_avg_prime_cost: 60,
+    };
+
     return [
-      // SALES SECTION
+      // SALES SECTION - Enhanced with Revenue Breakdown
       {
         id: 'sales',
-        label: 'Total Sales',
-        value: current.revenue,
+        label: revenueBreakdown && revenueBreakdown.has_categorization_data 
+          ? 'Total Sales (Gross Revenue)' 
+          : 'Total Sales',
+        value: revenueBreakdown && revenueBreakdown.has_categorization_data
+          ? revenueBreakdown.totals.gross_revenue
+          : current.revenue,
         percentage: 100,
         previousValue: previous.revenue,
         previousPercentage: 100,
         type: 'header',
         level: 0,
-        trend: getTrend('net_revenue'),
-        insight: `Revenue ${data.comparison.change.revenue_pct >= 0 ? 'up' : 'down'} ${Math.abs(data.comparison.change.revenue_pct).toFixed(1)}% vs previous ${actualDays} days`,
-        status: data.comparison.change.revenue_pct >= 0 ? 'good' : 'warning',
+        trend: [],
+        insight: revenueBreakdown && revenueBreakdown.has_categorization_data
+          ? `Gross revenue from ${revenueBreakdown.revenue_categories.reduce((sum, c) => sum + c.transaction_count, 0)} transactions across ${revenueBreakdown.revenue_categories.length} categories`
+          : `Revenue data for ${periodMetrics.daysInPeriod} days`,
+        // Add revenue categories as children if available
+        children: revenueBreakdown && revenueBreakdown.has_categorization_data
+          ? [
+               ...revenueBreakdown.revenue_categories.map(cat => ({
+                id: `sales-${cat.account_id}`,
+                label: `${cat.account_code} - ${cat.account_name}`,
+                value: cat.total_amount,
+                percentage: grossRevenue > 0 ? (cat.total_amount / safeGrossRevenue) * 100 : 0,
+                type: 'line-item' as const,
+                level: 1,
+                insight: `${cat.transaction_count} transactions • ${grossRevenue > 0 ? (cat.total_amount / safeGrossRevenue * 100).toFixed(1) : '0.0'}% of gross`,
+                status: 'neutral' as const,
+              })),
+              ...(revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories.length > 0 
+                ? [
+                    {
+                      id: 'sales-deductions',
+                      label: 'Less: Discounts & Refunds',
+                      value: -(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds),
+                      percentage: grossRevenue > 0 ? -((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / safeGrossRevenue) * 100 : 0,
+                      type: 'line-item' as const,
+                      level: 1,
+                      insight: `${grossRevenue > 0 ? ((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / safeGrossRevenue * 100).toFixed(1) : '0.0'}% of gross revenue`,
+                      status: grossRevenue > 0 && (revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / safeGrossRevenue > 0.03 ? 'warning' as const : 'neutral' as const,
+                    },
+                  ]
+                : []),
+              {
+                id: 'sales-net',
+                label: 'Net Sales Revenue',
+                value: revenueBreakdown.totals.net_revenue,
+                percentage: grossRevenue > 0 ? (revenueBreakdown.totals.net_revenue / safeGrossRevenue) * 100 : 0,
+                type: 'subtotal' as const,
+                level: 1,
+                insight: `Final revenue after all deductions`,
+                status: 'good' as const,
+              },
+            ]
+          : undefined,
       },
       
       // COGS SECTION
@@ -129,15 +241,15 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         previousPercentage: previous.avg_food_cost_pct,
         type: 'header',
         level: 0,
-        benchmark: data.benchmarks.industry_avg_food_cost,
+        benchmark: benchmarks.industry_avg_food_cost,
         trend: getTrend('food_cost'),
         insight: getInsight(
           current.avg_food_cost_pct,
           previous.avg_food_cost_pct,
-          data.benchmarks.industry_avg_food_cost,
+          benchmarks.industry_avg_food_cost,
           'Food cost'
         ),
-        status: getStatus(current.avg_food_cost_pct, data.benchmarks.industry_avg_food_cost),
+        status: getStatus(current.avg_food_cost_pct, benchmarks.industry_avg_food_cost),
       },
 
       // LABOR SECTION
@@ -150,15 +262,15 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         previousPercentage: previous.avg_labor_cost_pct,
         type: 'header',
         level: 0,
-        benchmark: data.benchmarks.industry_avg_labor_cost,
+        benchmark: benchmarks.industry_avg_labor_cost,
         trend: getTrend('labor_cost'),
         insight: getInsight(
           current.avg_labor_cost_pct,
           previous.avg_labor_cost_pct,
-          data.benchmarks.industry_avg_labor_cost,
+          benchmarks.industry_avg_labor_cost,
           'Labor cost'
         ),
-        status: getStatus(current.avg_labor_cost_pct, data.benchmarks.industry_avg_labor_cost),
+        status: getStatus(current.avg_labor_cost_pct, benchmarks.industry_avg_labor_cost),
       },
 
       // PRIME COST
@@ -171,12 +283,12 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         previousPercentage: previous.avg_prime_cost_pct,
         type: 'total',
         level: 0,
-        benchmark: data.benchmarks.industry_avg_prime_cost,
-        trend: getTrend('prime_cost'),
-        insight: current.avg_prime_cost_pct > data.benchmarks.industry_avg_prime_cost 
-          ? `Prime cost exceeds target of ${data.benchmarks.industry_avg_prime_cost}% - immediate action needed`
-          : `Prime cost within healthy range - target is ${data.benchmarks.industry_avg_prime_cost}%`,
-        status: getStatus(current.avg_prime_cost_pct, data.benchmarks.industry_avg_prime_cost),
+        benchmark: benchmarks.industry_avg_prime_cost,
+        trend: getPrimeCostTrend(),
+        insight: current.avg_prime_cost_pct > benchmarks.industry_avg_prime_cost 
+          ? `Prime cost exceeds target of ${benchmarks.industry_avg_prime_cost}% - immediate action needed`
+          : `Prime cost within healthy range - target is ${benchmarks.industry_avg_prime_cost}%`,
+        status: getStatus(current.avg_prime_cost_pct, benchmarks.industry_avg_prime_cost),
       },
 
       // CONTRIBUTION MARGIN
@@ -190,7 +302,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         type: 'total',
         level: 0,
         insight: `${(100 - current.avg_prime_cost_pct).toFixed(1)}% margin available for operating expenses and profit`,
-        status: current.avg_prime_cost_pct < data.benchmarks.industry_avg_prime_cost ? 'good' : 'warning',
+        status: current.avg_prime_cost_pct < benchmarks.industry_avg_prime_cost ? 'good' : 'warning',
       },
 
       // GROSS PROFIT
@@ -203,11 +315,11 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         previousPercentage: 100 - previous.avg_prime_cost_pct,
         type: 'total',
         level: 0,
-        insight: `$${((current.revenue - current.prime_cost) / actualDays).toFixed(0)} average daily contribution`,
+        insight: `$${((current.revenue - current.prime_cost) / periodMetrics.daysInPeriod).toFixed(0)} average daily contribution`,
         status: 'neutral',
       },
     ];
-  }, [data, actualDays]);
+  }, [periodMetrics, revenueBreakdown, dailyCosts]);
 
   const getStatusIcon = (status?: PnLRow['status']) => {
     switch (status) {
@@ -256,7 +368,9 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
   };
 
   const exportToExcel = () => {
-    if (!data) return;
+    if (!periodMetrics) return;
+    
+    const actualDays = periodMetrics.daysInPeriod;
     
     const rows = [
       ['Detailed P&L Breakdown'],
@@ -315,7 +429,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
     );
   }
 
-  if (!data) {
+  if (!periodMetrics) {
     return (
       <Card>
         <CardContent className="py-12 text-center">
@@ -324,6 +438,8 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
       </Card>
     );
   }
+
+  const actualDays = periodMetrics.daysInPeriod;
 
   return (
     <Card>
@@ -392,7 +508,12 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
                           )}
                         </button>
                       )}
-                      <span className="text-sm">{row.label}</span>
+                      <span className={cn(
+                        "text-sm",
+                        row.type === 'subtotal' && "font-semibold italic"
+                      )}>
+                        {row.label}
+                      </span>
                     </div>
 
                     <div className="col-span-2 text-right text-sm font-mono">
@@ -487,6 +608,50 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
                   </div>
                   );
                 })}
+                
+                {/* Render children (line items) if section is expanded */}
+                {pnlStructure.map((row) => 
+                  row.children && expandedSections.has(row.id) && row.children.map((child) => {
+                    const childLevelIndentClass = ['pl-0','pl-4','pl-8','pl-12','pl-16'][Math.min(child.level, 4)];
+                    return (
+                      <div
+                        key={child.id}
+                        className={cn(
+                          "grid grid-cols-12 gap-2 px-4 py-2 rounded-lg transition-colors hover:bg-muted/30",
+                          child.type === 'subtotal' && "font-semibold bg-muted/20 border-t mt-1"
+                        )}
+                      >
+                        <div className={cn("col-span-4 flex items-center gap-2", childLevelIndentClass)}>
+                          <span className={cn(
+                            "text-sm",
+                            child.type === 'subtotal' && "font-semibold italic"
+                          )}>
+                            {child.label}
+                          </span>
+                        </div>
+
+                        <div className={cn(
+                          "col-span-2 text-right text-sm font-mono",
+                          child.value < 0 && "text-red-600"
+                        )}>
+                          {child.value < 0 ? '-' : ''}${Math.abs(child.value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+
+                        <div className="col-span-1 text-right text-sm font-mono">
+                          {child.percentage.toFixed(1)}%
+                        </div>
+
+                        <div className="col-span-1" />
+                        <div className="col-span-1" />
+                        <div className="col-span-2" />
+
+                        <div className="col-span-1 flex items-center justify-center">
+                          {getStatusIcon(child.status)}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </TooltipProvider>
             </div>
           </div>

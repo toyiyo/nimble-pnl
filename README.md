@@ -224,6 +224,160 @@ cd supabase/tests
 
 See [supabase/tests/README.md](supabase/tests/README.md) for detailed testing documentation.
 
+## Financial Calculations & Formulas
+
+### Data Model Overview
+
+#### Data Sources
+- **Revenue & Liabilities**: `unified_sales` table (consolidates Square, Clover, manual entries)
+- **Costs**: `daily_pnl` table (food cost, labor cost)
+- **Chart of Accounts**: `chart_of_accounts` table (account categorization)
+
+#### Split Sale Handling
+To avoid double-counting when sales are split:
+1. **Exclude** parent sales that have children (identified by checking if their ID appears as a `parent_sale_id`)
+2. **Include** all child splits (sales with a `parent_sale_id`)
+3. **Include** unsplit sales (no `parent_sale_id`, no children)
+
+```typescript
+// Logic: Find parent IDs that have children
+const parentIdsWithChildren = new Set(
+  sales.filter(s => s.parent_sale_id !== null)
+       .map(s => s.parent_sale_id)
+);
+
+// Filter: Keep only sales that are NOT in the parent set
+const validSales = sales.filter(s => !parentIdsWithChildren.has(s.id));
+```
+
+### Monthly Performance Metrics
+
+#### Gross Revenue
+**Formula**: Sum of all sales with `item_type='sale'` AND `account_type='revenue'`
+
+```typescript
+Gross Revenue = Σ(total_price) where item_type='sale' AND account_type='revenue'
+```
+
+#### Discounts
+**Formula**: Sum of absolute values for discount items
+
+```typescript
+Discounts = Σ(ABS(total_price)) where item_type='discount'
+```
+
+#### Refunds
+**Formula**: Sum of absolute values for refund items
+
+```typescript
+Refunds = Σ(ABS(total_price)) where item_type='refund'
+```
+
+#### Net Revenue
+**Formula**: Gross Revenue minus Discounts minus Refunds
+
+```typescript
+Net Revenue = Gross Revenue - Discounts - Refunds
+```
+
+#### Sales Tax Collected
+**Formula**: Sum of liability sales with "sales" or "tax" in account subtype
+
+```typescript
+Sales Tax = Σ(total_price) where item_type='sale' 
+            AND account_type='liability' 
+            AND (account_subtype LIKE '%sales%' OR account_subtype LIKE '%tax%')
+```
+
+#### Tips
+**Formula**: Sum of liability sales with "tip" in account subtype
+
+```typescript
+Tips = Σ(total_price) where item_type='sale' 
+       AND account_type='liability' 
+       AND account_subtype LIKE '%tip%'
+```
+
+#### Other Liabilities
+**Formula**: Sum of liability sales not categorized as tax or tips
+
+```typescript
+Other Liabilities = Σ(total_price) where item_type='sale' 
+                    AND account_type='liability' 
+                    AND account_subtype NOT LIKE '%sales%' 
+                    AND account_subtype NOT LIKE '%tax%'
+                    AND account_subtype NOT LIKE '%tip%'
+```
+
+#### Total Collected at POS
+**Formula**: Sum of all revenue and liabilities collected
+
+```typescript
+Total Collected = Gross Revenue + Sales Tax + Tips + Other Liabilities
+```
+
+#### Food Cost
+**Formula**: Sum of food costs from daily P&L records
+
+```typescript
+Food Cost = Σ(daily_pnl.food_cost) for all dates in month
+```
+
+#### Labor Cost
+**Formula**: Sum of labor costs from daily P&L records
+
+```typescript
+Labor Cost = Σ(daily_pnl.labor_cost) for all dates in month
+```
+
+#### Profit
+**Formula**: Net Revenue minus operating costs
+
+```typescript
+Profit = Net Revenue - Food Cost - Labor Cost
+```
+
+#### Month-over-Month Change
+**Formula**: Percentage change in net revenue compared to prior month
+
+```typescript
+MoM Change % = ((Current Month Net Revenue - Prior Month Net Revenue) / ABS(Prior Month Net Revenue)) × 100
+```
+
+### Example Calculation
+
+Given sales data for October 2025:
+- Sales items (revenue): $10,560.56 + $386.00 = **$10,946.56**
+- Discounts: $0.00
+- Refunds: $0.00
+- Sales tax (liability): $1.44
+- Other liabilities: $2.00
+
+**Calculations**:
+```
+Gross Revenue = $10,946.56
+Discounts = $0.00
+Refunds = $0.00
+Net Revenue = $10,946.56 - $0.00 - $0.00 = $10,946.56
+
+Sales Tax = $1.44
+Tips = $0.00
+Other Liabilities = $2.00
+Total Collected at POS = $10,946.56 + $1.44 + $2.00 = $10,950.00
+
+Food Cost = $0.00
+Labor Cost = $0.00
+Profit = $10,946.56 - $0.00 - $0.00 = $10,946.56
+```
+
+### Key Principles
+
+1. **No Double-Counting**: Split sales are handled by excluding parent records and including only child records
+2. **Integer Math**: All calculations use integer cents to avoid floating-point errors
+3. **Liability Separation**: Taxes, tips, and other liabilities are tracked separately from revenue
+4. **Account-Based**: All categorization relies on the Chart of Accounts (`account_type` and `account_subtype`)
+5. **Real-Time**: Data syncs via webhooks + periodic polling from POS systems
+
 ## Contributing
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute to this project.

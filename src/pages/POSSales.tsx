@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
 import { useUnifiedSales } from "@/hooks/useUnifiedSales";
 import { usePOSIntegrations } from "@/hooks/usePOSIntegrations";
 import { useInventoryDeduction } from "@/hooks/useInventoryDeduction";
@@ -25,6 +26,12 @@ import { ExportDropdown } from "@/components/financial-statements/shared/ExportD
 import { generateTablePDF } from "@/utils/pdfExport";
 import Papa from "papaparse";
 import { useToast } from "@/hooks/use-toast";
+import { useCategorizePosSales } from "@/hooks/useCategorizePosSales";
+import { useCategorizePosSale } from "@/hooks/useCategorizePosSale";
+import { useSplitPosSale } from "@/hooks/useSplitPosSale";
+import { SplitPosSaleDialog } from "@/components/pos-sales/SplitPosSaleDialog";
+import { SplitSaleView } from "@/components/pos-sales/SplitSaleView";
+import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 
 export default function POSSales() {
   const {
@@ -34,7 +41,7 @@ export default function POSSales() {
     loading: restaurantsLoading,
     createRestaurant,
   } = useRestaurantContext();
-  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, deleteManualSale } =
+  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, deleteManualSale, fetchUnifiedSales } =
     useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(
     selectedRestaurant?.restaurant_id || null,
@@ -67,6 +74,17 @@ export default function POSSales() {
   const [selectedPOSItemForMapping, setSelectedPOSItemForMapping] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
+  const { mutate: categorizePosSales, isPending: isCategorizingPending } = useCategorizePosSales();
+  const { mutate: categorizePosSale } = useCategorizePosSale(selectedRestaurant?.restaurant_id || null);
+  const { mutate: splitPosSale } = useSplitPosSale();
+  const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
+  const [saleToSplit, setSaleToSplit] = useState<any>(null);
+  const [editingCategoryForSale, setEditingCategoryForSale] = useState<string | null>(null);
+
+  // Filter revenue and liability accounts for categorization (matching split dialog)
+  const categoryAccounts = useMemo(() => {
+    return accounts.filter(acc => acc.account_type === 'revenue' || acc.account_type === 'liability');
+  }, [accounts]);
 
   const handleMapPOSItem = (itemName: string) => {
     setSelectedPOSItemForMapping(itemName);
@@ -104,7 +122,10 @@ export default function POSSales() {
   }, [selectedRestaurant?.restaurant_id]); // Only re-run when restaurant changes
 
   const filteredSales = useMemo(() => {
-    let filtered = sales.filter((sale) => sale.itemName.toLowerCase().includes(searchTerm.toLowerCase()));
+    // Filter out child splits - only show parent sales or non-split sales
+    let filtered = sales
+      .filter((sale) => !sale.parent_sale_id) // Exclude child splits
+      .filter((sale) => sale.itemName.toLowerCase().includes(searchTerm.toLowerCase()));
     
     if (startDate) {
       filtered = filtered.filter((sale) => sale.saleDate >= startDate);
@@ -141,6 +162,20 @@ export default function POSSales() {
     
     return filtered;
   }, [sales, searchTerm, startDate, endDate, sortBy, sortDirection]);
+
+  // Get sales with AI suggestions
+  const suggestedSales = useMemo(() => {
+    return sales.filter(sale => 
+      sale.suggested_category_id && !sale.is_categorized
+    );
+  }, [sales]);
+
+  // Count uncategorized sales
+  const uncategorizedSalesCount = useMemo(() => {
+    return sales.filter(sale => 
+      !sale.is_categorized && !sale.suggested_category_id
+    ).length;
+  }, [sales]);
 
   const dateFilteredSales = filteredSales;
 
@@ -222,7 +257,19 @@ export default function POSSales() {
   // Calculate dashboard metrics - MUST be before conditional return to follow Rules of Hooks
   const dashboardMetrics = useMemo(() => {
     const totalSales = filteredSales.length;
-    const totalRevenue = filteredSales.reduce((sum, sale) => sum + (sale.totalPrice || 0), 0);
+    
+    // For revenue, use child splits totals if sale is split, otherwise use the sale's total
+    const totalRevenue = filteredSales.reduce((sum, sale) => {
+      if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
+        // Sum child split amounts for split sales
+        return sum + sale.child_splits.reduce((childSum, split) => 
+          childSum + (split.totalPrice || 0), 0
+        );
+      }
+      // Use parent sale amount for non-split sales
+      return sum + (sale.totalPrice || 0);
+    }, 0);
+    
     const uniqueItems = new Set(filteredSales.map(sale => sale.itemName)).size;
     
     return {
@@ -460,6 +507,44 @@ export default function POSSales() {
         unmappedCount={dashboardMetrics.unmappedCount}
       />
 
+      {/* AI Categorization Section */}
+      <Card className="border-border/50">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                AI Categorization
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Automatically categorize POS sales to chart of accounts
+              </p>
+            </div>
+            <Button 
+              onClick={() => categorizePosSales(selectedRestaurant.restaurant_id)}
+              disabled={isCategorizingPending || uncategorizedSalesCount === 0}
+              className="gap-2"
+            >
+              <Sparkles className="h-4 w-4" />
+              {isCategorizingPending ? "Categorizing..." : "AI Categorize Sales"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4 text-sm">
+            <Badge variant="secondary" className="gap-1">
+              {uncategorizedSalesCount} uncategorized
+            </Badge>
+            {suggestedSales.length > 0 && (
+              <Badge variant="default" className="gap-1 bg-gradient-to-r from-blue-500 to-purple-500">
+                <Sparkles className="h-3 w-3" />
+                {suggestedSales.length} pending review
+              </Badge>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "manual" | "import")} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="manual">View Sales</TabsTrigger>
@@ -620,6 +705,25 @@ export default function POSSales() {
                 ) : (
                   <div className="space-y-3">
                     {dateFilteredSales.map((sale, index) => {
+                      // If sale is split, show the SplitSaleView component
+                      if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
+                        return (
+                          <div
+                            key={sale.id}
+                            className="animate-fade-in"
+                            style={{ animationDelay: `${index * 50}ms` }}
+                          >
+                            <SplitSaleView
+                              sale={sale}
+                              onEdit={handleEditSale}
+                              onSplit={(s) => setSaleToSplit(s)}
+                              formatCurrency={(amount) => `$${amount.toFixed(2)}`}
+                            />
+                          </div>
+                        );
+                      }
+                      
+                      // Regular sale card (non-split)
                       const posSystemColors: Record<string, string> = {
                         "Square": "border-l-blue-500",
                         "Clover": "border-l-green-500",
@@ -666,6 +770,59 @@ export default function POSSales() {
                                   No Recipe
                                 </Badge>
                               )}
+                              {sale.suggested_category_id && !sale.is_categorized && (
+                                <Badge variant="outline" className="bg-accent/10 text-accent-foreground border-accent/30">
+                                  <Sparkles className="h-3 w-3 mr-1" />
+                                  AI Suggested
+                                </Badge>
+                              )}
+                              {sale.is_categorized && sale.chart_account && (
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                                    {sale.chart_account.account_code} - {sale.chart_account.account_name}
+                                  </Badge>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={() => setEditingCategoryForSale(sale.id)}
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={() => setSaleToSplit(sale)}
+                                  >
+                                    Split
+                                  </Button>
+                                </div>
+                              )}
+                              {sale.ai_confidence && sale.suggested_category_id && !sale.is_categorized && (
+                                <Badge 
+                                  variant="outline"
+                                  className={
+                                    sale.ai_confidence === 'high' 
+                                      ? 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30'
+                                      : sale.ai_confidence === 'medium'
+                                      ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border-yellow-500/30'
+                                      : 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30'
+                                  }
+                                >
+                                  {sale.ai_confidence}
+                                </Badge>
+                              )}
+                              {!sale.is_categorized && !sale.suggested_category_id && editingCategoryForSale !== sale.id && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 px-2 text-xs border-primary/50 hover:bg-primary/10"
+                                  onClick={() => setEditingCategoryForSale(sale.id)}
+                                >
+                                  Categorize
+                                </Button>
+                              )}
                             </div>
                             <div className="text-sm text-muted-foreground">
                               {(() => {
@@ -682,6 +839,84 @@ export default function POSSales() {
                                 </>
                               )}
                             </div>
+                            {sale.suggested_category_id && !sale.is_categorized && sale.chart_account && (
+                              <div className="mt-2 p-2 bg-accent/5 border border-accent/20 rounded-md">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="text-xs text-muted-foreground flex-1">
+                                    <span className="font-medium text-foreground">AI Suggestion:</span> {sale.chart_account.account_name} ({sale.chart_account.account_code})
+                                    {sale.ai_reasoning && <div className="mt-1 text-xs">{sale.ai_reasoning}</div>}
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="default"
+                                      className="text-xs h-7 px-2"
+                                     onClick={() => categorizePosSale({ 
+                                       saleId: sale.id, 
+                                       categoryId: sale.suggested_category_id!,
+                                       accountInfo: {
+                                         account_name: sale.chart_account.account_name,
+                                         account_code: sale.chart_account.account_code,
+                                       }
+                                     })}
+                                    >
+                                      <Check className="h-3 w-3 mr-1" />
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-xs h-7 px-2"
+                                      onClick={() => setSaleToSplit(sale)}
+                                    >
+                                      <Split className="h-3 w-3 mr-1" />
+                                      Split
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-xs h-7 px-2"
+                                      onClick={() => setEditingCategoryForSale(sale.id)}
+                                    >
+                                      <X className="h-3 w-3 mr-1" />
+                                      Change
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            {editingCategoryForSale === sale.id && (
+                              <div className="mt-2 p-2 bg-muted/50 border border-border rounded-md">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1">
+                                     <SearchableAccountSelector
+                                       value={sale.category_id || sale.suggested_category_id || ""}
+                                       onValueChange={(categoryId) => {
+                                         const selectedAccount = accounts.find(acc => acc.id === categoryId);
+                                         categorizePosSale({ 
+                                           saleId: sale.id, 
+                                           categoryId,
+                                           accountInfo: selectedAccount ? {
+                                             account_name: selectedAccount.account_name,
+                                             account_code: selectedAccount.account_code,
+                                           } : undefined
+                                         });
+                                         setEditingCategoryForSale(null);
+                                       }}
+                                       placeholder="Select category"
+                                       filterByTypes={['revenue', 'liability']}
+                                     />
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setEditingCategoryForSale(null)}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
                             {(sale.posSystem === "manual" || sale.posSystem === "manual_upload") &&
@@ -863,6 +1098,14 @@ export default function POSSales() {
           onMappingComplete={handleMappingComplete}
         />
       )}
+
+      {/* Split POS Sale Dialog */}
+      <SplitPosSaleDialog
+        sale={saleToSplit}
+        isOpen={!!saleToSplit}
+        onClose={() => setSaleToSplit(null)}
+        restaurantId={selectedRestaurant?.restaurant_id || ""}
+      />
     </div>
   );
 }

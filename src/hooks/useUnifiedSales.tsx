@@ -1,66 +1,107 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { UnifiedSaleItem, POSSystemType } from '@/types/pos';
 
 export const useUnifiedSales = (restaurantId: string | null) => {
-  const [sales, setSales] = useState<UnifiedSaleItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [unmappedItems, setUnmappedItems] = useState<string[]>([]);
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const fetchUnifiedSales = useCallback(async (startDate?: string, endDate?: string) => {
+  const fetchUnifiedSales = useCallback(async () => {
     if (!restaurantId || !user) {
-      setLoading(false);
-      return;
+      return [];
     }
 
-    try {
-      setLoading(true);
-      
-      let query = supabase
-        .from('unified_sales')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('sale_date', { ascending: false })
-        .order('created_at', { ascending: false });
+    const query = supabase
+      .from('unified_sales')
+      .select(`
+        *,
+        suggested_chart_account:chart_of_accounts!suggested_category_id (
+          id,
+          account_code,
+          account_name,
+          account_type
+        ),
+        approved_chart_account:chart_of_accounts!category_id (
+          id,
+          account_code,
+          account_name,
+          account_type
+        )
+      `)
+      .eq('restaurant_id', restaurantId)
+      .order('sale_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1000);
 
-      if (startDate) {
-        query = query.gte('sale_date', startDate);
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    const transformedSales: UnifiedSaleItem[] = (data || []).map(sale => ({
+      id: sale.id,
+      restaurantId: sale.restaurant_id,
+      posSystem: sale.pos_system as POSSystemType,
+      externalOrderId: sale.external_order_id,
+      externalItemId: sale.external_item_id,
+      itemName: sale.item_name,
+      quantity: sale.quantity,
+      unitPrice: sale.unit_price,
+      totalPrice: sale.total_price,
+      saleDate: sale.sale_date,
+      saleTime: sale.sale_time,
+      posCategory: sale.pos_category,
+      rawData: sale.raw_data,
+      syncedAt: sale.synced_at,
+      createdAt: sale.created_at,
+      source: sale.pos_system,
+      // AI Categorization fields
+      category_id: sale.category_id,
+      suggested_category_id: sale.suggested_category_id,
+      ai_confidence: sale.ai_confidence as "high" | "medium" | "low" | undefined,
+      ai_reasoning: sale.ai_reasoning,
+      item_type: sale.item_type as "sale" | "tip" | "tax" | "discount" | "comp" | "service_charge" | "other" | undefined,
+      is_categorized: sale.is_categorized || false,
+      is_split: sale.is_split || false,
+      parent_sale_id: sale.parent_sale_id,
+      // Use approved_chart_account if categorized, otherwise suggested_chart_account
+      chart_account: sale.is_categorized ? sale.approved_chart_account : sale.suggested_chart_account,
+    }));
+
+    // Compute child_splits from the flat data
+    const salesWithSplits = transformedSales.map(sale => {
+      if (sale.is_split) {
+        // Find all child splits for this parent
+        const children = transformedSales.filter(s => s.parent_sale_id === sale.id);
+        return { ...sale, child_splits: children.length > 0 ? children : undefined };
       }
-      if (endDate) {
-        query = query.lte('sale_date', endDate);
+      return sale;
+    });
+
+    return salesWithSplits;
+  }, [restaurantId, user]);
+
+  const { data: sales = [], isLoading: loading, error } = useQuery({
+    queryKey: ['unified-sales', restaurantId],
+    queryFn: fetchUnifiedSales,
+    enabled: !!restaurantId && !!user,
+    staleTime: 30000, // 30 seconds
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  // Fetch unmapped items using useMemo to avoid infinite loops
+  const unmappedItemsQuery = useQuery({
+    queryKey: ['unmapped-items', restaurantId, sales.length],
+    queryFn: async () => {
+      if (!restaurantId || sales.length === 0) {
+        return [];
       }
 
-      const { data, error } = await query.limit(1000);
-
-      if (error) throw error;
-
-      const transformedSales: UnifiedSaleItem[] = (data || []).map(sale => ({
-        id: sale.id,
-        restaurantId: sale.restaurant_id,
-        posSystem: sale.pos_system as POSSystemType,
-        externalOrderId: sale.external_order_id,
-        externalItemId: sale.external_item_id,
-        itemName: sale.item_name,
-        quantity: sale.quantity,
-        unitPrice: sale.unit_price,
-        totalPrice: sale.total_price,
-        saleDate: sale.sale_date,
-        saleTime: sale.sale_time,
-        posCategory: sale.pos_category,
-        rawData: sale.raw_data,
-        syncedAt: sale.synced_at,
-        createdAt: sale.created_at,
-      }));
-
-      setSales(transformedSales);
-
-      // Find unmapped items (items that don't have recipes)
-      // Match the logic used in process_unified_inventory_deduction which checks BOTH pos_item_name AND name
-      const uniqueItemNames = [...new Set(transformedSales.map(sale => sale.itemName))];
+      const uniqueItemNames = [...new Set(sales.map(sale => sale.itemName))];
       
       const { data: recipes } = await supabase
         .from('recipes')
@@ -68,37 +109,45 @@ export const useUnifiedSales = (restaurantId: string | null) => {
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true);
 
-      // Create a set of all possible matches (both pos_item_name and recipe name)
       const mappedItems = new Set<string>();
       recipes?.forEach(r => {
         if (r.pos_item_name) mappedItems.add(r.pos_item_name);
         if (r.name) mappedItems.add(r.name);
       });
       
-      const unmapped = uniqueItemNames.filter(name => !mappedItems.has(name));
-      
-      setUnmappedItems(unmapped);
+      return uniqueItemNames.filter(name => !mappedItems.has(name));
+    },
+    enabled: !!restaurantId && sales.length > 0,
+    staleTime: 60000, // 1 minute
+  });
 
-    } catch (error: any) {
-      console.error('Error fetching unified sales:', error);
+  const unmappedItems = unmappedItemsQuery.data || [];
+
+  // Show error toast
+  useEffect(() => {
+    if (error) {
       toast({
         title: "Error fetching sales data",
-        description: error.message,
+        description: (error as Error).message,
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
-  }, [restaurantId, user, toast]);
+  }, [error, toast]);
 
-  const getSalesByDateRange = (startDate: string, endDate: string) => {
+  const getSalesByDateRange = useCallback((startDate: string, endDate: string) => {
+    // Exclude parent sales that have been split (to prevent double counting)
     return sales.filter(sale => 
-      sale.saleDate >= startDate && sale.saleDate <= endDate
+      sale.saleDate >= startDate && 
+      sale.saleDate <= endDate &&
+      !sale.parent_sale_id // Exclude child splits from aggregations
     );
-  };
+  }, [sales]);
 
-  const getSalesGroupedByItem = () => {
-    const grouped = sales.reduce((acc, sale) => {
+  const getSalesGroupedByItem = useCallback(() => {
+    // Only include sales that are not child splits to prevent double counting
+    const nonSplitSales = sales.filter(sale => !sale.parent_sale_id);
+    
+    const grouped = nonSplitSales.reduce((acc, sale) => {
       const key = sale.itemName;
       if (!acc[key]) {
         acc[key] = {
@@ -115,9 +164,9 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     }, {} as Record<string, any>);
 
     return Object.values(grouped);
-  };
+  }, [sales]);
 
-  const getSalesByPOSSystem = () => {
+  const getSalesByPOSSystem = useCallback(() => {
     const grouped = sales.reduce((acc, sale) => {
       const system = sale.posSystem;
       if (!acc[system]) {
@@ -128,7 +177,11 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     }, {} as Record<POSSystemType, UnifiedSaleItem[]>);
 
     return grouped;
-  };
+  }, [sales]);
+
+  const refetchSales = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['unified-sales', restaurantId] });
+  }, [queryClient, restaurantId]);
 
   const createManualSale = async (saleData: {
     itemName: string;
@@ -162,7 +215,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
         description: "Manual sale has been recorded successfully",
       });
 
-      fetchUnifiedSales();
+      refetchSales();
       return true;
     } catch (error) {
       console.error('Error creating manual sale:', error);
@@ -207,7 +260,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
         description: "Sale has been updated successfully",
       });
 
-      fetchUnifiedSales();
+      refetchSales();
       return true;
     } catch (error) {
       console.error('Error updating sale:', error);
@@ -238,7 +291,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
         description: "Sale has been deleted successfully",
       });
 
-      fetchUnifiedSales();
+      refetchSales();
       return true;
     } catch (error) {
       console.error('Error deleting sale:', error);
@@ -251,15 +304,11 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     }
   };
 
-  useEffect(() => {
-    fetchUnifiedSales();
-  }, [fetchUnifiedSales]);
-
   return {
     sales,
     loading,
     unmappedItems,
-    fetchUnifiedSales,
+    fetchUnifiedSales: refetchSales,
     getSalesByDateRange,
     getSalesGroupedByItem,
     getSalesByPOSSystem,

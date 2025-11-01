@@ -304,11 +304,46 @@ export const useProducts = (restaurantId: string | null) => {
 
       if (error) {
         console.error('Error deleting product:', error);
-        toast({
-          title: "Error",
-          description: "Failed to delete product",
-          variant: "destructive",
-        });
+        
+        // Check for foreign key constraint errors
+        if (error.code === '23503') {
+          let userMessage = "Cannot delete this product because it's being used in:";
+          let details: string[] = [];
+          
+          // Parse which table is blocking deletion
+          if (error.details?.includes('receipt_line_items')) {
+            details.push('Receipt line items (imported receipts)');
+          }
+          if (error.details?.includes('recipe_ingredients')) {
+            details.push('Recipes as an ingredient');
+          }
+          if (error.details?.includes('inventory_transactions')) {
+            details.push('Inventory transaction history');
+          }
+          if (error.details?.includes('pos_item_mappings')) {
+            details.push('POS item mappings');
+          }
+          if (error.details?.includes('product_suppliers')) {
+            details.push('Supplier relationships');
+          }
+          
+          if (details.length === 0) {
+            details.push('Other system records');
+          }
+          
+          toast({
+            title: "Cannot Delete Product",
+            description: `${userMessage}\n• ${details.join('\n• ')}\n\nPlease remove these references first or contact support for help.`,
+            variant: "destructive",
+            duration: 10000,
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to delete product",
+            variant: "destructive",
+          });
+        }
         return false;
       }
 

@@ -55,35 +55,13 @@ export function ReconciliationItemFinds({
 
   const handleDeleteFind = async (findId: string) => {
     try {
-      // Get the find to know the quantity
-      const findToDelete = finds.find(f => f.id === findId);
-      if (!findToDelete) return;
-
-      // Delete the find
+      // Delete the find - database trigger will automatically update actual_quantity
       const { error: deleteError } = await supabase
         .from('reconciliation_item_finds')
         .delete()
         .eq('id', findId);
 
       if (deleteError) throw deleteError;
-
-      // Update the actual_quantity in reconciliation_items
-      const { data: item, error: fetchError } = await supabase
-        .from('reconciliation_items')
-        .select('actual_quantity')
-        .eq('id', itemId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      const newActualQuantity = (item.actual_quantity || 0) - Number(findToDelete.quantity);
-
-      const { error: updateError } = await supabase
-        .from('reconciliation_items')
-        .update({ actual_quantity: Math.max(0, newActualQuantity) })
-        .eq('id', itemId);
-
-      if (updateError) throw updateError;
 
       toast({
         title: 'Find deleted',

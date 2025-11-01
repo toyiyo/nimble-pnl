@@ -92,9 +92,12 @@ const CATEGORIES = [
   'Other',
 ];
 
-const PURCHASE_UNITS = [
-  'pieces', 'lbs', 'oz', 'kg', 'g', 'mL', 'L', 'gal', 'qt', 'pt', 'cup', 'tbsp', 'tsp',
-  'case', 'box', 'bag', 'bottle', 'can', 'jar', 'pack',
+const PACKAGE_TYPES = [
+  'bag', 'box', 'bottle', 'can', 'jar', 'tube', 'packet', 'pouch',
+  'tray', 'cup', 'carton', 'case', 'crate', 'pack', 'drum', 
+  'barrel', 'bucket', 'tub', 'jug', 'unit', 'each', 'container',
+  'piece', 'slice', 'loaf', 'portion', 'roll', 'bar', 'bowl',
+  'sachet', 'multipack', 'bundle',
 ];
 
 const RECIPE_UNITS = [

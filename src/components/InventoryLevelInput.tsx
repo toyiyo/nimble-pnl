@@ -31,17 +31,10 @@ export function InventoryLevelInput({
   const hasConversion = !!product.size_value && !!product.size_unit;
   const [displayValue, setDisplayValue] = useState('');
   
-  // Initialize display value from purchase value
+  // Initialize display value (already in package units)
   useEffect(() => {
-    if (hasConversion) {
-      const converted = convertPurchaseToDisplay(value, product);
-      if (converted) {
-        setDisplayValue(converted.value.toFixed(2));
-      }
-    } else {
-      setDisplayValue(value.toFixed(2));
-    }
-  }, [value, product, hasConversion]);
+    setDisplayValue(value.toFixed(2));
+  }, [value]);
   
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputVal = e.target.value;
@@ -49,19 +42,19 @@ export function InventoryLevelInput({
     
     const numVal = parseFloat(inputVal);
     if (!isNaN(numVal)) {
-      if (hasConversion) {
-        // Convert display to purchase units
-        const purchaseVal = convertDisplayToPurchase(numVal, product);
-        onChange(purchaseVal);
-      } else {
-        onChange(numVal);
-      }
+      onChange(numVal); // Already in purchase units (packages)
     }
   };
   
-  const displayUnit = hasConversion ? product.size_unit : product.uom_purchase || 'units';
-  const purchaseEquivalent = hasConversion && displayValue 
-    ? convertDisplayToPurchase(parseFloat(displayValue) || 0, product)
+  const displayUnit = product.uom_purchase || 'units'; // Always show package type
+  const packageCount = value; // Value is already in purchase units (packages)
+  
+  // When there's size info, calculate total weight/volume for reference
+  const totalMeasurement = hasConversion && product.size_value
+    ? {
+        value: packageCount * product.size_value,
+        unit: product.size_unit
+      }
     : null;
   
   return (
@@ -75,7 +68,7 @@ export function InventoryLevelInput({
                 <Info className="h-4 w-4 text-muted-foreground cursor-help" />
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-sm">Enter amount in {displayUnit}</p>
+                <p className="text-sm">Enter quantity in {displayUnit}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   1 {product.uom_purchase} = {product.size_value} {product.size_unit}
                 </p>
@@ -102,14 +95,14 @@ export function InventoryLevelInput({
           </div>
         </div>
         
-        {hasConversion && purchaseEquivalent !== null && (
+        {hasConversion && totalMeasurement && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>=</span>
             <Badge variant="outline" className="font-mono">
-              {purchaseEquivalent.toFixed(3)} {product.uom_purchase}
+              {totalMeasurement.value.toFixed(2)} {totalMeasurement.unit} total
             </Badge>
             <span className="text-xs">
-              ({((purchaseEquivalent % 1) * 100).toFixed(1)}% of a {product.uom_purchase})
+              ({product.size_value} {product.size_unit} per {product.uom_purchase})
             </span>
           </div>
         )}

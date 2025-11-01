@@ -262,16 +262,43 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="bottle">bottle</SelectItem>
-                  <SelectItem value="bag">bag</SelectItem>
-                  <SelectItem value="case">case</SelectItem>
-                  <SelectItem value="box">box</SelectItem>
-                  <SelectItem value="can">can</SelectItem>
-                  <SelectItem value="jar">jar</SelectItem>
-                  <SelectItem value="pack">pack</SelectItem>
-                  <SelectItem value="container">container</SelectItem>
-                  <SelectItem value="unit">unit</SelectItem>
-                  <SelectItem value="each">each</SelectItem>
+                  {/* Primary Packaging */}
+                  <SelectItem value="bag">Bag</SelectItem>
+                  <SelectItem value="box">Box</SelectItem>
+                  <SelectItem value="bottle">Bottle</SelectItem>
+                  <SelectItem value="can">Can</SelectItem>
+                  <SelectItem value="jar">Jar</SelectItem>
+                  <SelectItem value="tube">Tube</SelectItem>
+                  <SelectItem value="sachet">Sachet</SelectItem>
+                  <SelectItem value="packet">Packet</SelectItem>
+                  <SelectItem value="pouch">Pouch</SelectItem>
+                  <SelectItem value="tray">Tray</SelectItem>
+                  <SelectItem value="cup">Cup</SelectItem>
+                  <SelectItem value="bowl">Bowl</SelectItem>
+                  <SelectItem value="carton">Carton</SelectItem>
+                  <SelectItem value="roll">Roll</SelectItem>
+                  <SelectItem value="bar">Bar</SelectItem>
+                  <SelectItem value="piece">Piece</SelectItem>
+                  <SelectItem value="slice">Slice</SelectItem>
+                  <SelectItem value="loaf">Loaf</SelectItem>
+                  <SelectItem value="portion">Portion</SelectItem>
+                  
+                  {/* Secondary/Bulk */}
+                  <SelectItem value="case">Case</SelectItem>
+                  <SelectItem value="crate">Crate</SelectItem>
+                  <SelectItem value="pack">Pack</SelectItem>
+                  <SelectItem value="multipack">Multipack</SelectItem>
+                  <SelectItem value="bundle">Bundle</SelectItem>
+                  <SelectItem value="drum">Drum</SelectItem>
+                  <SelectItem value="barrel">Barrel</SelectItem>
+                  <SelectItem value="bucket">Bucket</SelectItem>
+                  <SelectItem value="tub">Tub</SelectItem>
+                  <SelectItem value="jug">Jug</SelectItem>
+                  
+                  {/* Count/Generic */}
+                  <SelectItem value="unit">Unit</SelectItem>
+                  <SelectItem value="each">Each</SelectItem>
+                  <SelectItem value="container">Container</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">Type of container/package</p>

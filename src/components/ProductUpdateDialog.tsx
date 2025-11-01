@@ -534,31 +534,6 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                       />
                     </div>
                   )}
-
-                  <FormField
-                    control={form.control}
-                    name="size_unit"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Unit</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select unit" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {UNITS.map((unit) => (
-                              <SelectItem key={unit} value={unit}>
-                                {unit}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
 
                 {(newQuantity > 0 || adjustmentMode === 'set_exact') && (

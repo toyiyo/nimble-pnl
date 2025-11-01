@@ -93,11 +93,19 @@ const CATEGORIES = [
 ];
 
 const PACKAGE_TYPES = [
-  'bag', 'box', 'bottle', 'can', 'jar', 'tube', 'packet', 'pouch',
-  'tray', 'cup', 'carton', 'case', 'crate', 'pack', 'drum', 
-  'barrel', 'bucket', 'tub', 'jug', 'unit', 'each', 'container',
-  'piece', 'slice', 'loaf', 'portion', 'roll', 'bar', 'bowl',
-  'sachet', 'multipack', 'bundle',
+  // Primary
+  'bag', 'box', 'bottle', 'can', 'jar', 'tube', 'sachet', 'packet', 'pouch', 'tray', 'cup', 'bowl', 
+  'wrapper', 'carton', 'roll', 'stick', 'bar', 'piece', 'slice', 'loaf', 'portion', 'pair', 'pod', 'capsule', 'vial',
+  // Secondary
+  'case', 'crate', 'pack', 'multipack', 'sleeve', 'bundle', 'set', 'strip', 'carton_outer', 'pallet', 'display_box', 'inner_pack',
+  // Bulk
+  'drum', 'barrel', 'bucket', 'bin', 'sack', 'tote', 'tank', 'bag_bulk', 'box_bulk', 'tub', 'jug', 'jerrycan', 'carboy',
+  // Perishable
+  'meat_tray', 'pan', 'clamshell', 'vacuum_pack', 'sleeve_pack', 'film_wrap', 'ice_block', 'brick',
+  // Count/Special
+  'sheet', 'unit', 'portion_pack', 'cone', 'disc', 'ring', 'skewer', 'strip_cut', 'segment', 'serving',
+  // Industrial
+  'roll_material', 'coil', 'reel', 'cartridge', 'canister', 'cylinder', 'container', 'dispenser', 'refill_pack'
 ];
 
 const RECIPE_UNITS = [

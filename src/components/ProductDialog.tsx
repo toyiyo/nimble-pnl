@@ -108,6 +108,43 @@ const PACKAGE_TYPES = [
   'roll_material', 'coil', 'reel', 'cartridge', 'canister', 'cylinder', 'container', 'dispenser', 'refill_pack'
 ];
 
+// Helper function to pluralize package types properly
+const pluralizePackageType = (unit: string): string => {
+  if (!unit) return '';
+  
+  // Handle special cases with underscores and specific names
+  const specialCases: Record<string, string> = {
+    'meat_tray': 'meat trays',
+    'bag_bulk': 'bulk bags',
+    'box_bulk': 'bulk boxes',
+    'carton_outer': 'outer cartons',
+    'display_box': 'display boxes',
+    'inner_pack': 'inner packs',
+    'vacuum_pack': 'vacuum packs',
+    'sleeve_pack': 'sleeve packs',
+    'film_wrap': 'film wraps',
+    'ice_block': 'ice blocks',
+    'portion_pack': 'portion packs',
+    'strip_cut': 'cut strips',
+    'roll_material': 'material rolls',
+    'refill_pack': 'refill packs',
+  };
+  
+  if (specialCases[unit]) {
+    return specialCases[unit];
+  }
+  
+  // Handle regular pluralization
+  if (unit.endsWith('sh') || unit.endsWith('ch') || unit.endsWith('x') || unit.endsWith('s')) {
+    return `${unit}es`;
+  }
+  if (unit.endsWith('y') && !['ay', 'ey', 'oy', 'uy'].some(ending => unit.endsWith(ending))) {
+    return `${unit.slice(0, -1)}ies`;
+  }
+  
+  return `${unit}s`;
+};
+
 const RECIPE_UNITS = [
   'fl oz', 'oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'g', 'each', 'piece', 'serving'
 ];
@@ -576,7 +613,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                     💡 <strong>Inventory levels are measured in packages</strong>
                   </p>
                   <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                    Enter stock levels in {form.watch('uom_purchase')}s{form.watch('size_value') && form.watch('size_unit') ? ` (each ${form.watch('uom_purchase')} contains ${form.watch('size_value')} ${form.watch('size_unit')})` : ''}.
+                    Enter stock levels in {pluralizePackageType(form.watch('uom_purchase'))}{form.watch('size_value') && form.watch('size_unit') ? ` (each ${form.watch('uom_purchase')} contains ${form.watch('size_value')} ${form.watch('size_unit')})` : ''}.
                   </p>
                 </div>
               )}

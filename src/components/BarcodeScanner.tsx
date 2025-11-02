@@ -163,26 +163,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     return cleanup;
   }, []);
 
-  // Cleanup function - AGGRESSIVE camera release
+  // Cleanup function - FIXED ORDER: Controls → Tracks → Video element
   const cleanup = useCallback(() => {
     console.log('🧹 Starting cleanup...');
     
-    // STEP 1: Stop video element FIRST
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.srcObject = null;
-    }
-    
-    // STEP 2: Stop all media tracks immediately
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        track.stop();
-        console.log('✅ Stopped track:', track.kind);
-      });
-      streamRef.current = null;
-    }
-    
-    // STEP 3: Stop ZXing controls after video is stopped
+    // STEP 1: Stop ZXing controls FIRST (they own the gUM stream)
     if (controlsRef.current) {
       try {
         controlsRef.current.stop();
@@ -191,6 +176,28 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         console.error('Error stopping ZXing controls:', e);
       }
       controlsRef.current = null;
+    }
+    
+    // STEP 2: Defensively stop any leftover tracks on video element
+    const video = videoRef.current;
+    const mediaStream = video?.srcObject as MediaStream | null;
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => {
+        try {
+          track.stop();
+          console.log('✅ Stopped leftover track:', track.kind);
+        } catch (e) {
+          console.error('Error stopping track:', e);
+        }
+      });
+    }
+    
+    // STEP 3: Fully detach and reset video element
+    if (video) {
+      try { video.pause(); } catch {}
+      try { (video as any).srcObject = null; } catch {}
+      try { video.removeAttribute('src'); } catch {}
+      try { video.load(); } catch {}
     }
     
     // STEP 4: Cancel any pending animations
@@ -204,15 +211,10 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       grokTimeoutRef.current = null;
     }
     
-    // STEP 5: Force video element reset
-    if (videoRef.current) {
-      videoRef.current.load();
-    }
-    
-    // STEP 6: Clear canvas pool
+    // STEP 5: Clear canvas pool
     CanvasPool.cleanup();
     
-    console.log('✅ Cleanup complete');
+    console.log('✅ Cleanup complete - camera should be released');
   }, []);
 
   // Capture a single photo for AI processing
@@ -322,45 +324,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     dispatch({ type: 'SCAN_ERROR' });
   }, []);
 
-  // Toggle AI mode - properly stop/restart ZXing decoder
-  const toggleAIMode = useCallback(async () => {
-    if (state.isUsingAIMode) {
-      // Exit AI mode - restart ZXing decoder
-      dispatch({ type: 'SET_AI_MODE', payload: false });
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Restarting barcode scanner...' });
-      
-      // Restart ZXing decoding
-      if (readerRef.current && videoRef.current && streamRef.current) {
-        const controls = await readerRef.current.decodeFromVideoDevice(
-          undefined,
-          videoRef.current,
-          (result, error) => {
-            frameSkipCounter.current = (frameSkipCounter.current + 1) % FRAME_SKIP_COUNT;
-            if (frameSkipCounter.current !== 0) return;
-            if (state.isPaused || state.isUsingAIMode) return;
-            
-            if (result) {
-              handleScanSuccess(result.getText(), result.getBarcodeFormat().toString());
-            } else if (error) {
-              handleScanError();
-            }
-          }
-        );
-        controlsRef.current = controls;
-      }
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
-    } else {
-      // Enter AI mode - stop ZXing decoder but keep video stream
-      if (controlsRef.current) {
-        controlsRef.current.stop();
-        controlsRef.current = null;
-      }
-      dispatch({ type: 'SET_AI_MODE', payload: true });
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI Mode - tap "Capture Photo" to scan' });
-    }
-  }, [state.isUsingAIMode, state.isPaused, handleScanSuccess, handleScanError, FRAME_SKIP_COUNT]);
-
-  // Start scanning with optimization
+  // Start scanning - Let ZXing own the stream (single source of truth)
   const startScanning = useCallback(async () => {
     dispatch({ type: 'START_SCANNING' });
 
@@ -386,47 +350,41 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         readerRef.current = new BrowserMultiFormatReader(hints);
       }
 
-      // Aggressive memory optimization - minimal resolution for barcode scanning
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 640, max: 800 },  // Much lower for memory efficiency
-          height: { ideal: 480, max: 600 },
-          frameRate: { ideal: 10, max: 15 }   // Lower frame rate reduces memory pressure
-        }
-      });
+      // Find back camera using ZXing's device enumeration
+      const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+      const backCamera = devices.find(d => 
+        /back|rear|environment/i.test(d.label)
+      ) ?? devices[0];
       
-      streamRef.current = stream;
+      if (!backCamera) {
+        throw new Error('No camera found');
+      }
+
       dispatch({ type: 'SET_PERMISSION', payload: true });
       dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
 
-      // Start ZXing continuous scanning with optimized frame processing
-      if (readerRef.current && videoRef.current) {
-        const controls = await readerRef.current.decodeFromVideoDevice(
-          undefined,
-          videoRef.current,
-          (result, error) => {
-            // Frame skipping for performance - only process every nth frame
-            frameSkipCounter.current = (frameSkipCounter.current + 1) % FRAME_SKIP_COUNT;
-            if (frameSkipCounter.current !== 0) return;
+      // Let ZXing manage the stream - pass specific device ID
+      const controls = await readerRef.current.decodeFromVideoDevice(
+        backCamera.deviceId,
+        videoRef.current!,
+        (result, error) => {
+          // Frame skipping for performance - only process every nth frame
+          frameSkipCounter.current = (frameSkipCounter.current + 1) % FRAME_SKIP_COUNT;
+          if (frameSkipCounter.current !== 0) return;
 
-            // Don't process if paused or using AI
-            if (state.isPaused || state.isUsingAIMode) return;
+          // Don't process if paused or using AI
+          if (state.isPaused || state.isUsingAIMode) return;
 
-            if (result) {
-              handleScanSuccess(result.getText(), result.getBarcodeFormat().toString());
-            } else if (error) {
-              handleScanError();
-            }
+          if (result) {
+            handleScanSuccess(result.getText(), result.getBarcodeFormat().toString());
+          } else if (error) {
+            handleScanError();
           }
-        );
-        // Store controls to properly stop the scanner later
-        controlsRef.current = controls;
-      }
+        }
+      );
+      
+      // Store controls to properly stop the scanner later
+      controlsRef.current = controls;
       
     } catch (error: any) {
       dispatch({ type: 'SET_DEBUG_INFO', payload: `Error: ${error.message}` });
@@ -435,6 +393,38 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       onError?.(error.message);
     }
   }, [handleScanSuccess, handleScanError, state.isPaused, state.isUsingAIMode, FRAME_SKIP_COUNT, onError]);
+
+  // Toggle AI mode - properly stop/restart ZXing decoder
+  const toggleAIMode = useCallback(async () => {
+    if (state.isUsingAIMode) {
+      // Exit AI mode → restart ZXing
+      dispatch({ type: 'SET_AI_MODE', payload: false });
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Restarting barcode scanner...' });
+      await startScanning();
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
+    } else {
+      // Enter AI mode → stop ZXing completely (releases camera)
+      if (controlsRef.current) {
+        try { controlsRef.current.stop(); } catch {}
+        controlsRef.current = null;
+      }
+      
+      // Ensure video is fully detached (turns off camera light)
+      const video = videoRef.current;
+      if (video) {
+        const ms = video.srcObject as MediaStream | null;
+        if (ms) {
+          ms.getTracks().forEach(t => { try { t.stop(); } catch {} });
+        }
+        (video as any).srcObject = null;
+        video.removeAttribute('src');
+        video.load();
+      }
+
+      dispatch({ type: 'SET_AI_MODE', payload: true });
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI Mode - tap "Capture Photo" to scan' });
+    }
+  }, [state.isUsingAIMode, startScanning]);
 
   const resumeScanning = useCallback(async () => {
     dispatch({ type: 'SET_PAUSED', payload: false });
@@ -487,6 +477,22 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       dispatch({ type: 'STOP_SCANNING' });
     };
   }, [autoStart, startScanning, cleanup]);
+
+  // Force cleanup when page is hidden (mobile Safari fix)
+  useEffect(() => {
+    const onHide = () => {
+      if (document.hidden) {
+        cleanup();
+      }
+    };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', onHide);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onHide);
+    };
+  }, [cleanup]);
 
   return (
     <Card className={cn(

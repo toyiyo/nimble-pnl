@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricIcon } from '@/components/MetricIcon';
 import { PageHeader } from '@/components/PageHeader';
-import { BarcodeScanner } from '@/components/BarcodeScanner';
+import { SmartBarcodeScanner } from '@/components/SmartBarcodeScanner';
 import { OCRBarcodeScanner } from '@/components/OCRBarcodeScanner';
 import { ImageCapture } from '@/components/ImageCapture';
 import { ProductDialog } from '@/components/ProductDialog';
@@ -1078,14 +1078,14 @@ export const Inventory: React.FC = () => {
               <div className="space-y-6 lg:grid lg:grid-cols-2 lg:gap-8 lg:space-y-0">
                 <div>
                   {scannerType === 'camera' ? (
-                    <BarcodeScanner
+                    <SmartBarcodeScanner
                       onScan={handleBarcodeScanned}
                       onError={(error) => toast({
                         title: "Scanner Error",
                         description: error,
                         variant: "destructive",
                       })}
-                      autoStart={false}
+                      autoStart={true}
                     />
                   ) : (
                     <OCRBarcodeScanner

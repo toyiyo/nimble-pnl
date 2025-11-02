@@ -131,12 +131,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   // Use useReducer for optimized state management
   const [state, dispatch] = useReducer(scannerReducer, initialState);
 
-  // Constants for performance optimization - REDUCED for memory efficiency
-  const FRAME_SKIP_COUNT = 5; // Increased to reduce memory usage
+  // Constants for performance optimization - AGGRESSIVE memory reduction
+  const FRAME_SKIP_COUNT = 10; // Process only every 10th frame (~1-2 times/sec)
   const OCR_TIMEOUT = 2000; // 2 seconds before OCR fallback
-  const MAX_WIDTH = 640; // Reduced from 800
-  const MAX_HEIGHT = 480; // Reduced from 600
-  const JPEG_QUALITY = 0.6; // Reduced from 0.7
+  const MAX_WIDTH = 480; // Further reduced for memory
+  const MAX_HEIGHT = 360; // Further reduced for memory
+  const JPEG_QUALITY = 0.5; // Lower quality for less memory
 
   // Initialize reader once with Android-optimized hints
   useEffect(() => {
@@ -286,13 +286,22 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     }
   }, [state.isUsingAIMode]);
 
-  // Handle successful barcode scan
+  // Handle successful barcode scan - STOP camera to free memory
   const handleScanSuccess = useCallback((result: any, format: string) => {
     if (result !== state.lastScan && !state.scanCooldown) {
       // Pass the raw barcode without normalization
       onScan(result, format);
       
       dispatch({ type: 'SCAN_SUCCESS', payload: { result, format } });
+      
+      // CRITICAL: Stop camera stream immediately to free memory
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
 
       setTimeout(() => {
         dispatch({ type: 'SET_COOLDOWN', payload: false });
@@ -332,13 +341,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         readerRef.current = new BrowserMultiFormatReader(hints);
       }
 
-      // Memory-optimized camera constraints - lower resolution to prevent memory issues
+      // Aggressive memory optimization - minimal resolution for barcode scanning
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
-          width: { ideal: 1280, max: 1920 },  // Reduced for memory efficiency
-          height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 15, max: 30 }   // Lower frame rate for memory efficiency
+          width: { ideal: 640, max: 800 },  // Much lower for memory efficiency
+          height: { ideal: 480, max: 600 },
+          frameRate: { ideal: 10, max: 15 }   // Lower frame rate reduces memory pressure
         }
       });
       
@@ -380,10 +389,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     }
   }, [handleScanSuccess, handleScanError, state.isPaused, state.isUsingAIMode, FRAME_SKIP_COUNT, onError]);
 
-  const resumeScanning = useCallback(() => {
+  const resumeScanning = useCallback(async () => {
     dispatch({ type: 'SET_PAUSED', payload: false });
-    dispatch({ type: 'SET_DEBUG_INFO', payload: 'Resumed scanning...' });
-  }, []);
+    dispatch({ type: 'SET_DEBUG_INFO', payload: 'Restarting camera...' });
+    
+    // Restart the camera stream from scratch for clean state
+    await startScanning();
+  }, [startScanning]);
 
   const stopScanning = useCallback(() => {
     dispatch({ type: 'STOP_SCANNING' });

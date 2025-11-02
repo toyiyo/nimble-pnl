@@ -138,12 +138,12 @@ export const Html5QrcodeScanner = ({
           {/* Controls */}
           <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 px-4 z-10">
             {!isScanning ? (
-              <Button onClick={startScanning} size="lg">
+              <Button onClick={startScanning} size="lg" aria-label="Start scanning">
                 <Scan className="w-4 h-4 mr-2" />
                 Start Scanning
               </Button>
             ) : (
-              <Button onClick={stopScanning} variant="destructive" size="lg">
+              <Button onClick={stopScanning} variant="destructive" size="lg" aria-label="Stop scanning">
                 <X className="w-4 h-4 mr-2" />
                 Stop
               </Button>

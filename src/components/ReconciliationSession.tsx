@@ -19,14 +19,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Save, CheckCircle, ScanBarcode, X, Eye, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Save, CheckCircle, ScanBarcode, X, Eye, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Camera, Image, Keyboard } from 'lucide-react';
 import { ReconciliationItemDetail } from './ReconciliationItemDetail';
 import { useReconciliation } from '@/hooks/useReconciliation';
-import { EnhancedBarcodeScanner } from './EnhancedBarcodeScanner';
+import { SmartBarcodeScanner } from './SmartBarcodeScanner';
+import { OCRBarcodeScanner } from './OCRBarcodeScanner';
+import { KeyboardBarcodeScanner } from './KeyboardBarcodeScanner';
 import { QuickInventoryDialog } from './QuickInventoryDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { Product } from '@/hooks/useProducts';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 interface ReconciliationSessionProps {
   restaurantId: string;
@@ -54,6 +57,7 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [scannerMode, setScannerMode] = useState(false);
+  const [scannerType, setScannerType] = useState<'camera' | 'ai-ocr' | 'keyboard'>('camera');
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [quickDialogOpen, setQuickDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
@@ -320,16 +324,131 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
 
       {/* Scanner Mode */}
       {scannerMode && (
-        <div className="bg-card p-4 rounded-lg border">
-          <EnhancedBarcodeScanner
-            onScan={(barcode) => handleBarcodeScan(barcode)}
-            onError={(error) => toast({ 
-              title: 'Scanner error', 
-              description: error, 
-              variant: 'destructive' 
-            })}
-            autoStart={true}
-          />
+        <div className="bg-card p-4 rounded-lg border space-y-4">
+          {/* Scanner Type Selection */}
+          <div className="grid grid-cols-3 gap-3">
+            {/* Camera Scanner Button */}
+            <button
+              onClick={() => setScannerType('camera')}
+              className={cn(
+                'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
+                'border-2 hover:scale-[1.02] hover:shadow-lg',
+                scannerType === 'camera'
+                  ? 'border-primary bg-gradient-to-br from-primary/20 to-accent/20 shadow-lg shadow-primary/20'
+                  : 'border-border bg-card hover:border-primary/50'
+              )}
+            >
+              <div className="flex flex-col items-center gap-2">
+                <div className={cn(
+                  'rounded-lg p-2 transition-all duration-300',
+                  scannerType === 'camera'
+                    ? 'bg-gradient-to-br from-primary to-accent shadow-lg shadow-primary/30'
+                    : 'bg-muted group-hover:bg-gradient-to-br group-hover:from-primary/20 group-hover:to-accent/20'
+                )}>
+                  <Camera className={cn('h-5 w-5 transition-colors', scannerType === 'camera' ? 'text-white' : 'text-foreground')} />
+                </div>
+                <span className={cn(
+                  'text-sm font-medium transition-colors',
+                  scannerType === 'camera' ? 'text-primary' : 'text-muted-foreground'
+                )}>
+                  Camera Scanner
+                </span>
+                <span className="text-xs text-muted-foreground">Native barcode detection</span>
+              </div>
+            </button>
+
+            {/* AI OCR Scanner Button */}
+            <button
+              onClick={() => setScannerType('ai-ocr')}
+              className={cn(
+                'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
+                'border-2 hover:scale-[1.02] hover:shadow-lg',
+                scannerType === 'ai-ocr'
+                  ? 'border-purple-500 bg-gradient-to-br from-purple-500/20 to-pink-500/20 shadow-lg shadow-purple-500/20'
+                  : 'border-border bg-card hover:border-purple-500/50'
+              )}
+            >
+              <div className="flex flex-col items-center gap-2">
+                <div className={cn(
+                  'rounded-lg p-2 transition-all duration-300',
+                  scannerType === 'ai-ocr'
+                    ? 'bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg shadow-purple-500/30'
+                    : 'bg-muted group-hover:bg-gradient-to-br group-hover:from-purple-500/20 group-hover:to-pink-500/20'
+                )}>
+                  <Image className={cn('h-5 w-5 transition-colors', scannerType === 'ai-ocr' ? 'text-white' : 'text-foreground')} />
+                </div>
+                <span className={cn(
+                  'text-sm font-medium transition-colors',
+                  scannerType === 'ai-ocr' ? 'text-purple-700 dark:text-purple-300' : 'text-muted-foreground'
+                )}>
+                  AI OCR Scanner
+                </span>
+                <span className="text-xs text-muted-foreground">Capture + AI detection</span>
+              </div>
+            </button>
+
+            {/* Keyboard Scanner Button */}
+            <button
+              onClick={() => setScannerType('keyboard')}
+              className={cn(
+                'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
+                'border-2 hover:scale-[1.02] hover:shadow-lg',
+                scannerType === 'keyboard'
+                  ? 'border-green-500 bg-gradient-to-br from-green-500/20 to-emerald-500/20 shadow-lg shadow-green-500/20'
+                  : 'border-border bg-card hover:border-green-500/50'
+              )}
+            >
+              <div className="flex flex-col items-center gap-2">
+                <div className={cn(
+                  'rounded-lg p-2 transition-all duration-300',
+                  scannerType === 'keyboard'
+                    ? 'bg-gradient-to-br from-green-500 to-emerald-500 shadow-lg shadow-green-500/30'
+                    : 'bg-muted group-hover:bg-gradient-to-br group-hover:from-green-500/20 group-hover:to-emerald-500/20'
+                )}>
+                  <Keyboard className={cn('h-5 w-5 transition-colors', scannerType === 'keyboard' ? 'text-white' : 'text-foreground')} />
+                </div>
+                <span className={cn(
+                  'text-sm font-medium transition-colors',
+                  scannerType === 'keyboard' ? 'text-green-700 dark:text-green-300' : 'text-muted-foreground'
+                )}>
+                  Keyboard Scanner
+                </span>
+                <span className="text-xs text-muted-foreground">Laser/HID barcode</span>
+              </div>
+            </button>
+          </div>
+
+          {/* Active Scanner Component */}
+          {scannerType === 'camera' ? (
+            <SmartBarcodeScanner
+              onScan={(barcode) => handleBarcodeScan(barcode)}
+              onError={(error) => toast({ 
+                title: 'Scanner error', 
+                description: error, 
+                variant: 'destructive' 
+              })}
+              autoStart={true}
+            />
+          ) : scannerType === 'ai-ocr' ? (
+            <OCRBarcodeScanner
+              onScan={(barcode) => handleBarcodeScan(barcode)}
+              onError={(error) => toast({ 
+                title: 'OCR error', 
+                description: error, 
+                variant: 'destructive' 
+              })}
+            />
+          ) : (
+            <KeyboardBarcodeScanner
+              onScan={(barcode) => handleBarcodeScan(barcode)}
+              onError={(error) => toast({ 
+                title: 'Scanner error', 
+                description: error, 
+                variant: 'destructive' 
+              })}
+              autoStart={true}
+            />
+          )}
         </div>
       )}
 

@@ -294,21 +294,15 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       
       dispatch({ type: 'SCAN_SUCCESS', payload: { result, format } });
       
-      // CRITICAL: Stop camera stream immediately to free memory
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
+      // CRITICAL: Full cleanup to release all camera resources
+      cleanup();
 
       setTimeout(() => {
         dispatch({ type: 'SET_COOLDOWN', payload: false });
         dispatch({ type: 'SET_DEBUG_INFO', payload: 'Paused - click Resume to continue scanning' });
       }, 1000);
     }
-  }, [state.lastScan, state.scanCooldown, onScan]);
+  }, [state.lastScan, state.scanCooldown, onScan, cleanup]);
 
   // Handle scan errors
   const handleScanError = useCallback(() => {
@@ -420,11 +414,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       startScanning();
     }
     
-    // CRITICAL: Cleanup on unmount to prevent memory leaks
+    // CRITICAL: Cleanup on unmount to prevent memory leaks and camera indicator
     return () => {
-      stopScanning();
+      cleanup();
+      dispatch({ type: 'STOP_SCANNING' });
     };
-  }, [autoStart, startScanning, stopScanning]);
+  }, [autoStart, startScanning, cleanup]);
 
   return (
     <Card className={cn(

@@ -125,6 +125,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const animationFrameRef = useRef<number | null>(null);
   const grokTimeoutRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const controlsRef = useRef<any>(null); // ZXing controls object
   const frameSkipCounter = useRef(0);
   const lastScanTime = useRef(0);
   
@@ -172,6 +173,16 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     if (grokTimeoutRef.current) {
       clearTimeout(grokTimeoutRef.current);
       grokTimeoutRef.current = null;
+    }
+
+    // CRITICAL: Stop ZXing controls first before manual cleanup
+    if (controlsRef.current) {
+      try {
+        controlsRef.current.stop();
+      } catch (e) {
+        console.error('Error stopping ZXing controls:', e);
+      }
+      controlsRef.current = null;
     }
 
     // Stop all media tracks - this is critical for memory cleanup
@@ -355,7 +366,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
       // Start ZXing continuous scanning with optimized frame processing
       if (readerRef.current && videoRef.current) {
-        await readerRef.current.decodeFromVideoDevice(
+        const controls = await readerRef.current.decodeFromVideoDevice(
           undefined,
           videoRef.current,
           (result, error) => {
@@ -373,6 +384,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
             }
           }
         );
+        // Store controls to properly stop the scanner later
+        controlsRef.current = controls;
       }
       
     } catch (error: any) {

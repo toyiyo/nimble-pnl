@@ -27,6 +27,7 @@ export const NativeBarcodeScanner = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<any>(null);
+  const isDetectorReady = useRef<boolean>(false);
   const animationFrameRef = useRef<number | null>(null);
   const lastScanRef = useRef<{ value: string; time: number } | null>(null);
 
@@ -43,8 +44,10 @@ export const NativeBarcodeScanner = ({
         detectorRef.current = new (window as any).BarcodeDetector({
           formats: formats, // Use all supported formats
         });
+        isDetectorReady.current = true;
       } catch (error) {
         console.error('Failed to initialize BarcodeDetector:', error);
+        isDetectorReady.current = false;
         onError?.('Failed to initialize barcode detector');
       }
     };
@@ -52,6 +55,7 @@ export const NativeBarcodeScanner = ({
     if ('BarcodeDetector' in window) {
       initDetector();
     } else {
+      isDetectorReady.current = false;
       onError?.('Native barcode detection not supported');
     }
 
@@ -61,7 +65,7 @@ export const NativeBarcodeScanner = ({
   }, []);
 
   useEffect(() => {
-    if (autoStart) {
+    if (autoStart && isDetectorReady.current && !isScanning) {
       startScanning();
     }
   }, [autoStart]);

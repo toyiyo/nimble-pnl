@@ -78,13 +78,24 @@ export const useSuppliers = () => {
         description: "Supplier created successfully",
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error('Error creating supplier:', error);
-      toast({
-        title: "Error",
-        description: "Failed to create supplier",
-        variant: "destructive",
-      });
+      
+      // Check for duplicate supplier name
+      if (error.code === '23505' && error.message?.includes('suppliers_restaurant_id_name_key')) {
+        toast({
+          title: "Supplier Already Exists",
+          description: "A supplier with this name already exists for your restaurant. Please select the existing supplier or use a different name.",
+          variant: "destructive",
+          duration: 8000,
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to create supplier",
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -110,13 +121,24 @@ export const useSuppliers = () => {
         description: "Supplier updated successfully",
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error('Error updating supplier:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update supplier",
-        variant: "destructive",
-      });
+      
+      // Check for duplicate supplier name
+      if (error.code === '23505' && error.message?.includes('suppliers_restaurant_id_name_key')) {
+        toast({
+          title: "Duplicate Supplier Name",
+          description: "Another supplier with this name already exists for your restaurant. Please choose a different name.",
+          variant: "destructive",
+          duration: 8000,
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to update supplier",
+          variant: "destructive",
+        });
+      }
     },
   });
 

@@ -40,8 +40,12 @@ export function useRevenueBreakdown(
   dateFrom: Date, 
   dateTo: Date
 ) {
+  // Format dates as strings for stable query key
+  const fromStr = dateFrom.toISOString().split('T')[0];
+  const toStr = dateTo.toISOString().split('T')[0];
+  
   return useQuery({
-    queryKey: ['revenue-breakdown', restaurantId, dateFrom, dateTo],
+    queryKey: ['revenue-breakdown', restaurantId, fromStr, toStr],
     queryFn: async (): Promise<RevenueBreakdownData | null> => {
       if (!restaurantId) return null;
 
@@ -273,7 +277,8 @@ export function useRevenueBreakdown(
       };
     },
     enabled: !!restaurantId,
-    staleTime: 30000,
-    refetchOnWindowFocus: true,
+    staleTime: 300000, // 5 minutes - reduce refetch frequency
+    refetchOnWindowFocus: false, // Disable automatic refetch on window focus
+    refetchOnMount: false, // Disable automatic refetch on mount
   });
 }

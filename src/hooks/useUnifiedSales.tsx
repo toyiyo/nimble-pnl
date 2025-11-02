@@ -88,40 +88,61 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     queryKey: ['unified-sales', restaurantId],
     queryFn: fetchUnifiedSales,
     enabled: !!restaurantId && !!user,
-    staleTime: 30000, // 30 seconds
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
+    staleTime: 60000, // 60 seconds - increased to reduce refetch frequency
+    gcTime: 300000, // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false, // Disable automatic refetch on window focus
+    refetchOnMount: false, // Disable automatic refetch on mount
+    refetchOnReconnect: false, // Disable automatic refetch on reconnect
   });
 
-  // Fetch unmapped items using useMemo to avoid infinite loops
-  const unmappedItemsQuery = useQuery({
-    queryKey: ['unmapped-items', restaurantId, sales.length],
+  // Fetch recipes to compute unmapped items (separate query key prevents infinite loop)
+  const { data: recipes = [] } = useQuery({
+    queryKey: ['recipes-for-mapping', restaurantId],
     queryFn: async () => {
-      if (!restaurantId || sales.length === 0) {
-        return [];
-      }
-
-      const uniqueItemNames = [...new Set(sales.map(sale => sale.itemName))];
+      if (!restaurantId || !user) return [];
       
-      const { data: recipes } = await supabase
+      const { data, error } = await supabase
         .from('recipes')
-        .select('pos_item_name, name')
+        .select('id, pos_item_name')
         .eq('restaurant_id', restaurantId)
-        .eq('is_active', true);
-
-      const mappedItems = new Set<string>();
-      recipes?.forEach(r => {
-        if (r.pos_item_name) mappedItems.add(r.pos_item_name);
-        if (r.name) mappedItems.add(r.name);
-      });
-      
-      return uniqueItemNames.filter(name => !mappedItems.has(name));
+        .not('pos_item_name', 'is', null);
+        
+      if (error) throw error;
+      return data || [];
     },
-    enabled: !!restaurantId && sales.length > 0,
-    staleTime: 60000, // 1 minute
+    enabled: !!restaurantId && !!user,
+    staleTime: 60000, // Same as sales - 60 seconds
+    gcTime: 300000, // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false, // Disable automatic refetch
+    refetchOnMount: false, // Disable automatic refetch
+    refetchOnReconnect: false, // Disable automatic refetch
   });
 
-  const unmappedItems = unmappedItemsQuery.data || [];
+  // Compute unmapped items from sales data
+  const unmappedItems = useMemo(() => {
+    if (!restaurantId || sales.length === 0) {
+      return [];
+    }
+    
+    // Get unique item names from sales (exclude child splits)
+    const saleItemNames = new Set(
+      sales
+        .filter(sale => !sale.parent_sale_id) // Only parent sales
+        .map(sale => sale.itemName)
+    );
+    
+    // Get all mapped POS item names from recipes (case-insensitive)
+    const mappedItemNames = new Set(
+      recipes
+        .filter(recipe => recipe.pos_item_name)
+        .map(recipe => recipe.pos_item_name!.toLowerCase())
+    );
+    
+    // Return items that are NOT mapped to any recipe
+    return Array.from(saleItemNames).filter(
+      itemName => !mappedItemNames.has(itemName.toLowerCase())
+    );
+  }, [restaurantId, sales, recipes])
 
   // Show error toast
   useEffect(() => {

@@ -94,7 +94,8 @@ const Index = () => {
     selectedPeriod.to
   );
 
-  // Fetch revenue breakdown for selected period (still needed for detailed breakdown)
+  // Revenue breakdown is used by periodMetrics internally but we also need it for detailed display
+  // React Query will cache this with the same key, so no duplicate network requests
   const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,

@@ -87,8 +87,9 @@ export function usePeriodMetrics(
       };
     },
     enabled: !!restaurantId,
-    staleTime: 30000,
-    refetchOnWindowFocus: true,
+    staleTime: 300000, // 5 minutes - reduce refetch frequency
+    refetchOnWindowFocus: false, // Disable automatic refetch on window focus
+    refetchOnMount: false, // Disable automatic refetch on mount
   });
   
   const metrics = useMemo((): PeriodMetrics | null => {

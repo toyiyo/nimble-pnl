@@ -42,8 +42,10 @@ export function SearchableSupplierSelector({
   const fuse = useMemo(() => {
     return new Fuse(suppliers, {
       keys: ['name'],
-      threshold: 0.3,
+      threshold: 0.4,
       includeScore: true,
+      ignoreLocation: true,
+      minMatchCharLength: 2,
     });
   }, [suppliers]);
   

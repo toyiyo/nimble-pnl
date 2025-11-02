@@ -70,12 +70,19 @@ export const Html5QrcodeScanner = ({
     if (!scannerRef.current) return;
 
     try {
+      // Mobile-optimized settings
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const qrboxSize = isMobile 
+        ? Math.min(window.innerWidth * 0.7, 300) 
+        : 250;
+
       await scannerRef.current.start(
         { facingMode: 'environment' },
         {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0,
+          fps: isMobile ? 15 : 10, // Higher FPS for mobile
+          qrbox: { width: qrboxSize, height: qrboxSize },
+          aspectRatio: isMobile ? 16/9 : 1.0, // Better for mobile cameras
+          disableFlip: false,
         },
         (decodedText, decodedResult) => {
           const now = Date.now();

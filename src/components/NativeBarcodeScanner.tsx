@@ -129,11 +129,18 @@ export const NativeBarcodeScanner = ({
           lastScanRef.current.value !== barcode.rawValue ||
           now - lastScanRef.current.time > 2000
         ) {
-          console.log('✅ Barcode detected:', barcode.rawValue, barcode.format);
-          lastScanRef.current = { value: barcode.rawValue, time: now };
-          setLastScanned(barcode.rawValue);
+          // Convert EAN-13 with leading 0 back to UPC-A (match other scanners)
+          let barcodeValue = barcode.rawValue;
+          if (barcode.format === 'ean_13' && barcode.rawValue.startsWith('0')) {
+            barcodeValue = barcode.rawValue.slice(1);
+            console.log('🔄 Converted EAN-13 to UPC-A:', barcode.rawValue, '→', barcodeValue);
+          }
+          
+          console.log('✅ Barcode detected:', barcodeValue, barcode.format);
+          lastScanRef.current = { value: barcodeValue, time: now };
+          setLastScanned(barcodeValue);
 
-          onScan(barcode.rawValue, barcode.format);
+          onScan(barcodeValue, barcode.format);
 
           // Clear after 2 seconds
           setTimeout(() => setLastScanned(null), 2000);

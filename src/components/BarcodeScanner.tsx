@@ -329,26 +329,34 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     }
   }, [state.isProcessingAI, state.lastScan, onScan, onError, MAX_WIDTH, MAX_HEIGHT, JPEG_QUALITY]);
 
-  // Handle successful barcode scan - STOP camera to free memory
+  // Handle successful barcode scan - pause briefly to prevent duplicates
   const handleScanSuccess = useCallback((result: any, format: string) => {
-    if (result !== state.lastScan && !state.scanCooldown) {
+    const now = Date.now();
+    
+    // Prevent duplicate scans within 1.5 seconds
+    if (result === state.lastScan && (now - lastScanTime.current) < 1500) {
+      return;
+    }
+    
+    if (!state.scanCooldown) {
+      lastScanTime.current = now;
+      
       // Update UI first
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Scan complete, stopping camera...' });
+      dispatch({ type: 'SET_DEBUG_INFO', payload: `Found ${format}: ${result}` });
       
       // Pass the raw barcode without normalization
       onScan(result, format);
       
       dispatch({ type: 'SCAN_SUCCESS', payload: { result, format } });
       
-      // CRITICAL: Full cleanup to release all camera resources
-      cleanup();
-
+      // Brief cooldown to prevent rapid duplicate scans, but keep camera active
       setTimeout(() => {
         dispatch({ type: 'SET_COOLDOWN', payload: false });
-        dispatch({ type: 'SET_DEBUG_INFO', payload: 'Paused - click Resume to continue scanning' });
-      }, 1000);
+        dispatch({ type: 'SET_PAUSED', payload: false });
+        dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera active - scanning...' });
+      }, 1500);
     }
-  }, [state.lastScan, state.scanCooldown, onScan, cleanup]);
+  }, [state.lastScan, state.scanCooldown, onScan]);
 
   // Handle scan errors
   const handleScanError = useCallback(() => {
@@ -636,20 +644,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                 Stop
               </Button>
 
-              {/* Resume button - only show when paused but NOT in AI mode */}
-              {state.isPaused && !state.isUsingAIMode && (
-                <Button 
-                  onClick={resumeScanning} 
-                  variant="outline" 
-                  className="flex-1 border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 hover:border-emerald-500 transition-all duration-300"
-                  aria-label="Resume scanning"
-                >
-                  <Camera className="h-4 w-4 mr-2" />
-                  Resume
-                </Button>
-              )}
-
-              {/* AI Mode toggle - show when scanning (even if paused or in AI mode) */}
+              {/* AI Mode toggle - show when scanning */}
               <Button 
                 onClick={toggleAIMode} 
                 variant={state.isUsingAIMode ? "default" : "secondary"}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash, Download, X, ArrowUpDown, FileSpreadsheet, FileText, Zap, Camera } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash, Download, X, ArrowUpDown, FileSpreadsheet, FileText, Zap, Camera, Keyboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,7 @@ import { MetricIcon } from '@/components/MetricIcon';
 import { PageHeader } from '@/components/PageHeader';
 import { SmartBarcodeScanner } from '@/components/SmartBarcodeScanner';
 import { OCRBarcodeScanner } from '@/components/OCRBarcodeScanner';
+import { KeyboardBarcodeScanner } from '@/components/KeyboardBarcodeScanner';
 import { ImageCapture } from '@/components/ImageCapture';
 import { ProductDialog } from '@/components/ProductDialog';
 import { ProductCard } from '@/components/ProductCard';
@@ -67,7 +68,7 @@ export const Inventory: React.FC = () => {
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lastScannedGtin, setLastScannedGtin] = useState<string>('');
   const [currentMode, setCurrentMode] = useState<'scanner' | 'image'>('scanner');
-  const [scannerType, setScannerType] = useState<'camera' | 'ai-ocr'>('camera');
+  const [scannerType, setScannerType] = useState<'camera' | 'ai-ocr' | 'keyboard'>('camera');
   const [capturedImage, setCapturedImage] = useState<{ blob: Blob; url: string } | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
@@ -924,7 +925,7 @@ export const Inventory: React.FC = () => {
               {/* Scanner Type Selection */}
               <Card className="border-2 border-transparent bg-gradient-to-br from-background via-background to-secondary/5">
                 <CardContent className="pt-4">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <button
                       onClick={() => setScannerType('camera')}
                       className={cn(
@@ -963,7 +964,7 @@ export const Inventory: React.FC = () => {
                           : 'border-border bg-card hover:border-amber-500/50'
                       )}
                     >
-                      <div className="flex-col items-center gap-2">
+                      <div className="flex flex-col items-center gap-2">
                         <div className={cn(
                           'rounded-lg p-2 transition-all duration-300',
                           scannerType === 'ai-ocr'
@@ -979,6 +980,34 @@ export const Inventory: React.FC = () => {
                           AI OCR Scanner
                         </span>
                         <span className="text-xs text-muted-foreground">Photo analysis</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setScannerType('keyboard')}
+                      className={cn(
+                        'group relative overflow-hidden rounded-xl p-4 transition-all duration-300',
+                        'border-2 hover:scale-[1.02] hover:shadow-lg',
+                        scannerType === 'keyboard'
+                          ? 'border-green-500 bg-gradient-to-br from-green-500/20 to-emerald-500/20 shadow-lg shadow-green-500/20'
+                          : 'border-border bg-card hover:border-green-500/50'
+                      )}
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <div className={cn(
+                          'rounded-lg p-2 transition-all duration-300',
+                          scannerType === 'keyboard'
+                            ? 'bg-gradient-to-br from-green-500 to-emerald-500 shadow-lg shadow-green-500/30'
+                            : 'bg-muted group-hover:bg-gradient-to-br group-hover:from-green-500/20 group-hover:to-emerald-500/20'
+                        )}>
+                          <Keyboard className={cn('h-5 w-5 transition-colors', scannerType === 'keyboard' ? 'text-white' : 'text-foreground')} />
+                        </div>
+                        <span className={cn(
+                          'text-sm font-medium transition-colors',
+                          scannerType === 'keyboard' ? 'text-green-700 dark:text-green-300' : 'text-muted-foreground'
+                        )}>
+                          Keyboard Scanner
+                        </span>
+                        <span className="text-xs text-muted-foreground">Laser/HID barcode</span>
                       </div>
                     </button>
                   </div>
@@ -997,7 +1026,7 @@ export const Inventory: React.FC = () => {
                       })}
                       autoStart={true}
                     />
-                  ) : (
+                  ) : scannerType === 'ai-ocr' ? (
                     <OCRBarcodeScanner
                       onScan={handleBarcodeScanned}
                       onError={(error) => toast({
@@ -1005,6 +1034,16 @@ export const Inventory: React.FC = () => {
                         description: error,
                         variant: "destructive",
                       })}
+                    />
+                  ) : (
+                    <KeyboardBarcodeScanner
+                      onScan={handleBarcodeScanned}
+                      onError={(error) => toast({
+                        title: "Scanner Error",
+                        description: error,
+                        variant: "destructive",
+                      })}
+                      autoStart={true}
                     />
                   )}
                 </div>
@@ -1055,7 +1094,7 @@ export const Inventory: React.FC = () => {
                             </ul>
                           </div>
                         </>
-                      ) : (
+                      ) : scannerType === 'ai-ocr' ? (
                         <>
                           <div className="space-y-2">
                             <h4 className="font-medium">AI OCR Scanner:</h4>
@@ -1073,6 +1112,36 @@ export const Inventory: React.FC = () => {
                               <li>• Center barcode in frame</li>
                               <li>• Hold camera steady</li>
                               <li>• Keep barcode flat and visible</li>
+                            </ul>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="space-y-2">
+                            <h4 className="font-medium">Keyboard Scanner:</h4>
+                            <ul className="text-sm text-muted-foreground space-y-1">
+                              <li>• Connect USB laser barcode scanner</li>
+                              <li>• Scanner acts as keyboard input</li>
+                              <li>• Fastest scanning method</li>
+                              <li>• Best for high-volume counting</li>
+                            </ul>
+                          </div>
+                          <div className="space-y-2">
+                            <h4 className="font-medium">Setup:</h4>
+                            <ul className="text-sm text-muted-foreground space-y-1">
+                              <li>• Click "Start Scanner" button below</li>
+                              <li>• Hidden input will capture keystrokes</li>
+                              <li>• Scan any barcode with your laser scanner</li>
+                              <li>• Barcode will be detected automatically</li>
+                            </ul>
+                          </div>
+                          <div className="space-y-2">
+                            <h4 className="font-medium">Troubleshooting:</h4>
+                            <ul className="text-sm text-muted-foreground space-y-1">
+                              <li>• Make sure scanner is plugged in</li>
+                              <li>• Scanner should emit beep when scanning</li>
+                              <li>• If not detecting, click on the scanner area</li>
+                              <li>• Check scanner is in USB HID keyboard mode</li>
                             </ul>
                           </div>
                         </>

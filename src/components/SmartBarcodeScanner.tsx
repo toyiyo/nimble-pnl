@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { NativeBarcodeScanner } from './NativeBarcodeScanner';
 import { Html5QrcodeScanner } from './Html5QrcodeScanner';
-import { OCRBarcodeScanner } from './OCRBarcodeScanner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, Camera, Brain } from 'lucide-react';
+import { Loader2, Sparkles, Camera } from 'lucide-react';
 
 interface SmartBarcodeScannerProps {
   onScan: (barcode: string, format: string) => void;
@@ -13,7 +12,7 @@ interface SmartBarcodeScannerProps {
   autoStart?: boolean;
 }
 
-type ScannerType = 'native' | 'ocr' | 'fallback' | 'checking';
+type ScannerType = 'native' | 'fallback' | 'checking';
 
 export const SmartBarcodeScanner = ({
   onScan,
@@ -41,16 +40,9 @@ export const SmartBarcodeScanner = ({
         console.warn('Native BarcodeDetector check failed:', error);
       }
 
-      // Check if mobile device (iOS/Android have poor html5-qrcode support)
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      
-      if (isMobile) {
-        console.log('ℹ️ Using OCR scanner for mobile');
-        setScannerType('ocr');
-      } else {
-        console.log('ℹ️ Using html5-qrcode fallback');
-        setScannerType('fallback');
-      }
+      // Fallback to html5-qrcode
+      console.log('ℹ️ Using html5-qrcode fallback');
+      setScannerType('fallback');
     };
 
     checkNativeSupport();
@@ -71,19 +63,12 @@ export const SmartBarcodeScanner = ({
     <div className="space-y-2">
       {/* Scanner type indicator */}
       <div className="flex justify-center">
-        {scannerType === 'native' && (
+        {scannerType === 'native' ? (
           <Badge className="bg-gradient-to-r from-primary to-accent">
             <Sparkles className="w-3 h-3 mr-1" />
             Ultra-Fast Native Scanner
           </Badge>
-        )}
-        {scannerType === 'ocr' && (
-          <Badge className="bg-gradient-to-r from-purple-500 to-pink-600">
-            <Brain className="w-3 h-3 mr-1" />
-            AI-Powered Scanner
-          </Badge>
-        )}
-        {scannerType === 'fallback' && (
+        ) : (
           <Badge variant="secondary">
             <Camera className="w-3 h-3 mr-1" />
             Standard Scanner
@@ -92,22 +77,14 @@ export const SmartBarcodeScanner = ({
       </div>
 
       {/* Render appropriate scanner */}
-      {scannerType === 'native' && (
+      {scannerType === 'native' ? (
         <NativeBarcodeScanner
           onScan={onScan}
           onError={onError}
           className={className}
           autoStart={autoStart}
         />
-      )}
-      {scannerType === 'ocr' && (
-        <OCRBarcodeScanner
-          onScan={onScan}
-          onError={onError}
-          className={className}
-        />
-      )}
-      {scannerType === 'fallback' && (
+      ) : (
         <Html5QrcodeScanner
           onScan={onScan}
           onError={onError}

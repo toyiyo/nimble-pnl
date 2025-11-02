@@ -245,29 +245,18 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const capturePhotoForAI = useCallback(async (): Promise<void> => {
     if (!videoRef.current || state.isProcessingAI) return;
 
+    const video = videoRef.current;
+    
+    // Video should already be streaming since we're in AI mode with active scanner
+    if (!video.srcObject || video.readyState < 2) {
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera not ready. Please wait...' });
+      return;
+    }
+
     dispatch({ type: 'SET_PROCESSING_AI', payload: true });
     dispatch({ type: 'SET_DEBUG_INFO', payload: 'Processing image with AI...' });
 
     try {
-      // Temporarily start camera for capture if not already streaming
-      let tempStream: MediaStream | null = null;
-      const video = videoRef.current;
-      
-      if (!video.srcObject) {
-        // Need to start camera temporarily
-        try {
-          tempStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment' }
-          });
-          video.srcObject = tempStream;
-          await video.play();
-          // Wait a bit for camera to initialize
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (err) {
-          console.error('Failed to start camera for AI capture:', err);
-          throw new Error('Camera access denied');
-        }
-      }
       const canvas = CanvasPool.get();
       const ctx = canvas.getContext('2d')!;
 
@@ -291,12 +280,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
       if (!response) {
         throw new Error('No response from AI');
-      }
-
-      // Clean up temp stream if we created one
-      if (tempStream) {
-        tempStream.getTracks().forEach(t => t.stop());
-        video.srcObject = null;
       }
 
       const result = response;
@@ -340,15 +323,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       }
     } catch (error) {
       console.error('AI scan error:', error);
-      
-      // Clean up temp stream on error
-      const video = videoRef.current;
-      if (video?.srcObject) {
-        const stream = video.srcObject as MediaStream;
-        stream.getTracks().forEach(t => t.stop());
-        video.srcObject = null;
-      }
-      
       dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI processing failed. Please try again.' });
       dispatch({ type: 'SET_PROCESSING_AI', payload: false });
       onError?.('AI processing failed. Please try again.');
@@ -469,36 +443,19 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     }
   }, [handleScanSuccess, handleScanError, state.isPaused, state.isUsingAIMode, FRAME_SKIP_COUNT, onError]);
 
-  // Toggle AI mode - properly stop/restart ZXing decoder with race protection
+  // Toggle AI mode - just set flags, decoder callback handles the rest
   const toggleAIMode = useCallback(async () => {
-    // Suppress visibilitychange cleanup during toggle
-    suppressAutoCleanupRef.current = true;
-    setTimeout(() => (suppressAutoCleanupRef.current = false), 500);
-
     if (state.isUsingAIMode) {
-      // Exit AI mode → restart ZXing (unpause and restart scanning)
-      dispatch({ type: 'SET_PAUSED', payload: false });
+      // Exit AI mode → decoder will automatically resume processing frames
       dispatch({ type: 'SET_AI_MODE', payload: false });
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Restarting barcode scanner...' });
-      await startScanning();
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Barcode scanner active - scanning...' });
     } else {
-      // Enter AI mode → invalidate frames, stop ZXing controls (but keep isScanning true)
-      invalidateSession();
-      
-      // Stop ZXing controls to halt barcode scanning
-      if (controlsRef.current) {
-        try { controlsRef.current.stop(); } catch {}
-        controlsRef.current = null;
-      }
-      
-      // Keep stream alive but stop ZXing processing
-      // Video element stays mounted for AI capture
-      
+      // Enter AI mode → decoder callback will ignore frames automatically
+      // Stream and controls stay alive for photo capture
       dispatch({ type: 'SET_AI_MODE', payload: true });
       dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI Mode - tap "Capture Photo" to scan' });
     }
-  }, [state.isUsingAIMode, startScanning, invalidateSession]);
+  }, [state.isUsingAIMode]);
 
   const resumeScanning = useCallback(async () => {
     dispatch({ type: 'SET_PAUSED', payload: false });

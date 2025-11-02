@@ -135,12 +135,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   // Use useReducer for optimized state management
   const [state, dispatch] = useReducer(scannerReducer, initialState);
 
-  // Constants for performance optimization - AGGRESSIVE memory reduction
-  const FRAME_SKIP_COUNT = 10; // Process only every 10th frame (~1-2 times/sec)
+  // Constants for performance optimization - BALANCED for good scanning
+  const FRAME_SKIP_COUNT = 3; // Process every 3rd frame (better scan rate)
   const OCR_TIMEOUT = 2000; // 2 seconds before OCR fallback
-  const MAX_WIDTH = 480; // Further reduced for memory
-  const MAX_HEIGHT = 360; // Further reduced for memory
-  const JPEG_QUALITY = 0.5; // Lower quality for less memory
+  const MAX_WIDTH = 640; // Balanced resolution for AI capture
+  const MAX_HEIGHT = 480; // Balanced resolution for AI capture
+  const JPEG_QUALITY = 0.7; // Better quality for AI recognition
 
   // Initialize reader once with Android-optimized hints
   useEffect(() => {
@@ -249,7 +249,25 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     dispatch({ type: 'SET_DEBUG_INFO', payload: 'Processing image with AI...' });
 
     try {
+      // Temporarily start camera for capture if not already streaming
+      let tempStream: MediaStream | null = null;
       const video = videoRef.current;
+      
+      if (!video.srcObject) {
+        // Need to start camera temporarily
+        try {
+          tempStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' }
+          });
+          video.srcObject = tempStream;
+          await video.play();
+          // Wait a bit for camera to initialize
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (err) {
+          console.error('Failed to start camera for AI capture:', err);
+          throw new Error('Camera access denied');
+        }
+      }
       const canvas = CanvasPool.get();
       const ctx = canvas.getContext('2d')!;
 
@@ -273,6 +291,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
       if (!response) {
         throw new Error('No response from AI');
+      }
+
+      // Clean up temp stream if we created one
+      if (tempStream) {
+        tempStream.getTracks().forEach(t => t.stop());
+        video.srcObject = null;
       }
 
       const result = response;
@@ -316,6 +340,15 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       }
     } catch (error) {
       console.error('AI scan error:', error);
+      
+      // Clean up temp stream on error
+      const video = videoRef.current;
+      if (video?.srcObject) {
+        const stream = video.srcObject as MediaStream;
+        stream.getTracks().forEach(t => t.stop());
+        video.srcObject = null;
+      }
+      
       dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI processing failed. Please try again.' });
       dispatch({ type: 'SET_PROCESSING_AI', payload: false });
       onError?.('AI processing failed. Please try again.');
@@ -443,39 +476,25 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     setTimeout(() => (suppressAutoCleanupRef.current = false), 500);
 
     if (state.isUsingAIMode) {
-      // Exit AI mode → restart ZXing
+      // Exit AI mode → restart ZXing (unpause and restart scanning)
+      dispatch({ type: 'SET_PAUSED', payload: false });
       dispatch({ type: 'SET_AI_MODE', payload: false });
       dispatch({ type: 'SET_DEBUG_INFO', payload: 'Restarting barcode scanner...' });
       await startScanning();
       dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
     } else {
-      // Enter AI mode → pause, invalidate frames, stop controls & tracks, detach video
-      dispatch({ type: 'SET_PAUSED', payload: true }); // Block decoder path immediately
+      // Enter AI mode → invalidate frames, stop ZXing controls (but keep isScanning true)
       invalidateSession();
       
-      // Stop ZXing controls
+      // Stop ZXing controls to halt barcode scanning
       if (controlsRef.current) {
         try { controlsRef.current.stop(); } catch {}
         controlsRef.current = null;
       }
       
-      // Stop known stream
-      if (streamRef.current) {
-        try { streamRef.current.getTracks().forEach(t => t.stop()); } catch {}
-        streamRef.current = null;
-      }
+      // Keep stream alive but stop ZXing processing
+      // Video element stays mounted for AI capture
       
-      // Ensure video is fully detached (turns off camera light)
-      const video = videoRef.current;
-      if (video) {
-        const ms = video.srcObject as MediaStream | null;
-        if (ms) {
-          try { ms.getTracks().forEach(t => t.stop()); } catch {}
-        }
-        try { (video as any).srcObject = null; } catch {}
-        try { video.removeAttribute('src'); video.load(); } catch {}
-      }
-
       dispatch({ type: 'SET_AI_MODE', payload: true });
       dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI Mode - tap "Capture Photo" to scan' });
     }
@@ -636,77 +655,83 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">
-          <Button 
-            onClick={toggleScanning}
-            variant={state.isScanning ? "destructive" : "default"}
-            className={cn(
-              "flex-1 transition-all duration-300 hover:scale-[1.02]",
-              !state.isScanning && "bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 shadow-lg shadow-purple-500/30"
-            )}
-            aria-label={state.isScanning ? "Stop scanning" : "Start scanning"}
-          >
-            {state.isScanning ? (
-              <>
+          {/* Primary scanning control */}
+          {!state.isScanning ? (
+            <Button 
+              onClick={toggleScanning}
+              variant="default"
+              className="flex-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 shadow-lg shadow-purple-500/30 transition-all duration-300 hover:scale-[1.02]"
+              aria-label="Start scanning"
+            >
+              <Camera className="h-4 w-4 mr-2" />
+              Start Scanning
+            </Button>
+          ) : (
+            <>
+              {/* Stop button */}
+              <Button 
+                onClick={stopScanning}
+                variant="destructive"
+                className="flex-1 transition-all duration-300 hover:scale-[1.02]"
+                aria-label="Stop scanning"
+              >
                 <Square className="h-4 w-4 mr-2" />
                 Stop
-              </>
-            ) : (
-              <>
-                <Camera className="h-4 w-4 mr-2" />
-                Start
-              </>
-            )}
-          </Button>
+              </Button>
 
-          {state.isPaused && !state.isUsingAIMode && (
-            <Button 
-              onClick={resumeScanning} 
-              variant="outline" 
-              className="flex-1 sm:flex-initial border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 hover:border-emerald-500 transition-all duration-300"
-              aria-label="Resume scanning"
-            >
-              Resume
-            </Button>
-          )}
-
-          {state.isScanning && !state.isPaused && (
-            <Button 
-              onClick={toggleAIMode} 
-              variant={state.isUsingAIMode ? "destructive" : "secondary"}
-              className={cn(
-                "flex-1 sm:flex-initial whitespace-nowrap transition-all duration-300 hover:scale-[1.02]",
-                state.isUsingAIMode ? 
-                  "bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg shadow-purple-500/30" : 
-                  "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg shadow-blue-500/30"
+              {/* Resume button - only show when paused but NOT in AI mode */}
+              {state.isPaused && !state.isUsingAIMode && (
+                <Button 
+                  onClick={resumeScanning} 
+                  variant="outline" 
+                  className="flex-1 border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 hover:border-emerald-500 transition-all duration-300"
+                  aria-label="Resume scanning"
+                >
+                  <Camera className="h-4 w-4 mr-2" />
+                  Resume
+                </Button>
               )}
-              aria-label={state.isUsingAIMode ? "Exit AI mode" : "Enable AI mode"}
-            >
-              {state.isUsingAIMode ? (
-                <>
-                  <X className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Exit AI Mode</span>
-                  <span className="sm:hidden">Exit AI</span>
-                </>
-              ) : (
-                <>
-                  <Zap className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">AI Mode</span>
-                  <span className="sm:hidden">AI</span>
-                </>
-              )}
-            </Button>
-          )}
 
-          {state.isUsingAIMode && !state.isProcessingAI && (
-            <Button 
-              onClick={capturePhotoForAI}
-              variant="default"
-              className="flex-1 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg shadow-purple-500/30 transition-all duration-300 hover:scale-[1.02]"
-              aria-label="Capture photo for AI processing"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Capture Photo
-            </Button>
+              {/* AI Mode toggle - show when scanning (even if paused or in AI mode) */}
+              <Button 
+                onClick={toggleAIMode} 
+                variant={state.isUsingAIMode ? "default" : "secondary"}
+                className={cn(
+                  "flex-1 sm:flex-initial whitespace-nowrap transition-all duration-300 hover:scale-[1.02]",
+                  state.isUsingAIMode ? 
+                    "bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg shadow-purple-500/30" : 
+                    "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg shadow-blue-500/30"
+                )}
+                aria-label={state.isUsingAIMode ? "Exit AI mode" : "Enable AI mode"}
+              >
+                {state.isUsingAIMode ? (
+                  <>
+                    <X className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Exit AI</span>
+                    <span className="sm:hidden">Exit</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">AI Mode</span>
+                    <span className="sm:hidden">AI</span>
+                  </>
+                )}
+              </Button>
+
+              {/* Capture Photo - only in AI mode */}
+              {state.isUsingAIMode && !state.isProcessingAI && (
+                <Button 
+                  onClick={capturePhotoForAI}
+                  variant="default"
+                  className="flex-1 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg shadow-purple-500/30 transition-all duration-300 hover:scale-[1.02]"
+                  aria-label="Capture photo for AI processing"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Capture Photo
+                </Button>
+              )}
+            </>
           )}
         </div>
 

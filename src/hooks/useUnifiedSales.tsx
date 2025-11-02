@@ -95,19 +95,54 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     refetchOnReconnect: false, // Disable automatic refetch on reconnect
   });
 
-  // Compute unmapped items from sales data directly (no separate query)
+  // Fetch recipes to compute unmapped items (separate query key prevents infinite loop)
+  const { data: recipes = [] } = useQuery({
+    queryKey: ['recipes-for-mapping', restaurantId],
+    queryFn: async () => {
+      if (!restaurantId || !user) return [];
+      
+      const { data, error } = await supabase
+        .from('recipes')
+        .select('id, pos_item_name')
+        .eq('restaurant_id', restaurantId)
+        .not('pos_item_name', 'is', null);
+        
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!restaurantId && !!user,
+    staleTime: 60000, // Same as sales - 60 seconds
+    gcTime: 300000, // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false, // Disable automatic refetch
+    refetchOnMount: false, // Disable automatic refetch
+    refetchOnReconnect: false, // Disable automatic refetch
+  });
+
+  // Compute unmapped items from sales data
   const unmappedItems = useMemo(() => {
     if (!restaurantId || sales.length === 0) {
       return [];
     }
-    // This will be computed synchronously from the sales data
-    // We'll do the actual filtering in the component that needs it
-    // to avoid creating another reactive query
-    return [];
-  }, [restaurantId, sales.length]);
-
-  // Removed separate unmappedItems query to prevent infinite refetch loop
-  // unmappedItems is now computed inline above
+    
+    // Get unique item names from sales (exclude child splits)
+    const saleItemNames = new Set(
+      sales
+        .filter(sale => !sale.parent_sale_id) // Only parent sales
+        .map(sale => sale.itemName)
+    );
+    
+    // Get all mapped POS item names from recipes (case-insensitive)
+    const mappedItemNames = new Set(
+      recipes
+        .filter(recipe => recipe.pos_item_name)
+        .map(recipe => recipe.pos_item_name!.toLowerCase())
+    );
+    
+    // Return items that are NOT mapped to any recipe
+    return Array.from(saleItemNames).filter(
+      itemName => !mappedItemNames.has(itemName.toLowerCase())
+    );
+  }, [restaurantId, sales, recipes])
 
   // Show error toast
   useEffect(() => {

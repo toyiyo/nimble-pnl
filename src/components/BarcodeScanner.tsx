@@ -216,22 +216,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       }
     }
     
-    // 4) Fully detach, then REPLACE the video element (Safari/WebKit quirk fix)
+    // 4) Fully detach and reset video element (let React manage DOM)
     if (video) {
       try { video.pause(); } catch {}
       try { (video as any).srcObject = null; } catch {}
       try { video.removeAttribute('src'); } catch {}
       try { video.load(); } catch {}
-      
-      // Replace video node - critical for iOS/Safari
-      try {
-        const fresh = video.cloneNode(false) as HTMLVideoElement;
-        video.parentNode?.replaceChild(fresh, video);
-        videoRef.current = fresh;
-        console.log('✅ Replaced video element');
-      } catch (e) {
-        console.error('Error replacing video element:', e);
-      }
+      console.log('✅ Video element detached');
     }
     
     // 5) Cancel timers/raf + clear canvases

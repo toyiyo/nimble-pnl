@@ -163,8 +163,37 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     return cleanup;
   }, []);
 
-  // Cleanup function
+  // Cleanup function - AGGRESSIVE camera release
   const cleanup = useCallback(() => {
+    console.log('🧹 Starting cleanup...');
+    
+    // STEP 1: Stop video element FIRST
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
+    }
+    
+    // STEP 2: Stop all media tracks immediately
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('✅ Stopped track:', track.kind);
+      });
+      streamRef.current = null;
+    }
+    
+    // STEP 3: Stop ZXing controls after video is stopped
+    if (controlsRef.current) {
+      try {
+        controlsRef.current.stop();
+        console.log('✅ Stopped ZXing controls');
+      } catch (e) {
+        console.error('Error stopping ZXing controls:', e);
+      }
+      controlsRef.current = null;
+    }
+    
+    // STEP 4: Cancel any pending animations
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
@@ -174,33 +203,16 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       clearTimeout(grokTimeoutRef.current);
       grokTimeoutRef.current = null;
     }
-
-    // CRITICAL: Stop ZXing controls first before manual cleanup
-    if (controlsRef.current) {
-      try {
-        controlsRef.current.stop();
-      } catch (e) {
-        console.error('Error stopping ZXing controls:', e);
-      }
-      controlsRef.current = null;
-    }
-
-    // Stop all media tracks - this is critical for memory cleanup
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        track.stop();
-      });
-      streamRef.current = null;
-    }
-
-    // Clear video element properly
+    
+    // STEP 5: Force video element reset
     if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.srcObject = null;
-      videoRef.current.load(); // Force video element reset
+      videoRef.current.load();
     }
-
+    
+    // STEP 6: Clear canvas pool
     CanvasPool.cleanup();
+    
+    console.log('✅ Cleanup complete');
   }, []);
 
   // Capture a single photo for AI processing
@@ -284,22 +296,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     }
   }, [state.isProcessingAI, state.lastScan, onScan, onError, MAX_WIDTH, MAX_HEIGHT, JPEG_QUALITY]);
 
-  // Toggle AI mode
-  const toggleAIMode = useCallback(() => {
-    if (state.isUsingAIMode) {
-      // Exit AI mode
-      dispatch({ type: 'SET_AI_MODE', payload: false });
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
-    } else {
-      // Enter AI mode
-      dispatch({ type: 'SET_AI_MODE', payload: true });
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI Mode - tap "Capture Photo" to scan' });
-    }
-  }, [state.isUsingAIMode]);
-
   // Handle successful barcode scan - STOP camera to free memory
   const handleScanSuccess = useCallback((result: any, format: string) => {
     if (result !== state.lastScan && !state.scanCooldown) {
+      // Update UI first
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Scan complete, stopping camera...' });
+      
       // Pass the raw barcode without normalization
       onScan(result, format);
       
@@ -319,6 +321,44 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const handleScanError = useCallback(() => {
     dispatch({ type: 'SCAN_ERROR' });
   }, []);
+
+  // Toggle AI mode - properly stop/restart ZXing decoder
+  const toggleAIMode = useCallback(async () => {
+    if (state.isUsingAIMode) {
+      // Exit AI mode - restart ZXing decoder
+      dispatch({ type: 'SET_AI_MODE', payload: false });
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Restarting barcode scanner...' });
+      
+      // Restart ZXing decoding
+      if (readerRef.current && videoRef.current && streamRef.current) {
+        const controls = await readerRef.current.decodeFromVideoDevice(
+          undefined,
+          videoRef.current,
+          (result, error) => {
+            frameSkipCounter.current = (frameSkipCounter.current + 1) % FRAME_SKIP_COUNT;
+            if (frameSkipCounter.current !== 0) return;
+            if (state.isPaused || state.isUsingAIMode) return;
+            
+            if (result) {
+              handleScanSuccess(result.getText(), result.getBarcodeFormat().toString());
+            } else if (error) {
+              handleScanError();
+            }
+          }
+        );
+        controlsRef.current = controls;
+      }
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
+    } else {
+      // Enter AI mode - stop ZXing decoder but keep video stream
+      if (controlsRef.current) {
+        controlsRef.current.stop();
+        controlsRef.current = null;
+      }
+      dispatch({ type: 'SET_AI_MODE', payload: true });
+      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI Mode - tap "Capture Photo" to scan' });
+    }
+  }, [state.isUsingAIMode, state.isPaused, handleScanSuccess, handleScanError, FRAME_SKIP_COUNT]);
 
   // Start scanning with optimization
   const startScanning = useCallback(async () => {
@@ -405,13 +445,27 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   }, [startScanning]);
 
   const stopScanning = useCallback(() => {
-    dispatch({ type: 'STOP_SCANNING' });
+    console.log('🛑 Stop scanning initiated');
     
-    // Cleanup all resources (stops video stream)
+    // Update UI immediately
+    dispatch({ type: 'SET_DEBUG_INFO', payload: 'Stopping camera...' });
+    
+    // Force reader to null to stop decode loop
+    readerRef.current = null;
+    
+    // Cleanup all resources
     cleanup();
     
-    // Force clear the reader reference to ensure decode loop stops
-    readerRef.current = null;
+    // Update state
+    dispatch({ type: 'STOP_SCANNING' });
+    
+    // Verify camera released after short delay
+    setTimeout(() => {
+      console.log('🔍 Verifying camera released...');
+      if (streamRef.current) {
+        console.error('⚠️ Stream still active after cleanup!');
+      }
+    }, 100);
   }, [cleanup]);
 
   const toggleScanning = useCallback(() => {

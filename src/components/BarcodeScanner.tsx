@@ -3,12 +3,12 @@ import { BrowserMultiFormatReader } from '@zxing/browser';
 import { DecodeHintType, BarcodeFormat } from '@zxing/library';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Camera, Square, Loader2, Target, AlertCircle, Zap, X, Plus, CheckCircle2 } from 'lucide-react';
+import { Camera, Square, Loader2, Target, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from "@/integrations/supabase/client";
 
 interface BarcodeScannerProps {
-  onScan: (result: string, format: string, aiData?: string) => void;
+  onScan: (result: string, format: string) => void;
   onError?: (error: string) => void;
   className?: string;
   autoStart?: boolean;
@@ -22,9 +22,6 @@ interface ScannerState {
   lastScan: string;
   scanCooldown: boolean;
   isPaused: boolean;
-  isUsingAIMode: boolean;
-  isProcessingAI: boolean;
-  lastAIResult: string | null;
 }
 
 type ScannerAction = 
@@ -35,10 +32,7 @@ type ScannerAction =
   | { type: 'SCAN_SUCCESS'; payload: { result: string; format: string } }
   | { type: 'SCAN_ERROR' }
   | { type: 'SET_COOLDOWN'; payload: boolean }
-  | { type: 'SET_PAUSED'; payload: boolean }
-  | { type: 'SET_AI_MODE'; payload: boolean }
-  | { type: 'SET_PROCESSING_AI'; payload: boolean }
-  | { type: 'SET_AI_RESULT'; payload: string | null };
+  | { type: 'SET_PAUSED'; payload: boolean };
 
 const initialState: ScannerState = {
   isScanning: false, 
@@ -47,17 +41,14 @@ const initialState: ScannerState = {
   lastScan: '',
   scanCooldown: false,
   isPaused: false,
-  isUsingAIMode: false,
-  isProcessingAI: false,
-  lastAIResult: null
 };
 
 const scannerReducer = (state: ScannerState, action: ScannerAction): ScannerState => {
   switch (action.type) {
     case 'START_SCANNING':
-      return { ...state, isScanning: true, debugInfo: 'Starting scanner...', lastAIResult: null };
+      return { ...state, isScanning: true, debugInfo: 'Starting scanner...' };
     case 'STOP_SCANNING':
-      return { ...state, isScanning: false, debugInfo: 'Stopped', isUsingAIMode: false, isProcessingAI: false, lastAIResult: null };
+      return { ...state, isScanning: false, debugInfo: 'Stopped' };
     case 'SET_PERMISSION':
       return { ...state, hasPermission: action.payload };
     case 'SET_DEBUG_INFO':
@@ -76,12 +67,6 @@ const scannerReducer = (state: ScannerState, action: ScannerAction): ScannerStat
       return { ...state, scanCooldown: action.payload };
     case 'SET_PAUSED':
       return { ...state, isPaused: action.payload };
-    case 'SET_AI_MODE':
-      return { ...state, isUsingAIMode: action.payload, lastAIResult: action.payload ? null : state.lastAIResult };
-    case 'SET_PROCESSING_AI':
-      return { ...state, isProcessingAI: action.payload };
-    case 'SET_AI_RESULT':
-      return { ...state, lastAIResult: action.payload };
     default:
       return state;
   }
@@ -123,24 +108,18 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const grokTimeoutRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const controlsRef = useRef<any>(null); // ZXing controls object
   const frameSkipCounter = useRef(0);
   const lastScanTime = useRef(0);
   const sessionIdRef = useRef(0); // Session token to kill late frames
   const decoderSessionRef = useRef(0); // Session id seen by decoder
-  const suppressAutoCleanupRef = useRef(false); // Guard against visibilitychange during toggle
   
   // Use useReducer for optimized state management
   const [state, dispatch] = useReducer(scannerReducer, initialState);
 
   // Constants for performance optimization - BALANCED for good scanning
   const FRAME_SKIP_COUNT = 3; // Process every 3rd frame (better scan rate)
-  const OCR_TIMEOUT = 2000; // 2 seconds before OCR fallback
-  const MAX_WIDTH = 640; // Balanced resolution for AI capture
-  const MAX_HEIGHT = 480; // Balanced resolution for AI capture
-  const JPEG_QUALITY = 0.7; // Better quality for AI recognition
 
   // Initialize reader once with Android-optimized hints
   useEffect(() => {
@@ -231,103 +210,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       animationFrameRef.current = null;
     }
     
-    if (grokTimeoutRef.current) {
-      clearTimeout(grokTimeoutRef.current);
-      grokTimeoutRef.current = null;
-    }
-    
     CanvasPool.cleanup();
     
     console.log('✅ Cleanup complete - camera should be released');
   }, [invalidateSession]);
 
-  // Capture a single photo for AI processing
-  const capturePhotoForAI = useCallback(async (): Promise<void> => {
-    if (!videoRef.current || state.isProcessingAI) return;
-
-    const video = videoRef.current;
-    
-    // Video should already be streaming since we're in AI mode with active scanner
-    if (!video.srcObject || video.readyState < 2) {
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera not ready. Please wait...' });
-      return;
-    }
-
-    dispatch({ type: 'SET_PROCESSING_AI', payload: true });
-    dispatch({ type: 'SET_DEBUG_INFO', payload: 'Processing image with AI...' });
-
-    try {
-      const canvas = CanvasPool.get();
-      const ctx = canvas.getContext('2d')!;
-
-      // Scale down for performance
-      const scale = Math.min(MAX_WIDTH / video.videoWidth, MAX_HEIGHT / video.videoHeight);
-      canvas.width = video.videoWidth * scale;
-      canvas.height = video.videoHeight * scale;
-      
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageDataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
-      
-      CanvasPool.release(canvas);
-
-      const { data: response, error } = await supabase.functions.invoke('grok-ocr', {
-        body: { imageData: imageDataUrl }
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      if (!response) {
-        throw new Error('No response from AI');
-      }
-
-      const result = response;
-      
-      // Check for barcode first
-      const barcodeMatches = result.text?.match(/\b\d{8,14}\b/g);
-      
-      if (barcodeMatches?.[0]) {
-        const barcodeText = barcodeMatches[0];
-        
-        if (barcodeText !== state.lastScan) {
-          // Pass the raw barcode without normalization
-          onScan(barcodeText, 'AI');
-          
-          dispatch({ type: 'SCAN_SUCCESS', payload: { result: barcodeText, format: 'AI' } });
-          dispatch({ type: 'SET_DEBUG_INFO', payload: `AI found barcode: ${barcodeText}` });
-          dispatch({ type: 'SET_AI_MODE', payload: false });
-          dispatch({ type: 'SET_PROCESSING_AI', payload: false });
-
-          setTimeout(() => {
-            dispatch({ type: 'SET_COOLDOWN', payload: false });
-            dispatch({ type: 'SET_DEBUG_INFO', payload: 'Paused - click Resume to continue scanning' });
-          }, 1000);
-        }
-        return;
-      }
-
-      // If no barcode, store the product info for potential use
-      if (result.text && result.text.length > 20) {
-        dispatch({ type: 'SET_AI_RESULT', payload: result.text });
-        
-        // Extract product name from the text
-        const lines = result.text.split('\n').filter(line => line.trim().length > 0);
-        const productName = lines[0] || 'Product detected';
-        
-        dispatch({ type: 'SET_DEBUG_INFO', payload: `AI found: ${productName} (no barcode visible)` });
-        dispatch({ type: 'SET_PROCESSING_AI', payload: false });
-      } else {
-        dispatch({ type: 'SET_DEBUG_INFO', payload: 'No product detected. Try taking another photo.' });
-        dispatch({ type: 'SET_PROCESSING_AI', payload: false });
-      }
-    } catch (error) {
-      console.error('AI scan error:', error);
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI processing failed. Please try again.' });
-      dispatch({ type: 'SET_PROCESSING_AI', payload: false });
-      onError?.('AI processing failed. Please try again.');
-    }
-  }, [state.isProcessingAI, state.lastScan, onScan, onError, MAX_WIDTH, MAX_HEIGHT, JPEG_QUALITY]);
 
   // Handle successful barcode scan - pause briefly to prevent duplicates
   const handleScanSuccess = useCallback((result: any, format: string) => {
@@ -427,8 +314,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           frameSkipCounter.current = (frameSkipCounter.current + 1) % FRAME_SKIP_COUNT;
           if (frameSkipCounter.current !== 0) return;
 
-          // Don't process if paused or using AI
-          if (state.isPaused || state.isUsingAIMode) return;
+          // Don't process if paused
+          if (state.isPaused) return;
 
           if (result) {
             handleScanSuccess(result.getText(), result.getBarcodeFormat().toString());
@@ -449,21 +336,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       dispatch({ type: 'STOP_SCANNING' });
       onError?.(error.message);
     }
-  }, [handleScanSuccess, handleScanError, state.isPaused, state.isUsingAIMode, FRAME_SKIP_COUNT, onError]);
-
-  // Toggle AI mode - just set flags, decoder callback handles the rest
-  const toggleAIMode = useCallback(async () => {
-    if (state.isUsingAIMode) {
-      // Exit AI mode → decoder will automatically resume processing frames
-      dispatch({ type: 'SET_AI_MODE', payload: false });
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'Barcode scanner active - scanning...' });
-    } else {
-      // Enter AI mode → decoder callback will ignore frames automatically
-      // Stream and controls stay alive for photo capture
-      dispatch({ type: 'SET_AI_MODE', payload: true });
-      dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI Mode - tap "Capture Photo" to scan' });
-    }
-  }, [state.isUsingAIMode]);
+  }, [handleScanSuccess, handleScanError, state.isPaused, FRAME_SKIP_COUNT, onError]);
 
   const resumeScanning = useCallback(async () => {
     dispatch({ type: 'SET_PAUSED', payload: false });
@@ -504,10 +377,10 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     };
   }, [autoStart, startScanning, cleanup]);
 
-  // Force cleanup when page is hidden (mobile Safari fix) - with guard against toggle race
+  // Force cleanup when page is hidden (mobile Safari fix)
   useEffect(() => {
     const onHide = () => {
-      if (document.hidden && !suppressAutoCleanupRef.current) {
+      if (document.hidden) {
         cleanup();
       }
     };
@@ -540,7 +413,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           Barcode Scanner
         </CardTitle>
         <CardDescription>
-          High-performance scanner with AI fallback
+          High-performance continuous scanning
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -569,8 +442,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
             </div>
           )}
           
-          {/* Scanning Reticle - only show when actively scanning (not paused, not AI mode) */}
-          {state.isScanning && !state.isPaused && !state.isUsingAIMode && (
+          {/* Scanning Reticle - only show when actively scanning (not paused) */}
+          {state.isScanning && !state.isPaused && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="relative w-64 h-40">
                 {/* Subtle dashed border outline only */}
@@ -603,20 +476,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
               Paused
             </div>
           )}
-          {state.isUsingAIMode && !state.isProcessingAI && (
-            <div className="absolute top-3 right-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg shadow-purple-500/30 flex items-center gap-1.5 animate-pulse">
-              <Zap className="h-4 w-4" />
-              AI Mode
-            </div>
-          )}
-          {state.isProcessingAI && (
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-300">
-              <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl p-6 flex flex-col items-center gap-3 shadow-2xl border-2 border-purple-500/20">
-                <Loader2 className="h-10 w-10 animate-spin text-purple-500" />
-                <p className="text-sm font-semibold">Processing with AI...</p>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">
@@ -640,86 +499,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                 className="flex-1 transition-all duration-300 hover:scale-[1.02]"
                 aria-label="Stop scanning"
               >
-                <Square className="h-4 w-4 mr-2" />
+              <Square className="h-4 w-4 mr-2" />
                 Stop
               </Button>
-
-              {/* AI Mode toggle - show when scanning */}
-              <Button 
-                onClick={toggleAIMode} 
-                variant={state.isUsingAIMode ? "default" : "secondary"}
-                className={cn(
-                  "flex-1 sm:flex-initial whitespace-nowrap transition-all duration-300 hover:scale-[1.02]",
-                  state.isUsingAIMode ? 
-                    "bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg shadow-purple-500/30" : 
-                    "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg shadow-blue-500/30"
-                )}
-                aria-label={state.isUsingAIMode ? "Exit AI mode" : "Enable AI mode"}
-              >
-                {state.isUsingAIMode ? (
-                  <>
-                    <X className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Exit AI</span>
-                    <span className="sm:hidden">Exit</span>
-                  </>
-                ) : (
-                  <>
-                    <Zap className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">AI Mode</span>
-                    <span className="sm:hidden">AI</span>
-                  </>
-                )}
-              </Button>
-
-              {/* Capture Photo - only in AI mode */}
-              {state.isUsingAIMode && !state.isProcessingAI && (
-                <Button 
-                  onClick={capturePhotoForAI}
-                  variant="default"
-                  className="flex-1 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg shadow-purple-500/30 transition-all duration-300 hover:scale-[1.02]"
-                  aria-label="Capture photo for AI processing"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Capture Photo
-                </Button>
-              )}
             </>
           )}
         </div>
-
-        {/* Help text and status */}
-        {/* Show AI result if product found but no barcode */}
-        {state.lastAIResult && state.isUsingAIMode && !state.isProcessingAI && (
-          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
-            <h4 className="font-medium text-blue-900 mb-1">Product Detected:</h4>
-            <p className="text-sm text-blue-800 mb-2">
-              {state.lastAIResult.split('\n').slice(0, 3).join(' • ')}
-            </p>
-            <div className="flex gap-2">
-              <Button 
-                onClick={() => {
-                  // Trigger product form with AI data
-                  onScan('MANUAL_ENTRY', 'AI', state.lastAIResult);
-                  dispatch({ type: 'SET_AI_MODE', payload: false });
-                }}
-                size="sm"
-                className="bg-green-500 hover:bg-green-600 text-white flex-1"
-              >
-                <Plus className="h-3 w-3 mr-1" />
-                Add This Product
-              </Button>
-              <Button 
-                onClick={capturePhotoForAI}
-                size="sm"
-                variant="outline"
-                className="flex-1"
-              >
-                <Camera className="h-3 w-3 mr-1" />
-                Try Again
-              </Button>
-            </div>
-          </div>
-        )}
 
         <div className="text-xs text-muted-foreground text-center">
           {state.debugInfo}

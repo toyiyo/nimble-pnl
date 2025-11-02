@@ -163,11 +163,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     return cleanup;
   }, []);
 
-  // Cleanup function - FIXED ORDER: Controls → Tracks → Video element
+  // Cleanup function - FIXED ORDER: Controls → streamRef → video tracks → Replace video element (Safari fix)
   const cleanup = useCallback(() => {
     console.log('🧹 Starting cleanup...');
     
-    // STEP 1: Stop ZXing controls FIRST (they own the gUM stream)
+    // 1) Stop ZXing controls first
     if (controlsRef.current) {
       try {
         controlsRef.current.stop();
@@ -178,29 +178,52 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       controlsRef.current = null;
     }
     
-    // STEP 2: Defensively stop any leftover tracks on video element
-    const video = videoRef.current;
-    const mediaStream = video?.srcObject as MediaStream | null;
-    if (mediaStream) {
-      mediaStream.getTracks().forEach(track => {
-        try {
-          track.stop();
-          console.log('✅ Stopped leftover track:', track.kind);
-        } catch (e) {
-          console.error('Error stopping track:', e);
-        }
-      });
+    // 2) Stop any known stream (from our ref)
+    if (streamRef.current) {
+      try {
+        streamRef.current.getTracks().forEach(t => {
+          t.stop();
+          console.log('✅ Stopped track from streamRef:', t.kind);
+        });
+      } catch (e) {
+        console.error('Error stopping streamRef tracks:', e);
+      }
+      streamRef.current = null;
     }
     
-    // STEP 3: Fully detach and reset video element
+    // 3) Also stop anything still hanging off the video element
+    const video = videoRef.current;
+    const mediaStream = (video?.srcObject as MediaStream) || null;
+    if (mediaStream) {
+      try {
+        mediaStream.getTracks().forEach(t => {
+          t.stop();
+          console.log('✅ Stopped track from video.srcObject:', t.kind);
+        });
+      } catch (e) {
+        console.error('Error stopping video srcObject tracks:', e);
+      }
+    }
+    
+    // 4) Fully detach, then REPLACE the video element (Safari/WebKit quirk fix)
     if (video) {
       try { video.pause(); } catch {}
       try { (video as any).srcObject = null; } catch {}
       try { video.removeAttribute('src'); } catch {}
       try { video.load(); } catch {}
+      
+      // Replace video node - critical for iOS/Safari
+      try {
+        const fresh = video.cloneNode(false) as HTMLVideoElement;
+        video.parentNode?.replaceChild(fresh, video);
+        videoRef.current = fresh;
+        console.log('✅ Replaced video element');
+      } catch (e) {
+        console.error('Error replacing video element:', e);
+      }
     }
     
-    // STEP 4: Cancel any pending animations
+    // 5) Cancel timers/raf + clear canvases
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
@@ -211,7 +234,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       grokTimeoutRef.current = null;
     }
     
-    // STEP 5: Clear canvas pool
     CanvasPool.cleanup();
     
     console.log('✅ Cleanup complete - camera should be released');
@@ -326,9 +348,18 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
   // Start scanning - Let ZXing own the stream (single source of truth)
   const startScanning = useCallback(async () => {
+    // Guard: don't start if already running
+    if (controlsRef.current) return;
+    
     dispatch({ type: 'START_SCANNING' });
 
     try {
+      // Stop any stale controls just in case
+      if (controlsRef.current) {
+        try { controlsRef.current.stop(); } catch {}
+        controlsRef.current = null;
+      }
+      
       // Recreate reader if it was cleared
       if (!readerRef.current) {
         const hints = new Map();
@@ -385,6 +416,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       
       // Store controls to properly stop the scanner later
       controlsRef.current = controls;
+      // Capture the stream ZXing attached
+      streamRef.current = (videoRef.current?.srcObject as MediaStream) ?? null;
       
     } catch (error: any) {
       dispatch({ type: 'SET_DEBUG_INFO', payload: `Error: ${error.message}` });
@@ -407,6 +440,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       if (controlsRef.current) {
         try { controlsRef.current.stop(); } catch {}
         controlsRef.current = null;
+      }
+      
+      // Stop known stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => { try { t.stop(); } catch {} });
+        streamRef.current = null;
       }
       
       // Ensure video is fully detached (turns off camera light)
@@ -436,26 +475,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
   const stopScanning = useCallback(() => {
     console.log('🛑 Stop scanning initiated');
-    
-    // Update UI immediately
     dispatch({ type: 'SET_DEBUG_INFO', payload: 'Stopping camera...' });
     
-    // Force reader to null to stop decode loop
-    readerRef.current = null;
-    
-    // Cleanup all resources
     cleanup();
+    // Don't null reader here - can race with internal stop
     
-    // Update state
     dispatch({ type: 'STOP_SCANNING' });
-    
-    // Verify camera released after short delay
-    setTimeout(() => {
-      console.log('🔍 Verifying camera released...');
-      if (streamRef.current) {
-        console.error('⚠️ Stream still active after cleanup!');
-      }
-    }, 100);
   }, [cleanup]);
 
   const toggleScanning = useCallback(() => {

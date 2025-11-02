@@ -128,6 +128,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const controlsRef = useRef<any>(null); // ZXing controls object
   const frameSkipCounter = useRef(0);
   const lastScanTime = useRef(0);
+  const sessionIdRef = useRef(0); // Session token to kill late frames
+  const decoderSessionRef = useRef(0); // Session id seen by decoder
+  const suppressAutoCleanupRef = useRef(false); // Guard against visibilitychange during toggle
   
   // Use useReducer for optimized state management
   const [state, dispatch] = useReducer(scannerReducer, initialState);
@@ -163,9 +166,17 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     return cleanup;
   }, []);
 
+  // Invalidate session to kill late frames
+  const invalidateSession = useCallback(() => {
+    decoderSessionRef.current = -1;
+  }, []);
+
   // Cleanup function - FIXED ORDER: Controls → streamRef → video tracks → Replace video element (Safari fix)
   const cleanup = useCallback(() => {
     console.log('🧹 Starting cleanup...');
+    
+    // Invalidate session first to kill late frames
+    invalidateSession();
     
     // 1) Stop ZXing controls first
     if (controlsRef.current) {
@@ -237,7 +248,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     CanvasPool.cleanup();
     
     console.log('✅ Cleanup complete - camera should be released');
-  }, []);
+  }, [invalidateSession]);
 
   // Capture a single photo for AI processing
   const capturePhotoForAI = useCallback(async (): Promise<void> => {
@@ -351,6 +362,10 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     // Guard: don't start if already running
     if (controlsRef.current) return;
     
+    // Bump session token to invalidate old frames
+    const mySession = ++sessionIdRef.current;
+    decoderSessionRef.current = mySession;
+    
     dispatch({ type: 'START_SCANNING' });
 
     try {
@@ -399,6 +414,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         backCamera.deviceId,
         videoRef.current!,
         (result, error) => {
+          // Ignore late frames from old sessions
+          if (decoderSessionRef.current !== mySession) return;
+          
           // Frame skipping for performance - only process every nth frame
           frameSkipCounter.current = (frameSkipCounter.current + 1) % FRAME_SKIP_COUNT;
           if (frameSkipCounter.current !== 0) return;
@@ -427,8 +445,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     }
   }, [handleScanSuccess, handleScanError, state.isPaused, state.isUsingAIMode, FRAME_SKIP_COUNT, onError]);
 
-  // Toggle AI mode - properly stop/restart ZXing decoder
+  // Toggle AI mode - properly stop/restart ZXing decoder with race protection
   const toggleAIMode = useCallback(async () => {
+    // Suppress visibilitychange cleanup during toggle
+    suppressAutoCleanupRef.current = true;
+    setTimeout(() => (suppressAutoCleanupRef.current = false), 500);
+
     if (state.isUsingAIMode) {
       // Exit AI mode → restart ZXing
       dispatch({ type: 'SET_AI_MODE', payload: false });
@@ -436,7 +458,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       await startScanning();
       dispatch({ type: 'SET_DEBUG_INFO', payload: 'Camera live - scanning...' });
     } else {
-      // Enter AI mode → stop ZXing completely (releases camera)
+      // Enter AI mode → pause, invalidate frames, stop controls & tracks, detach video
+      dispatch({ type: 'SET_PAUSED', payload: true }); // Block decoder path immediately
+      invalidateSession();
+      
+      // Stop ZXing controls
       if (controlsRef.current) {
         try { controlsRef.current.stop(); } catch {}
         controlsRef.current = null;
@@ -444,7 +470,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       
       // Stop known stream
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => { try { t.stop(); } catch {} });
+        try { streamRef.current.getTracks().forEach(t => t.stop()); } catch {}
         streamRef.current = null;
       }
       
@@ -453,17 +479,16 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       if (video) {
         const ms = video.srcObject as MediaStream | null;
         if (ms) {
-          ms.getTracks().forEach(t => { try { t.stop(); } catch {} });
+          try { ms.getTracks().forEach(t => t.stop()); } catch {}
         }
-        (video as any).srcObject = null;
-        video.removeAttribute('src');
-        video.load();
+        try { (video as any).srcObject = null; } catch {}
+        try { video.removeAttribute('src'); video.load(); } catch {}
       }
 
       dispatch({ type: 'SET_AI_MODE', payload: true });
       dispatch({ type: 'SET_DEBUG_INFO', payload: 'AI Mode - tap "Capture Photo" to scan' });
     }
-  }, [state.isUsingAIMode, startScanning]);
+  }, [state.isUsingAIMode, startScanning, invalidateSession]);
 
   const resumeScanning = useCallback(async () => {
     dispatch({ type: 'SET_PAUSED', payload: false });
@@ -477,11 +502,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     console.log('🛑 Stop scanning initiated');
     dispatch({ type: 'SET_DEBUG_INFO', payload: 'Stopping camera...' });
     
+    invalidateSession();
     cleanup();
     // Don't null reader here - can race with internal stop
     
     dispatch({ type: 'STOP_SCANNING' });
-  }, [cleanup]);
+  }, [cleanup, invalidateSession]);
 
   const toggleScanning = useCallback(() => {
     if (state.isScanning) {
@@ -503,10 +529,10 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     };
   }, [autoStart, startScanning, cleanup]);
 
-  // Force cleanup when page is hidden (mobile Safari fix)
+  // Force cleanup when page is hidden (mobile Safari fix) - with guard against toggle race
   useEffect(() => {
     const onHide = () => {
-      if (document.hidden) {
+      if (document.hidden && !suppressAutoCleanupRef.current) {
         cleanup();
       }
     };
@@ -543,64 +569,17 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="relative aspect-video bg-muted rounded-xl overflow-hidden border-2 border-border">
+        {/* Video container - always visible with min-height to prevent layout collapse */}
+        <div className="relative aspect-video bg-muted rounded-xl overflow-hidden border-2 border-border min-h-[240px]">
           {state.isScanning ? (
-            <>
-              <video
-                ref={videoRef}
-                className="w-full h-full object-cover"
-                playsInline
-                muted
-                autoPlay
-                aria-label={state.isPaused ? 'Camera paused' : 'Camera scanning for barcodes'}
-              />
-              {/* Minimal Scanning Reticle - Transparent for clear visibility */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="relative w-64 h-40">
-                  {/* Subtle dashed border outline only */}
-                  <div className="absolute inset-0 rounded-xl border-2 border-dashed border-white/70 shadow-lg" />
-                  
-                  {/* Corner markers with glow - no solid fill blocking view */}
-                  <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-xl shadow-lg shadow-white/50" />
-                  <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-xl shadow-lg shadow-white/50" />
-                  <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-xl shadow-lg shadow-white/50" />
-                  <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-xl shadow-lg shadow-white/50" />
-                  
-                  {/* Subtle center crosshair */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-1 h-8 bg-white/50 rounded-full shadow-sm" />
-                    <div className="absolute w-8 h-1 bg-white/50 rounded-full shadow-sm" />
-                  </div>
-                </div>
-              </div>
-              
-              {/* Status badges */}
-              {state.scanCooldown && (
-                <div className="absolute top-3 left-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg shadow-emerald-500/30 animate-in zoom-in duration-300 flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Scanned!
-                </div>
-              )}
-              {state.isPaused && !state.scanCooldown && (
-                <div className="absolute top-3 left-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg shadow-amber-500/30">
-                  Paused
-                </div>
-              )}
-              {state.isUsingAIMode && (
-                <div className="absolute top-3 right-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg shadow-purple-500/30 flex items-center gap-1.5 animate-pulse">
-                  <Zap className="h-4 w-4" />
-                  AI Mode
-                </div>
-              )}
-              {state.isProcessingAI && (
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-300">
-                  <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl p-6 flex flex-col items-center gap-3 shadow-2xl border-2 border-purple-500/20">
-                    <Loader2 className="h-10 w-10 animate-spin text-purple-500" />
-                    <p className="text-sm font-semibold">Processing with AI...</p>
-                  </div>
-                </div>
-              )}
-            </>
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              playsInline
+              muted
+              autoPlay
+              aria-label={state.isPaused ? 'Camera paused' : 'Camera scanning for barcodes'}
+            />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <div className="text-center space-y-3">
@@ -611,6 +590,55 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                     : 'Click start to begin scanning'
                   }
                 </p>
+              </div>
+            </div>
+          )}
+          
+          {/* Scanning Reticle - only show when actively scanning (not paused, not AI mode) */}
+          {state.isScanning && !state.isPaused && !state.isUsingAIMode && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="relative w-64 h-40">
+                {/* Subtle dashed border outline only */}
+                <div className="absolute inset-0 rounded-xl border-2 border-dashed border-white/70 shadow-lg" />
+                
+                {/* Corner markers with glow */}
+                <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-xl shadow-lg shadow-white/50" />
+                <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-xl shadow-lg shadow-white/50" />
+                <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-xl shadow-lg shadow-white/50" />
+                <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-xl shadow-lg shadow-white/50" />
+                
+                {/* Subtle center crosshair */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-1 h-8 bg-white/50 rounded-full shadow-sm" />
+                  <div className="absolute w-8 h-1 bg-white/50 rounded-full shadow-sm" />
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Status badges - independent of isScanning to prevent flash */}
+          {state.scanCooldown && (
+            <div className="absolute top-3 left-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg shadow-emerald-500/30 animate-in zoom-in duration-300 flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4" />
+              Scanned!
+            </div>
+          )}
+          {state.isPaused && !state.scanCooldown && (
+            <div className="absolute top-3 left-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg shadow-amber-500/30">
+              Paused
+            </div>
+          )}
+          {state.isUsingAIMode && !state.isProcessingAI && (
+            <div className="absolute top-3 right-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg shadow-purple-500/30 flex items-center gap-1.5 animate-pulse">
+              <Zap className="h-4 w-4" />
+              AI Mode
+            </div>
+          )}
+          {state.isProcessingAI && (
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-300">
+              <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl p-6 flex flex-col items-center gap-3 shadow-2xl border-2 border-purple-500/20">
+                <Loader2 className="h-10 w-10 animate-spin text-purple-500" />
+                <p className="text-sm font-semibold">Processing with AI...</p>
               </div>
             </div>
           )}

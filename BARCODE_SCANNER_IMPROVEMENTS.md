@@ -2,21 +2,22 @@
 
 ## Research Summary: Native Barcode Scanning on iOS Safari
 
-### ❌ **Current Status: No Native Support**
-- **BarcodeDetector API**: Not supported in Safari/WebKit as of November 2025
-- **iOS Safari**: Only supports getUserMedia for camera access, no native barcode detection
-- **Chrome/Edge**: Full BarcodeDetector support ✅
-- **Firefox**: No BarcodeDetector support ❌
+### 🎯 **Native BarcodeDetector API Support Status**
+- **Chrome (Desktop/Mobile)**: Full BarcodeDetector support ✅
+- **Edge (Desktop/Mobile)**: Full BarcodeDetector support ✅  
+- **Safari (macOS/iOS)**: No BarcodeDetector support ❌
+- **Firefox (All platforms)**: No BarcodeDetector support ❌
 
-### 🔍 **Why iOS Safari Doesn't Support Native Barcode Scanning**
+### 🔍 **Why Safari Doesn't Support Native Barcode Scanning**
 1. **Experimental Technology**: BarcodeDetector API is still experimental
-2. **Limited Browser Adoption**: Only Chrome/Chromium browsers support it
+2. **Limited Browser Adoption**: Only Chrome/Chromium-based browsers support it
 3. **Apple's Stance**: No public roadmap for Safari implementation
-4. **WebKit Limitations**: No BarcodeDetector in WebKit engine
+4. **WebKit Limitations**: Safari's WebKit doesn't include BarcodeDetector (even though Chrome on Mac uses WebKit but adds Chromium features)
 
-### ✅ **Your Current Approach is Correct**
-- Defaulting to `html5-qrcode` on iOS devices is the **best practice**
-- `SmartBarcodeScanner` correctly detects browser capabilities and falls back appropriately
+### ✅ **Fixed Detection Logic**
+- **Chrome/Edge (including macOS)**: Now correctly uses Native BarcodeDetector ⚡
+- **Safari/iOS/Firefox**: Uses enhanced html5-qrcode fallback 🔧
+- `SmartBarcodeScanner` now properly detects browser capabilities without false negatives
 
 ---
 
@@ -75,15 +76,24 @@ if (errorMsg.includes('Permission denied')) {
 
 #### Enhanced Detection Logic
 ```typescript
-// Explicit WebKit/Safari/iOS detection
-const isWebKit = /webkit/i.test(navigator.userAgent);
-const isSafari = /safari/i.test(navigator.userAgent) && !/chrome/i.test(navigator.userAgent);
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+// More precise browser detection (fixed for Chrome on macOS)
+const userAgent = navigator.userAgent;
+const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
+const isFirefox = /Firefox/.test(userAgent);
 
-if (isWebKit || isSafari || isIOS) {
-  console.log('ℹ️ WebKit/Safari/iOS detected - using enhanced html5-qrcode scanner');
+// Known browsers that DON'T support BarcodeDetector
+if (isIOS || isSafari || isFirefox) {
   setScannerType('fallback');
   return;
+}
+
+// Test for actual BarcodeDetector API support
+if ('BarcodeDetector' in window) {
+  const formats = await window.BarcodeDetector.getSupportedFormats();
+  if (formats && formats.length > 0) {
+    setScannerType('native'); // Chrome/Edge on all platforms
+  }
 }
 ```
 
@@ -126,10 +136,12 @@ if (isWebKit || isSafari || isIOS) {
 
 ### **What Users Will See**
 
-1. **Chrome/Edge Desktop**: "Ultra-Fast Native Scanner" badge
-2. **iOS Safari**: "Enhanced HTML5 Scanner (iOS Optimized)" badge  
-3. **Android Chrome**: "Enhanced HTML5 Scanner (Android Optimized)" badge
-4. **Firefox**: "Enhanced HTML5 Scanner" badge
+1. **Chrome (macOS/Windows/Linux)**: "Ultra-Fast Native Scanner (Chrome)" badge ⚡
+2. **Edge (macOS/Windows)**: "Ultra-Fast Native Scanner (Edge)" badge ⚡
+3. **Chrome (Android)**: "Ultra-Fast Native Scanner (Chrome)" badge ⚡
+4. **Safari (macOS)**: "Enhanced HTML5 Scanner (Safari)" badge 🔧
+5. **iOS Safari**: "Enhanced HTML5 Scanner (iOS Optimized)" badge 📱
+6. **Firefox (All platforms)**: "Enhanced HTML5 Scanner (Firefox)" badge 🦊
 
 ---
 

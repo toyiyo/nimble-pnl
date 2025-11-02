@@ -25,34 +25,40 @@ export const SmartBarcodeScanner = ({
   useEffect(() => {
     // Check if native BarcodeDetector is available
     const checkNativeSupport = async () => {
-      // First check for webkit/Safari - always use fallback
-      const isWebKit = /webkit/i.test(navigator.userAgent);
-      const isSafari = /safari/i.test(navigator.userAgent) && !/chrome/i.test(navigator.userAgent);
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      // More precise browser detection
+      const userAgent = navigator.userAgent;
+      const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+      const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
+      const isFirefox = /Firefox/.test(userAgent);
       
-      if (isWebKit || isSafari || isIOS) {
-        console.log('ℹ️ WebKit/Safari/iOS detected - using enhanced html5-qrcode scanner');
+      // Known browsers that DON'T support BarcodeDetector
+      if (isIOS || isSafari || isFirefox) {
+        console.log(`ℹ️ Browser detected: ${isIOS ? 'iOS' : isSafari ? 'Safari' : 'Firefox'} - using enhanced html5-qrcode scanner`);
         setScannerType('fallback');
         return;
       }
 
+      // Test for BarcodeDetector API support
       try {
         if ('BarcodeDetector' in window) {
-          // Verify it actually works
+          // Verify it actually works by getting supported formats
           const formats = await (window as any).BarcodeDetector.getSupportedFormats();
           
           if (formats && formats.length > 0) {
-            console.log('✅ Using Native BarcodeDetector API');
+            console.log('✅ Native BarcodeDetector API supported!');
+            console.log('📱 Supported formats:', formats);
+            console.log('🖥️ Browser:', userAgent.includes('Chrome') ? 'Chrome' : 
+                                    userAgent.includes('Edge') ? 'Edge' : 'Chromium-based');
             setScannerType('native');
             return;
           }
         }
       } catch (error) {
-        console.warn('Native BarcodeDetector check failed:', error);
+        console.warn('❌ Native BarcodeDetector check failed:', error);
       }
 
       // Fallback to html5-qrcode
-      console.log('ℹ️ Using enhanced html5-qrcode fallback');
+      console.log('ℹ️ Using enhanced html5-qrcode fallback scanner');
       setScannerType('fallback');
     };
 
@@ -78,12 +84,17 @@ export const SmartBarcodeScanner = ({
           <Badge className="bg-gradient-to-r from-primary to-accent">
             <Sparkles className="w-3 h-3 mr-1" />
             Ultra-Fast Native Scanner
+            {navigator.userAgent.includes('Chrome') && ' (Chrome)'}
+            {navigator.userAgent.includes('Edge') && ' (Edge)'}
           </Badge>
         ) : (
           <Badge className="bg-gradient-to-r from-blue-500 to-cyan-600">
             <Camera className="w-3 h-3 mr-1" />
             Enhanced HTML5 Scanner
             {/iPad|iPhone|iPod/.test(navigator.userAgent) && ' (iOS Optimized)'}
+            {/Android/.test(navigator.userAgent) && ' (Android Optimized)'}
+            {/Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent) && ' (Safari)'}
+            {/Firefox/.test(navigator.userAgent) && ' (Firefox)'}
           </Badge>
         )}
       </div>

@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iPhone Camera Test - Html5-QRCode</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .scanner-area {
+            position: relative;
+            min-height: 300px;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            text-align: center;
+            z-index: 10;
+        }
+        
+        .btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 0 5px;
+        }
+        
+        .btn:hover { background: #45a049; }
+        .btn-stop { background: #f44336; }
+        .btn-stop:hover { background: #da190b; }
+        
+        .status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            z-index: 10;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-right: 8px;
+        }
+        
+        .badge-success { background: #4CAF50; }
+        .badge-info { background: #2196F3; }
+        
+        .error {
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .error-content {
+            color: #f44336;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .tips {
+            position: absolute;
+            bottom: 80px;
+            left: 20px;
+            right: 20px;
+            text-align: center;
+            pointer-events: none;
+        }
+        
+        .tips-content {
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        
+        .result {
+            padding: 20px;
+            background: #f9f9f9;
+            border-top: 1px solid #ddd;
+        }
+        
+        .result h3 { margin-top: 0; }
+        .scanned-code { 
+            background: #e8f5e8; 
+            padding: 10px; 
+            border-radius: 6px; 
+            font-family: monospace; 
+            word-break: break-all;
+        }
+        
+        @media (max-width: 480px) {
+            .container { margin: 0; border-radius: 0; }
+            body { padding: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📱 iPhone Camera Test</h1>
+            <p>Testing Html5-QRCode Basic Functionality</p>
+        </div>
+        
+        <div class="scanner-area">
+            <div id="qr-reader" style="width: 100%;"></div>
+            
+            <div class="status" id="status" style="display: none;"></div>
+            
+            <div class="error" id="error" style="display: none;">
+                <div>
+                    <div class="error-content" id="error-message"></div>
+                    <button class="btn" onclick="startScanning()">Try Again</button>
+                </div>
+            </div>
+            
+            <div class="tips" id="tips" style="display: none;">
+                <div class="tips-content">
+                    📱 Hold steady • Move closer/farther to focus • Try good lighting
+                </div>
+            </div>
+            
+            <div class="controls">
+                <button class="btn" id="start-btn" onclick="startScanning()">
+                    🎯 Start Scanner
+                </button>
+                <button class="btn btn-stop" id="stop-btn" onclick="stopScanning()" style="display: none;">
+                    ❌ Stop
+                </button>
+            </div>
+        </div>
+        
+        <div class="result" id="result" style="display: none;">
+            <h3>🎉 Scanned Successfully!</h3>
+            <div class="scanned-code" id="scanned-text"></div>
+            <p><strong>Format:</strong> <span id="scanned-format"></span></p>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script>
+        let html5QrCode = null;
+        let lastScan = null;
+        let isScanning = false;
+        
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        
+        console.log('🔍 Device Detection:', {
+            userAgent: navigator.userAgent,
+            isIOS: isIOS,
+            platform: navigator.platform
+        });
+
+        function showError(message) {
+            document.getElementById('error-message').textContent = message;
+            document.getElementById('error').style.display = 'flex';
+            document.getElementById('status').style.display = 'none';
+            document.getElementById('tips').style.display = 'none';
+        }
+        
+        function hideError() {
+            document.getElementById('error').style.display = 'none';
+        }
+        
+        function showStatus() {
+            const statusEl = document.getElementById('status');
+            statusEl.innerHTML = `
+                <span class="badge badge-info">
+                    📹 ${isIOS ? 'iPhone Optimized' : 'Scanner Active'}
+                </span>
+            `;
+            statusEl.style.display = 'block';
+            
+            if (isIOS) {
+                document.getElementById('tips').style.display = 'block';
+            }
+        }
+        
+        function showResult(text, format) {
+            document.getElementById('scanned-text').textContent = text;
+            document.getElementById('scanned-format').textContent = format;
+            document.getElementById('result').style.display = 'block';
+            
+            // Add success badge temporarily
+            const statusEl = document.getElementById('status');
+            statusEl.innerHTML += `<span class="badge badge-success">✅ Scanned</span>`;
+            
+            setTimeout(() => {
+                document.getElementById('result').style.display = 'none';
+                showStatus(); // Reset status
+            }, 3000);
+        }
+
+        async function startScanning() {
+            console.log('🚀 Starting scanner...');
+            
+            try {
+                hideError();
+                
+                // Create scanner if it doesn't exist
+                if (!html5QrCode) {
+                    html5QrCode = new Html5Qrcode("qr-reader", {
+                        formatsToSupport: [ 
+                            Html5QrcodeSupportedFormats.QR_CODE,
+                            Html5QrcodeSupportedFormats.EAN_13,
+                            Html5QrcodeSupportedFormats.EAN_8,
+                            Html5QrcodeSupportedFormats.UPC_A,
+                            Html5QrcodeSupportedFormats.UPC_E,
+                            Html5QrcodeSupportedFormats.CODE_128,
+                            Html5QrcodeSupportedFormats.CODE_39
+                        ],
+                        verbose: true
+                    });
+                }
+                
+                // Simple camera constraints - no complex iOS optimizations
+                const cameraConfig = { facingMode: "environment" };
+                
+                // Basic but effective iPhone optimizations
+                const scannerConfig = {
+                    fps: isIOS ? 20 : 10,
+                    qrbox: function(viewfinderWidth, viewfinderHeight) {
+                        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                        const qrboxSize = isIOS 
+                            ? Math.min(minEdge * 0.8, 300)
+                            : Math.min(minEdge * 0.7, 250);
+                        return { width: qrboxSize, height: qrboxSize };
+                    },
+                    aspectRatio: isIOS ? 4/3 : 16/9,
+                    disableFlip: isIOS
+                };
+                
+                console.log('📋 Scanner Config:', scannerConfig);
+                console.log('🎥 Camera Config:', cameraConfig);
+                
+                await html5QrCode.start(
+                    cameraConfig,
+                    scannerConfig,
+                    (decodedText, decodedResult) => {
+                        const now = Date.now();
+                        
+                        // Prevent duplicate scans
+                        if (!lastScan || lastScan.value !== decodedText || now - lastScan.time > 1500) {
+                            console.log('✅ Barcode scanned:', decodedText, decodedResult.result.format.formatName);
+                            
+                            // EAN-13 to UPC-A conversion
+                            let processedValue = decodedText;
+                            if (decodedResult.result.format.formatName === 'EAN_13' && decodedText.startsWith('0')) {
+                                processedValue = decodedText.slice(1);
+                            }
+                            
+                            lastScan = { value: processedValue, time: now };
+                            showResult(processedValue, decodedResult.result.format.formatName);
+                        }
+                    },
+                    (errorMessage) => {
+                        // Silent - normal scanning errors are expected
+                    }
+                );
+                
+                isScanning = true;
+                showStatus();
+                
+                document.getElementById('start-btn').style.display = 'none';
+                document.getElementById('stop-btn').style.display = 'inline-block';
+                
+                console.log('✅ Scanner started successfully');
+                
+            } catch (error) {
+                console.error('❌ Scanner failed to start:', error);
+                showError(`Camera Error: ${error.message || 'Unable to access camera'}`);
+                isScanning = false;
+            }
+        }
+
+        async function stopScanning() {
+            console.log('🛑 Stopping scanner...');
+            
+            try {
+                if (html5QrCode && isScanning) {
+                    await html5QrCode.stop();
+                    console.log('✅ Scanner stopped');
+                }
+            } catch (error) {
+                console.error('⚠️ Error stopping scanner:', error);
+            }
+            
+            isScanning = false;
+            document.getElementById('start-btn').style.display = 'inline-block';
+            document.getElementById('stop-btn').style.display = 'none';
+            document.getElementById('status').style.display = 'none';
+            document.getElementById('tips').style.display = 'none';
+            hideError();
+        }
+
+        // Auto-start on page load for testing
+        setTimeout(() => {
+            console.log('🔄 Auto-starting scanner for testing...');
+            startScanning();
+        }, 1000);
+    </script>
+</body>
+</html>

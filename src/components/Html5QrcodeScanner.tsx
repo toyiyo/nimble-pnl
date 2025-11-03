@@ -105,7 +105,7 @@ export const Html5QrcodeScanner = ({
     setScannerError(null);
   };
 
-  // Enhanced scanning with iOS optimizations
+  // Simplified iOS optimizations that work reliably
   const startScanning = async () => {
     if (!scannerRef.current) {
       setScannerError('Scanner not initialized');
@@ -115,318 +115,115 @@ export const Html5QrcodeScanner = ({
     try {
       setScannerError(null);
       
-      // Enhanced iOS/Mobile Detection
+      // iOS/Mobile Detection
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       const isAndroid = /Android/.test(navigator.userAgent);
       const isMobile = isIOS || isAndroid;
       
-      // iPhone-specific optimizations for better barcode scanning
-      const getIOSOptimizedConfig = () => {
-        if (!isIOS) return {};
-        
-        // iPhone models have different camera capabilities
-        const screenWidth = window.screen.width;
-        const screenHeight = window.screen.height;
-        const isOlderIPhone = screenWidth <= 375; // iPhone 6/7/8/SE
-        const isProModel = screenWidth >= 428; // iPhone Pro models
-        
-        return {
-          // Higher FPS for better motion handling
-          fps: isProModel ? 30 : isOlderIPhone ? 15 : 25,
-          
-          // More aggressive qrbox sizing for iOS
-          qrbox: function(viewfinderWidth: number, viewfinderHeight: number) {
-            // Use larger percentage of screen on iOS for better detection
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            let qrboxSize;
-            
-            if (isOlderIPhone) {
-              // Smaller devices need larger relative scan area
-              qrboxSize = Math.min(minEdge * 0.9, 320);
-            } else if (isProModel) {
-              // Pro models can handle larger absolute sizes
-              qrboxSize = Math.min(minEdge * 0.75, 350);
-            } else {
-              // Standard iPhone models
-              qrboxSize = Math.min(minEdge * 0.85, 300);
-            }
-            
-            return {
-              width: qrboxSize,
-              height: qrboxSize,
-            };
-          },
-          
-          // iOS Safari works best with 4:3 aspect ratio
-          aspectRatio: 4/3,
-          
-          // Disable image flipping - iOS handles orientation correctly
-          disableFlip: true,
-          
-          // Enhanced video constraints for iOS
-          videoConstraints: {
-            facingMode: 'environment',
-            
-            // Try multiple resolution fallbacks for better iOS compatibility
-            width: isProModel 
-              ? { ideal: 1920, min: 1280, max: 2048 }
-              : { ideal: 1280, min: 720, max: 1920 },
-              
-            height: isProModel
-              ? { ideal: 1440, min: 960, max: 1536 }
-              : { ideal: 960, min: 540, max: 1440 },
-            
-            // iOS cameras can handle higher frame rates
-            frameRate: { 
-              ideal: isProModel ? 30 : 25, 
-              min: 15, 
-              max: 60 
-            },
-            
-            // iOS-specific advanced constraints
-            ...(window.MediaStreamTrack && {
-              advanced: [
-                // Prefer autofocus for barcode scanning
-                { focusMode: 'continuous' },
-                { focusDistance: { ideal: 0.5 } }, // Mid-range focus
-                
-                // Enhanced exposure for better barcode reading
-                { exposureMode: 'manual' },
-                { exposureCompensation: { ideal: 0 } },
-                
-                // Better white balance for various lighting
-                { whiteBalanceMode: 'auto' },
-                
-                // Noise reduction for cleaner image processing
-                { noiseSuppression: true },
-              ]
-            })
-          },
-          
-          // iOS-specific html5-qrcode library settings
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: false, // Force html5-qrcode processing
-          },
-          
-          // Enhanced format support prioritization for iOS
-          formatsToSupport: [
-            // Prioritize common retail formats
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.QR_CODE,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.ITF,
-            Html5QrcodeSupportedFormats.CODABAR,
-            Html5QrcodeSupportedFormats.CODE_93,
-          ]
-        };
-      };
-      
-      // Get platform-optimized configuration
-      const iosConfig = getIOSOptimizedConfig();
-      
+      // Simple iPhone optimizations that work reliably
       const config = {
-        // Base configuration
-        fps: isIOS ? iosConfig.fps : isMobile ? 15 : 10,
-        qrbox: iosConfig.qrbox || function(viewfinderWidth: number, viewfinderHeight: number) {
+        // Higher FPS for iPhone (but not too high to cause issues)
+        fps: isIOS ? 20 : isMobile ? 15 : 10,
+        
+        // Larger scan box for iPhone
+        qrbox: function(viewfinderWidth: number, viewfinderHeight: number) {
           const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          const qrboxSize = Math.min(minEdge * 0.7, 250);
+          const qrboxSize = isIOS 
+            ? Math.min(minEdge * 0.8, 300) // 80% for iOS
+            : Math.min(minEdge * 0.7, 250); // 70% for others
           return { width: qrboxSize, height: qrboxSize };
         },
-        aspectRatio: iosConfig.aspectRatio || (isMobile ? 16/9 : 1.777777),
-        disableFlip: iosConfig.disableFlip || false,
         
-        // Enhanced rememberLastUsedCamera for iOS
-        rememberLastUsedCamera: isIOS,
+        // Better aspect ratio for iPhone cameras
+        aspectRatio: isIOS ? 4/3 : (isMobile ? 16/9 : 1.777777),
         
-        // iOS works better with these settings
-        showTorchButtonIfSupported: isAndroid, // Torch mainly works on Android
-        showZoomSliderIfSupported: false, // Can cause issues on iOS
+        // Disable flipping on iOS
+        disableFlip: isIOS,
         
-        // Additional iOS optimizations
-        ...(isIOS && {
-          useBarCodeDetectorIfSupported: false, // Force html5-qrcode processing
-          verbose: false, // Reduce console noise
-        })
+        // Remember camera choice
+        rememberLastUsedCamera: true,
+        
+        // Torch support (mainly Android)
+        showTorchButtonIfSupported: false, // We handle this ourselves
+        showZoomSliderIfSupported: false,
       };
 
-      // Enhanced camera constraints for iOS
+      // Simple camera constraints that work reliably
       const getCameraConstraints = () => {
         if (cameraId) {
-          return {
-            deviceId: { exact: cameraId },
-            ...(isIOS && iosConfig.videoConstraints)
-          };
+          return { deviceId: { exact: cameraId } };
         }
         
-        // iOS-optimized camera selection
-        if (isIOS) {
-          return {
-            facingMode: { exact: 'environment' },
-            ...iosConfig.videoConstraints
-          };
-        }
-        
-        // Standard constraints for other platforms
+        // Use environment camera (back camera)
         return { facingMode: 'environment' };
       };
 
       const cameraConstraints = getCameraConstraints();
 
-      // Enhanced error handling and retry logic for iOS
-      let startAttempts = 0;
-      const maxAttempts = isIOS ? 3 : 1; // iOS might need multiple attempts
-      
-      const attemptStart = async (): Promise<void> => {
-        startAttempts++;
-        
-        try {
-          await scannerRef.current!.start(
-            cameraConstraints,
-            config,
-            (decodedText, decodedResult) => {
-              const now = Date.now();
-
-              // iOS-optimized duplicate detection (shorter cooldown for better UX)
-              const cooldownTime = isIOS ? 1000 : 1500; // 1s on iOS, 1.5s elsewhere
-              
-              if (
-                !lastScanRef.current ||
-                lastScanRef.current.value !== decodedText ||
-                now - lastScanRef.current.time > cooldownTime
-              ) {
-                console.log('✅ Barcode detected:', decodedText, decodedResult.result.format.formatName);
-                
-                // Enhanced barcode processing for iOS compatibility
-                let processedValue = decodedText;
-                const format = decodedResult.result.format.formatName;
-                
-                // EAN-13 to UPC-A conversion (match native scanner behavior)
-                if (format === 'EAN_13' && decodedText.startsWith('0') && decodedText.length === 13) {
-                  processedValue = decodedText.slice(1);
-                  console.log('🔄 Converted EAN-13 to UPC-A:', decodedText, '→', processedValue);
-                }
-                
-                // Clean up any whitespace or invalid characters (iOS Safari sometimes adds them)
-                processedValue = processedValue.trim().replace(/[^\w\-]/g, '');
-                
-                // Validate barcode length for common formats
-                const isValidBarcode = (
-                  (format === 'UPC_A' && processedValue.length === 12) ||
-                  (format === 'EAN_13' && processedValue.length === 13) ||
-                  (format === 'EAN_8' && processedValue.length === 8) ||
-                  (format === 'UPC_E' && processedValue.length === 8) ||
-                  processedValue.length >= 4 // Allow other formats with minimum length
-                );
-                
-                if (isValidBarcode) {
-                  lastScanRef.current = { value: processedValue, time: now };
-                  setLastScanned(processedValue);
-
-                  onScan(processedValue, format);
-
-                  // Shorter visual feedback on iOS for better responsiveness
-                  setTimeout(() => setLastScanned(null), isIOS ? 1500 : 2000);
-                } else {
-                  console.warn('🚫 Invalid barcode format detected:', processedValue, 'format:', format);
-                }
-              }
-            },
-            (errorMessage) => {
-              // iOS-specific error filtering (Safari produces more noise)
-              const ignoredErrors = [
-                'No MultiFormat Readers',
-                'NotFoundException',
-                'No code detected',
-                'Unable to detect code',
-                'NotFoundError'
-              ];
-              
-              const shouldLog = !ignoredErrors.some(err => errorMessage.includes(err));
-              
-              if (shouldLog) {
-                console.warn('📱 iOS Scanner error:', errorMessage);
-              }
-            }
-          );
-
-          setIsScanning(true);
-          
-          // iOS-specific post-start optimizations
-          if (isIOS) {
-            // Give iOS Safari more time to stabilize camera
-            setTimeout(() => {
-              checkTorchSupport();
-              // Force a slight video element refresh for iOS
-              const videoElement = document.querySelector(`#${elementId.current} video`);
-              if (videoElement) {
-                (videoElement as HTMLVideoElement).play().catch(() => {
-                  console.log('iOS video element refresh attempted');
-                });
-              }
-            }, 1500);
-          } else {
-            setTimeout(() => {
-              checkTorchSupport();
-            }, 1000);
-          }
-        } catch (error: any) {
-          console.error(`📱 Start attempt ${startAttempts}/${maxAttempts} failed:`, error);
-          
-          // iOS-specific retry logic
-          if (isIOS && startAttempts < maxAttempts) {
-            console.log(`🔄 Retrying iOS camera start (${startAttempts + 1}/${maxAttempts})...`);
-            
-            // Wait before retry, with exponential backoff
-            const delay = startAttempts * 1000;
-            await new Promise(resolve => setTimeout(resolve, delay));
-            
-            // Try with fallback constraints on retry
-            if (startAttempts === 2) {
-              console.log('📱 Trying iOS fallback constraints...');
-              Object.assign(cameraConstraints, {
-                facingMode: 'environment', // Remove 'exact'
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                frameRate: { ideal: 15 }
-              });
-            }
-            
-            return attemptStart();
-          }
-          
-          throw error;
-        }
-      };
-      
+      // Start scanner with simple error handling
       try {
-        await attemptStart();
+        await scannerRef.current.start(
+          cameraConstraints,
+          config,
+          (decodedText, decodedResult) => {
+            const now = Date.now();
+
+            // Prevent duplicate rapid scans (1.5s cooldown)
+            if (
+              !lastScanRef.current ||
+              lastScanRef.current.value !== decodedText ||
+              now - lastScanRef.current.time > 1500
+            ) {
+              console.log('✅ Barcode detected:', decodedText, decodedResult.result.format.formatName);
+              
+              // EAN-13 to UPC-A conversion (match native scanner behavior)
+              let processedValue = decodedText;
+              if (decodedResult.result.format.formatName === 'EAN_13' && decodedText.startsWith('0')) {
+                processedValue = decodedText.slice(1);
+                console.log('🔄 Converted EAN-13 to UPC-A:', decodedText, '→', processedValue);
+              }
+
+              lastScanRef.current = { value: processedValue, time: now };
+              setLastScanned(processedValue);
+
+              onScan(processedValue, decodedResult.result.format.formatName);
+
+              // Clear visual indicator after 2 seconds
+              setTimeout(() => setLastScanned(null), 2000);
+            }
+          },
+          (errorMessage) => {
+            // Only log significant errors, not normal scanning noise
+            if (!errorMessage.includes('No MultiFormat Readers') && 
+                !errorMessage.includes('NotFoundException')) {
+              console.warn('Scanner error:', errorMessage);
+            }
+          }
+        );
+
+        setIsScanning(true);
+        
+        // Check for torch support after starting
+        setTimeout(() => {
+          checkTorchSupport();
+        }, 1000);
+
       } catch (error: any) {
         const errorMsg = error.message || error.toString();
-        console.error('❌ All start attempts failed:', error);
+        console.error('Failed to start scanner:', error);
         
-        // Enhanced iOS-specific error messages
+        // User-friendly error messages
         let friendlyError = 'Unable to access camera';
-        
-        if (errorMsg.includes('Permission denied') || errorMsg.includes('NotAllowedError')) {
+        if (errorMsg.includes('Permission denied')) {
           friendlyError = isIOS 
             ? 'Camera permission denied. Please go to Settings > Safari > Camera and allow access, then refresh this page.'
             : 'Camera permission denied. Please allow camera access and try again.';
-        } else if (errorMsg.includes('not found') || errorMsg.includes('NotFoundError')) {
-          friendlyError = 'No camera found. Please check your device has a working camera.';
-        } else if (errorMsg.includes('NotReadableError') || errorMsg.includes('TrackStartError')) {
+        } else if (errorMsg.includes('not found')) {
+          friendlyError = 'No camera found. Please check your device has a camera.';
+        } else if (errorMsg.includes('NotReadableError')) {
           friendlyError = isIOS 
             ? 'Camera is busy. Please close other camera apps, wait a moment, and try again.'
             : 'Camera is being used by another app. Please close other camera apps and try again.';
-        } else if (errorMsg.includes('OverconstrainedError') || errorMsg.includes('ConstraintNotSatisfiedError')) {
-          friendlyError = isIOS
-            ? 'Camera settings not supported. This may happen on older iOS devices - try updating iOS or using a different device.'
-            : 'Camera configuration not supported by your device.';
-        } else if (isIOS && errorMsg.includes('AbortError')) {
-          friendlyError = 'Camera initialization was interrupted. Please try again.';
         }
         
         setScannerError(friendlyError);

@@ -20,7 +20,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { TransactionFiltersSheet, type TransactionFilters } from '@/components/TransactionFilters';
 import { useToast } from '@/hooks/use-toast';
-import { CategorySelector } from '@/components/CategorySelector';
+import { SearchableAccountSelector } from '@/components/banking/SearchableAccountSelector';
 import { useCategorizeTransactions } from '@/hooks/useCategorizeTransactions';
 import { TransactionCard } from '@/components/banking/TransactionCard';
 import { TransactionSkeleton, TransactionTableSkeleton } from '@/components/banking/TransactionSkeleton';

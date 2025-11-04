@@ -280,15 +280,19 @@ export const Html5QrcodeScanner = ({
     if (!torchSupported || !isScanning) return;
 
     try {
-      const stream = scannerRef.current?.getRunningTrackSettings();
+      const stream = scannerRef.current?.getRunningTrackCameraCapabilities();
       if (stream && 'torch' in stream) {
         // This is experimental and only works on some Android Chrome versions
-        const videoTrack = stream.getVideoTracks?.()?.[0];
-        if (videoTrack) {
-          await videoTrack.applyConstraints({
-            advanced: [{ torch: !torchOn }]
-          });
-          setTorchOn(!torchOn);
+        const videoElement = document.querySelector('video');
+        if (videoElement && videoElement.srcObject) {
+          const mediaStream = videoElement.srcObject as MediaStream;
+          const videoTrack = mediaStream.getVideoTracks()[0];
+          if (videoTrack) {
+            await videoTrack.applyConstraints({
+              advanced: [{ torch: !torchOn } as any]
+            });
+            setTorchOn(!torchOn);
+          }
         }
       }
     } catch (error) {

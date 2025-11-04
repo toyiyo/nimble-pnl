@@ -10,7 +10,7 @@ import { useSuppliers } from "@/hooks/useSuppliers";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { SearchableSupplierSelector } from "@/components/SearchableSupplierSelector";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
 
 interface CategoryRulesDialogProps {
   open: boolean;
@@ -34,9 +34,6 @@ export function CategoryRulesDialog({ open, onOpenChange }: CategoryRulesDialogP
     autoApply: false,
   });
 
-  const expenseAccounts = accounts?.filter(
-    (acc) => acc.account_type === 'expense' || acc.account_type === 'cogs'
-  );
 
   const handleSupplierChange = async (value: string, isNew: boolean) => {
     if (isNew) {
@@ -172,27 +169,12 @@ export function CategoryRulesDialog({ open, onOpenChange }: CategoryRulesDialogP
 
               <div className="space-y-2">
                 <Label>Default Category</Label>
-                {!expenseAccounts || expenseAccounts.length === 0 ? (
-                  <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
-                    No expense categories available — please create an expense/COGS account first
-                  </div>
-                ) : (
-                  <Select
-                    value={newRule.categoryId}
-                    onValueChange={(value) => setNewRule({ ...newRule, categoryId: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {expenseAccounts.map((account) => (
-                        <SelectItem key={account.id} value={account.id}>
-                          {account.account_code} - {account.account_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <SearchableAccountSelector
+                  value={newRule.categoryId}
+                  onValueChange={(value) => setNewRule({ ...newRule, categoryId: value })}
+                  placeholder="Select expense category..."
+                  filterByTypes={['expense', 'cogs']}
+                />
               </div>
 
               <div className="flex items-center gap-2">

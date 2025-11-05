@@ -118,11 +118,13 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
       const uncategorizedSpendPercentage = totalOutflows > 0 ? (uncategorizedSpend / totalOutflows) * 100 : 0;
 
       // Get current bank balance for cash coverage calculation
-      const { data: balances } = await supabase
+      const { data: balances, error: balancesError } = await supabase
         .from('bank_account_balances')
         .select('current_balance, connected_banks!inner(restaurant_id)')
         .eq('connected_banks.restaurant_id', selectedRestaurant.restaurant_id)
         .eq('is_active', true);
+
+      if (balancesError) throw balancesError;
 
       const totalCashBalance = (balances || []).reduce((sum, b) => sum + Number(b.current_balance), 0);
 

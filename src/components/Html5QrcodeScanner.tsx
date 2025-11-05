@@ -4,6 +4,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Scan, X, Camera, RotateCcw, Flashlight, FlashlightOff } from 'lucide-react';
+import { 
+  SCANNER_FORMATS, 
+  shouldDeduplicateScan, 
+  processEAN13ToUPCA,
+  isIOSDevice 
+} from '@/utils/scannerConfig';
 
 interface Html5QrcodeScannerProps {
   onScan: (barcode: string, format: string) => void;
@@ -40,13 +46,7 @@ export const Html5QrcodeScanner = ({
         // Initialize scanner with all supported formats
         scannerRef.current = new Html5Qrcode(elementId.current, {
           formatsToSupport: [
-            Html5QrcodeSupportedFormats.QR_CODE,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.CODE_128, 
-            Html5QrcodeSupportedFormats.CODE_39,
+            ...SCANNER_FORMATS,
             Html5QrcodeSupportedFormats.CODE_93,
             Html5QrcodeSupportedFormats.ITF,
             Html5QrcodeSupportedFormats.CODABAR,
@@ -116,7 +116,7 @@ export const Html5QrcodeScanner = ({
       setScannerError(null);
       
       // iOS/Mobile Detection
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isIOS = isIOSDevice();
       const isAndroid = /Android/.test(navigator.userAgent);
       const isMobile = isIOS || isAndroid;
       
@@ -166,31 +166,27 @@ export const Html5QrcodeScanner = ({
           cameraConstraints,
           config,
           (decodedText, decodedResult) => {
-            const now = Date.now();
-
-            // Prevent duplicate rapid scans (1.5s cooldown)
-            if (
-              !lastScanRef.current ||
-              lastScanRef.current.value !== decodedText ||
-              now - lastScanRef.current.time > 1500
-            ) {
-              console.log('✅ Barcode detected:', decodedText, decodedResult.result.format.formatName);
-              
-              // EAN-13 to UPC-A conversion (match native scanner behavior)
-              let processedValue = decodedText;
-              if (decodedResult.result.format.formatName === 'EAN_13' && decodedText.startsWith('0')) {
-                processedValue = decodedText.slice(1);
-                console.log('🔄 Converted EAN-13 to UPC-A:', decodedText, '→', processedValue);
-              }
-
-              lastScanRef.current = { value: processedValue, time: now };
-              setLastScanned(processedValue);
-
-              onScan(processedValue, decodedResult.result.format.formatName);
-
-              // Clear visual indicator after 2 seconds
-              setTimeout(() => setLastScanned(null), 2000);
+            // Check if we should deduplicate this scan
+            if (shouldDeduplicateScan(lastScanRef.current, decodedText, 1500)) {
+              return; // Skip duplicate scan
             }
+
+            console.log('✅ Barcode detected:', decodedText, decodedResult.result.format.formatName);
+            
+            // Process barcode (EAN-13 to UPC-A conversion)
+            const processedValue = processEAN13ToUPCA(decodedText, decodedResult.result.format.formatName);
+            if (processedValue !== decodedText) {
+              console.log('🔄 Converted EAN-13 to UPC-A:', decodedText, '→', processedValue);
+            }
+
+            // Update state
+            const now = Date.now();
+            lastScanRef.current = { value: processedValue, time: now };
+            setLastScanned(processedValue);
+            onScan(processedValue, decodedResult.result.format.formatName);
+
+            // Clear visual indicator after 2 seconds
+            setTimeout(() => setLastScanned(null), 2000);
           },
           (errorMessage) => {
             // Only log significant errors, not normal scanning noise
@@ -228,22 +224,11 @@ export const Html5QrcodeScanner = ({
         
         setScannerError(friendlyError);
         onError?.(friendlyError);
-      }    } catch (error: any) {
-      const errorMsg = error.message || error.toString();
-      console.error('Failed to start scanner:', error);
-      
-      // User-friendly error messages
-      let friendlyError = 'Unable to access camera';
-      if (errorMsg.includes('Permission denied')) {
-        friendlyError = 'Camera permission denied. Please allow camera access and try again.';
-      } else if (errorMsg.includes('not found')) {
-        friendlyError = 'No camera found. Please check your device has a camera.';
-      } else if (errorMsg.includes('NotReadableError')) {
-        friendlyError = 'Camera is being used by another app. Please close other camera apps and try again.';
       }
-      
-      setScannerError(friendlyError);
-      onError?.(friendlyError);
+    } catch (error: any) {
+      console.error('Unexpected error in startScanning:', error);
+      setScannerError('Failed to start scanner');
+      onError?.('Failed to start scanner');
     }
   };
 
@@ -267,10 +252,8 @@ export const Html5QrcodeScanner = ({
   // Torch/flashlight control
   const checkTorchSupport = useCallback(() => {
     try {
-      // Check if torch is supported (Chrome on Android mainly)
-      if (scannerRef.current && 'applyVideoConstraints' in scannerRef.current) {
-        setTorchSupported(true);
-      }
+      const caps = scannerRef.current?.getRunningTrackCapabilities() as any;
+      setTorchSupported(!!(caps?.torch));
     } catch (error) {
       setTorchSupported(false);
     }
@@ -280,21 +263,11 @@ export const Html5QrcodeScanner = ({
     if (!torchSupported || !isScanning) return;
 
     try {
-      const stream = scannerRef.current?.getRunningTrackCameraCapabilities();
-      if (stream && 'torch' in stream) {
-        // This is experimental and only works on some Android Chrome versions
-        const videoElement = document.querySelector('video');
-        if (videoElement && videoElement.srcObject) {
-          const mediaStream = videoElement.srcObject as MediaStream;
-          const videoTrack = mediaStream.getVideoTracks()[0];
-          if (videoTrack) {
-            await videoTrack.applyConstraints({
-              advanced: [{ torch: !torchOn } as any]
-            });
-            setTorchOn(!torchOn);
-          }
-        }
-      }
+      await scannerRef.current?.applyVideoConstraints({
+        torch: !torchOn
+      } as any);
+      // Only toggle state after successful constraint application
+      setTorchOn(!torchOn);
     } catch (error) {
       console.log('Torch not supported on this device');
       setTorchSupported(false);
@@ -343,7 +316,7 @@ export const Html5QrcodeScanner = ({
               
               {/* Platform indicator */}
               <Badge variant="secondary" className="text-xs">
-                {/iPad|iPhone|iPod/.test(navigator.userAgent) ? 'iOS Optimized' : 
+                {isIOSDevice() ? 'iOS Optimized' : 
                  /Android/.test(navigator.userAgent) ? 'Android Optimized' : 
                  'Desktop Mode'}
               </Badge>
@@ -355,10 +328,10 @@ export const Html5QrcodeScanner = ({
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
               <div className="text-center text-white bg-black/60 rounded-lg p-4 max-w-sm mx-4">
                 <p className="text-sm mb-2 font-medium">
-                  {/iPad|iPhone|iPod/.test(navigator.userAgent) ? '📱 iPhone Scanning Tips:' : 'Scanning Tips:'}
+                  {isIOSDevice() ? '📱 iPhone Scanning Tips:' : 'Scanning Tips:'}
                 </p>
                 <ul className="text-xs space-y-1 text-left">
-                  {/iPad|iPhone|iPod/.test(navigator.userAgent) ? (
+                  {isIOSDevice() ? (
                     <>
                       <li>• Hold iPhone steady with both hands</li>
                       <li>• Move closer/farther to focus</li>
@@ -376,7 +349,7 @@ export const Html5QrcodeScanner = ({
                     </>
                   )}
                 </ul>
-                {/iPad|iPhone|iPod/.test(navigator.userAgent) && (
+                {isIOSDevice() && (
                   <p className="text-xs mt-2 opacity-80">
                     📈 Using iOS optimized scanner
                   </p>

@@ -1,11 +1,18 @@
 // Simplified Html5QrcodeScanner for iPhone 13 Testing
 
 import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Scan, X, Camera } from 'lucide-react';
+import { 
+  SCANNER_FORMATS, 
+  getDeviceOptimizedConfig, 
+  shouldDeduplicateScan, 
+  processEAN13ToUPCA,
+  isIOSDevice 
+} from '@/utils/scannerConfig';
 
 interface Html5QrcodeScannerProps {
   onScan: (barcode: string, format: string) => void;
@@ -31,15 +38,7 @@ export const Html5QrcodeScannerSimple = ({
   useEffect(() => {
     // Simple initialization
     scannerRef.current = new Html5Qrcode(elementId.current, {
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.QR_CODE,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODE_128, 
-        Html5QrcodeSupportedFormats.CODE_39,
-      ],
+      formatsToSupport: SCANNER_FORMATS,
       verbose: false,
     });
 
@@ -73,50 +72,48 @@ export const Html5QrcodeScannerSimple = ({
     try {
       setScannerError(null);
       
-      // Detect iPhone
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      
-      // Simple but effective iPhone optimizations
+      // Get device-optimized configuration
       const config = {
-        fps: isIOS ? 20 : 10, // Higher FPS for iPhone
-        qrbox: function(viewfinderWidth: number, viewfinderHeight: number) {
-          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          const qrboxSize = isIOS 
-            ? Math.min(minEdge * 0.8, 300) // Larger box for iPhone
-            : Math.min(minEdge * 0.7, 250);
-          return { width: qrboxSize, height: qrboxSize };
+        fps: 0, // Placeholder, will be set below
+        qrbox: (width: number, height: number) => {
+          const optimized = getDeviceOptimizedConfig(width, height);
+          return optimized.qrbox;
         },
-        aspectRatio: isIOS ? 4/3 : 16/9, // iPhone cameras prefer 4:3
-        disableFlip: isIOS, // iPhone doesn't need flipping
+        aspectRatio: 0, // Placeholder, will be set below
+        disableFlip: false, // Placeholder, will be set below
       };
+
+      // Apply device-specific optimizations
+      const optimizedConfig = getDeviceOptimizedConfig(640, 480); // Use default dimensions for config
+      config.fps = optimizedConfig.fps;
+      config.aspectRatio = optimizedConfig.aspectRatio;
+      config.disableFlip = optimizedConfig.disableFlip;
 
       await scannerRef.current.start(
         { facingMode: 'environment' }, // Simple camera constraints
         config,
         (decodedText, decodedResult) => {
-          const now = Date.now();
-
-          // Prevent duplicate scans (1.5s cooldown)
-          if (
-            !lastScanRef.current ||
-            lastScanRef.current.value !== decodedText ||
-            now - lastScanRef.current.time > 1500
-          ) {
-            console.log('✅ Barcode detected:', decodedText, decodedResult.result.format.formatName);
-            
-            // EAN-13 to UPC-A conversion
-            let processedValue = decodedText;
-            if (decodedResult.result.format.formatName === 'EAN_13' && decodedText.startsWith('0')) {
-              processedValue = decodedText.slice(1);
-            }
-
-            lastScanRef.current = { value: processedValue, time: now };
-            setLastScanned(processedValue);
-            onScan(processedValue, decodedResult.result.format.formatName);
-
-            // Clear after 2 seconds
-            setTimeout(() => setLastScanned(null), 2000);
+          // Check if we should deduplicate this scan
+          if (shouldDeduplicateScan(lastScanRef.current, decodedText, 1500)) {
+            return; // Skip duplicate scan
           }
+
+          console.log('✅ Barcode detected:', decodedText, decodedResult.result.format.formatName);
+          
+          // Process barcode (EAN-13 to UPC-A conversion)
+          const processedValue = processEAN13ToUPCA(decodedText, decodedResult.result.format.formatName);
+          if (processedValue !== decodedText) {
+            console.log('🔄 Converted:', decodedText, '→', processedValue);
+          }
+
+          // Update state
+          const now = Date.now();
+          lastScanRef.current = { value: processedValue, time: now };
+          setLastScanned(processedValue);
+          onScan(processedValue, decodedResult.result.format.formatName);
+
+          // Clear after 2 seconds
+          setTimeout(() => setLastScanned(null), 2000);
         },
         (errorMessage) => {
           // Silent - normal scanning errors
@@ -163,7 +160,7 @@ export const Html5QrcodeScannerSimple = ({
               <div className="flex gap-2">
                 <Badge className="bg-gradient-to-r from-blue-500 to-cyan-600">
                   <Camera className="w-3 h-3 mr-1" />
-                  {/iPad|iPhone|iPod/.test(navigator.userAgent) ? 'iPhone Optimized' : 'Scanner'}
+                  {isIOSDevice() ? 'iPhone Optimized' : 'Scanner'}
                 </Badge>
                 {lastScanned && (
                   <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 animate-in fade-in">
@@ -176,7 +173,7 @@ export const Html5QrcodeScannerSimple = ({
           )}
 
           {/* iPhone scanning tips */}
-          {isScanning && /iPad|iPhone|iPod/.test(navigator.userAgent) && (
+          {isScanning && isIOSDevice() && (
             <div className="absolute bottom-20 left-4 right-4 pointer-events-none">
               <div className="text-center text-white bg-black/60 rounded-lg p-3">
                 <p className="text-xs">

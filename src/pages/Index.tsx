@@ -29,6 +29,11 @@ import { CriticalAlertsBar } from '@/components/dashboard/CriticalAlertsBar';
 import { OwnerSnapshotWidget } from '@/components/dashboard/OwnerSnapshotWidget';
 import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
 import { OperationsHealthCard } from '@/components/dashboard/OperationsHealthCard';
+import { OutflowByCategoryCard } from '@/components/dashboard/OutflowByCategoryCard';
+import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
+import { PredictableExpensesCard } from '@/components/dashboard/PredictableExpensesCard';
+import { ExpenseHealthChips } from '@/components/dashboard/ExpenseHealthChips';
+import { ExpenseAlertsWidget } from '@/components/dashboard/ExpenseAlertsWidget';
 import { format, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import {
   DollarSign, 
@@ -62,6 +67,7 @@ const Index = () => {
   // Collapsible section states
   const [metricsOpen, setMetricsOpen] = useState(true);
   const [revenueOpen, setRevenueOpen] = useState(true);
+  const [moneyOutOpen, setMoneyOutOpen] = useState(true);
   const [monthlyOpen, setMonthlyOpen] = useState(true);
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
@@ -770,6 +776,60 @@ const Index = () => {
                   </div>
                 </Collapsible>
               )}
+
+              {/* Money Going Out Section - Collapsible */}
+              <Collapsible open={moneyOutOpen} onOpenChange={setMoneyOutOpen}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-8 bg-gradient-to-r from-red-500 to-red-600 rounded-full" />
+                      <h2 className="text-2xl font-bold tracking-tight">💸 Where Your Money Went</h2>
+                    </div>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        {moneyOutOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        {moneyOutOpen ? "Collapse" : "Expand"}
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Track your expenses, vendor payments, and upcoming bills.
+                  </p>
+                  <CollapsibleContent>
+                    <div className="space-y-6">
+                      {/* Expense Health and Alerts */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <ExpenseHealthChips 
+                          startDate={selectedPeriod.from}
+                          endDate={selectedPeriod.to}
+                          periodLabel={selectedPeriod.label}
+                        />
+                        <ExpenseAlertsWidget 
+                          startDate={selectedPeriod.from}
+                          endDate={selectedPeriod.to}
+                        />
+                      </div>
+
+                      {/* Outflow by Category */}
+                      <OutflowByCategoryCard
+                        startDate={selectedPeriod.from}
+                        endDate={selectedPeriod.to}
+                        periodLabel={selectedPeriod.label}
+                      />
+
+                      {/* Top Vendors and Predictable Expenses */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <TopVendorsCard
+                          startDate={selectedPeriod.from}
+                          endDate={selectedPeriod.to}
+                          periodLabel={selectedPeriod.label}
+                        />
+                        <PredictableExpensesCard lookAheadDays={30} />
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
 
               {/* Monthly Performance Table - Collapsible */}
               <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>

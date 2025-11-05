@@ -92,7 +92,7 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       // Fetch transactions (outflows only)
       let query = supabase
         .from('bank_transactions')
-        .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, chart_of_accounts(account_name, account_subtype)')
+        .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, chart_of_accounts!category_id(account_name, account_subtype)')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('status', 'posted')
         .lt('amount', 0) // Only outflows

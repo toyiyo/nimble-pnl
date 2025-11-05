@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Filter, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { CategorySelector } from '@/components/CategorySelector';
+import { SearchableAccountSelector } from '@/components/banking/SearchableAccountSelector';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -224,10 +224,10 @@ export const TransactionFiltersSheet = ({ restaurantId, filters, onFiltersChange
               {/* Category Filter */}
               <div className="space-y-2">
                 <Label>Category</Label>
-                <CategorySelector
-                  restaurantId={restaurantId}
+                <SearchableAccountSelector
                   value={localFilters.categoryId}
-                  onSelect={(categoryId) => setLocalFilters({ ...localFilters, categoryId })}
+                  onValueChange={(categoryId) => setLocalFilters({ ...localFilters, categoryId })}
+                  placeholder="Select category..."
                 />
                 {localFilters.categoryId && (
                   <Button

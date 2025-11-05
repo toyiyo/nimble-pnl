@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CategorySelector } from "@/components/CategorySelector";
+import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { BankAccountInfo } from "./BankAccountInfo";
 import { TransactionBadges } from "./TransactionBadges";
@@ -103,10 +103,10 @@ export function TransactionCard({
               isSplit={transaction.is_split}
             />
             {transaction.is_split ? null : (
-              <CategorySelector
-                restaurantId={restaurantId}
+              <SearchableAccountSelector
                 value={transaction.category_id}
-                onSelect={(categoryId) => onCategorize(transaction.id, categoryId)}
+                onValueChange={(categoryId) => onCategorize(transaction.id, categoryId)}
+                placeholder="Select category..."
               />
             )}
             {!transaction.is_categorized && !transaction.is_split && (

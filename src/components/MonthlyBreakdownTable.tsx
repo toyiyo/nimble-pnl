@@ -5,8 +5,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, AlertTriangle, Info } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { format, parse, startOfMonth, endOfMonth } from "date-fns";
+import { format, parse, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { useRevenueBreakdown } from "@/hooks/useRevenueBreakdown";
+import { useMonthlyExpenses } from "@/hooks/useMonthlyExpenses";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 
 interface MonthlyData {
@@ -35,6 +36,20 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
   const navigate = useNavigate();
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
+  // Fetch expense data for the period covering all months in monthlyData
+  const dateFrom = monthlyData.length > 0 
+    ? startOfMonth(parse(monthlyData[monthlyData.length - 1].period, 'yyyy-MM', new Date()))
+    : subMonths(new Date(), 12);
+  const dateTo = monthlyData.length > 0
+    ? endOfMonth(parse(monthlyData[0].period, 'yyyy-MM', new Date()))
+    : new Date();
+
+  const { data: expenseData } = useMonthlyExpenses(
+    selectedRestaurant?.restaurant_id || null,
+    dateFrom,
+    dateTo
+  );
+
   // Fetch revenue breakdown only for the expanded month
   const expandedMonthDate = expandedMonth ? parse(expandedMonth, 'yyyy-MM', new Date()) : null;
   const { data: expandedBreakdown } = useRevenueBreakdown(
@@ -46,6 +61,11 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
   // Helper to get breakdown for the expanded month
   const getBreakdownForMonth = (period: string) => {
     return period === expandedMonth ? expandedBreakdown : null;
+  };
+
+  // Helper to get expense data for a specific month
+  const getExpenseDataForMonth = (period: string) => {
+    return expenseData?.find(e => e.period === period);
   };
 
   // Calculate profit change vs prior period
@@ -152,14 +172,16 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                     <span className="sm:hidden">POS</span>
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
-                    Gross Revenue
+                    <span className="hidden sm:inline">Gross Revenue</span>
+                    <span className="sm:hidden">Revenue</span>
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
                     <span className="hidden sm:inline">Discounts</span>
                     <span className="sm:hidden">Disc</span>
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
-                    Net Revenue
+                    <span className="hidden sm:inline">Net Revenue</span>
+                    <span className="sm:hidden">Net Rev</span>
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
                     <span className="hidden sm:inline">Food Cost</span>
@@ -181,12 +203,17 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                 {dataWithComparison.map((month, index) => {
                   const isExpanded = expandedMonth === month.period;
                   const monthDate = parse(month.period, 'yyyy-MM', new Date());
+                  const expenseMonth = getExpenseDataForMonth(month.period);
+                  
+                  // Use expense data from bank transactions (preferred) or fallback to daily_pnl
+                  const foodCost = expenseMonth?.foodCost || month.food_cost;
+                  const laborCost = expenseMonth?.laborCost || month.labor_cost;
                   
                   const foodCostPercent = month.net_revenue > 0 
-                    ? (month.food_cost / month.net_revenue) * 100 
+                    ? (foodCost / month.net_revenue) * 100 
                     : 0;
                   const laborCostPercent = month.net_revenue > 0 
-                    ? (month.labor_cost / month.net_revenue) * 100 
+                    ? (laborCost / month.net_revenue) * 100 
                     : 0;
                   
                   return (
@@ -237,7 +264,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <div className="flex flex-col items-end gap-0.5 sm:gap-1">
-                            <span className="font-semibold text-xs sm:text-sm">{formatCurrency(month.food_cost)}</span>
+                            <span className="font-semibold text-xs sm:text-sm">{formatCurrency(foodCost)}</span>
                             <span className="text-[10px] sm:text-xs text-muted-foreground">
                               {foodCostPercent.toFixed(1)}%
                             </span>
@@ -245,7 +272,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <div className="flex flex-col items-end gap-0.5 sm:gap-1">
-                            <span className="font-semibold text-xs sm:text-sm">{formatCurrency(month.labor_cost)}</span>
+                            <span className="font-semibold text-xs sm:text-sm">{formatCurrency(laborCost)}</span>
                             <span className="text-[10px] sm:text-xs text-muted-foreground">
                               {laborCostPercent.toFixed(1)}%
                             </span>
@@ -254,7 +281,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           {(() => {
                             const netRevenue = month.net_revenue;
-                            const profit = netRevenue - month.food_cost - month.labor_cost;
+                            const profit = netRevenue - foodCost - laborCost;
                             
                             return (
                               <span className={`font-bold text-xs sm:text-sm ${
@@ -426,6 +453,37 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                           </div>
                                         </>
                                       )}
+                                    </div>
+                                  )}
+
+                                  {/* Expense Breakdown */}
+                                  {expenseMonth && expenseMonth.categories.length > 0 && (
+                                    <div>
+                                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                                        Expense Breakdown (from Bank Transactions)
+                                      </h4>
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                        {expenseMonth.categories.map((cat, idx) => (
+                                          <div 
+                                            key={idx}
+                                            className="flex items-center justify-between p-2 rounded bg-background/50 text-xs"
+                                          >
+                                            <div className="flex-1 min-w-0">
+                                              <span className="font-medium truncate block">{cat.category}</span>
+                                              <span className="text-[10px] text-muted-foreground">{cat.transactionCount} transactions</span>
+                                            </div>
+                                            <span className="font-semibold text-red-600 ml-2">
+                                              {formatCurrency(cat.amount)}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div className="mt-2 flex justify-between text-xs">
+                                        <span className="text-muted-foreground">Total Expenses:</span>
+                                        <span className="font-semibold text-red-600">
+                                          {formatCurrency(expenseMonth.totalExpenses)}
+                                        </span>
+                                      </div>
                                     </div>
                                   )}
                                 </>

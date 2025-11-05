@@ -105,7 +105,8 @@ export function useTopVendors(startDate: Date, endDate: Date, bankAccountId: str
 
         if (isRecurring) {
           const lastDate = sortedDates[sortedDates.length - 1];
-          const nextExpected = new Date(lastDate.getTime() + avgInterval * 24 * 60 * 60 * 1000);
+          const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+          const nextExpected = new Date(lastDate.getTime() + avgInterval * MILLISECONDS_PER_DAY);
           return { recurring: true, nextExpected };
         }
 

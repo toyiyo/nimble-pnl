@@ -3,6 +3,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, parseISO } from "date-fns";
 
+// Processing fee detection patterns
+const PROCESSING_FEE_PATTERNS = [
+  'square fee',
+  'stripe fee',
+  'processing fee',
+  'merchant fee',
+  'card fee',
+  'payment fee',
+  'square',
+  'stripe',
+  'clover fee',
+  'toast fee',
+  'paypal fee',
+];
+
 export interface ExpenseHealthMetrics {
   foodCostPercentage: number;
   foodCostTarget: { min: number; max: number };
@@ -82,15 +97,8 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
             if (t.amount >= 0) return false;
             const desc = (t.description || '').toLowerCase();
             const merchant = (t.merchant_name || '').toLowerCase();
-            return (
-              desc.includes('square fee') ||
-              desc.includes('stripe fee') ||
-              desc.includes('processing fee') ||
-              desc.includes('merchant fee') ||
-              desc.includes('card fee') ||
-              merchant.includes('square') ||
-              merchant.includes('stripe')
-            );
+            const text = `${desc} ${merchant}`;
+            return PROCESSING_FEE_PATTERNS.some(pattern => text.includes(pattern));
           })
           .reduce((sum, t) => sum + t.amount, 0)
       );

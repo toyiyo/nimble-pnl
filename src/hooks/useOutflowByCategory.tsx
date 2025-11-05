@@ -3,6 +3,51 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, parseISO } from "date-fns";
 
+// Helper function to map account types to standard expense categories
+function mapToStandardCategory(accountSubtype: string, accountName: string): string {
+  const nameLower = accountName.toLowerCase();
+  
+  // Map based on account subtype first
+  if (accountSubtype === 'cost_of_goods_sold' || nameLower.includes('food') || nameLower.includes('inventory')) {
+    return 'Inventory/Food Purchases';
+  }
+  if (accountSubtype === 'payroll' || nameLower.includes('payroll') || nameLower.includes('labor')) {
+    return 'Labor/Payroll';
+  }
+  
+  // Map based on account name keywords
+  if (nameLower.includes('rent') || nameLower.includes('cam') || nameLower.includes('lease')) {
+    return 'Rent & CAM';
+  }
+  if (nameLower.includes('utilities') || nameLower.includes('electric') || nameLower.includes('gas') || nameLower.includes('water')) {
+    return 'Utilities';
+  }
+  if (nameLower.includes('supplies') || nameLower.includes('packaging')) {
+    return 'Supplies & Packaging';
+  }
+  if (nameLower.includes('marketing') || nameLower.includes('advertising')) {
+    return 'Marketing/Ads';
+  }
+  if (nameLower.includes('equipment') || nameLower.includes('maintenance') || nameLower.includes('repair')) {
+    return 'Equipment & Maintenance';
+  }
+  if (nameLower.includes('fee') || nameLower.includes('processing')) {
+    return 'Processing/Bank Fees';
+  }
+  if (nameLower.includes('loan') || nameLower.includes('interest')) {
+    return 'Loan/Lease Payments';
+  }
+  if (nameLower.includes('tax') || nameLower.includes('license')) {
+    return 'Taxes & Licenses';
+  }
+  if (nameLower.includes('waste') || nameLower.includes('adjustment')) {
+    return 'Waste/Adjustments';
+  }
+  
+  // Default to Other/Uncategorized
+  return 'Other/Uncategorized';
+}
+
 export interface CategorySpend {
   category: string;
   amount: number;
@@ -75,34 +120,8 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
         if (t.category_id && t.chart_of_accounts) {
           categoryId = t.category_id;
           const accountSubtype = t.chart_of_accounts.account_subtype;
-          const accountName = t.chart_of_accounts.account_name?.toLowerCase() || '';
-
-          // Map account subtypes to standard categories
-          if (accountSubtype === 'cost_of_goods_sold' || accountName.includes('food') || accountName.includes('inventory')) {
-            category = 'Inventory/Food Purchases';
-          } else if (accountSubtype === 'payroll' || accountName.includes('payroll') || accountName.includes('labor')) {
-            category = 'Labor/Payroll';
-          } else if (accountName.includes('rent') || accountName.includes('cam') || accountName.includes('lease')) {
-            category = 'Rent & CAM';
-          } else if (accountName.includes('utilities') || accountName.includes('electric') || accountName.includes('gas') || accountName.includes('water')) {
-            category = 'Utilities';
-          } else if (accountName.includes('supplies') || accountName.includes('packaging')) {
-            category = 'Supplies & Packaging';
-          } else if (accountName.includes('marketing') || accountName.includes('advertising')) {
-            category = 'Marketing/Ads';
-          } else if (accountName.includes('equipment') || accountName.includes('maintenance') || accountName.includes('repair')) {
-            category = 'Equipment & Maintenance';
-          } else if (accountName.includes('fee') || accountName.includes('processing')) {
-            category = 'Processing/Bank Fees';
-          } else if (accountName.includes('loan') || accountName.includes('interest')) {
-            category = 'Loan/Lease Payments';
-          } else if (accountName.includes('tax') || accountName.includes('license')) {
-            category = 'Taxes & Licenses';
-          } else if (accountName.includes('waste') || accountName.includes('adjustment')) {
-            category = 'Waste/Adjustments';
-          } else if (accountSubtype === 'operating_expenses') {
-            category = 'Other/Uncategorized';
-          }
+          const accountName = t.chart_of_accounts.account_name || '';
+          category = mapToStandardCategory(accountSubtype, accountName);
         }
 
         if (!categoryMap.has(category)) {

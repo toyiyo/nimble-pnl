@@ -13,19 +13,20 @@ interface OutflowByCategoryCardProps {
   periodLabel: string;
 }
 
+// Using a mix of semantic chart colors and fallback colors for 12 categories
 const COLORS = [
-  '#3b82f6', // blue
-  '#8b5cf6', // purple
-  '#ec4899', // pink
-  '#f59e0b', // amber
-  '#10b981', // emerald
-  '#06b6d4', // cyan
-  '#f97316', // orange
-  '#6366f1', // indigo
-  '#84cc16', // lime
-  '#14b8a6', // teal
-  '#a855f7', // violet
-  '#64748b', // slate
+  'hsl(var(--chart-1))',
+  'hsl(var(--chart-2))',
+  'hsl(var(--chart-3))',
+  'hsl(var(--chart-4))',
+  'hsl(var(--chart-5))',
+  '#3b82f6', // blue fallback
+  '#8b5cf6', // purple fallback
+  '#ec4899', // pink fallback
+  '#f59e0b', // amber fallback
+  '#10b981', // emerald fallback
+  '#06b6d4', // cyan fallback
+  '#64748b', // slate fallback
 ];
 
 export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: OutflowByCategoryCardProps) => {

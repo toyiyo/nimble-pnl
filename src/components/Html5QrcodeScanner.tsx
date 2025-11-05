@@ -112,8 +112,7 @@ export const Html5QrcodeScanner = ({
       return;
     }
 
-    try {
-      setScannerError(null);
+    setScannerError(null);
       
       // iOS/Mobile Detection
       const isIOS = isIOSDevice();
@@ -225,11 +224,6 @@ export const Html5QrcodeScanner = ({
         setScannerError(friendlyError);
         onError?.(friendlyError);
       }
-    } catch (error: any) {
-      console.error('Unexpected error in startScanning:', error);
-      setScannerError('Failed to start scanner');
-      onError?.('Failed to start scanner');
-    }
   };
 
   // Camera switching

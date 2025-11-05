@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useExpenseHealth } from '@/hooks/useExpenseHealth';
@@ -11,7 +12,7 @@ interface ExpenseHealthChipsProps {
 }
 
 export const ExpenseHealthChips = ({ startDate, endDate, periodLabel }: ExpenseHealthChipsProps) => {
-  const { data, isLoading } = useExpenseHealth(startDate, endDate);
+  const { data, isLoading, isError, error, refetch } = useExpenseHealth(startDate, endDate);
 
   if (isLoading) {
     return (
@@ -26,6 +27,29 @@ export const ExpenseHealthChips = ({ startDate, endDate, periodLabel }: ExpenseH
             <Skeleton className="h-10 w-32" />
             <Skeleton className="h-10 w-32" />
           </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Card className="bg-gradient-to-br from-destructive/5 to-transparent border-destructive/20">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-destructive" />
+            <CardTitle>Expense Health</CardTitle>
+          </div>
+          <CardDescription>Failed to load metrics • {periodLabel}</CardDescription>
+        </CardHeader>
+        <CardContent className="py-6 text-center">
+          <p className="text-sm text-muted-foreground mb-4">
+            {error?.message || 'Unable to calculate expense health metrics.'}
+          </p>
+          <Button onClick={() => refetch()} variant="outline" size="sm">
+            <TrendingUp className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
         </CardContent>
       </Card>
     );

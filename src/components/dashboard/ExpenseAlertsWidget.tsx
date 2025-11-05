@@ -31,7 +31,7 @@ const SEVERITY_CONFIG = {
 };
 
 export const ExpenseAlertsWidget = ({ startDate, endDate }: ExpenseAlertsWidgetProps) => {
-  const { data: alerts, isLoading } = useExpenseAlerts(startDate, endDate);
+  const { data: alerts, isLoading, isError, error, refetch } = useExpenseAlerts(startDate, endDate);
   const navigate = useNavigate();
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
 
@@ -55,6 +55,29 @@ export const ExpenseAlertsWidget = ({ startDate, endDate }: ExpenseAlertsWidgetP
         </CardHeader>
         <CardContent>
           <Skeleton className="h-20 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Card className="bg-gradient-to-br from-destructive/5 to-transparent border-destructive/20">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-destructive" />
+            <CardTitle>Smart Alerts</CardTitle>
+          </div>
+          <CardDescription>Failed to load alerts</CardDescription>
+        </CardHeader>
+        <CardContent className="py-6 text-center">
+          <p className="text-sm text-muted-foreground mb-4">
+            {error?.message || 'Unable to generate expense alerts.'}
+          </p>
+          <Button onClick={() => refetch()} variant="outline" size="sm">
+            <AlertTriangle className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
         </CardContent>
       </Card>
     );

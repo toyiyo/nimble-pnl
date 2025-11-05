@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTopVendors } from '@/hooks/useTopVendors';
-import { Building2, TrendingUp, TrendingDown, Calendar, ArrowRight } from 'lucide-react';
+import { Building2, TrendingUp, TrendingDown, Calendar, ArrowRight, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 
@@ -13,7 +13,7 @@ interface TopVendorsCardProps {
 }
 
 export const TopVendorsCard = ({ startDate, endDate, periodLabel }: TopVendorsCardProps) => {
-  const { data, isLoading } = useTopVendors(startDate, endDate);
+  const { data, isLoading, isError, error, refetch } = useTopVendors(startDate, endDate);
   const navigate = useNavigate();
 
   if (isLoading) {
@@ -25,6 +25,36 @@ export const TopVendorsCard = ({ startDate, endDate, periodLabel }: TopVendorsCa
         </CardHeader>
         <CardContent>
           <Skeleton className="h-64 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Card className="bg-gradient-to-br from-destructive/5 to-transparent border-destructive/20">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-6 w-6 text-destructive" />
+            <div>
+              <CardTitle className="text-2xl">Failed to Load Vendor Data</CardTitle>
+              <CardDescription>Top vendors by spend • {periodLabel}</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="py-12 text-center">
+          <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Unable to load vendor information</h3>
+          <p className="text-muted-foreground mb-4">
+            {error?.message || 'An error occurred while fetching vendor data.'}
+          </p>
+          <p className="text-sm text-muted-foreground mb-6">
+            Check your connection or try refreshing the data.
+          </p>
+          <Button onClick={() => refetch()} variant="outline">
+            <TrendingUp className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
         </CardContent>
       </Card>
     );

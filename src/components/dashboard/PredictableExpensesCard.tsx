@@ -1,8 +1,9 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { usePredictableExpenses } from '@/hooks/usePredictableExpenses';
-import { Calendar, Clock, DollarSign, TrendingUp } from 'lucide-react';
+import { Calendar, Clock, DollarSign, TrendingUp, AlertCircle } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 
 interface PredictableExpensesCardProps {
@@ -22,7 +23,7 @@ const FREQUENCY_LABELS = {
 };
 
 export const PredictableExpensesCard = ({ lookAheadDays = 30 }: PredictableExpensesCardProps) => {
-  const { data, isLoading } = usePredictableExpenses(lookAheadDays);
+  const { data, isLoading, isError, error, refetch } = usePredictableExpenses(lookAheadDays);
   const today = new Date();
 
   if (isLoading) {
@@ -34,6 +35,36 @@ export const PredictableExpensesCard = ({ lookAheadDays = 30 }: PredictableExpen
         </CardHeader>
         <CardContent>
           <Skeleton className="h-64 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Card className="bg-gradient-to-br from-destructive/5 to-transparent border-destructive/20">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-6 w-6 text-destructive" />
+            <div>
+              <CardTitle className="text-2xl">Failed to Load Predictable Expenses</CardTitle>
+              <CardDescription>Predictable expenses • Next {lookAheadDays} days</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="py-12 text-center">
+          <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Unable to analyze upcoming expenses</h3>
+          <p className="text-muted-foreground mb-4">
+            {error?.message || 'An error occurred while analyzing expense patterns.'}
+          </p>
+          <p className="text-sm text-muted-foreground mb-6">
+            Check your connection or try refreshing the data.
+          </p>
+          <Button onClick={() => refetch()} variant="outline">
+            <TrendingUp className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
         </CardContent>
       </Card>
     );

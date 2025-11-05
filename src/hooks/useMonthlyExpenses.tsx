@@ -78,7 +78,7 @@ export function useMonthlyExpenses(
       // Fetch all expense transactions (negative amounts)
       const { data: transactions, error } = await supabase
         .from('bank_transactions')
-        .select('transaction_date, amount, status, category_id, chart_of_accounts!category_id(account_name, account_subtype)')
+        .select('transaction_date, amount, status, category_id, is_transfer, chart_of_accounts!category_id(account_name, account_subtype)')
         .eq('restaurant_id', restaurantId)
         .eq('status', 'posted')
         .lt('amount', 0) // Only outflows
@@ -87,7 +87,8 @@ export function useMonthlyExpenses(
 
       if (error) throw error;
 
-      const txns = transactions || [];
+      // Exclude internal transfers (transfers between owned accounts)
+      const txns = (transactions || []).filter(t => !t.is_transfer);
 
       // Group by month
       const monthlyMap = new Map<string, {

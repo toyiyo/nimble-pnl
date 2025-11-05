@@ -191,7 +191,12 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                     Labor
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
-                    Profit
+                    <span className="hidden sm:inline">Other Expenses</span>
+                    <span className="sm:hidden">Other</span>
+                  </th>
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                    <span className="hidden sm:inline">Net Profit</span>
+                    <span className="sm:hidden">Profit</span>
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
                     <span className="hidden sm:inline">vs Prior</span>
@@ -208,6 +213,8 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   // Use expense data from bank transactions (preferred) or fallback to daily_pnl
                   const foodCost = expenseMonth?.foodCost || month.food_cost;
                   const laborCost = expenseMonth?.laborCost || month.labor_cost;
+                  const totalExpenses = expenseMonth?.totalExpenses || (month.food_cost + month.labor_cost);
+                  const otherExpenses = totalExpenses - foodCost - laborCost;
                   
                   const foodCostPercent = month.net_revenue > 0 
                     ? (foodCost / month.net_revenue) * 100 
@@ -279,20 +286,34 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           </div>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
+                          <div className="flex flex-col items-end gap-0.5 sm:gap-1">
+                            <span className="font-semibold text-xs sm:text-sm">{formatCurrency(otherExpenses)}</span>
+                            <span className="text-[10px] sm:text-xs text-muted-foreground">
+                              {month.net_revenue > 0 ? ((otherExpenses / month.net_revenue) * 100).toFixed(1) : '0.0'}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           {(() => {
                             const netRevenue = month.net_revenue;
-                            const profit = netRevenue - foodCost - laborCost;
+                            const profit = netRevenue - totalExpenses;
+                            const profitMargin = netRevenue > 0 ? (profit / netRevenue) * 100 : 0;
                             
                             return (
-                              <span className={`font-bold text-xs sm:text-sm ${
-                                profit > 0 
-                                  ? 'text-primary' 
-                                  : profit < 0 
-                                  ? 'text-destructive'
-                                  : 'text-foreground'
-                              }`}>
-                                {formatCurrency(profit)}
-                              </span>
+                              <div className="flex flex-col items-end gap-0.5 sm:gap-1">
+                                <span className={`font-bold text-xs sm:text-sm ${
+                                  profit > 0 
+                                    ? 'text-primary' 
+                                    : profit < 0 
+                                    ? 'text-destructive'
+                                    : 'text-foreground'
+                                }`}>
+                                  {formatCurrency(profit)}
+                                </span>
+                                <span className="text-[10px] sm:text-xs text-muted-foreground">
+                                  {profitMargin.toFixed(1)}%
+                                </span>
+                              </div>
                             );
                           })()}
                         </td>
@@ -335,7 +356,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                            <td colSpan={2} className="py-1 px-4 text-xs text-muted-foreground">
                              <span className="ml-6">Pass-Through Collections:</span>
                            </td>
-                           <td colSpan={8} className="py-1 px-2 text-xs">
+                           <td colSpan={9} className="py-1 px-2 text-xs">
                              <div className="flex gap-4 text-amber-600 dark:text-amber-400">
                                {month.sales_tax > 0 && (
                                  <span>Sales Tax: {formatCurrency(month.sales_tax)}</span>
@@ -358,7 +379,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         
                         return (
                           <tr className="bg-primary/5 border-b border-border/50">
-                            <td colSpan={10} className="py-4 px-4 sm:px-8">
+                            <td colSpan={11} className="py-4 px-4 sm:px-8">
                               <div className="space-y-4">
                                 {!month.has_data ? (
                                 <div className="text-center py-8 space-y-2">

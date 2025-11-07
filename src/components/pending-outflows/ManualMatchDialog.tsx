@@ -94,14 +94,14 @@ export const ManualMatchDialog = ({
                   <button
                     key={transaction.id}
                     onClick={() => setSelectedTransactionId(transaction.id)}
-                    className={`w-full p-3 sm:p-4 rounded-lg border text-left transition-all hover:border-primary/50 ${
+                    className={`w-full p-3 sm:p-4 rounded-lg border text-left transition-all hover:border-primary/50 overflow-hidden ${
                       selectedTransactionId === transaction.id
                         ? 'border-primary bg-primary/5'
                         : 'border-border bg-card'
                     }`}
                   >
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
-                      <div className="flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 min-w-0">
+                      <div className="flex-1 min-w-0 overflow-hidden">
                         <div className="font-medium text-foreground text-sm sm:text-base truncate">
                           {transaction.merchant_name || transaction.description}
                         </div>
@@ -110,20 +110,20 @@ export const ManualMatchDialog = ({
                             {transaction.description}
                           </div>
                         )}
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1 whitespace-nowrap">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 text-xs text-muted-foreground overflow-hidden">
+                          <span className="flex items-center gap-1 whitespace-nowrap shrink-0">
                             <Calendar className="h-3 w-3 shrink-0" />
                             <span className="text-xs">{format(new Date(transaction.transaction_date), 'MMM d, yyyy')}</span>
                           </span>
                           {transaction.connected_bank?.institution_name && (
-                            <span className="truncate text-xs">
+                            <span className="truncate text-xs min-w-0">
                               {transaction.connected_bank.institution_name}
                             </span>
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 sm:gap-2 shrink-0 self-start">
-                        <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+                      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                        <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground shrink-0" />
                         <span className="font-semibold text-foreground text-sm sm:text-base whitespace-nowrap">
                           {formatCurrency(transaction.amount)}
                         </span>

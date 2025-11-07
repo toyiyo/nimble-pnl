@@ -249,10 +249,10 @@ export default function Banking() {
               </CardContent>
             </Card>
 
-            <Card className="hover:shadow-lg transition-all duration-200 border-orange-500/20">
+            <Card className="hover:shadow-lg transition-all duration-200 border-amber-500/20">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
-                  <MetricIcon icon={TrendingUp} variant="orange" />
+                  <MetricIcon icon={TrendingUp} variant="amber" />
                   <div>
                     <div className="text-3xl font-bold text-destructive">
                       ${totalPendingOutflows.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

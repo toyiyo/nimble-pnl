@@ -6,8 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { usePendingOutflowMutations } from "@/hooks/usePendingOutflows";
-import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { useSuppliers } from "@/hooks/useSuppliers";
+import { SearchableSupplierSelector } from "@/components/SearchableSupplierSelector";
+import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
 import type { CreatePendingOutflowInput, PaymentMethod } from "@/types/pending-outflows";
 import { formatDateInTimezone } from "@/lib/timezone";
 import { Loader2 } from "lucide-react";
@@ -19,9 +21,10 @@ interface AddPendingOutflowDialogProps {
 
 export function AddPendingOutflowDialog({ open, onOpenChange }: AddPendingOutflowDialogProps) {
   const { selectedRestaurant } = useRestaurantContext();
-  const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
+  const { suppliers, createSupplier } = useSuppliers();
   const { createPendingOutflow } = usePendingOutflowMutations();
 
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [formData, setFormData] = useState<CreatePendingOutflowInput>({
     vendor_name: '',
     payment_method: 'check',
@@ -33,9 +36,27 @@ export function AddPendingOutflowDialog({ open, onOpenChange }: AddPendingOutflo
     reference_number: null,
   });
 
-  const expenseAccounts = accounts.filter(
-    (account) => account.account_type === 'expense' || account.account_subtype === 'accounts_payable'
-  );
+  const handleSupplierChange = async (value: string) => {
+    setSelectedSupplierId(value);
+    
+    if (value.startsWith('new:')) {
+      // Create new supplier
+      const supplierName = value.replace('new:', '');
+      try {
+        const newSupplier = await createSupplier({ name: supplierName });
+        setFormData({ ...formData, vendor_name: newSupplier.name });
+        setSelectedSupplierId(newSupplier.id);
+      } catch (error) {
+        console.error('Error creating supplier:', error);
+      }
+    } else {
+      // Use existing supplier
+      const supplier = suppliers.find(s => s.id === value);
+      if (supplier) {
+        setFormData({ ...formData, vendor_name: supplier.name });
+      }
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +68,7 @@ export function AddPendingOutflowDialog({ open, onOpenChange }: AddPendingOutflo
     createPendingOutflow.mutate(formData, {
       onSuccess: () => {
         // Reset form
+        setSelectedSupplierId('');
         setFormData({
           vendor_name: '',
           payment_method: 'check',
@@ -79,12 +101,12 @@ export function AddPendingOutflowDialog({ open, onOpenChange }: AddPendingOutflo
             <Label htmlFor="vendor_name">
               Payee / Vendor <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="vendor_name"
-              placeholder="e.g., Sysco, Insurance Co."
-              value={formData.vendor_name}
-              onChange={(e) => setFormData({ ...formData, vendor_name: e.target.value })}
-              required
+            <SearchableSupplierSelector
+              value={selectedSupplierId}
+              onValueChange={handleSupplierChange}
+              suppliers={suppliers}
+              placeholder="Select or create supplier..."
+              showNewIndicator
             />
           </div>
 
@@ -152,21 +174,12 @@ export function AddPendingOutflowDialog({ open, onOpenChange }: AddPendingOutflo
 
           <div className="space-y-2">
             <Label htmlFor="category_id">Category (Optional)</Label>
-            <Select
+            <SearchableAccountSelector
               value={formData.category_id || undefined}
               onValueChange={(value) => setFormData({ ...formData, category_id: value || null })}
-            >
-              <SelectTrigger id="category_id">
-                <SelectValue placeholder="Select category..." />
-              </SelectTrigger>
-              <SelectContent>
-                {expenseAccounts.map((account) => (
-                  <SelectItem key={account.id} value={account.id}>
-                    {account.account_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              filterByTypes={['expense', 'asset']}
+              placeholder="Select expense or asset account..."
+            />
           </div>
 
           <div className="space-y-2">

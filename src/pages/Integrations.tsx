@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
+import { useSpotOnIntegration } from '@/hooks/useSpotOnIntegration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -15,6 +16,7 @@ const Integrations = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { isConnected: squareConnected } = useSquareIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: cloverConnected } = useCloverIntegration(selectedRestaurant?.restaurant_id || null);
+  const { isConnected: spotonConnected } = useSpotOnIntegration(selectedRestaurant?.restaurant_id || null);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -47,6 +49,15 @@ const Integrations = () => {
       logo: '🍀',
       connected: cloverConnected,
       features: ['Orders', 'Payments', 'Menu Items', 'Multi-region Support']
+    },
+    {
+      id: 'spoton-pos',
+      name: 'SpotOn',
+      description: 'Sync orders, menu items, and reports from SpotOn POS',
+      category: 'Point of Sale',
+      logo: '📍',
+      connected: spotonConnected,
+      features: ['Orders', 'Menu Items', 'Reporting', 'Multi-location Support']
     },
     {
       id: '7shifts',

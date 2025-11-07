@@ -80,13 +80,13 @@ CREATE TABLE public.pending_outflows (
   restaurant_id UUID REFERENCES restaurants,
   vendor_name TEXT NOT NULL,
   category_id UUID REFERENCES chart_of_accounts,
-  payment_method TEXT CHECK (IN 'check', 'ach', 'other'),
+  payment_method TEXT CHECK (payment_method IN ('check', 'ach', 'other')),
   amount NUMERIC(15, 2) NOT NULL,
   issue_date DATE NOT NULL,
   due_date DATE,
   notes TEXT,
   reference_number TEXT,
-  status TEXT CHECK (IN 'pending', 'cleared', 'voided', 'stale_30', 'stale_60', 'stale_90'),
+  status TEXT CHECK (status IN ('pending', 'cleared', 'voided', 'stale_30', 'stale_60', 'stale_90')),
   linked_bank_transaction_id UUID REFERENCES bank_transactions,
   cleared_at TIMESTAMPTZ,
   voided_at TIMESTAMPTZ,
@@ -242,10 +242,19 @@ Runs periodically (or on-demand via function):
 -- Mark as stale_30 (30-59 days old)
 UPDATE pending_outflows SET status = 'stale_30'
 WHERE status = 'pending' 
-  AND issue_date < CURRENT_DATE - INTERVAL '30 days'
-  AND issue_date >= CURRENT_DATE - INTERVAL '60 days';
+  AND issue_date <= CURRENT_DATE - INTERVAL '30 days'
+  AND issue_date > CURRENT_DATE - INTERVAL '60 days';
 
--- Similar for stale_60 and stale_90
+-- Mark as stale_60 (60-89 days old)
+UPDATE pending_outflows SET status = 'stale_60'
+WHERE status IN ('pending', 'stale_30')
+  AND issue_date <= CURRENT_DATE - INTERVAL '60 days'
+  AND issue_date > CURRENT_DATE - INTERVAL '90 days';
+
+-- Mark as stale_90 (90+ days old)
+UPDATE pending_outflows SET status = 'stale_90'
+WHERE status IN ('pending', 'stale_30', 'stale_60')
+  AND issue_date <= CURRENT_DATE - INTERVAL '90 days';
 ```
 
 ## Future Enhancements

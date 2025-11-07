@@ -102,21 +102,21 @@ BEGIN
   UPDATE public.pending_outflows
   SET status = 'stale_30'
   WHERE status = 'pending'
-    AND issue_date < CURRENT_DATE - INTERVAL '30 days'
-    AND issue_date >= CURRENT_DATE - INTERVAL '60 days';
+    AND issue_date <= CURRENT_DATE - INTERVAL '30 days'
+    AND issue_date > CURRENT_DATE - INTERVAL '60 days';
   
   -- Mark as stale_60 (60-89 days old)
   UPDATE public.pending_outflows
   SET status = 'stale_60'
   WHERE status IN ('pending', 'stale_30')
-    AND issue_date < CURRENT_DATE - INTERVAL '60 days'
-    AND issue_date >= CURRENT_DATE - INTERVAL '90 days';
+    AND issue_date <= CURRENT_DATE - INTERVAL '60 days'
+    AND issue_date > CURRENT_DATE - INTERVAL '90 days';
   
   -- Mark as stale_90 (90+ days old)
   UPDATE public.pending_outflows
   SET status = 'stale_90'
   WHERE status IN ('pending', 'stale_30', 'stale_60')
-    AND issue_date < CURRENT_DATE - INTERVAL '90 days';
+    AND issue_date <= CURRENT_DATE - INTERVAL '90 days';
 END;
 $$ LANGUAGE plpgsql;
 

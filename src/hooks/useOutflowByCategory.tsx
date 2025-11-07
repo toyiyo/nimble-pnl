@@ -60,6 +60,8 @@ export interface CategorySpend {
 interface OutflowByCategoryMetrics {
   categories: CategorySpend[];
   totalOutflows: number;
+  clearedOutflows: number;
+  pendingOutflows: number;
   uncategorizedAmount: number;
   uncategorizedPercentage: number;
 }
@@ -89,7 +91,7 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
         throw new Error("No restaurant selected");
       }
 
-      // Fetch transactions (outflows only)
+      // Fetch cleared transactions (outflows only)
       let query = supabase
         .from('bank_transactions')
         .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, chart_of_accounts!category_id(account_name, account_subtype)')
@@ -108,10 +110,24 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       if (error) throw error;
 
       const txns = transactions || [];
-      const totalOutflows = Math.abs(txns.reduce((sum, t) => sum + t.amount, 0));
+      const clearedOutflows = Math.abs(txns.reduce((sum, t) => sum + t.amount, 0));
 
-      // Group by category using chart of accounts
-      const categoryMap = new Map<string, { amount: number; count: number; categoryId: string | null }>();
+      // Fetch pending outflows for the same period
+      const { data: pendingOutflows, error: pendingError } = await supabase
+        .from('pending_outflows')
+        .select('amount, category_id, issue_date, status, chart_account:chart_of_accounts!category_id(account_name, account_subtype)')
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
+        .gte('issue_date', format(startDate, 'yyyy-MM-dd'))
+        .lte('issue_date', format(endDate, 'yyyy-MM-dd'));
+
+      if (pendingError) throw pendingError;
+
+      const pendingTxns = pendingOutflows || [];
+      const totalPendingOutflows = pendingTxns.reduce((sum, t) => sum + t.amount, 0);
+
+      // Group cleared transactions by category
+      const categoryMap = new Map<string, { amount: number; pendingAmount: number; count: number; categoryId: string | null }>();
 
       txns.forEach(t => {
         let category = 'Other/Uncategorized';
@@ -125,18 +141,39 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
         }
 
         if (!categoryMap.has(category)) {
-          categoryMap.set(category, { amount: 0, count: 0, categoryId });
+          categoryMap.set(category, { amount: 0, pendingAmount: 0, count: 0, categoryId });
         }
         const entry = categoryMap.get(category)!;
         entry.amount += Math.abs(t.amount);
         entry.count += 1;
       });
 
+      // Add pending outflows to category map
+      pendingTxns.forEach(t => {
+        let category = 'Other/Uncategorized';
+        let categoryId: string | null = null;
+
+        if (t.category_id && t.chart_account) {
+          categoryId = t.category_id;
+          const accountSubtype = t.chart_account.account_subtype;
+          const accountName = t.chart_account.account_name || '';
+          category = mapToStandardCategory(accountSubtype, accountName);
+        }
+
+        if (!categoryMap.has(category)) {
+          categoryMap.set(category, { amount: 0, pendingAmount: 0, count: 0, categoryId });
+        }
+        const entry = categoryMap.get(category)!;
+        entry.pendingAmount += t.amount;
+      });
+
+      const totalOutflows = clearedOutflows + totalPendingOutflows;
+
       const categories: CategorySpend[] = Array.from(categoryMap.entries())
         .map(([category, data]) => ({
           category,
-          amount: data.amount,
-          percentage: totalOutflows > 0 ? (data.amount / totalOutflows) * 100 : 0,
+          amount: data.amount + data.pendingAmount, // Total = cleared + pending
+          percentage: totalOutflows > 0 ? ((data.amount + data.pendingAmount) / totalOutflows) * 100 : 0,
           transactionCount: data.count,
           categoryId: data.categoryId,
         }))
@@ -149,6 +186,8 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       return {
         categories,
         totalOutflows,
+        clearedOutflows,
+        pendingOutflows: totalPendingOutflows,
         uncategorizedAmount,
         uncategorizedPercentage,
       };

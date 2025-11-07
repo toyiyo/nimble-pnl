@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { toast } from "sonner";
+import { useMemo } from "react";
 import type { PendingOutflow, PendingOutflowMatch, CreatePendingOutflowInput, UpdatePendingOutflowInput } from "@/types/pending-outflows";
 
 export function usePendingOutflows() {
@@ -199,4 +200,39 @@ export function usePendingOutflowMutations() {
     confirmMatch,
     deletePendingOutflow,
   };
+}
+
+// Hook to get pending outflows summary
+export function usePendingOutflowsSummary() {
+  const { data: pendingOutflows } = usePendingOutflows();
+
+  return useMemo(() => {
+    if (!pendingOutflows) {
+      return {
+        totalPending: 0,
+        pendingCount: 0,
+        byCategory: {} as Record<string, number>,
+      };
+    }
+
+    const activePending = pendingOutflows.filter(
+      (outflow) => ['pending', 'stale_30', 'stale_60', 'stale_90'].includes(outflow.status)
+    );
+
+    const totalPending = activePending.reduce((sum, outflow) => sum + outflow.amount, 0);
+    const pendingCount = activePending.length;
+
+    // Group by category
+    const byCategory: Record<string, number> = {};
+    activePending.forEach((outflow) => {
+      const categoryName = outflow.chart_account?.account_name || 'Uncategorized';
+      byCategory[categoryName] = (byCategory[categoryName] || 0) + outflow.amount;
+    });
+
+    return {
+      totalPending,
+      pendingCount,
+      byCategory,
+    };
+  }, [pendingOutflows]);
 }

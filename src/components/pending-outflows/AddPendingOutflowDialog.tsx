@@ -44,7 +44,7 @@ export function AddPendingOutflowDialog({ open, onOpenChange }: AddPendingOutflo
       const supplierName = value.replace('new:', '');
       try {
         const newSupplier = await createSupplier({ name: supplierName });
-        setFormData({ ...formData, vendor_name: newSupplier.name });
+        setFormData(prev => ({ ...prev, vendor_name: newSupplier.name }));
         setSelectedSupplierId(newSupplier.id);
       } catch (error) {
         console.error('Error creating supplier:', error);
@@ -53,7 +53,7 @@ export function AddPendingOutflowDialog({ open, onOpenChange }: AddPendingOutflo
       // Use existing supplier
       const supplier = suppliers.find(s => s.id === value);
       if (supplier) {
-        setFormData({ ...formData, vendor_name: supplier.name });
+        setFormData(prev => ({ ...prev, vendor_name: supplier.name }));
       }
     }
   };

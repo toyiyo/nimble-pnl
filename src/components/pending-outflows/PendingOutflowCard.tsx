@@ -175,6 +175,7 @@ export function PendingOutflowCard({ outflow }: PendingOutflowCardProps) {
                     size="sm"
                     variant="ghost"
                     onClick={() => setShowVoidDialog(true)}
+                    aria-label="Void pending payment"
                   >
                     <XCircle className="w-3 h-3" />
                   </Button>
@@ -182,6 +183,7 @@ export function PendingOutflowCard({ outflow }: PendingOutflowCardProps) {
                     size="sm"
                     variant="ghost"
                     onClick={handleDelete}
+                    aria-label="Delete pending payment"
                   >
                     <Trash2 className="w-3 h-3" />
                   </Button>

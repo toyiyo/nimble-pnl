@@ -127,7 +127,7 @@ export const ManualMatchDialog = ({
                           : 'border-border bg-card'
                       }`}
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 w-full min-w-0">
+                      <div className="flex items-start justify-between gap-3 w-full">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-foreground text-sm sm:text-base truncate">
                             {transaction.merchant_name || transaction.description}
@@ -149,8 +149,8 @@ export const ManualMatchDialog = ({
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-                          <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground shrink-0" />
+                        <div className="flex items-start gap-1 shrink-0 min-w-[80px] sm:min-w-[100px] justify-end">
+                          <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground shrink-0 mt-0.5" />
                           <span className="font-semibold text-foreground text-sm sm:text-base whitespace-nowrap">
                             {formatCurrency(transaction.amount)}
                           </span>

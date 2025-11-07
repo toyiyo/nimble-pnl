@@ -81,8 +81,8 @@ export const ManualMatchDialog = ({
           </div>
 
           {/* Transaction List */}
-          <ScrollArea className="max-h-[40vh] sm:max-h-[400px] border rounded-lg">
-            <div className="p-2 sm:p-4 space-y-2">
+          <ScrollArea className="max-h-[40vh] sm:max-h-[400px] border rounded-lg overflow-x-hidden">
+            <div className="p-2 sm:p-4 space-y-2 overflow-x-hidden">
               {isLoading ? (
                 <div className="text-center text-muted-foreground py-8 text-sm">Loading transactions...</div>
               ) : availableTransactions.length === 0 ? (

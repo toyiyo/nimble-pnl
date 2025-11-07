@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTopVendors } from '@/hooks/useTopVendors';
 import { Building2, TrendingUp, TrendingDown, Calendar, ArrowRight, AlertCircle } from 'lucide-react';

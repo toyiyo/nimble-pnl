@@ -48,14 +48,21 @@ export function usePredictableExpenses(lookAheadDays: number = 30) {
 
       const txns = transactions || [];
 
-      // Group by vendor
-      const vendorMap = new Map<string, Array<{ date: Date; amount: number }>>();
+      // Group by vendor using normalized key for accurate pattern detection
+      const vendorMap = new Map<string, { label: string; payments: Array<{ date: Date; amount: number }> }>();
       txns.forEach(t => {
-        const vendor = t.merchant_name || t.normalized_payee || t.description || 'Unknown Vendor';
-        if (!vendorMap.has(vendor)) {
-          vendorMap.set(vendor, []);
+        // Normalized key for grouping (prefer normalized_payee, fallback to merchant_name/description)
+        const normalizedKey = (t.normalized_payee || t.merchant_name || t.description || 'unknown vendor')
+          .trim()
+          .toLowerCase();
+        
+        // Human-readable label for display (prefer merchant_name, fallback to normalized_payee/description)
+        const label = (t.merchant_name || t.normalized_payee || t.description || 'Unknown Vendor').trim();
+        
+        if (!vendorMap.has(normalizedKey)) {
+          vendorMap.set(normalizedKey, { label, payments: [] });
         }
-        vendorMap.get(vendor)!.push({
+        vendorMap.get(normalizedKey)!.payments.push({
           date: parseISO(t.transaction_date),
           amount: Math.abs(t.amount),
         });
@@ -64,7 +71,8 @@ export function usePredictableExpenses(lookAheadDays: number = 30) {
       const upcomingExpenses: PredictableExpense[] = [];
 
       // Analyze each vendor for recurring patterns
-      vendorMap.forEach((payments, vendor) => {
+      vendorMap.forEach((vendorData, normalizedKey) => {
+        const { label, payments } = vendorData;
         if (payments.length < 3) return; // Need at least 3 payments to detect pattern
 
         const sortedPayments = payments.sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -113,7 +121,7 @@ export function usePredictableExpenses(lookAheadDays: number = 30) {
         const daysUntilExpected = differenceInDays(expectedDate, today);
         if (daysUntilExpected > 0 && daysUntilExpected <= lookAheadDays) {
           upcomingExpenses.push({
-            vendor,
+            vendor: label, // Use human-readable label for display
             expectedDate,
             expectedAmount: avgAmount,
             confidence,

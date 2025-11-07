@@ -67,8 +67,14 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
       return null;
     }
 
-    // 1. Available Cash Balance
+    // 1. Available Cash Balance (Bank)
     const availableCash = liquidityMetrics.currentBalance;
+
+    // 1b. Book Balance (Bank - Pending)
+    const bookBalance = liquidityMetrics.bookBalance;
+
+    // 1c. Pending Outflows
+    const pendingOutflows = liquidityMetrics.pendingOutflows;
 
     // 2. Net Cash Flow (This Month) - MTD
     const netCashFlowMTD = cashFlowMetrics.netCashFlow30d || 0;
@@ -90,7 +96,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
     // 7. Average Daily Burn
     const avgDailyBurn = liquidityMetrics.avgDailyOutflow;
 
-    // 8. Runway (in Days)
+    // 8. Runway (in Days) - calculated with book balance
     const runway = liquidityMetrics.daysOfCash;
 
     // 9. Cash Volatility Index
@@ -101,6 +107,8 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
 
     return {
       availableCash,
+      bookBalance,
+      pendingOutflows,
       netCashFlowMTD,
       netCashFlow7d,
       topCategories,
@@ -170,14 +178,23 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
       </div>
 
       {/* Quick Glance Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <DashboardMetricCard
-          title="Cash Available to Spend"
+          title="Bank Balance"
           value={formatCurrency(metrics.availableCash)}
           icon={Wallet}
           variant={metrics.availableCash > 10000 ? 'success' : metrics.availableCash < 2000 ? 'danger' : 'warning'}
           subtitle={`Across ${connectedBanks.length} ${connectedBanks.length === 1 ? 'account' : 'accounts'}`}
-          periodLabel="Current Balance"
+          periodLabel="Currently in Bank"
+        />
+
+        <DashboardMetricCard
+          title="Book Balance"
+          value={formatCurrency(metrics.bookBalance)}
+          icon={Wallet}
+          variant={metrics.bookBalance > 10000 ? 'success' : metrics.bookBalance < 2000 ? 'danger' : 'warning'}
+          subtitle={metrics.pendingOutflows > 0 ? `After ${formatCurrency(metrics.pendingOutflows)} pending` : 'No pending outflows'}
+          periodLabel="After Pending Clears"
         />
 
         <DashboardMetricCard
@@ -198,7 +215,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
             metrics.runwayStatus === 'caution' ? 'warning' : 'danger'
           }
           subtitle={metrics.avgDailyBurn > 0 ? `Burning ${formatCurrency(metrics.avgDailyBurn)}/day` : 'No daily burn'}
-          periodLabel="Days of Cash"
+          periodLabel="Based on Book Balance"
         />
       </div>
 

@@ -17,7 +17,7 @@ interface CategoryRulesDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function CategoryRulesDialog({ open, onOpenChange }: CategoryRulesDialogProps) {
+export const CategoryRulesDialog = ({ open, onOpenChange }: CategoryRulesDialogProps) => {
   const { selectedRestaurant } = useRestaurantContext();
   const { data: rules, isLoading } = useCategorizationRules();
   const { suppliers, createSupplier } = useSuppliers();
@@ -211,4 +211,4 @@ export function CategoryRulesDialog({ open, onOpenChange }: CategoryRulesDialogP
       </DialogContent>
     </Dialog>
   );
-}
+};

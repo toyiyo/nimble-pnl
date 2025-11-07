@@ -5,8 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
+import { useToastIntegration } from '@/hooks/useToastIntegration';
 import { SquareSync } from '@/components/SquareSync';
 import { CloverSync } from '@/components/CloverSync';
+import { ToastSync } from '@/components/ToastSync';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { Plug, Settings, CheckCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -36,14 +38,20 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   // Clover-specific integration hook
   const cloverIntegration = useCloverIntegration(restaurantId);
   
-  // Check if this integration is Square or Clover and if it's connected
+  // Toast-specific integration hook
+  const toastIntegration = useToastIntegration(restaurantId);
+  
+  // Check if this integration is Square, Clover, or Toast and if it's connected
   const isSquareIntegration = integration.id === 'square-pos';
   const isCloverIntegration = integration.id === 'clover-pos';
+  const isToastIntegration = integration.id === 'toast-pos';
   const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected : 
-                            isCloverIntegration ? cloverIntegration.isConnected : 
+                            isCloverIntegration ? cloverIntegration.isConnected :
+                            isToastIntegration ? toastIntegration.isConnected :
                             integration.connected;
   const actuallyConnecting = isSquareIntegration ? squareIntegration.isConnecting : 
                              isCloverIntegration ? cloverIntegration.isConnecting :
+                             isToastIntegration ? toastIntegration.isConnecting :
                              isConnecting;
 
   const handleConnect = async () => {
@@ -54,6 +62,11 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     
     if (isCloverIntegration) {
       await cloverIntegration.connectClover('na');
+      return;
+    }
+    
+    if (isToastIntegration) {
+      await toastIntegration.connectToast();
       return;
     }
     
@@ -86,6 +99,11 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     
     if (isCloverIntegration) {
       await cloverIntegration.disconnectClover();
+      return;
+    }
+    
+    if (isToastIntegration) {
+      await toastIntegration.disconnectToast();
       return;
     }
     
@@ -201,6 +219,8 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
                 `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}` :
               isCloverIntegration && cloverIntegration.connection ?
                 `Connected: ${new Date(cloverIntegration.connection.connected_at).toLocaleDateString()}` :
+              isToastIntegration && toastIntegration.connection ?
+                `Connected: ${new Date(toastIntegration.connection.connected_at).toLocaleDateString()}` :
                 'Last sync: 2 hours ago'
               }
             </div>
@@ -216,6 +236,14 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             {/* Clover Sync Component */}
             {isCloverIntegration && (
               <CloverSync 
+                restaurantId={restaurantId} 
+                isConnected={actuallyConnected} 
+              />
+            )}
+            
+            {/* Toast Sync Component */}
+            {isToastIntegration && (
+              <ToastSync 
                 restaurantId={restaurantId} 
                 isConnected={actuallyConnected} 
               />

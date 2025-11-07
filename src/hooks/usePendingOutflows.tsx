@@ -139,30 +139,17 @@ export function usePendingOutflowMutations() {
       pendingOutflowId: string; 
       bankTransactionId: string;
     }) => {
-      // Update pending outflow
-      const { error: poError } = await supabase
-        .from('pending_outflows')
-        .update({
-          status: 'cleared',
-          linked_bank_transaction_id: bankTransactionId,
-          cleared_at: new Date().toISOString(),
-        })
-        .eq('id', pendingOutflowId);
+      const { data, error } = await supabase.functions.invoke(
+        'confirm-pending-outflow-match',
+        {
+          body: { pendingOutflowId, bankTransactionId }
+        }
+      );
 
-      if (poError) throw poError;
-
-      // Mark bank transaction as categorized
-      const { error: btError } = await supabase
-        .from('bank_transactions')
-        .update({
-          is_categorized: true,
-          matched_at: new Date().toISOString(),
-        })
-        .eq('id', bankTransactionId);
-
-      if (btError) throw btError;
-
-      return { pendingOutflowId, bankTransactionId };
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });

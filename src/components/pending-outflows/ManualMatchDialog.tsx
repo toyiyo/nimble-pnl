@@ -60,17 +60,17 @@ export const ManualMatchDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] w-[95vw] sm:w-full flex flex-col overflow-hidden p-4 sm:p-6">
-        <DialogHeader className="shrink-0">
+      <DialogContent className="max-w-3xl max-h-[90vh] w-[95vw] sm:w-full p-4 sm:p-6">
+        <DialogHeader>
           <DialogTitle className="text-lg sm:text-xl">Manual Match Transaction</DialogTitle>
           <DialogDescription className="text-sm">
             Match with: <strong className="break-words">{pendingOutflow.vendor_name}</strong> - {formatCurrency(pendingOutflow.amount)}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-hidden">
+        <div className="space-y-4 mt-4">
           {/* Search */}
-          <div className="relative shrink-0">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search transactions..."
@@ -81,7 +81,7 @@ export const ManualMatchDialog = ({
           </div>
 
           {/* Transaction List */}
-          <ScrollArea className="flex-1 border rounded-lg min-h-0">
+          <ScrollArea className="h-[50vh] sm:h-[450px] border rounded-lg">
             <div className="p-2 sm:p-4 space-y-2">
               {isLoading ? (
                 <div className="text-center text-muted-foreground py-8 text-sm">Loading transactions...</div>
@@ -136,7 +136,7 @@ export const ManualMatchDialog = ({
           </ScrollArea>
 
           {/* Actions */}
-          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-4 border-t shrink-0">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-4 border-t">
             <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
               Cancel
             </Button>

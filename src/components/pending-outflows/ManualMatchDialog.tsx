@@ -80,32 +80,34 @@ export const ManualMatchDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] w-[95vw] sm:w-full p-0 overflow-hidden flex flex-col">
-        <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-0">
+      <DialogContent className="max-w-3xl h-[90vh] w-[95vw] sm:w-full p-0 flex flex-col gap-0">
+        <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 shrink-0">
           <DialogTitle className="text-lg sm:text-xl">Manual Match Transaction</DialogTitle>
           <DialogDescription className="text-sm break-words">
             Match with: <strong className="break-words">{pendingOutflow.vendor_name}</strong> - {formatCurrency(pendingOutflow.amount)}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col flex-1 min-h-0 px-4 sm:px-6 pb-4 sm:pb-6 mt-4 space-y-4">
+        <div className="flex-1 min-h-0 flex flex-col px-4 sm:px-6 gap-4">
           {/* Enhanced Search */}
-          <div className="relative shrink-0">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by payee, description, date, or amount..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-              aria-label="Search transactions"
-            />
+          <div className="shrink-0">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by payee, description, date, or amount..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+                aria-label="Search transactions"
+              />
+            </div>
             <div className="text-xs text-muted-foreground mt-1 px-1">
               Try: payee name, date (e.g., "Jan 15"), or amount (e.g., "100.50")
             </div>
           </div>
 
           {/* Scrollable Transaction List */}
-          <div className="flex-1 min-h-0 border rounded-lg overflow-hidden">
+          <div className="flex-1 min-h-0 border rounded-lg">
             <ScrollArea className="h-full">
               <div className="p-2 sm:p-4 space-y-2">
                 {isLoading ? (
@@ -160,20 +162,20 @@ export const ManualMatchDialog = ({
               </div>
             </ScrollArea>
           </div>
+        </div>
 
-          {/* Actions */}
-          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-4 border-t shrink-0">
-            <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleConfirm}
-              disabled={!selectedTransactionId || confirmMatch.isPending}
-              className="w-full sm:w-auto"
-            >
-              {confirmMatch.isPending ? 'Confirming...' : 'Confirm Match'}
-            </Button>
-          </div>
+        {/* Actions */}
+        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2 px-4 sm:px-6 py-4 border-t shrink-0">
+          <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleConfirm}
+            disabled={!selectedTransactionId || confirmMatch.isPending}
+            className="w-full sm:w-auto"
+          >
+            {confirmMatch.isPending ? 'Confirming...' : 'Confirm Match'}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

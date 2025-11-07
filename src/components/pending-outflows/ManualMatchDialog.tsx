@@ -60,11 +60,11 @@ export const ManualMatchDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[80vh]">
+      <DialogContent className="max-w-3xl max-h-[90vh] w-[95vw] sm:w-full">
         <DialogHeader>
-          <DialogTitle>Manual Match Transaction</DialogTitle>
-          <DialogDescription>
-            Select a transaction to match with: <strong>{pendingOutflow.vendor_name}</strong> - {formatCurrency(pendingOutflow.amount)}
+          <DialogTitle className="text-lg sm:text-xl">Manual Match Transaction</DialogTitle>
+          <DialogDescription className="text-sm">
+            Match with: <strong className="break-words">{pendingOutflow.vendor_name}</strong> - {formatCurrency(pendingOutflow.amount)}
           </DialogDescription>
         </DialogHeader>
 
@@ -81,12 +81,12 @@ export const ManualMatchDialog = ({
           </div>
 
           {/* Transaction List */}
-          <ScrollArea className="h-[400px] border rounded-lg">
-            <div className="p-4 space-y-2">
+          <ScrollArea className="h-[400px] sm:h-[450px] border rounded-lg">
+            <div className="p-2 sm:p-4 space-y-2">
               {isLoading ? (
-                <div className="text-center text-muted-foreground py-8">Loading transactions...</div>
+                <div className="text-center text-muted-foreground py-8 text-sm">Loading transactions...</div>
               ) : availableTransactions.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8">
+                <div className="text-center text-muted-foreground py-8 text-sm">
                   No uncategorized transactions found
                 </div>
               ) : (
@@ -94,37 +94,37 @@ export const ManualMatchDialog = ({
                   <button
                     key={transaction.id}
                     onClick={() => setSelectedTransactionId(transaction.id)}
-                    className={`w-full p-4 rounded-lg border text-left transition-all hover:border-primary/50 ${
+                    className={`w-full p-3 sm:p-4 rounded-lg border text-left transition-all hover:border-primary/50 ${
                       selectedTransactionId === transaction.id
                         ? 'border-primary bg-primary/5'
                         : 'border-border bg-card'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-foreground truncate">
+                        <div className="font-medium text-foreground text-sm sm:text-base truncate">
                           {transaction.merchant_name || transaction.description}
                         </div>
                         {transaction.merchant_name && transaction.description && (
-                          <div className="text-sm text-muted-foreground truncate">
+                          <div className="text-xs sm:text-sm text-muted-foreground truncate">
                             {transaction.description}
                           </div>
                         )}
-                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {format(new Date(transaction.transaction_date), 'MMM d, yyyy')}
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1 whitespace-nowrap">
+                            <Calendar className="h-3 w-3 shrink-0" />
+                            <span className="text-xs">{format(new Date(transaction.transaction_date), 'MMM d, yyyy')}</span>
                           </span>
                           {transaction.connected_bank?.institution_name && (
-                            <span className="truncate">
+                            <span className="truncate text-xs">
                               {transaction.connected_bank.institution_name}
                             </span>
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-semibold text-foreground">
+                      <div className="flex items-center gap-1 sm:gap-2 shrink-0 self-start">
+                        <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+                        <span className="font-semibold text-foreground text-sm sm:text-base whitespace-nowrap">
                           {formatCurrency(transaction.amount)}
                         </span>
                       </div>
@@ -136,13 +136,14 @@ export const ManualMatchDialog = ({
           </ScrollArea>
 
           {/* Actions */}
-          <div className="flex items-center justify-between pt-4 border-t">
-            <Button variant="outline" onClick={onClose}>
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
               Cancel
             </Button>
             <Button 
               onClick={handleConfirm}
               disabled={!selectedTransactionId || confirmMatch.isPending}
+              className="w-full sm:w-auto"
             >
               {confirmMatch.isPending ? 'Confirming...' : 'Confirm Match'}
             </Button>

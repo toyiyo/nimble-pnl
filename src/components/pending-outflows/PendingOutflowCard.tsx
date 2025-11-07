@@ -17,11 +17,13 @@ import { Label } from "@/components/ui/label";
 import { usePendingOutflowMutations } from "@/hooks/usePendingOutflows";
 import { usePendingOutflowMatches } from "@/hooks/usePendingOutflows";
 import { MatchSuggestionCard } from "./MatchSuggestionCard";
+import { ManualMatchDialog } from "./ManualMatchDialog";
 import type { PendingOutflow } from "@/types/pending-outflows";
 import { formatCurrency } from "@/utils/pdfExport";
 import { format } from "date-fns";
-import { CheckCircle2, XCircle, FileText, Calendar, Hash, Trash2, Sparkles } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, Calendar, Hash, Trash2, Sparkles, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRestaurantContext } from "@/contexts/RestaurantContext";
 
 interface PendingOutflowCardProps {
   outflow: PendingOutflow;
@@ -31,7 +33,9 @@ export function PendingOutflowCard({ outflow }: PendingOutflowCardProps) {
   const [showVoidDialog, setShowVoidDialog] = useState(false);
   const [voidReason, setVoidReason] = useState('');
   const [showMatches, setShowMatches] = useState(false);
+  const [showManualMatch, setShowManualMatch] = useState(false);
   
+  const { selectedRestaurant } = useRestaurantContext();
   const { voidPendingOutflow, deletePendingOutflow } = usePendingOutflowMutations();
   const { data: matches } = usePendingOutflowMatches(outflow.id);
 
@@ -173,6 +177,14 @@ export function PendingOutflowCard({ outflow }: PendingOutflowCardProps) {
                   )}
                   <Button
                     size="sm"
+                    variant="outline"
+                    onClick={() => setShowManualMatch(true)}
+                    aria-label="Manual match transaction"
+                  >
+                    <Link className="w-3 h-3" />
+                  </Button>
+                  <Button
+                    size="sm"
                     variant="ghost"
                     onClick={() => setShowVoidDialog(true)}
                     aria-label="Void pending payment"
@@ -241,6 +253,16 @@ export function PendingOutflowCard({ outflow }: PendingOutflowCardProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Manual Match Dialog */}
+      {selectedRestaurant && (
+        <ManualMatchDialog
+          isOpen={showManualMatch}
+          onClose={() => setShowManualMatch(false)}
+          pendingOutflow={outflow}
+          restaurantId={selectedRestaurant.restaurant_id}
+        />
+      )}
     </>
   );
 }

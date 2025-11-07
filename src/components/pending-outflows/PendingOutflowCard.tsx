@@ -29,7 +29,7 @@ interface PendingOutflowCardProps {
   outflow: PendingOutflow;
 }
 
-export function PendingOutflowCard({ outflow }: PendingOutflowCardProps) {
+export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
   const [showVoidDialog, setShowVoidDialog] = useState(false);
   const [voidReason, setVoidReason] = useState('');
   const [showMatches, setShowMatches] = useState(false);
@@ -265,4 +265,4 @@ export function PendingOutflowCard({ outflow }: PendingOutflowCardProps) {
       )}
     </>
   );
-}
+};

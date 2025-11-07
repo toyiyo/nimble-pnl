@@ -127,40 +127,36 @@ export const ManualMatchDialog = ({
                           : 'border-border bg-card'
                       }`}
                     >
-                      <div className="flex flex-col gap-2">
-                        {/* Top row: Description and Amount */}
-                        <div className="flex items-start justify-between gap-4 w-full">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-foreground text-sm sm:text-base truncate">
-                              {transaction.merchant_name || transaction.description}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0 min-w-[110px] justify-end">
-                            <DollarSign className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <span className="font-semibold text-foreground text-base whitespace-nowrap">
-                              {formatCurrency(transaction.amount)}
-                            </span>
-                          </div>
+                      <div className="flex gap-3 sm:gap-4 w-full">
+                        {/* Left: Amount - Always visible first */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <DollarSign className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span className="font-semibold text-foreground text-base whitespace-nowrap">
+                            {formatCurrency(transaction.amount)}
+                          </span>
                         </div>
                         
-                        {/* Second row: Secondary description if present */}
-                        {transaction.merchant_name && transaction.description && (
-                          <div className="text-xs sm:text-sm text-muted-foreground truncate">
-                            {transaction.description}
+                        {/* Right: Transaction details */}
+                        <div className="flex-1 min-w-0 flex flex-col gap-1">
+                          <div className="font-medium text-foreground text-sm sm:text-base truncate">
+                            {transaction.merchant_name || transaction.description}
                           </div>
-                        )}
-                        
-                        {/* Third row: Date and Bank */}
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1 whitespace-nowrap shrink-0">
-                            <Calendar className="h-3 w-3 shrink-0" />
-                            <span>{format(new Date(transaction.transaction_date), 'MMM d, yyyy')}</span>
-                          </span>
-                          {transaction.connected_bank?.institution_name && (
-                            <span className="truncate min-w-0">
-                              {transaction.connected_bank.institution_name}
-                            </span>
+                          {transaction.merchant_name && transaction.description && (
+                            <div className="text-xs sm:text-sm text-muted-foreground truncate">
+                              {transaction.description}
+                            </div>
                           )}
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1 whitespace-nowrap shrink-0">
+                              <Calendar className="h-3 w-3 shrink-0" />
+                              <span>{format(new Date(transaction.transaction_date), 'MMM d, yyyy')}</span>
+                            </span>
+                            {transaction.connected_bank?.institution_name && (
+                              <span className="truncate min-w-0">
+                                {transaction.connected_bank.institution_name}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </button>

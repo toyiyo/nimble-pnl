@@ -13,8 +13,8 @@ export const useCategorizePosSales = () => {
       );
 
       if (error) {
-        // Extract the actual error message from the edge function response
-        const errorMessage = (data as any)?.error || error.message || 'Unknown error';
+        // Edge functions return error details in data even when error exists
+        const errorMessage = data?.error || error.message || 'Unknown error';
         throw new Error(errorMessage);
       }
       

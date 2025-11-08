@@ -1,5 +1,5 @@
 // Braintrust telemetry integration for AI observability
-import { initLogger } from "npm:braintrust@0.0.163";
+import { initLogger } from "npm:braintrust";
 
 // Lazy-initialized logger instance
 let logger: any = null;

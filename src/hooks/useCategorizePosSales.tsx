@@ -12,7 +12,13 @@ export const useCategorizePosSales = () => {
         { body: { restaurantId } }
       );
 
-      if (error) throw error;
+      if (error) {
+        // Edge functions return error details in data even when error exists
+        // Preserve original error object to retain status/code/stack metadata
+        error.message = data?.error || error.message || 'Unknown error';
+        throw error;
+      }
+      
       return data;
     },
     onSuccess: (data) => {

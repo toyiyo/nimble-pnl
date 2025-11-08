@@ -6,9 +6,15 @@ export interface ModelConfig {
   maxRetries: number;
 }
 
-// Model configurations (free models first, then paid fallbacks)
+// Model configurations (Gemini 2.5 Flash Lite as default, then free models, then paid fallbacks)
 export const MODELS: ModelConfig[] = [
-  // Free models
+  // Primary model (fast, reliable, large context window)
+  {
+    name: "Gemini 2.5 Flash Lite",
+    id: "google/gemini-2.5-flash-lite",
+    maxRetries: 2
+  },
+  // Free models as fallback
   {
     name: "Llama 4 Maverick Free",
     id: "meta-llama/llama-4-maverick:free",
@@ -19,12 +25,7 @@ export const MODELS: ModelConfig[] = [
     id: "google/gemma-3-27b-it:free",
     maxRetries: 2
   },
-  // Paid models (fallback)
-  {
-    name: "Gemini 2.5 Flash Lite",
-    id: "google/gemini-2.5-flash-lite",
-    maxRetries: 1
-  },
+  // Paid models (final fallback)
   {
     name: "Claude Sonnet 4.5",
     id: "anthropic/claude-sonnet-4-5",
@@ -59,7 +60,7 @@ export async function callModel(
         headers: {
           "Authorization": `Bearer ${openRouterApiKey}`,
           "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-          "X-Title": "Nimble PnL AI",
+          "X-Title": "EasyShiftHQ AI",
           "Content-Type": "application/json"
         },
         body: JSON.stringify(body),
@@ -97,7 +98,7 @@ export async function callModel(
 }
 
 /**
- * Call AI with multi-model fallback and return parsed result
+ * Call AI with multi-model fallback and return parsed result (non-streaming)
  */
 export async function callAIWithFallback<T>(
   requestBody: any,
@@ -145,5 +146,46 @@ export async function callAIWithFallback<T>(
   }
 
   console.error('❌ All models failed');
+  return null;
+}
+
+/**
+ * Call AI with multi-model fallback using streaming (for large responses)
+ * Returns parsed result after stream completes
+ */
+export async function callAIWithFallbackStreaming<T>(
+  requestBody: any,
+  openRouterApiKey: string
+): Promise<{ data: T; model: string } | null> {
+  // Import streaming utilities dynamically to avoid circular dependencies
+  const { callModelWithStreaming } = await import("./streaming.ts");
+  
+  console.log(`🚀 Starting AI call with streaming multi-model fallback...`);
+
+  for (const modelConfig of MODELS) {
+    console.log(`🚀 Trying ${modelConfig.name} (streaming)...`);
+    
+    try {
+      const content = await callModelWithStreaming(modelConfig, requestBody, openRouterApiKey);
+      
+      if (!content) {
+        console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
+        continue;
+      }
+
+      // Parse the JSON content
+      const result = JSON.parse(content);
+      
+      console.log(`✅ ${modelConfig.name} successfully returned result via streaming`);
+      return { data: result, model: modelConfig.name };
+      
+    } catch (parseError) {
+      console.error(`❌ ${modelConfig.name} streaming error:`, parseError instanceof Error ? parseError.message : String(parseError));
+      console.log(`⚠️ Trying next model due to streaming/parsing failure...`);
+      continue;
+    }
+  }
+
+  console.error('❌ All models failed (streaming)');
   return null;
 }

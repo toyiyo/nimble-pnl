@@ -64,8 +64,15 @@ RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
 
 CRITICAL: Return ONLY valid, complete JSON. Ensure all arrays are properly closed.`;
 
-// Model configurations (free models first, then paid fallbacks)
+// Model configurations (Gemini first, then free models, then paid fallbacks)
 const MODELS = [
+  // Primary model
+  {
+    name: "Gemini 2.5 Flash Lite",
+    id: "google/gemini-2.5-flash-lite",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
+    maxRetries: 1
+  },
   // Free models
   {
     name: "Llama 4 Maverick Free",
@@ -80,12 +87,6 @@ const MODELS = [
     maxRetries: 2
   },
   // Paid models (fallback)
-  {
-    name: "Gemini 2.5 Flash Lite",
-    id: "google/gemini-2.5-flash-lite",
-    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
-    maxRetries: 1
-  },
   {
     name: "GPT-4.1 Nano",
     id: "openai/gpt-4.1-nano",
@@ -271,7 +272,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('🧾 Processing receipt with multi-model fallback (DeepSeek -> Mistral -> Grok)...');
+    console.log('🧾 Processing receipt with multi-model fallback (Gemini -> Llama -> Gemma -> GPT -> Llama Paid)...');
     console.log('📸 Image data type:', isPDF ? 'PDF' : 'Base64 image', 'size:', imageData.length, 'characters');
 
     // Check if the data is a PDF
@@ -360,12 +361,12 @@ serve(async (req) => {
 
     // If all models failed
     if (!finalResponse || !finalResponse.ok) {
-      console.error('❌ All models (DeepSeek, Mistral, Grok) failed');
+      console.error('❌ All models failed');
       
       return new Response(
         JSON.stringify({ 
           error: 'Receipt processing temporarily unavailable. All AI models failed.',
-          details: 'DeepSeek, Mistral, and Grok are currently unavailable'
+          details: 'All configured AI models are currently unavailable'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

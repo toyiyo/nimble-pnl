@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { traceAICall, logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 
 const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
 
@@ -96,7 +97,8 @@ function buildProductRequestBody(
 async function callModel(
   modelConfig: typeof MODELS[0],
   prompt: string,
-  openRouterApiKey: string
+  openRouterApiKey: string,
+  restaurantId?: string
 ): Promise<Response | null> {
   let retryCount = 0;
   
@@ -110,33 +112,105 @@ async function callModel(
         prompt
       );
 
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${openRouterApiKey}`,
-          "HTTP-Referer": "https://app.easyshifthq.com",
-          "X-Title": "EasyShiftHQ Product Enhancement",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(requestBody)
-      });
+      const metadata: AICallMetadata = {
+        model: modelConfig.id,
+        provider: "openrouter",
+        restaurant_id: restaurantId,
+        edge_function: 'enhance-product-ai',
+        temperature: requestBody.temperature,
+        max_tokens: requestBody.max_tokens,
+        stream: false,
+        attempt: retryCount + 1,
+        success: false,
+      };
+
+      const response = await traceAICall(
+        'enhance-product-ai:callModel',
+        metadata,
+        async () => {
+          return await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${openRouterApiKey}`,
+              "HTTP-Referer": "https://app.easyshifthq.com",
+              "X-Title": "EasyShiftHQ Product Enhancement",
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(requestBody)
+          });
+        }
+      );
 
       if (response.ok) {
         console.log(`✅ ${modelConfig.name} succeeded`);
+        
+        // Log success
+        try {
+          const clonedResponse = response.clone();
+          const data = await clonedResponse.json();
+          const tokenUsage = extractTokenUsage(data);
+          logAICall(
+            'enhance-product-ai:success',
+            { model: modelConfig.id },
+            { status: 'success' },
+            { ...metadata, success: true, status_code: 200 },
+            tokenUsage
+          );
+        } catch (e) {
+          // Continue if logging fails
+          console.log('[Braintrust] Could not extract response data for logging');
+        }
+        
         return response;
       }
 
       if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
         console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
+        
+        logAICall(
+          'enhance-product-ai:rate_limit',
+          { model: modelConfig.id },
+          null,
+          { ...metadata, success: false, status_code: 429, error: 'Rate limited' },
+          null
+        );
+        
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
         retryCount++;
       } else {
         const errorText = await response.text();
         console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
+        
+        logAICall(
+          'enhance-product-ai:error',
+          { model: modelConfig.id },
+          null,
+          { ...metadata, success: false, status_code: response.status, error: errorText },
+          null
+        );
+        
         break;
       }
     } catch (error) {
       console.error(`❌ ${modelConfig.name} error:`, error);
+      
+      logAICall(
+        'enhance-product-ai:error',
+        { model: modelConfig.id },
+        null,
+        {
+          model: modelConfig.id,
+          provider: "openrouter",
+          restaurant_id: restaurantId,
+          edge_function: 'enhance-product-ai',
+          stream: false,
+          attempt: retryCount + 1,
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        },
+        null
+      );
+      
       retryCount++;
       if (retryCount < modelConfig.maxRetries) {
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));

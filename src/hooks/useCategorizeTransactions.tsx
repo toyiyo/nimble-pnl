@@ -14,7 +14,12 @@ export const useCategorizeTransactions = () => {
         }
       );
 
-      if (error) throw error;
+      if (error) {
+        // Extract the actual error message from the edge function response
+        const errorMessage = (data as any)?.error || error.message || 'Unknown error';
+        throw new Error(errorMessage);
+      }
+      
       return data;
     },
     onSuccess: (data) => {

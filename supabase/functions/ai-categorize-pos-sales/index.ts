@@ -214,9 +214,47 @@ serve(async (req) => {
       .in('account_type', ['revenue', 'liability'])
       .order('account_code');
 
-    if (chartError || !chartOfAccounts || chartOfAccounts.length === 0) {
-      console.error('Error fetching chart of accounts:', chartError);
-      throw new Error('No active chart of accounts found');
+    if (chartError) {
+      console.error('Database error fetching chart of accounts:', chartError);
+      throw new Error('Database error fetching chart of accounts');
+    }
+
+    if (!chartOfAccounts || chartOfAccounts.length === 0) {
+      // Provide diagnostic information
+      console.error('No active revenue/liability accounts found. Running diagnostics...');
+      
+      // Check if ANY accounts exist
+      const { data: allAccounts, error: allError } = await supabase
+        .from('chart_of_accounts')
+        .select('id, account_type, is_active', { count: 'exact', head: false })
+        .eq('restaurant_id', restaurantId);
+      
+      if (allError) {
+        console.error('Diagnostic query error:', allError);
+      } else if (!allAccounts || allAccounts.length === 0) {
+        console.error('❌ No chart of accounts found at all for this restaurant');
+        throw new Error('No chart of accounts found. Please set up your chart of accounts first in the Accounting section.');
+      } else {
+        // Check if any are active
+        const activeCount = allAccounts.filter(a => a.is_active).length;
+        const revenueCount = allAccounts.filter(a => a.account_type === 'revenue').length;
+        const liabilityCount = allAccounts.filter(a => a.account_type === 'liability').length;
+        
+        console.error(`📊 Diagnostics:
+          Total accounts: ${allAccounts.length}
+          Active accounts: ${activeCount}
+          Revenue accounts: ${revenueCount}
+          Liability accounts: ${liabilityCount}
+        `);
+        
+        if (activeCount === 0) {
+          throw new Error('All chart of accounts are inactive. Please activate at least one revenue or liability account in the Accounting section.');
+        } else if (revenueCount === 0 && liabilityCount === 0) {
+          throw new Error('No revenue or liability accounts found. POS sales must be categorized to revenue, liability, or contra-revenue accounts.');
+        } else {
+          throw new Error('No active revenue or liability accounts found. Please activate revenue/liability accounts in the Accounting section.');
+        }
+      }
     }
 
     const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');

@@ -191,10 +191,47 @@ serve(async (req) => {
       .not('account_code', 'in', '(9200,9100)')
       .order('account_code');
 
-    if (accountsError) throw accountsError;
+    if (accountsError) {
+      console.error('Database error fetching chart of accounts:', accountsError);
+      throw new Error('Database error fetching chart of accounts');
+    }
 
     if (!accounts || accounts.length === 0) {
-      throw new Error('No chart of accounts found');
+      // Provide diagnostic information
+      console.error('No active accounts found (excluding uncategorized). Running diagnostics...');
+      
+      // Check if ANY accounts exist
+      const { data: allAccounts, error: allError } = await supabaseClient
+        .from('chart_of_accounts')
+        .select('id, account_code, is_active', { count: 'exact', head: false })
+        .eq('restaurant_id', restaurantId);
+      
+      if (allError) {
+        console.error('Diagnostic query error:', allError);
+      } else if (!allAccounts || allAccounts.length === 0) {
+        console.error('❌ No chart of accounts found at all for this restaurant');
+        throw new Error('No chart of accounts found. Please set up your chart of accounts first in the Accounting section.');
+      } else {
+        // Check if any are active
+        const activeCount = allAccounts.filter(a => a.is_active).length;
+        const nonUncategorizedCount = allAccounts.filter(a => 
+          a.account_code !== '9200' && a.account_code !== '9100'
+        ).length;
+        
+        console.error(`📊 Diagnostics:
+          Total accounts: ${allAccounts.length}
+          Active accounts: ${activeCount}
+          Non-uncategorized accounts: ${nonUncategorizedCount}
+        `);
+        
+        if (activeCount === 0) {
+          throw new Error('All chart of accounts are inactive. Please activate accounts in the Accounting section.');
+        } else if (nonUncategorizedCount === 0) {
+          throw new Error('Only uncategorized accounts (9200, 9100) exist. Please add proper accounts to your chart of accounts.');
+        } else {
+          throw new Error('No active categorizable accounts found. Please activate accounts (other than 9200, 9100) in the Accounting section.');
+        }
+      }
     }
 
     const requestBody = buildCategorizationRequestBody(transactions, accounts);

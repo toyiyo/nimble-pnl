@@ -73,8 +73,8 @@ export function useMonthlyMetrics(
 
       filteredSales?.forEach((sale) => {
         // Parse date as local date, not UTC midnight
-        const [year, month, day] = sale.sale_date.split('-').map(Number);
-        const localDate = new Date(year, month - 1, day);
+        const [year, monthNum, day] = sale.sale_date.split('-').map(Number);
+        const localDate = new Date(year, monthNum - 1, day);
         const monthKey = format(localDate, 'yyyy-MM');
 
         if (!monthlyMap.has(monthKey)) {
@@ -145,8 +145,8 @@ export function useMonthlyMetrics(
       // Aggregate costs by month
       costsData?.forEach((day) => {
         // Parse date as local date, not UTC midnight
-        const [year, month, dayNum] = day.date.split('-').map(Number);
-        const localDate = new Date(year, month - 1, dayNum);
+        const [year, monthNum, dayNum] = day.date.split('-').map(Number);
+        const localDate = new Date(year, monthNum - 1, dayNum);
         const monthKey = format(localDate, 'yyyy-MM');
         
         if (!monthlyMap.has(monthKey)) {

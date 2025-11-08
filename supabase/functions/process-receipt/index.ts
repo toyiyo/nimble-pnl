@@ -67,6 +67,18 @@ RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
 
 CRITICAL: Return ONLY valid, complete JSON. Ensure all arrays are properly closed.`;
 
+// Model token limits per provider (to prevent exceeding hard caps)
+const MODEL_TOKEN_LIMITS: Record<string, number> = {
+  "google/gemini-2.5-flash": 32768,        // Gemini supports high token counts
+  "meta-llama/llama-4-maverick:free": 8192, // Groq hosted, lower limits
+  "google/gemma-3-27b-it:free": 16384,     // Common free tier limit
+  "openai/gpt-4.1-nano": 16384,            // OpenAI standard limit
+  "meta-llama/llama-4-maverick": 8192,     // Same as free version
+};
+
+// Default max tokens for unknown models
+const DEFAULT_MAX_TOKENS = 8192;
+
 // Model configurations (Gemini first, then free models, then paid fallbacks)
 const MODELS = [
   // Primary model
@@ -106,6 +118,13 @@ const MODELS = [
 
 // Helper function to build consistent request bodies
 function buildRequestBody(modelId: string, systemPrompt: string, isPDF: boolean, mediaData: string): any {
+  // Calculate model-specific max tokens (clamped to provider limits)
+  const requestedMax = 32000;
+  const modelMaxLimit = MODEL_TOKEN_LIMITS[modelId] || DEFAULT_MAX_TOKENS;
+  const clampedMaxTokens = Math.min(requestedMax, modelMaxLimit);
+  
+  console.log(`📊 Token limit for ${modelId}: ${clampedMaxTokens} (model max: ${modelMaxLimit})`);
+
   const requestBody: any = {
     model: modelId,
     messages: [
@@ -137,8 +156,8 @@ function buildRequestBody(modelId: string, systemPrompt: string, isPDF: boolean,
         ],
       },
     ],
-    // Set max tokens to ensure complete responses for large receipts (100+ items)
-    max_tokens: 32000, // Increased for receipts with 100+ line items
+    // Set max tokens clamped to model-specific provider limits
+    max_tokens: clampedMaxTokens,
     temperature: 0.1, // Lower temperature for more consistent JSON output
     stream: true, // Enable streaming to handle large receipts without truncation
   };

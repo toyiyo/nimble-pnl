@@ -64,8 +64,9 @@ RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
 
 CRITICAL: Return ONLY valid, complete JSON. Ensure all arrays are properly closed.`;
 
-// Model configurations - Free models only
+// Model configurations (free models first, then paid fallbacks)
 const MODELS = [
+  // Free models
   {
     name: "Llama 4 Maverick Free",
     id: "meta-llama/llama-4-maverick:free",
@@ -77,9 +78,27 @@ const MODELS = [
     id: "google/gemma-3-27b-it:free",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 2
+  },
+  // Paid models (fallback)
+  {
+    name: "Gemini 2.5 Flash Lite",
+    id: "google/gemini-2.5-flash-lite",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
+    maxRetries: 1
+  },
+  {
+    name: "GPT-4.1 Nano",
+    id: "openai/gpt-4.1-nano",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
+    maxRetries: 1
+  },
+  {
+    name: "Llama 4 Maverick Paid",
+    id: "meta-llama/llama-4-maverick",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
+    maxRetries: 1
   }
 ];
-
 
 // Helper function to build consistent request bodies
 function buildRequestBody(
@@ -252,7 +271,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('🧾 Processing receipt with free AI models...');
+    console.log('🧾 Processing receipt with multi-model fallback (DeepSeek -> Mistral -> Grok)...');
     console.log('📸 Image data type:', isPDF ? 'PDF' : 'Base64 image', 'size:', imageData.length, 'characters');
 
     // Check if the data is a PDF
@@ -320,7 +339,7 @@ serve(async (req) => {
 
     let finalResponse: Response | undefined;
 
-    // Try models in order
+    // Try models in order: DeepSeek -> Mistral -> Grok
     for (const modelConfig of MODELS) {
       console.log(`🚀 Trying ${modelConfig.name}...`);
       
@@ -341,12 +360,12 @@ serve(async (req) => {
 
     // If all models failed
     if (!finalResponse || !finalResponse.ok) {
-      console.error('❌ All models failed');
+      console.error('❌ All models (DeepSeek, Mistral, Grok) failed');
       
       return new Response(
         JSON.stringify({ 
           error: 'Receipt processing temporarily unavailable. All AI models failed.',
-          details: 'All free AI models are currently unavailable'
+          details: 'DeepSeek, Mistral, and Grok are currently unavailable'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

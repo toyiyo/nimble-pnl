@@ -64,41 +64,73 @@ RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
 
 CRITICAL: Return ONLY valid, complete JSON. Ensure all arrays are properly closed.`;
 
-// Model configurations (free models first, then paid fallbacks)
-const MODELS = [
-  // Free models
+// Model configurations - Gemini models prioritized based on file size
+const GEMINI_MODELS = {
+  flash: {
+    name: "Gemini 2.5 Flash",
+    id: "google/gemini-2.5-flash",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
+    maxRetries: 2
+  },
+  flashLite: {
+    name: "Gemini 2.5 Flash Lite",
+    id: "google/gemini-2.5-flash-lite",
+    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
+    maxRetries: 2
+  }
+};
+
+// Free model fallbacks
+const FREE_FALLBACK_MODELS = [
   {
     name: "Llama 4 Maverick Free",
     id: "meta-llama/llama-4-maverick:free",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
-    maxRetries: 2
+    maxRetries: 1
   },
   {
     name: "Gemma 3 27B Free",
     id: "google/gemma-3-27b-it:free",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
-    maxRetries: 2
-  },
-  // Paid models (fallback)
-  {
-    name: "Gemini 2.5 Flash Lite",
-    id: "google/gemini-2.5-flash-lite",
-    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
-    maxRetries: 1
-  },
-  {
-    name: "GPT-4.1 Nano",
-    id: "openai/gpt-4.1-nano",
-    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
-    maxRetries: 1
-  },
-  {
-    name: "Llama 4 Maverick Paid",
-    id: "meta-llama/llama-4-maverick",
-    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 1
   }
 ];
+
+// Helper function to select models based on file size
+function selectModelsForFileSize(estimatedFileSize: number) {
+  // Base64 encoding increases size by ~33%, so we calculate actual file size
+  const actualFileSize = Math.floor(estimatedFileSize * 0.75);
+  
+  console.log(`📊 Estimated file size: ${Math.round(actualFileSize / 1024)}KB`);
+  
+  // For large files (>100KB) or multi-page documents: Use Gemini Flash first
+  if (actualFileSize > 100 * 1024) {
+    console.log('📄 Large file detected, prioritizing Gemini 2.5 Flash');
+    return [
+      GEMINI_MODELS.flash,
+      GEMINI_MODELS.flashLite,
+      ...FREE_FALLBACK_MODELS
+    ];
+  }
+  
+  // For medium files (>50KB): Use Gemini Flash Lite first
+  if (actualFileSize > 50 * 1024) {
+    console.log('📄 Medium file detected, prioritizing Gemini 2.5 Flash Lite');
+    return [
+      GEMINI_MODELS.flashLite,
+      GEMINI_MODELS.flash,
+      ...FREE_FALLBACK_MODELS
+    ];
+  }
+  
+  // For small files: Use Flash Lite with free model fallbacks
+  console.log('📄 Small file detected, using Gemini 2.5 Flash Lite with free fallbacks');
+  return [
+    GEMINI_MODELS.flashLite,
+    ...FREE_FALLBACK_MODELS,
+    GEMINI_MODELS.flash
+  ];
+}
 
 // Helper function to build consistent request bodies
 function buildRequestBody(
@@ -271,12 +303,13 @@ serve(async (req) => {
       );
     }
 
-    console.log('🧾 Processing receipt with multi-model fallback (DeepSeek -> Mistral -> Grok)...');
+    console.log('🧾 Processing receipt with Gemini AI models...');
     console.log('📸 Image data type:', isPDF ? 'PDF' : 'Base64 image', 'size:', imageData.length, 'characters');
 
     // Check if the data is a PDF
     const isProcessingPDF = isPDF || false;
     let pdfBase64Data = imageData;
+    let estimatedFileSize = imageData.length;
     
     if (isProcessingPDF && !imageData.startsWith('data:application/pdf;base64,')) {
       console.log('📄 PDF URL detected, converting to base64...');
@@ -310,6 +343,7 @@ serve(async (req) => {
         const base64 = btoa(binaryString);
         
         pdfBase64Data = `data:application/pdf;base64,${base64}`;
+        estimatedFileSize = base64.length;
         console.log('✅ PDF converted to base64, size:', base64.length);
       } catch (fetchError) {
         clearTimeout(timeoutId); // Ensure timeout is cleared
@@ -337,9 +371,12 @@ serve(async (req) => {
       }
     }
 
+    // Select models based on file size
+    const MODELS = selectModelsForFileSize(estimatedFileSize);
+    
     let finalResponse: Response | undefined;
 
-    // Try models in order: DeepSeek -> Mistral -> Grok
+    // Try models in order based on file size
     for (const modelConfig of MODELS) {
       console.log(`🚀 Trying ${modelConfig.name}...`);
       
@@ -360,12 +397,12 @@ serve(async (req) => {
 
     // If all models failed
     if (!finalResponse || !finalResponse.ok) {
-      console.error('❌ All models (DeepSeek, Mistral, Grok) failed');
+      console.error('❌ All models failed');
       
       return new Response(
         JSON.stringify({ 
           error: 'Receipt processing temporarily unavailable. All AI models failed.',
-          details: 'DeepSeek, Mistral, and Grok are currently unavailable'
+          details: 'All Gemini and fallback models are currently unavailable'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

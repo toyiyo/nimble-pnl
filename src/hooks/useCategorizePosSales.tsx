@@ -14,8 +14,9 @@ export const useCategorizePosSales = () => {
 
       if (error) {
         // Edge functions return error details in data even when error exists
-        const errorMessage = data?.error || error.message || 'Unknown error';
-        throw new Error(errorMessage);
+        // Preserve original error object to retain status/code/stack metadata
+        error.message = data?.error || error.message || 'Unknown error';
+        throw error;
       }
       
       return data;

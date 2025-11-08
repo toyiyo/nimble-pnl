@@ -36,12 +36,12 @@ export function AddPendingOutflowDialog({ open, onOpenChange }: AddPendingOutflo
     reference_number: null,
   });
 
-  const handleSupplierChange = async (value: string) => {
+  const handleSupplierChange = async (value: string, createNew?: boolean) => {
     setSelectedSupplierId(value);
     
-    if (value.startsWith('new:')) {
+    if (createNew || value.startsWith('new:')) {
       // Create new supplier
-      const supplierName = value.replace('new:', '');
+      const supplierName = createNew ? value.trim() : value.replace('new:', '');
       try {
         const newSupplier = await createSupplier({ name: supplierName });
         setFormData(prev => ({ ...prev, vendor_name: newSupplier.name }));

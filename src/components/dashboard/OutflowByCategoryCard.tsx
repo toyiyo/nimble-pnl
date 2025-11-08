@@ -127,14 +127,27 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
               ${data.totalOutflows.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </div>
             <div className="text-sm text-muted-foreground">Total Outflows</div>
+            {data.pendingOutflows > 0 && (
+              <div className="text-xs text-muted-foreground mt-1">
+                Includes ${data.pendingOutflows.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} pending
+              </div>
+            )}
           </div>
         </div>
-        {data.uncategorizedPercentage > 5 && (
-          <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20 mt-2">
-            <AlertCircle className="w-3 h-3 mr-1" />
-            {data.uncategorizedPercentage.toFixed(0)}% Uncategorized — Categorize to improve accuracy
-          </Badge>
-        )}
+        <div className="flex gap-2 mt-2">
+          {data.pendingOutflows > 0 && (
+            <Badge className="bg-gradient-to-r from-orange-500 to-amber-600">
+              <TrendingUp className="w-3 h-3 mr-1" />
+              ${data.pendingOutflows.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Pending Checks/ACH
+            </Badge>
+          )}
+          {data.uncategorizedPercentage > 5 && (
+            <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
+              <AlertCircle className="w-3 h-3 mr-1" />
+              {data.uncategorizedPercentage.toFixed(0)}% Uncategorized
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

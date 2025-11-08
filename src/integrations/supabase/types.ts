@@ -1293,6 +1293,88 @@ export type Database = {
           },
         ]
       }
+      pending_outflows: {
+        Row: {
+          amount: number
+          category_id: string | null
+          cleared_at: string | null
+          created_at: string
+          due_date: string | null
+          id: string
+          issue_date: string
+          linked_bank_transaction_id: string | null
+          notes: string | null
+          payment_method: string
+          reference_number: string | null
+          restaurant_id: string
+          status: string
+          updated_at: string
+          vendor_name: string
+          voided_at: string | null
+          voided_reason: string | null
+        }
+        Insert: {
+          amount: number
+          category_id?: string | null
+          cleared_at?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          issue_date: string
+          linked_bank_transaction_id?: string | null
+          notes?: string | null
+          payment_method: string
+          reference_number?: string | null
+          restaurant_id: string
+          status?: string
+          updated_at?: string
+          vendor_name: string
+          voided_at?: string | null
+          voided_reason?: string | null
+        }
+        Update: {
+          amount?: number
+          category_id?: string | null
+          cleared_at?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          issue_date?: string
+          linked_bank_transaction_id?: string | null
+          notes?: string | null
+          payment_method?: string
+          reference_number?: string | null
+          restaurant_id?: string
+          status?: string
+          updated_at?: string
+          vendor_name?: string
+          voided_at?: string | null
+          voided_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_outflows_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_outflows_linked_bank_transaction_id_fkey"
+            columns: ["linked_bank_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_outflows_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pos_sales: {
         Row: {
           created_at: string
@@ -3457,6 +3539,7 @@ export type Database = {
         Args: { p_transaction_id_1: string; p_transaction_id_2: string }
         Returns: Json
       }
+      mark_stale_pending_outflows: { Args: never; Returns: undefined }
       process_inventory_deduction: {
         Args: {
           p_pos_item_name: string
@@ -3555,6 +3638,17 @@ export type Database = {
         Returns: {
           message: string
           success: boolean
+        }[]
+      }
+      suggest_pending_outflow_matches: {
+        Args: { p_pending_outflow_id?: string; p_restaurant_id: string }
+        Returns: {
+          amount_delta: number
+          bank_transaction_id: string
+          date_delta: number
+          match_score: number
+          payee_similarity: string
+          pending_outflow_id: string
         }[]
       }
       suggest_supplier_for_payee: {

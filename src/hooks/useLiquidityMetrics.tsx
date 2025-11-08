@@ -5,6 +5,8 @@ import { format, differenceInDays, addDays, subDays, parseISO } from "date-fns";
 
 interface LiquidityMetrics {
   currentBalance: number;
+  bookBalance: number; // currentBalance - pendingOutflows
+  pendingOutflows: number;
   daysOfCash: number;
   projectedZeroDate: Date | null;
   avgDailyOutflow: number;
@@ -55,6 +57,18 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
       // Calculate current balance (sum of all active bank account balances)
       const currentBalance = bankBalances?.reduce((sum, b) => sum + Number(b.current_balance), 0) || 0;
 
+      // Fetch pending outflows to calculate book balance
+      const { data: pendingOutflows, error: pendingError } = await supabase
+        .from('pending_outflows')
+        .select('amount, status')
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90']);
+
+      if (pendingError) throw pendingError;
+
+      const totalPendingOutflows = (pendingOutflows || []).reduce((sum, p) => sum + p.amount, 0);
+      const bookBalance = currentBalance - totalPendingOutflows;
+
       // Fetch recent outflows for burn rate calculation
       const periodDays = differenceInDays(endDate, startDate) + 1;
       
@@ -97,17 +111,17 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
       const avgDailyInflow = inflows / periodDays;
       const netDailyBurn = avgDailyOutflow - avgDailyInflow;
 
-      // Days of cash remaining - proper calculation
+      // Days of cash remaining - use book balance for proper calculation
       let daysOfCash: number;
-      if (currentBalance <= 0) {
-        // Already out of cash
+      if (bookBalance <= 0) {
+        // Already out of cash or will be after pending clears
         daysOfCash = 0;
       } else if (netDailyBurn <= 0) {
         // Net positive or break-even - infinite runway
         daysOfCash = 999;
       } else {
-        // Calculate runway based on net burn rate
-        daysOfCash = currentBalance / netDailyBurn;
+        // Calculate runway based on book balance and net burn rate
+        daysOfCash = bookBalance / netDailyBurn;
       }
 
       // Projected zero date
@@ -139,9 +153,9 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
         burnRateTrend.unshift(weekOutflow - weekInflow);
       }
 
-      // Runway status
+      // Runway status - use book balance for accurate assessment
       let runwayStatus: 'healthy' | 'caution' | 'critical' = 'healthy';
-      if (currentBalance <= 0 || daysOfCash === 0) {
+      if (bookBalance <= 0 || daysOfCash === 0) {
         runwayStatus = 'critical';
       } else if (daysOfCash < 30) {
         runwayStatus = 'critical';
@@ -149,12 +163,12 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
         runwayStatus = 'caution';
       }
 
-      // Recommendation
+      // Recommendation - be clear about book balance vs bank balance
       let recommendation = '';
-      if (currentBalance <= 0) {
-        recommendation = `Critical: Negative balance of $${Math.abs(currentBalance).toFixed(2)}. Immediate action required to restore positive cash position.`;
+      if (bookBalance <= 0) {
+        recommendation = `Critical: Book balance of $${bookBalance.toFixed(2)} (after $${totalPendingOutflows.toFixed(2)} pending). Immediate action required.`;
       } else if (runwayStatus === 'critical') {
-        recommendation = `Critical: Only ${Math.floor(daysOfCash)} days of cash. Reduce weekly burn by $${Math.round(cashBurnRate * 0.3)} or increase revenue.`;
+        recommendation = `Critical: Only ${Math.floor(daysOfCash)} days of cash remaining. Reduce weekly burn by $${Math.round(cashBurnRate * 0.3)} or increase revenue.`;
       } else if (runwayStatus === 'caution') {
         recommendation = `Caution: ${Math.floor(daysOfCash)} days remaining. Monitor cash flow closely and consider reducing expenses by $${Math.round(avgWeeklyOutflow * 0.1)}/week.`;
       } else if (daysOfCash >= 999) {
@@ -165,6 +179,8 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
 
       return {
         currentBalance,
+        bookBalance,
+        pendingOutflows: totalPendingOutflows,
         daysOfCash,
         projectedZeroDate,
         avgDailyOutflow,

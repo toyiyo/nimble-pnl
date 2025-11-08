@@ -12,6 +12,7 @@ import { useBankTransactions } from '@/hooks/useBankTransactions';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { useMonthlyMetrics } from '@/hooks/useMonthlyMetrics';
+import { usePendingOutflowsSummary } from '@/hooks/usePendingOutflows';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -62,6 +63,7 @@ const Index = () => {
   const { data: transactionsData } = useBankTransactions('for_review');
   const { data: allTransactions } = useBankTransactions(); // Fetch all transactions for spending calculation
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
+  const { totalPending: totalPendingOutflows } = usePendingOutflowsSummary();
   const navigate = useNavigate();
 
   // Collapsible section states
@@ -177,9 +179,15 @@ const Index = () => {
 
   const cashRunway = liquidityMetrics?.daysOfCash || 0;
 
-  // Calculate daily average spending from actual transaction history
+  // Calculate daily average spending from actual transaction history + pending outflows
   const dailyAvgSpending = useMemo(() => {
-    if (!allTransactions || allTransactions.length === 0) return 0;
+    if (!allTransactions || allTransactions.length === 0) {
+      // If no transactions but have pending outflows, estimate based on those
+      if (totalPendingOutflows > 0) {
+        return totalPendingOutflows / 30; // Rough estimate
+      }
+      return 0;
+    }
 
     // Filter for expenses: negative amounts, not transfers, not excluded, from last 30 days
     const thirtyDaysAgo = new Date();
@@ -197,16 +205,16 @@ const Index = () => {
 
     if (expenses.length === 0) return 0;
 
-    // Calculate total spending (absolute values)
-    const totalSpending = expenses.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    // Calculate total spending (absolute values) including pending outflows
+    const totalSpending = expenses.reduce((sum, t) => sum + Math.abs(t.amount), 0) + totalPendingOutflows;
 
     // Calculate actual number of days with data
     const dates = new Set(expenses.map(t => format(new Date(t.transaction_date), 'yyyy-MM-dd')));
     const daysWithData = dates.size;
 
-    // Return average daily spending
+    // Return average daily spending (including pending outflows amortized over period)
     return daysWithData > 0 ? totalSpending / daysWithData : 0;
-  }, [allTransactions]);
+  }, [allTransactions, totalPendingOutflows]);
 
   // Generate Critical Alerts
   const criticalAlerts = useMemo(() => {

@@ -46,7 +46,8 @@ export function useMonthlyMetrics(
           is_categorized,
           chart_account:chart_of_accounts!category_id(
             account_type,
-            account_subtype
+            account_subtype,
+            account_name
           )
         `)
         .eq('restaurant_id', restaurantId)
@@ -71,7 +72,10 @@ export function useMonthlyMetrics(
       const monthlyMap = new Map<string, MonthlyMetrics>();
 
       filteredSales?.forEach((sale) => {
-        const monthKey = format(new Date(sale.sale_date), 'yyyy-MM');
+        // Parse date as local date, not UTC midnight
+        const [year, month, day] = sale.sale_date.split('-').map(Number);
+        const localDate = new Date(year, month - 1, day);
+        const monthKey = format(localDate, 'yyyy-MM');
 
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {
@@ -108,11 +112,14 @@ export function useMonthlyMetrics(
           if (sale.chart_account.account_type === 'revenue') {
             month.gross_revenue += Math.round(sale.total_price * 100);
           } else if (sale.chart_account.account_type === 'liability') {
-            // Categorize liabilities by checking subtype
+            // Categorize liabilities by checking BOTH subtype and account_name
             const subtype = sale.chart_account.account_subtype?.toLowerCase() || '';
-            if (subtype.includes('sales') && subtype.includes('tax')) {
+            const accountName = sale.chart_account.account_name?.toLowerCase() || '';
+
+            if ((subtype.includes('sales') && subtype.includes('tax')) ||
+                (accountName.includes('sales') && accountName.includes('tax'))) {
               month.sales_tax += Math.round(sale.total_price * 100);
-            } else if (subtype.includes('tip')) {
+            } else if (subtype.includes('tip') || accountName.includes('tip')) {
               month.tips += Math.round(sale.total_price * 100);
             } else {
               month.other_liabilities += Math.round(sale.total_price * 100);
@@ -137,7 +144,10 @@ export function useMonthlyMetrics(
 
       // Aggregate costs by month
       costsData?.forEach((day) => {
-        const monthKey = format(new Date(day.date), 'yyyy-MM');
+        // Parse date as local date, not UTC midnight
+        const [year, month, dayNum] = day.date.split('-').map(Number);
+        const localDate = new Date(year, month - 1, dayNum);
+        const monthKey = format(localDate, 'yyyy-MM');
         
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {

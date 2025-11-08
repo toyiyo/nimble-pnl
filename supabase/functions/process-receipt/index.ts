@@ -21,17 +21,20 @@ interface ParsedLineItem {
 // Shared analysis prompt for all models
 const RECEIPT_ANALYSIS_PROMPT = `ANALYSIS TARGET: This receipt image contains itemized purchases for restaurant inventory.
 
+CRITICAL REQUIREMENT: Extract EVERY SINGLE LINE ITEM from this receipt. This receipt may contain 100+ items - you MUST extract ALL of them.
+
 EXTRACTION METHODOLOGY:
-1. **Locate the itemized section** - Focus on the main purchase list (ignore headers, tax, totals, payment info)
-2. **Extract ALL line items** - Every product purchase, even if formatting is unclear
+1. **Scan the ENTIRE document** - Read every page from start to finish
+2. **Extract ALL line items** - Every product purchase, no matter how many items there are
 3. **Identify key components**: Product name, quantity, unit of measure, price per item or total
 4. **Expand abbreviations**: Common food service abbreviations (CHKN=Chicken, DNA=Banana, BROC=Broccoli, etc.)
 5. **Standardize units**: Convert to standard restaurant units (lb, oz, case, each, gal, etc.)
 
-IMPORTANT FOR LARGE RECEIPTS:
-- If receipt has 100+ items, prioritize accuracy over verbosity
-- Keep rawText concise (max 50 chars per item)
-- Ensure JSON is complete - DO NOT truncate arrays mid-item
+IMPORTANT FOR LARGE RECEIPTS (100+ items):
+- Keep rawText concise (max 40 chars per item) to fit all items in response
+- Extract ALL items - do not stop early or summarize
+- If you see items continuing on multiple pages, extract from ALL pages
+- Prioritize completeness over detailed descriptions
 
 CONFIDENCE SCORING:
 - 0.90-0.95: Crystal clear, complete info
@@ -134,8 +137,8 @@ function buildRequestBody(modelId: string, systemPrompt: string, isPDF: boolean,
         ],
       },
     ],
-    // Set max tokens to ensure complete responses for large receipts
-    max_tokens: 16000,
+    // Set max tokens to ensure complete responses for large receipts (100+ items)
+    max_tokens: 32000, // Increased for receipts with 100+ line items
     temperature: 0.1, // Lower temperature for more consistent JSON output
     stream: true, // Enable streaming to handle large receipts without truncation
   };
@@ -146,7 +149,7 @@ function buildRequestBody(modelId: string, systemPrompt: string, isPDF: boolean,
       {
         id: "file-parser",
         pdf: {
-          engine: "pdf-text",
+          engine: "mistral-ocr", // Better for complex/scanned receipts
         },
       },
     ];

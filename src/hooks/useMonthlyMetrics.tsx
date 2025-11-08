@@ -34,7 +34,7 @@ export function useMonthlyMetrics(
     queryFn: async () => {
       if (!restaurantId) return [];
 
-      // Fetch all sales to properly handle split sales
+      // Fetch all sales to properly handle split sales (use LEFT JOIN to include uncategorized)
       const { data: salesData, error: salesError } = await supabase
         .from('unified_sales')
         .select(`
@@ -43,7 +43,8 @@ export function useMonthlyMetrics(
           total_price,
           item_type,
           parent_sale_id,
-          chart_of_accounts!unified_sales_category_id_fkey(
+          is_categorized,
+          chart_account:chart_of_accounts!category_id(
             account_type,
             account_subtype
           )
@@ -92,14 +93,23 @@ export function useMonthlyMetrics(
         const month = monthlyMap.get(monthKey)!;
         month.has_data = true;
 
+        // Only process categorized sales (skip uncategorized to match useRevenueBreakdown logic)
+        if (!sale.is_categorized || !sale.chart_account) {
+          // Uncategorized sales are treated as revenue for reporting purposes
+          if (sale.item_type === 'sale' || !sale.item_type) {
+            month.gross_revenue += Math.round(sale.total_price * 100);
+          }
+          return;
+        }
+
         // Categorize based on item_type and account_type
         // Use cents to avoid floating-point precision errors
-        if (sale.item_type === 'sale') {
-          if (sale.chart_of_accounts?.account_type === 'revenue') {
+        if (sale.item_type === 'sale' || !sale.item_type) {
+          if (sale.chart_account.account_type === 'revenue') {
             month.gross_revenue += Math.round(sale.total_price * 100);
-          } else if (sale.chart_of_accounts?.account_type === 'liability') {
+          } else if (sale.chart_account.account_type === 'liability') {
             // Categorize liabilities by checking subtype
-            const subtype = sale.chart_of_accounts?.account_subtype?.toLowerCase() || '';
+            const subtype = sale.chart_account.account_subtype?.toLowerCase() || '';
             if (subtype.includes('sales') && subtype.includes('tax')) {
               month.sales_tax += Math.round(sale.total_price * 100);
             } else if (subtype.includes('tip')) {
@@ -107,9 +117,6 @@ export function useMonthlyMetrics(
             } else {
               month.other_liabilities += Math.round(sale.total_price * 100);
             }
-          } else if (!sale.chart_of_accounts) {
-            // Treat uncategorized sales as revenue (default)
-            month.gross_revenue += Math.round(sale.total_price * 100);
           }
         } else if (sale.item_type === 'discount') {
           month.discounts += Math.round(Math.abs(sale.total_price) * 100);

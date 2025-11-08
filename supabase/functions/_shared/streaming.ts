@@ -107,7 +107,7 @@ export async function callModelWithStreaming(
         headers: {
           "Authorization": `Bearer ${openRouterApiKey}`,
           "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-          "X-Title": "Nimble PnL AI",
+          "X-Title": "EasyShiftHQ AI",
           "Content-Type": "application/json"
         },
         body: JSON.stringify(streamingBody),

@@ -68,8 +68,8 @@ CRITICAL: Return ONLY valid, complete JSON. Ensure all arrays are properly close
 const MODELS = [
   // Primary model
   {
-    name: "Gemini 2.5 Flash Lite",
-    id: "google/gemini-2.5-flash-lite",
+    name: "Gemini 2.5 Flash",
+    id: "google/gemini-2.5-flash",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 2,
   },
@@ -137,6 +137,7 @@ function buildRequestBody(modelId: string, systemPrompt: string, isPDF: boolean,
     // Set max tokens to ensure complete responses for large receipts
     max_tokens: 16000,
     temperature: 0.1, // Lower temperature for more consistent JSON output
+    stream: true, // Enable streaming to handle large receipts without truncation
   };
 
   // Add PDF parsing plugin if processing PDF
@@ -180,6 +181,90 @@ function repairTruncatedJSON(jsonContent: string): string {
   }
 
   return repaired;
+}
+
+// Process SSE streaming response and return complete content
+async function processStreamedResponse(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('Response body is not readable');
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let completeContent = '';
+  let isComplete = false;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      // Append new chunk to buffer
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete lines from buffer
+      while (true) {
+        const lineEnd = buffer.indexOf('\n');
+        if (lineEnd === -1) break;
+
+        const line = buffer.slice(0, lineEnd).trim();
+        buffer = buffer.slice(lineEnd + 1);
+
+        // Skip empty lines and comments
+        if (!line || line.startsWith(':')) {
+          continue;
+        }
+
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          
+          // Stream complete signal
+          if (data === '[DONE]') {
+            isComplete = true;
+            break;
+          }
+
+          try {
+            const parsed = JSON.parse(data);
+
+            // Check for mid-stream error
+            if (parsed.error) {
+              throw new Error(`Stream error: ${parsed.error.message || 'Unknown error'}`);
+            }
+
+            // Accumulate content from delta
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              completeContent += content;
+            }
+
+            // Check for error finish reason
+            if (parsed.choices?.[0]?.finish_reason === 'error') {
+              throw new Error('Stream terminated with error');
+            }
+          } catch (e) {
+            // Skip invalid JSON lines (could be comments)
+            if (e instanceof SyntaxError) {
+              continue;
+            }
+            throw e;
+          }
+        }
+      }
+
+      if (isComplete) break;
+    }
+
+    console.log(`✅ Stream completed. Total content length: ${completeContent.length}`);
+    return completeContent;
+    
+  } catch (error) {
+    console.error('❌ Error processing stream:', error);
+    throw error;
+  } finally {
+    reader.cancel();
+  }
 }
 
 // Generic function to call a model with retries
@@ -356,22 +441,16 @@ serve(async (req) => {
       );
     }
 
-    const data = await finalResponse.json();
+    // Process the streaming response
+    const content = await processStreamedResponse(finalResponse);
 
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      console.error("Invalid response structure:", data);
-      return new Response(JSON.stringify({ error: "Invalid response from AI service" }), {
+    // Validate we got content
+    if (!content || content.trim().length === 0) {
+      console.error("Empty content from streamed response");
+      return new Response(JSON.stringify({ error: "No content received from AI service" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,
       });
-    }
-
-    const content = data.choices[0].message.content;
-
-    // Check if response appears truncated
-    const isTruncated = !content.trim().endsWith("}") && !content.trim().endsWith("]");
-    if (isTruncated) {
-      console.warn("⚠️ Response appears truncated. Will attempt to repair JSON.");
     }
 
     console.log("✅ AI parsing completed. Response length:", content.length);
@@ -430,10 +509,6 @@ serve(async (req) => {
       });
 
       console.log(`✅ Successfully parsed ${validItemCount} valid line items`);
-
-      if (isTruncated) {
-        console.warn(`⚠️ Response was truncated. Parsed ${validItemCount} items but there may be more.`);
-      }
     } catch (parseError) {
       console.error("Failed to parse JSON from AI response:", parseError);
       console.error("Content that failed to parse:", content.substring(0, 1000) + "...");

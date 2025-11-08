@@ -209,12 +209,16 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   const isExpanded = expandedMonth === month.period;
                   const monthDate = parse(month.period, 'yyyy-MM', new Date());
                   const expenseMonth = getExpenseDataForMonth(month.period);
+                  const breakdown = getBreakdownForMonth(month.period);
                   
                   // Use expense data from bank transactions (preferred) or fallback to daily_pnl
                   const foodCost = expenseMonth?.foodCost || month.food_cost;
                   const laborCost = expenseMonth?.laborCost || month.labor_cost;
                   const totalExpenses = expenseMonth?.totalExpenses || (month.food_cost + month.labor_cost);
                   const otherExpenses = totalExpenses - foodCost - laborCost;
+                  
+                  // Use breakdown data for POS collection when available (more accurate for split sales and liabilities)
+                  const collectedAtPOS = breakdown?.totals?.total_collected_at_pos ?? month.total_collected_at_pos;
                   
                   const foodCostPercent = month.net_revenue > 0 
                     ? (foodCost / month.net_revenue) * 100 
@@ -251,7 +255,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-blue-600">
-                            {formatCurrency(month.total_collected_at_pos)}
+                            {formatCurrency(collectedAtPOS)}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">

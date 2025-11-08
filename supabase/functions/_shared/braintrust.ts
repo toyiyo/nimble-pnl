@@ -107,7 +107,6 @@ export function logAICall(
 
   try {
     logger.log({
-      name: spanName,
       input,
       output,
       metadata: {
@@ -122,6 +121,10 @@ export function logAICall(
       scores: tokenUsage ? {
         total_tokens: tokenUsage.total_tokens,
       } : undefined,
+      span_attributes: {
+        name: spanName,
+        type: 'llm',
+      },
     });
   } catch (error) {
     console.error('[Braintrust] Error logging AI call:', error);
@@ -148,7 +151,6 @@ export function startStreamingSpan(
   return (content: string, tokenUsage?: TokenUsage | null) => {
     try {
       logger.log({
-        name: spanName,
         input,
         output: content,
         metadata: {
@@ -164,6 +166,10 @@ export function startStreamingSpan(
         scores: tokenUsage ? {
           total_tokens: tokenUsage.total_tokens,
         } : undefined,
+        span_attributes: {
+          name: spanName,
+          type: 'llm',
+        },
       });
     } catch (error) {
       console.error('[Braintrust] Error ending streaming span:', error);

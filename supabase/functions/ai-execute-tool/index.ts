@@ -10,7 +10,7 @@ import {
   groupTransactions,
   type InventoryTransactionQuery 
 } from "../_shared/inventoryTransactions.ts";
-import { traceAICall, logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
+import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -1236,66 +1236,60 @@ Provide insights in the following format. Be specific with numbers and actionabl
         success: false,
       };
       
-      const response = await traceAICall(
-        'ai-execute-tool:get_ai_insights',
-        metadata,
-        async () => {
-          return await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-              'Content-Type': 'application/json',
-              'HTTP-Referer': 'https://app.easyshifthq.com',
-              'X-Title': 'EasyShiftHQ AI Insights',
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://app.easyshifthq.com',
+          'X-Title': 'EasyShiftHQ AI Insights',
+        },
+        body: JSON.stringify({
+          model: model.id,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a restaurant financial analyst specializing in actionable business insights.',
             },
-            body: JSON.stringify({
-              model: model.id,
-              messages: [
-                {
-                  role: 'system',
-                  content: 'You are a restaurant financial analyst specializing in actionable business insights.',
-                },
-                {
-                  role: 'user',
-                  content: prompt,
-                },
-              ],
-              tools: [
-                {
-                  type: 'function',
-                  function: {
-                    name: 'provide_insights',
-                    description: 'Provide actionable business insights',
-                    parameters: {
-                      type: 'object',
-                      properties: {
-                        insights: {
-                          type: 'array',
-                          items: {
-                            type: 'object',
-                            properties: {
-                              category: { type: 'string', description: 'Category of the insight' },
-                              insight: { type: 'string', description: 'The specific insight or finding' },
-                              impact: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Expected impact level' },
-                              action: { type: 'string', description: 'Specific action to take' },
-                              estimated_savings: { type: 'number', description: 'Estimated monthly savings in dollars (optional)' },
-                            },
-                            required: ['category', 'insight', 'impact', 'action'],
-                          },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          tools: [
+            {
+              type: 'function',
+              function: {
+                name: 'provide_insights',
+                description: 'Provide actionable business insights',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    insights: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          category: { type: 'string', description: 'Category of the insight' },
+                          insight: { type: 'string', description: 'The specific insight or finding' },
+                          impact: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Expected impact level' },
+                          action: { type: 'string', description: 'Specific action to take' },
+                          estimated_savings: { type: 'number', description: 'Estimated monthly savings in dollars (optional)' },
                         },
+                        required: ['category', 'insight', 'impact', 'action'],
                       },
-                      required: ['insights'],
                     },
                   },
+                  required: ['insights'],
                 },
-              ],
-              tool_choice: { type: 'function', function: { name: 'provide_insights' } },
-              temperature: 0.7,
-              max_tokens: 2000,
-            }),
-          });
-        }
-      );
+              },
+            },
+          ],
+          tool_choice: { type: 'function', function: { name: 'provide_insights' } },
+          temperature: 0.7,
+          max_tokens: 2000,
+        }),
+      });
 
       if (!response.ok) {
         const errorText = await response.text();

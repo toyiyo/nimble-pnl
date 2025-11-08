@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { getModel, getModelFallbackList } from "../_shared/model-router.ts";
 import { getTools } from "../_shared/tools-registry.ts";
-import { traceAICall, logAICall, startStreamingSpan, type AICallMetadata } from "../_shared/braintrust.ts";
+import { logAICall, startStreamingSpan, type AICallMetadata } from "../_shared/braintrust.ts";
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
 const MAX_PROMPT_TOKENS = 100000;
@@ -57,97 +57,91 @@ async function callOpenRouter(
     success: false,
   };
 
-  return await traceAICall(
-    'ai-chat-stream:callOpenRouter',
-    metadata,
-    async () => {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://app.easyshifthq.com',
-          'X-Title': 'EasyShiftHQ AI Assistant',
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://app.easyshifthq.com',
+      'X-Title': 'EasyShiftHQ AI Assistant',
+    },
+    body: JSON.stringify({
+      model,
+      messages: messages.map(m => ({
+        role: m.role,
+        content: m.content,
+        ...(m.name && { name: m.name }),
+        ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
+        ...(m.tool_calls && { tool_calls: m.tool_calls }),
+      })),
+      tools: tools.map(t => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
         },
-        body: JSON.stringify({
-          model,
-          messages: messages.map(m => ({
-            role: m.role,
-            content: m.content,
-            ...(m.name && { name: m.name }),
-            ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
-            ...(m.tool_calls && { tool_calls: m.tool_calls }),
-          })),
-          tools: tools.map(t => ({
-            type: 'function',
-            function: {
-              name: t.name,
-              description: t.description,
-              parameters: t.parameters,
-            },
-          })),
-          tool_choice: 'auto',
-          temperature: 0.7,
-          stream: true,
-        }),
-        signal,
-      });
+      })),
+      tool_choice: 'auto',
+      temperature: 0.7,
+      stream: true,
+    }),
+    signal,
+  });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = `OpenRouter API error`;
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorMessage = `OpenRouter API error`;
+    
+    // Parse error to check if it's a moderation error
+    try {
+      const errorData = JSON.parse(errorText);
+      if (errorData.error) {
+        errorMessage = `Model ${model} failed: ${errorData.error.message || 'Unknown error'}`;
         
-        // Parse error to check if it's a moderation error
-        try {
-          const errorData = JSON.parse(errorText);
-          if (errorData.error) {
-            errorMessage = `Model ${model} failed: ${errorData.error.message || 'Unknown error'}`;
-            
-            // Check for moderation errors (403)
-            if (errorData.error.code === 403 || response.status === 403) {
-              console.log(`[OpenRouter] Moderation error on model ${model}:`, errorData.error.message);
-              
-              // Log moderation error
-              logAICall(
-                'ai-chat-stream:moderation_error',
-                { model, messages: messages.length },
-                null,
-                { ...metadata, success: false, status_code: 403, error: errorData.error.message },
-                null
-              );
-              
-              throw new Error(`MODERATION_ERROR: ${errorMessage}`);
-            }
-          }
-        } catch (parseError) {
-          // If parsing fails, use the raw error text
-          console.error('[OpenRouter] Failed to parse error response:', parseError);
+        // Check for moderation errors (403)
+        if (errorData.error.code === 403 || response.status === 403) {
+          console.log(`[OpenRouter] Moderation error on model ${model}:`, errorData.error.message);
+          
+          // Log moderation error
+          logAICall(
+            'ai-chat-stream:moderation_error',
+            { model, messages: messages.length },
+            null,
+            { ...metadata, success: false, status_code: 403, error: errorData.error.message },
+            null
+          );
+          
+          throw new Error(`MODERATION_ERROR: ${errorMessage}`);
         }
-        
-        // Log general error
-        logAICall(
-          'ai-chat-stream:error',
-          { model, messages: messages.length },
-          null,
-          { ...metadata, success: false, status_code: response.status, error: errorMessage },
-          null
-        );
-        
-        throw new Error(errorMessage);
       }
-
-      // Log successful stream start
-      logAICall(
-        'ai-chat-stream:stream_started',
-        { model, messages: messages.length },
-        { status: 'streaming' },
-        { ...metadata, success: true, status_code: 200 },
-        null
-      );
-
-      return response.body!;
+    } catch (parseError) {
+      // If parsing fails, use the raw error text
+      console.error('[OpenRouter] Failed to parse error response:', parseError);
     }
+    
+    // Log general error
+    logAICall(
+      'ai-chat-stream:error',
+      { model, messages: messages.length },
+      null,
+      { ...metadata, success: false, status_code: response.status, error: errorMessage },
+      null
+    );
+    
+    throw new Error(errorMessage);
+  }
+
+  // Log successful stream start
+  logAICall(
+    'ai-chat-stream:stream_started',
+    { model, messages: messages.length },
+    { status: 'streaming' },
+    { ...metadata, success: true, status_code: 200 },
+    null
   );
+
+  return response.body!;
 }
 
 /**

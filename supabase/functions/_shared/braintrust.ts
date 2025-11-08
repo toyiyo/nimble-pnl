@@ -1,5 +1,5 @@
 // Braintrust telemetry integration for AI observability
-import { initLogger, traced, wrapTraced } from "npm:braintrust@0.0.163";
+import { initLogger } from "npm:braintrust@0.0.163";
 
 // Lazy-initialized logger instance
 let logger: any = null;
@@ -86,68 +86,7 @@ export function extractTokenUsage(responseData: any): TokenUsage | null {
   }
 }
 
-/**
- * Trace an AI call with Braintrust
- * Wraps the execution and logs input, output, and metadata
- */
-export async function traceAICall<T>(
-  spanName: string,
-  metadata: AICallMetadata,
-  fn: () => Promise<T>
-): Promise<T> {
-  const logger = getBraintrustLogger();
-  
-  // If logger is not available, execute function without tracing
-  if (!logger) {
-    return await fn();
-  }
-
-  try {
-    const startTime = Date.now();
-    
-    // Use Braintrust traced wrapper
-    const result = await traced(
-      async (span: any) => {
-        try {
-          const output = await fn();
-          
-          // Log successful execution
-          span.log({
-            metadata: {
-              ...metadata,
-              duration_ms: Date.now() - startTime,
-            },
-          });
-          
-          return output;
-        } catch (error) {
-          // Log error
-          span.log({
-            metadata: {
-              ...metadata,
-              success: false,
-              error: error instanceof Error ? error.message : String(error),
-              duration_ms: Date.now() - startTime,
-            },
-          });
-          throw error;
-        }
-      },
-      {
-        name: spanName,
-        type: "llm",
-        project: logger,
-      }
-    );
-    
-    return result;
-  } catch (error) {
-    // If tracing fails, log error but don't fail the AI call
-    console.error('[Braintrust] Tracing error:', error);
-    // Execute function without tracing as fallback
-    return await fn();
-  }
-}
+// traceAICall removed - we use manual logging with logAICall for explicit input/output control
 
 /**
  * Log AI call result to Braintrust

@@ -1,6 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { traceAICall, logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
+import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 
 const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
 
@@ -124,22 +124,16 @@ async function callModel(
         success: false,
       };
 
-      const response = await traceAICall(
-        'enhance-product-ai:callModel',
-        metadata,
-        async () => {
-          return await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${openRouterApiKey}`,
-              "HTTP-Referer": "https://app.easyshifthq.com",
-              "X-Title": "EasyShiftHQ Product Enhancement",
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify(requestBody)
-          });
-        }
-      );
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterApiKey}`,
+          "HTTP-Referer": "https://app.easyshifthq.com",
+          "X-Title": "EasyShiftHQ Product Enhancement",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
+      });
 
       if (response.ok) {
         console.log(`✅ ${modelConfig.name} succeeded`);

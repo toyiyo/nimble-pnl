@@ -1,5 +1,5 @@
 // Shared AI calling utility with multi-model fallback
-import { traceAICall, logAICall, extractTokenUsage, type AICallMetadata } from "./braintrust.ts";
+import { logAICall, extractTokenUsage, type AICallMetadata } from "./braintrust.ts";
 
 export interface ModelConfig {
   name: string;
@@ -70,23 +70,17 @@ export async function callModel(
         success: false,
       };
 
-      const response = await traceAICall(
-        `${edgeFunction}:callModel`,
-        metadata,
-        async () => {
-          return await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${openRouterApiKey}`,
-              "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
-              "X-Title": "EasyShiftHQ AI",
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify(body),
-            signal: AbortSignal.timeout(30000) // 30 second timeout
-          });
-        }
-      );
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterApiKey}`,
+          "HTTP-Referer": "https://ncdujvdgqtaunuyigflp.supabase.co",
+          "X-Title": "EasyShiftHQ AI",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30000) // 30 second timeout
+      });
 
       if (response.ok) {
         console.log(`✅ ${modelConfig.name} succeeded`);
@@ -209,101 +203,85 @@ export async function callAIWithFallback<T>(
 ): Promise<{ data: T; model: string } | null> {
   console.log(`🚀 Starting AI call with multi-model fallback...`);
 
-  const metadata: AICallMetadata = {
-    model: 'multi-model-fallback',
-    provider: 'openrouter',
-    restaurant_id: restaurantId,
-    edge_function: edgeFunction,
-    stream: false,
-    attempt: 0,
-    success: false,
-  };
+  for (const modelConfig of MODELS) {
+    console.log(`🚀 Trying ${modelConfig.name}...`);
+    
+    const response = await callModel(modelConfig, requestBody, openRouterApiKey, edgeFunction, restaurantId);
+    
+    if (!response || !response.ok) {
+      console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
+      continue;
+    }
 
-  return await traceAICall(
-    `${edgeFunction}:callAIWithFallback`,
-    metadata,
-    async () => {
-      for (const modelConfig of MODELS) {
-        console.log(`🚀 Trying ${modelConfig.name}...`);
-        
-        const response = await callModel(modelConfig, requestBody, openRouterApiKey, edgeFunction, restaurantId);
-        
-        if (!response || !response.ok) {
-          console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
-          continue;
-        }
-
-        // Try to parse the response
-        try {
-          const data = await response.json();
-          
-          if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            console.error(`❌ ${modelConfig.name} returned invalid response structure`);
-            continue;
-          }
-
-          const content = data.choices[0].message.content;
-          
-          if (!content) {
-            console.error(`❌ ${modelConfig.name} returned empty content`);
-            continue;
-          }
-
-          // Parse the JSON content
-          const result = JSON.parse(content);
-          
-          console.log(`✅ ${modelConfig.name} successfully returned result`);
-          
-          // Log successful fallback result
-          const tokenUsage = extractTokenUsage(data);
-          logAICall(
-            `${edgeFunction}:callAIWithFallback:success`,
-            { messages: requestBody.messages },
-            { result, model: modelConfig.name },
-            { 
-              model: modelConfig.id,
-              provider: 'openrouter',
-              restaurant_id: restaurantId,
-              edge_function: edgeFunction,
-              stream: false,
-              attempt: MODELS.indexOf(modelConfig) + 1,
-              success: true,
-            },
-            tokenUsage
-          );
-          
-          return { data: result, model: modelConfig.name };
-          
-        } catch (parseError) {
-          console.error(`❌ ${modelConfig.name} parsing error:`, parseError instanceof Error ? parseError.message : String(parseError));
-          console.log(`⚠️ Trying next model due to parsing failure...`);
-          continue;
-        }
+    // Try to parse the response
+    try {
+      const data = await response.json();
+      
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        console.error(`❌ ${modelConfig.name} returned invalid response structure`);
+        continue;
       }
 
-      console.error('❌ All models failed');
+      const content = data.choices[0].message.content;
       
-      // Log complete failure
+      if (!content) {
+        console.error(`❌ ${modelConfig.name} returned empty content`);
+        continue;
+      }
+
+      // Parse the JSON content
+      const result = JSON.parse(content);
+      
+      console.log(`✅ ${modelConfig.name} successfully returned result`);
+      
+      // Log successful fallback result
+      const tokenUsage = extractTokenUsage(data);
       logAICall(
-        `${edgeFunction}:callAIWithFallback:all_failed`,
+        `${edgeFunction}:callAIWithFallback:success`,
         { messages: requestBody.messages },
-        null,
+        { result, model: modelConfig.name },
         { 
-          model: 'all-models',
+          model: modelConfig.id,
           provider: 'openrouter',
           restaurant_id: restaurantId,
           edge_function: edgeFunction,
           stream: false,
-          attempt: MODELS.length,
-          success: false,
-          error: 'All models failed'
+          attempt: MODELS.indexOf(modelConfig) + 1,
+          success: true,
         },
-        null
+        tokenUsage
       );
       
-      return null;
+      return { data: result, model: modelConfig.name };
+      
+    } catch (parseError) {
+      console.error(`❌ ${modelConfig.name} parsing error:`, parseError instanceof Error ? parseError.message : String(parseError));
+      console.log(`⚠️ Trying next model due to parsing failure...`);
+      continue;
     }
+  }
+
+  console.error('❌ All models failed');
+  
+  // Log complete failure
+  logAICall(
+    `${edgeFunction}:callAIWithFallback:all_failed`,
+    { messages: requestBody.messages },
+    null,
+    { 
+      model: 'all-models',
+      provider: 'openrouter',
+      restaurant_id: restaurantId,
+      edge_function: edgeFunction,
+      stream: false,
+      attempt: MODELS.length,
+      success: false,
+      error: 'All models failed'
+    },
+    null
   );
+  
+  return null;
 }
 
 /**
@@ -321,84 +299,68 @@ export async function callAIWithFallbackStreaming<T>(
   
   console.log(`🚀 Starting AI call with streaming multi-model fallback...`);
 
-  const metadata: AICallMetadata = {
-    model: 'multi-model-fallback',
-    provider: 'openrouter',
-    restaurant_id: restaurantId,
-    edge_function: edgeFunction,
-    stream: true,
-    attempt: 0,
-    success: false,
-  };
-
-  return await traceAICall(
-    `${edgeFunction}:callAIWithFallbackStreaming`,
-    metadata,
-    async () => {
-      for (const modelConfig of MODELS) {
-        console.log(`🚀 Trying ${modelConfig.name} (streaming)...`);
-        
-        try {
-          const content = await callModelWithStreaming(modelConfig, requestBody, openRouterApiKey, edgeFunction, restaurantId);
-          
-          if (!content) {
-            console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
-            continue;
-          }
-
-          // Parse the JSON content
-          const result = JSON.parse(content);
-          
-          console.log(`✅ ${modelConfig.name} successfully returned result via streaming`);
-          
-          // Log successful streaming result
-          // Note: Token usage is logged within callModelWithStreaming
-          logAICall(
-            `${edgeFunction}:callAIWithFallbackStreaming:success`,
-            { messages: requestBody.messages },
-            { result, model: modelConfig.name, content_length: content.length },
-            { 
-              model: modelConfig.id,
-              provider: 'openrouter',
-              restaurant_id: restaurantId,
-              edge_function: edgeFunction,
-              stream: true,
-              attempt: MODELS.indexOf(modelConfig) + 1,
-              success: true,
-            },
-            null // Token usage already logged in streaming function
-          );
-          
-          return { data: result, model: modelConfig.name };
-          
-        } catch (parseError) {
-          console.error(`❌ ${modelConfig.name} streaming error:`, parseError instanceof Error ? parseError.message : String(parseError));
-          console.log(`⚠️ Trying next model due to streaming/parsing failure...`);
-          continue;
-        }
+  for (const modelConfig of MODELS) {
+    console.log(`🚀 Trying ${modelConfig.name} (streaming)...`);
+    
+    try {
+      const content = await callModelWithStreaming(modelConfig, requestBody, openRouterApiKey, edgeFunction, restaurantId);
+      
+      if (!content) {
+        console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
+        continue;
       }
 
-      console.error('❌ All models failed (streaming)');
+      // Parse the JSON content
+      const result = JSON.parse(content);
       
-      // Log complete failure
+      console.log(`✅ ${modelConfig.name} successfully returned result via streaming`);
+      
+      // Log successful streaming result
+      // Note: Token usage is logged within callModelWithStreaming
       logAICall(
-        `${edgeFunction}:callAIWithFallbackStreaming:all_failed`,
+        `${edgeFunction}:callAIWithFallbackStreaming:success`,
         { messages: requestBody.messages },
-        null,
+        { result, model: modelConfig.name, content_length: content.length },
         { 
-          model: 'all-models',
+          model: modelConfig.id,
           provider: 'openrouter',
           restaurant_id: restaurantId,
           edge_function: edgeFunction,
           stream: true,
-          attempt: MODELS.length,
-          success: false,
-          error: 'All models failed (streaming)'
+          attempt: MODELS.indexOf(modelConfig) + 1,
+          success: true,
         },
-        null
+        null // Token usage already logged in streaming function
       );
       
-      return null;
+      return { data: result, model: modelConfig.name };
+      
+    } catch (parseError) {
+      console.error(`❌ ${modelConfig.name} streaming error:`, parseError instanceof Error ? parseError.message : String(parseError));
+      console.log(`⚠️ Trying next model due to streaming/parsing failure...`);
+      continue;
     }
+  }
+
+  console.error('❌ All models failed (streaming)');
+  
+  // Log complete failure
+  logAICall(
+    `${edgeFunction}:callAIWithFallbackStreaming:all_failed`,
+    { messages: requestBody.messages },
+    null,
+    { 
+      model: 'all-models',
+      provider: 'openrouter',
+      restaurant_id: restaurantId,
+      edge_function: edgeFunction,
+      stream: true,
+      attempt: MODELS.length,
+      success: false,
+      error: 'All models failed (streaming)'
+    },
+    null
   );
+  
+  return null;
 }

@@ -118,7 +118,11 @@ export async function callModelWithStreaming(
       };
 
       // Start streaming span
-      const endSpan = startStreamingSpan(`${edgeFunction}:streaming`, metadata);
+      const endSpan = startStreamingSpan(
+        `${edgeFunction}:streaming`, 
+        { messages: requestBody.messages, model: modelConfig.id },
+        metadata
+      );
 
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -147,7 +151,7 @@ export async function callModelWithStreaming(
         logAICall(
           `${edgeFunction}:streaming:success`,
           { messages: requestBody.messages, model: modelConfig.id },
-          { content_length: content.length },
+          { content, content_length: content.length },
           { ...metadata, success: true, status_code: 200 },
           null
         );
@@ -162,7 +166,7 @@ export async function callModelWithStreaming(
         logAICall(
           `${edgeFunction}:streaming:rate_limit`,
           { messages: requestBody.messages, model: modelConfig.id },
-          null,
+          { error: 'Rate limited' },
           { ...metadata, success: false, status_code: 429, error: 'Rate limited' },
           null
         );
@@ -177,7 +181,7 @@ export async function callModelWithStreaming(
         logAICall(
           `${edgeFunction}:streaming:error`,
           { messages: requestBody.messages, model: modelConfig.id },
-          null,
+          { error: errorText },
           { ...metadata, success: false, status_code: response.status, error: errorText },
           null
         );
@@ -194,7 +198,7 @@ export async function callModelWithStreaming(
         logAICall(
           `${edgeFunction}:streaming:timeout`,
           { messages: requestBody.messages, model: modelConfig.id },
-          null,
+          { error: 'Request timeout after 90s' },
           { 
             model: modelConfig.id,
             provider: "openrouter",
@@ -216,7 +220,7 @@ export async function callModelWithStreaming(
       logAICall(
         `${edgeFunction}:streaming:error`,
         { messages: requestBody.messages, model: modelConfig.id },
-        null,
+        { error: errorMessage },
         { 
           model: modelConfig.id,
           provider: "openrouter",

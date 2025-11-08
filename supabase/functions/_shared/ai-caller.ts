@@ -114,7 +114,7 @@ export async function callModel(
         logAICall(
           `${edgeFunction}:callModel:rate_limit`,
           { messages: requestBody.messages, model: modelConfig.id },
-          null,
+          { error: 'Rate limited' },
           { ...metadata, success: false, status_code: 429, error: 'Rate limited' },
           null
         );
@@ -129,7 +129,7 @@ export async function callModel(
         logAICall(
           `${edgeFunction}:callModel:error`,
           { messages: requestBody.messages, model: modelConfig.id },
-          null,
+          { error: errorText },
           { ...metadata, success: false, status_code: response.status, error: errorText },
           null
         );
@@ -146,7 +146,7 @@ export async function callModel(
         logAICall(
           `${edgeFunction}:callModel:timeout`,
           { messages: requestBody.messages, model: modelConfig.id },
-          null,
+          { error: 'Request timeout after 30s' },
           { 
             model: modelConfig.id,
             provider: "openrouter",
@@ -168,7 +168,7 @@ export async function callModel(
       logAICall(
         `${edgeFunction}:callModel:error`,
         { messages: requestBody.messages, model: modelConfig.id },
-        null,
+        { error: errorMessage },
         { 
           model: modelConfig.id,
           provider: "openrouter",
@@ -267,7 +267,7 @@ export async function callAIWithFallback<T>(
   logAICall(
     `${edgeFunction}:callAIWithFallback:all_failed`,
     { messages: requestBody.messages },
-    null,
+    { error: 'All models failed' },
     { 
       model: 'all-models',
       provider: 'openrouter',
@@ -348,7 +348,7 @@ export async function callAIWithFallbackStreaming<T>(
   logAICall(
     `${edgeFunction}:callAIWithFallbackStreaming:all_failed`,
     { messages: requestBody.messages },
-    null,
+    { error: 'All models failed (streaming)' },
     { 
       model: 'all-models',
       provider: 'openrouter',

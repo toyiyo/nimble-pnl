@@ -107,6 +107,7 @@ export function logAICall(
 
   try {
     logger.log({
+      name: spanName,
       input,
       output,
       metadata: {
@@ -133,6 +134,7 @@ export function logAICall(
  */
 export function startStreamingSpan(
   spanName: string,
+  input: any,
   metadata: AICallMetadata
 ): ((content: string, tokenUsage?: TokenUsage | null) => void) | null {
   const logger = getBraintrustLogger();
@@ -146,7 +148,8 @@ export function startStreamingSpan(
   return (content: string, tokenUsage?: TokenUsage | null) => {
     try {
       logger.log({
-        input: { model: metadata.model },
+        name: spanName,
+        input,
         output: content,
         metadata: {
           ...metadata,

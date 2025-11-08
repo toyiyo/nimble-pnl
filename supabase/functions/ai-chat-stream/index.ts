@@ -106,8 +106,8 @@ async function callOpenRouter(
           // Log moderation error
           logAICall(
             'ai-chat-stream:moderation_error',
-            { model, messages: messages.length },
-            null,
+            { model, messages },
+            { error: errorData.error.message },
             { ...metadata, success: false, status_code: 403, error: errorData.error.message },
             null
           );
@@ -123,8 +123,8 @@ async function callOpenRouter(
     // Log general error
     logAICall(
       'ai-chat-stream:error',
-      { model, messages: messages.length },
-      null,
+      { model, messages },
+      { error: errorMessage },
       { ...metadata, success: false, status_code: response.status, error: errorMessage },
       null
     );
@@ -134,8 +134,8 @@ async function callOpenRouter(
 
   // Log successful stream start
   logAICall(
-    'ai-chat-stream:stream_started',
-    { model, messages: messages.length },
+    'ai-chat-stream:callOpenRouter',
+    { model, messages },
     { status: 'streaming' },
     { ...metadata, success: true, status_code: 200 },
     null

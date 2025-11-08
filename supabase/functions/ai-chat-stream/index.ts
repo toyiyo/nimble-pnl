@@ -106,7 +106,7 @@ async function callOpenRouter(
           // Log moderation error
           logAICall(
             'ai-chat-stream:moderation_error',
-            { model, messages },
+            messages,
             { error: errorData.error.message },
             { ...metadata, success: false, status_code: 403, error: errorData.error.message },
             null
@@ -123,7 +123,7 @@ async function callOpenRouter(
     // Log general error
     logAICall(
       'ai-chat-stream:error',
-      { model, messages },
+      messages,
       { error: errorMessage },
       { ...metadata, success: false, status_code: response.status, error: errorMessage },
       null
@@ -132,15 +132,7 @@ async function callOpenRouter(
     throw new Error(errorMessage);
   }
 
-  // Log successful stream start
-  logAICall(
-    'ai-chat-stream:callOpenRouter',
-    { model, messages },
-    { status: 'streaming' },
-    { ...metadata, success: true, status_code: 200 },
-    null
-  );
-
+  // Don't log here - will log after stream completes with actual content
   return response.body!;
 }
 
@@ -184,7 +176,10 @@ async function* parseSSEStream(stream: ReadableStream): AsyncGenerator<any> {
  */
 function createSSEStream(
   openRouterStream: ReadableStream,
-  messageId: string
+  messageId: string,
+  model: string,
+  messages: ChatMessage[],
+  restaurantId: string
 ): ReadableStream {
   return new ReadableStream({
     async start(controller) {
@@ -287,6 +282,25 @@ function createSSEStream(
         // Send message_end event
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ type: 'message_end', id: messageId })}\n\n`)
+        );
+
+        // Log successful completion with actual content
+        logAICall(
+          'ai-chat-stream:completion',
+          messages,
+          { content: fullContent, content_length: fullContent.length, tool_calls: toolCalls },
+          {
+            model: model,
+            provider: 'openrouter',
+            restaurant_id: restaurantId,
+            edge_function: 'ai-chat-stream',
+            temperature: 0.7,
+            stream: true,
+            attempt: 1,
+            success: true,
+            status_code: 200,
+          },
+          null
         );
 
         controller.close();
@@ -545,9 +559,16 @@ Tool Usage Guidelines:
       );
     }
 
-    // Create SSE response stream
+    // Create SSE response stream  
     const messageId = `msg_${Date.now()}`;
-    const sseStream = createSSEStream(openRouterStream, messageId);
+    const selectedModelName = attemptedModels[attemptedModels.length - 1]; // Last attempted is the successful one
+    const sseStream = createSSEStream(
+      openRouterStream, 
+      messageId, 
+      selectedModelName, 
+      messagesWithSystem, 
+      projectRef
+    );
 
     return new Response(sseStream, {
       headers: {

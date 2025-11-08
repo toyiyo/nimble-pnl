@@ -68,10 +68,10 @@ CRITICAL: Return ONLY valid, complete JSON. Ensure all arrays are properly close
 const MODELS = [
   // Primary model
   {
-    name: "Gemini 2.5 Flash Lite",
-    id: "google/gemini-2.5-flash-lite",
+    name: "Gemini 2.5 Flash",
+    id: "google/gemini-2.5-flash",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
-    maxRetries: 1
+    maxRetries: 2
   },
   // Free models
   {

@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { getModel, getModelFallbackList } from "../_shared/model-router.ts";
 import { getTools } from "../_shared/tools-registry.ts";
+import { logAICall, startStreamingSpan, type AICallMetadata } from "../_shared/braintrust.ts";
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
 const MAX_PROMPT_TOKENS = 100000;
@@ -42,8 +43,20 @@ async function callOpenRouter(
   model: string,
   messages: ChatMessage[],
   tools: any[],
+  restaurantId: string,
   signal?: AbortSignal
 ): Promise<ReadableStream> {
+  const metadata: AICallMetadata = {
+    model: model,
+    provider: 'openrouter',
+    restaurant_id: restaurantId,
+    edge_function: 'ai-chat-stream',
+    temperature: 0.7,
+    stream: true,
+    attempt: 1,
+    success: false,
+  };
+
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -89,6 +102,16 @@ async function callOpenRouter(
         // Check for moderation errors (403)
         if (errorData.error.code === 403 || response.status === 403) {
           console.log(`[OpenRouter] Moderation error on model ${model}:`, errorData.error.message);
+          
+          // Log moderation error
+          logAICall(
+            'ai-chat-stream:moderation_error',
+            messages,
+            { error: errorData.error.message },
+            { ...metadata, success: false, status_code: 403, error: errorData.error.message },
+            null
+          );
+          
           throw new Error(`MODERATION_ERROR: ${errorMessage}`);
         }
       }
@@ -97,9 +120,19 @@ async function callOpenRouter(
       console.error('[OpenRouter] Failed to parse error response:', parseError);
     }
     
+    // Log general error
+    logAICall(
+      'ai-chat-stream:error',
+      messages,
+      { error: errorMessage },
+      { ...metadata, success: false, status_code: response.status, error: errorMessage },
+      null
+    );
+    
     throw new Error(errorMessage);
   }
 
+  // Don't log here - will log after stream completes with actual content
   return response.body!;
 }
 
@@ -143,7 +176,10 @@ async function* parseSSEStream(stream: ReadableStream): AsyncGenerator<any> {
  */
 function createSSEStream(
   openRouterStream: ReadableStream,
-  messageId: string
+  messageId: string,
+  model: string,
+  messages: ChatMessage[],
+  restaurantId: string
 ): ReadableStream {
   return new ReadableStream({
     async start(controller) {
@@ -246,6 +282,25 @@ function createSSEStream(
         // Send message_end event
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ type: 'message_end', id: messageId })}\n\n`)
+        );
+
+        // Log successful completion with actual content
+        logAICall(
+          'ai-chat-stream:completion',
+          messages,
+          { content: fullContent, content_length: fullContent.length, tool_calls: toolCalls },
+          {
+            model: model,
+            provider: 'openrouter',
+            restaurant_id: restaurantId,
+            edge_function: 'ai-chat-stream',
+            temperature: 0.7,
+            stream: true,
+            attempt: 1,
+            success: true,
+            status_code: 200,
+          },
+          null
         );
 
         controller.close();
@@ -466,7 +521,8 @@ Tool Usage Guidelines:
         openRouterStream = await callOpenRouter(
           currentModel,
           messagesWithSystem,
-          tools
+          tools,
+          projectRef
         );
         
         const connectionTime = Date.now() - startTime;
@@ -503,9 +559,16 @@ Tool Usage Guidelines:
       );
     }
 
-    // Create SSE response stream
+    // Create SSE response stream  
     const messageId = `msg_${Date.now()}`;
-    const sseStream = createSSEStream(openRouterStream, messageId);
+    const selectedModelName = attemptedModels[attemptedModels.length - 1]; // Last attempted is the successful one
+    const sseStream = createSSEStream(
+      openRouterStream, 
+      messageId, 
+      selectedModelName, 
+      messagesWithSystem, 
+      projectRef
+    );
 
     return new Response(sseStream, {
       headers: {

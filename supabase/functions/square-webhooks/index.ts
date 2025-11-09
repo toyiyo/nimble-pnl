@@ -316,6 +316,7 @@ async function handleOrderUpdated(data: any, restaurantId: string, accessToken: 
       restaurant_id: restaurantId,
       pos_system: 'square',
       external_order_id: order.id,
+      external_item_id: `${order.id}_tax`,
       item_name: 'Sales Tax',
       item_type: 'tax',
       adjustment_type: 'tax',
@@ -330,6 +331,7 @@ async function handleOrderUpdated(data: any, restaurantId: string, accessToken: 
       restaurant_id: restaurantId,
       pos_system: 'square',
       external_order_id: order.id,
+      external_item_id: `${order.id}_tip`,
       item_name: 'Tips',
       item_type: 'tip',
       adjustment_type: 'tip',
@@ -344,6 +346,7 @@ async function handleOrderUpdated(data: any, restaurantId: string, accessToken: 
       restaurant_id: restaurantId,
       pos_system: 'square',
       external_order_id: order.id,
+      external_item_id: `${order.id}_service_charge`,
       item_name: 'Service Charge',
       item_type: 'service_charge',
       adjustment_type: 'service_charge',
@@ -358,6 +361,7 @@ async function handleOrderUpdated(data: any, restaurantId: string, accessToken: 
       restaurant_id: restaurantId,
       pos_system: 'square',
       external_order_id: order.id,
+      external_item_id: `${order.id}_discount`,
       item_name: 'Discount',
       item_type: 'discount',
       adjustment_type: 'discount',
@@ -372,7 +376,7 @@ async function handleOrderUpdated(data: any, restaurantId: string, accessToken: 
     await supabase
       .from('unified_sales')
       .upsert(adjustments, {
-        onConflict: 'restaurant_id,pos_system,external_order_id,item_name'
+        onConflict: 'unified_sales_unique_square'
       });
   }
 

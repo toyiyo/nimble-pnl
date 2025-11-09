@@ -271,9 +271,10 @@ export const ColumnMappingDialog: React.FC<ColumnMappingDialogProps> = ({
             <AlertDescription className="text-sm space-y-2">
               <p><strong>Tips:</strong></p>
               <ul className="list-disc list-inside space-y-1">
-                <li>Use <strong>Gross Sales</strong> or <strong>Net Sales</strong> for total revenue per item</li>
-                <li>Map <strong>Discounts</strong> column to "Discount Amount" to create discount adjustments automatically</li>
-                <li>Columns marked as adjustments (tax, tip, discount) will create separate entries in your POS data</li>
+                <li>When you have a <strong>Discounts</strong> column, use <strong>Gross Sales</strong> (amount before discount) - the discount will be tracked separately</li>
+                <li>When you don't have a Discounts column, use <strong>Net Sales</strong> (final amount after all adjustments)</li>
+                <li>Map the <strong>Discounts</strong> column to "Discount Amount" to create discount adjustments automatically</li>
+                <li>Columns marked as adjustments (tax, tip, discount, fee) will create separate entries in your POS data</li>
                 <li>You can ignore columns that contain summary data or aren't needed</li>
               </ul>
             </AlertDescription>

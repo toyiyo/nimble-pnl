@@ -242,15 +242,29 @@ export function suggestColumnMappings(
     }
   }
 
-  // Post-process: if we have both gross and net sales, prefer net sales
+  // Post-process: if we have both gross and net sales, prefer gross sales when discounts are tracked
+  // This is because if discounts are in a separate column, the gross sales represents the actual
+  // transaction amount, and discounts will be recorded as separate adjustment entries
   const hasGrossSales = mappings.some(m => m.targetField === 'grossSales');
   const hasNetSales = mappings.some(m => m.targetField === 'netSales');
+  const hasDiscounts = mappings.some(m => m.targetField === 'discount');
+  
   if (hasGrossSales && hasNetSales) {
-    // Keep netSales, unmap grossSales (user can re-map if needed)
-    const grossMapping = mappings.find(m => m.targetField === 'grossSales');
-    if (grossMapping) {
-      grossMapping.targetField = null;
-      grossMapping.confidence = 'none';
+    if (hasDiscounts) {
+      // When we have a discount column, prefer gross sales (before discount)
+      // The discount will be tracked separately as an adjustment
+      const netMapping = mappings.find(m => m.targetField === 'netSales');
+      if (netMapping) {
+        netMapping.targetField = null;
+        netMapping.confidence = 'none';
+      }
+    } else {
+      // When no discount column, prefer net sales (it's the final amount)
+      const grossMapping = mappings.find(m => m.targetField === 'grossSales');
+      if (grossMapping) {
+        grossMapping.targetField = null;
+        grossMapping.confidence = 'none';
+      }
     }
   }
 

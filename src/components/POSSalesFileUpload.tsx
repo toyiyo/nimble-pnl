@@ -74,6 +74,9 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
       return isNaN(parsed) ? fallback : parsed;
     };
 
+    // Get adjustment mappings once (used for determining gross vs net preference)
+    const adjustmentMappings = mappings.filter(m => m.isAdjustment && m.adjustmentType);
+
     data.forEach((row, index) => {
       // Check if this is a summary row
       const summaryCheck = isSummaryRow(row);
@@ -99,14 +102,22 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
       const quantityStr = getMappedValue('quantity');
       const quantity = safeParseFloat(quantityStr, 1) || 1;
 
-      // Parse prices - prefer net sales over gross sales
+      // Parse prices - prefer gross sales over net sales when we have discount adjustments
+      // This is because gross sales represents the transaction amount before discounts,
+      // and discounts will be tracked separately as adjustment entries
       const netSales = safeParseFloat(getMappedValue('netSales'), undefined);
       const grossSales = safeParseFloat(getMappedValue('grossSales'), undefined);
       const totalPriceRaw = safeParseFloat(getMappedValue('totalPrice'), undefined);
       const unitPriceRaw = safeParseFloat(getMappedValue('unitPrice'), undefined);
 
+      // Check if we have discount adjustments for this item
+      const hasDiscountForItem = adjustmentMappings.some(m => m.adjustmentType === 'discount');
+
       // Determine the best total price
-      const totalPrice = netSales ?? totalPriceRaw ?? grossSales;
+      // When discounts are tracked separately, use gross sales (before discount)
+      const totalPrice = hasDiscountForItem 
+        ? (grossSales ?? totalPriceRaw ?? netSales)
+        : (netSales ?? totalPriceRaw ?? grossSales);
       const unitPrice = unitPriceRaw ?? (totalPrice !== undefined ? totalPrice / quantity : undefined);
 
       // Parse date and time
@@ -150,8 +161,6 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
       parsedSales.push(baseSale);
 
       // Process adjustment columns (discount, tax, tip, etc.)
-      const adjustmentMappings = mappings.filter(m => m.isAdjustment && m.adjustmentType);
-      
       adjustmentMappings.forEach(adjMapping => {
         const adjValue = row[adjMapping.csvColumn];
         const adjAmount = safeParseFloat(adjValue, undefined);
@@ -239,32 +248,16 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
             const highConfidenceMappings = suggestedMappings.filter(m => m.confidence === 'high');
             const hasRequiredFields = suggestedMappings.some(m => m.targetField === 'itemName');
             
-            // If we have high confidence mappings for required fields, proceed
-            if (highConfidenceMappings.length >= 3 && hasRequiredFields) {
-              const parsedSales = parseCSVWithMappings(data, suggestedMappings);
-              
-              // Check if there are any summary rows that we should warn about
-              const hasSummaryRows = parsedSales.some(sale => sale.isSummaryRow);
-              if (hasSummaryRows) {
-                toast({
-                  title: 'Summary rows detected',
-                  description: 'Some rows appear to be totals or summaries. Please review them in the next step.',
-                  variant: 'default',
-                });
-              }
-              
-              resolve(parsedSales);
-            } else {
-              // Show mapping dialog for user confirmation
-              setCsvHeaders(headers);
-              setCsvRawData(data);
-              setSuggestedMappings(suggestedMappings);
-              setPendingFile(file);
-              setShowMappingDialog(true);
-              
-              // Don't resolve yet - wait for user to confirm mappings
-              reject(new Error('PENDING_MAPPING'));
-            }
+            // Always show mapping dialog to allow users to review and adjust mappings
+            // This gives users control even when auto-mapping is confident
+            setCsvHeaders(headers);
+            setCsvRawData(data);
+            setSuggestedMappings(suggestedMappings);
+            setPendingFile(file);
+            setShowMappingDialog(true);
+            
+            // Don't resolve yet - wait for user to confirm mappings
+            reject(new Error('PENDING_MAPPING'));
           } catch (error) {
             reject(error);
           }

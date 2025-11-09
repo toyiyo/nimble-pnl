@@ -331,6 +331,54 @@ Deno.serve(async (req) => {
               }).format(utcDate);
               serviceDate = localDateStr; // Already in YYYY-MM-DD format from 'en-CA' locale
             }
+            
+            // Fetch payments for this order (authoritative source for taxes/tips)
+            const paysUrl = `${BASE_URL}/orders/${order.id}/payments?limit=1000`;
+            let taxCents = 0;
+            let tipCents = 0;
+            let paidCents = 0;
+            
+            try {
+              const paysResp = await fetch(paysUrl, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+              });
+              
+              if (paysResp.ok) {
+                const paysData = await paysResp.json();
+                const payments = paysData.elements ?? [];
+                
+                // Sum taxes, tips, and amounts from payments (source of truth)
+                taxCents = payments.reduce((s, p) => s + (p.taxAmount ?? 0), 0);
+                tipCents = payments.reduce((s, p) => s + (p.tipAmount ?? 0), 0);
+                paidCents = payments.reduce((s, p) => s + (p.amount ?? 0), 0); // includes tax, excludes tip
+                
+                console.log(`Order ${order.id} payments:`, {
+                  paymentCount: payments.length,
+                  taxCents,
+                  tipCents,
+                  paidCents,
+                  orderTotalCents: order.total ?? 0
+                });
+                
+                // Reconciliation check: payment amounts should match order total (±1 cent tolerance)
+                const orderTotalCents = order.total ?? 0;
+                const delta = Math.abs(orderTotalCents - paidCents);
+                if (delta > 1 && paidCents > 0) {
+                  console.warn(`Order ${order.id} mismatch: order.total=${orderTotalCents}, sum(payment.amount)=${paidCents}`);
+                }
+              } else {
+                console.warn(`Failed to fetch payments for order ${order.id}:`, await paysResp.text());
+                // Fallback to order-level fields if payment fetch fails
+                taxCents = order.taxAmount ?? 0;
+                tipCents = order.tipAmount ?? 0;
+              }
+            } catch (paymentError) {
+              console.error(`Error fetching payments for order ${order.id}:`, paymentError.message);
+              // Fallback to order-level fields
+              taxCents = order.taxAmount ?? 0;
+              tipCents = order.tipAmount ?? 0;
+            }
+            
             await supabase.from("clover_orders").upsert(
               {
                 restaurant_id: restaurantId,
@@ -339,10 +387,10 @@ Deno.serve(async (req) => {
                 employee_id: order.employee?.id,
                 state: order.state,
                 total: order.total ? order.total / 100 : null,
-                tax_amount: order.taxAmount ? order.taxAmount / 100 : null,
+                tax_amount: taxCents ? taxCents / 100 : null,
                 service_charge_amount: order.serviceCharge ? order.serviceCharge.amount / 100 : null,
                 discount_amount: order.discount ? order.discount.amount / 100 : null,
-                tip_amount: order.tipAmount ? order.tipAmount / 100 : null,
+                tip_amount: tipCents ? tipCents / 100 : null,
                 created_time: order.createdTime ? new Date(order.createdTime).toISOString() : null,
                 modified_time: order.modifiedTime ? new Date(order.modifiedTime).toISOString() : null,
                 closed_time: order.clientCreatedTime
@@ -389,25 +437,31 @@ Deno.serve(async (req) => {
             // This keeps revenue metrics clean and accounting-compliant
             const adjustments = [];
             
-            // Tax
-            if (order.taxAmount) {
+            // Tax (from payments - source of truth)
+            // Respect taxRemoved flag - if true, tax was removed and should be 0
+            if (taxCents > 0 && !order.taxRemoved) {
+              // Check if this is a VAT order (tax included in prices)
+              const taxLabel = order.isVat ? "VAT" : "Sales Tax";
               adjustments.push({
                 restaurant_id: restaurantId,
                 pos_system: "clover",
                 external_order_id: order.id,
-                item_name: "Sales Tax",
+                item_name: taxLabel,
                 item_type: "tax",
                 adjustment_type: "tax",
-                total_price: order.taxAmount / 100,
+                total_price: taxCents / 100,
                 sale_date: serviceDate,
                 raw_data: {
-                  taxAmount: order.taxAmount,
+                  from: "payments",
+                  taxCents,
+                  isVat: order.isVat ?? false,
+                  taxRemoved: order.taxRemoved ?? false,
                 },
               });
             }
             
-            // Tips
-            if (order.tipAmount) {
+            // Tips (from payments - source of truth)
+            if (tipCents > 0) {
               adjustments.push({
                 restaurant_id: restaurantId,
                 pos_system: "clover",
@@ -415,10 +469,11 @@ Deno.serve(async (req) => {
                 item_name: "Tips",
                 item_type: "tip",
                 adjustment_type: "tip",
-                total_price: order.tipAmount / 100,
+                total_price: tipCents / 100,
                 sale_date: serviceDate,
                 raw_data: {
-                  tipAmount: order.tipAmount,
+                  from: "payments",
+                  tipCents,
                 },
               });
             }

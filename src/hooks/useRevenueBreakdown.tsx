@@ -82,6 +82,17 @@ export function useRevenueBreakdown(
 
       if (error) throw error;
 
+      // Query adjustments separately (tax, tips, service charges, discounts, fees)
+      const { data: adjustments, error: adjustmentsError } = await supabase
+        .from('unified_sales')
+        .select('adjustment_type, total_price')
+        .eq('restaurant_id', restaurantId)
+        .gte('sale_date', fromStr)
+        .lte('sale_date', toStr)
+        .not('adjustment_type', 'is', null);
+
+      if (adjustmentsError) throw adjustmentsError;
+
       // Filter out parent sales that have been split into children
       // Include: unsplit sales (no children) + all child splits
       const parentIdsWithChildren = new Set(
@@ -216,23 +227,50 @@ export function useRevenueBreakdown(
       const totalTaxC = taxCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
       const totalTipsC = tipCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
       const totalOtherLiabilitiesC = otherLiabilityCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
+
+      // Add adjustments from adjustment_type column (Square, Clover pass-through items)
+      const adjustmentTaxC = (adjustments || [])
+        .filter(a => a.adjustment_type === 'tax')
+        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
       
-      // Totals in cents
+      const adjustmentTipsC = (adjustments || [])
+        .filter(a => a.adjustment_type === 'tip')
+        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
+      
+      const adjustmentServiceChargeC = (adjustments || [])
+        .filter(a => a.adjustment_type === 'service_charge')
+        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
+      
+      const adjustmentDiscountsC = (adjustments || [])
+        .filter(a => a.adjustment_type === 'discount')
+        .reduce((sum, a) => sum + Math.abs(toC(a.total_price || 0)), 0);
+      
+      const adjustmentFeesC = (adjustments || [])
+        .filter(a => a.adjustment_type === 'fee')
+        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
+
+      // Combine categorized amounts with adjustment amounts
+      const combinedTaxC = totalTaxC + adjustmentTaxC;
+      const combinedTipsC = totalTipsC + adjustmentTipsC;
+      const combinedOtherLiabilitiesC = totalOtherLiabilitiesC + adjustmentServiceChargeC + adjustmentFeesC;
+      const combinedDiscountsC = totalDiscountsC + adjustmentDiscountsC;
+      
+      // Totals in cents - use combined values including adjustments
       const grossRevenueC = categorizedRevenueC + uncategorizedRevenueC;
-      const netRevenueC = grossRevenueC - totalDiscountsC - totalRefundsC;
+      const netRevenueC = grossRevenueC - combinedDiscountsC - totalRefundsC;
       
       // Convert once to dollars for output
       const categorizedRevenue = fromC(categorizedRevenueC);
       const grossRevenue = fromC(grossRevenueC);
-      const totalDiscounts = fromC(totalDiscountsC);
+      const totalDiscounts = fromC(combinedDiscountsC);
       const totalRefunds = fromC(totalRefundsC);
       const netRevenue = fromC(netRevenueC);
-      const totalTax = fromC(totalTaxC);
-      const totalTips = fromC(totalTipsC);
-      const totalOtherLiabilities = fromC(totalOtherLiabilitiesC);
+      const totalTax = fromC(combinedTaxC);
+      const totalTips = fromC(combinedTipsC);
+      const totalOtherLiabilities = fromC(combinedOtherLiabilitiesC);
       
       // Calculate total collected at POS (revenue + pass-through collections)
-      const totalCollectedAtPOSC = grossRevenueC + totalTaxC + totalTipsC + totalOtherLiabilitiesC;
+      const totalCollectedAtPOSC = grossRevenueC + combinedTaxC + combinedTipsC + combinedOtherLiabilitiesC;
       const totalCollectedAtPOS = fromC(totalCollectedAtPOSC);
       
       // Calculate categorization rate based on revenue dollars

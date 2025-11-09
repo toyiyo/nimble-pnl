@@ -13,6 +13,8 @@ interface DashboardMetric {
 interface POSSalesDashboardProps {
   totalSales: number;
   totalRevenue: number;
+  passThroughAmount: number;
+  collectedAtPOS: number;
   uniqueItems: number;
   unmappedCount: number;
   lastSyncTime?: string;
@@ -21,34 +23,36 @@ interface POSSalesDashboardProps {
 export const POSSalesDashboard = ({
   totalSales,
   totalRevenue,
+  passThroughAmount,
+  collectedAtPOS,
   uniqueItems,
   unmappedCount,
   lastSyncTime,
 }: POSSalesDashboardProps) => {
   const metrics: DashboardMetric[] = [
     {
-      label: "Total Sales",
-      value: totalSales.toLocaleString(),
-      icon: <TrendingUp className="h-5 w-5" />,
+      label: "Collected at POS",
+      value: `$${collectedAtPOS.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: <DollarSign className="h-5 w-5" />,
       gradient: "from-blue-500/10 to-cyan-500/10",
     },
     {
-      label: "Total Revenue",
+      label: "Revenue",
       value: `$${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      icon: <DollarSign className="h-5 w-5" />,
+      icon: <TrendingUp className="h-5 w-5" />,
       gradient: "from-green-500/10 to-emerald-500/10",
+    },
+    {
+      label: "Pass-Through Items",
+      value: `$${passThroughAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: <AlertCircle className="h-5 w-5" />,
+      gradient: "from-amber-500/10 to-orange-500/10",
     },
     {
       label: "Unique Items",
       value: uniqueItems.toLocaleString(),
       icon: <Package className="h-5 w-5" />,
       gradient: "from-purple-500/10 to-pink-500/10",
-    },
-    {
-      label: "Needs Recipe",
-      value: unmappedCount.toLocaleString(),
-      icon: <AlertCircle className="h-5 w-5" />,
-      gradient: unmappedCount > 0 ? "from-orange-500/10 to-red-500/10" : "from-gray-500/10 to-slate-500/10",
     },
   ];
 

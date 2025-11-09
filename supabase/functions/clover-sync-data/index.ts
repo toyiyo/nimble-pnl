@@ -379,38 +379,41 @@ Deno.serve(async (req) => {
               tipCents = order.tipAmount ?? 0;
             }
 
-            // Calculate tax from order total minus line items subtotal
-            // This is the only reliable way to get tax since Clover doesn't provide it directly
-            const revenueSubtotal = order.lineItems?.elements
-              ?.filter(li => li.isRevenue)
-              .reduce((sum, li) => {
-                const qty = (li.unitQty ?? 1000) / 1000;
-                const price = li.price ?? 0;
-                return sum + (price * qty);
-              }, 0) ?? 0;
+            // Only calculate tax if not provided by payments
+            // Payment tax is the authoritative source from Clover
+            if (taxCents === 0) {
+              // Calculate tax from order total minus line items subtotal
+              const revenueSubtotal = order.lineItems?.elements
+                ?.filter(li => li.isRevenue)
+                .reduce((sum, li) => {
+                  const qty = (li.unitQty ?? 1000) / 1000;
+                  const price = li.price ?? 0;
+                  return sum + (price * qty);
+                }, 0) ?? 0;
 
-            // Use paidCents if available (paid orders), otherwise use order.total (unpaid orders)
-            // paidCents = 0 for orders with paymentState: "OPEN"
-            const totalForTaxCalc = paidCents > 0 ? paidCents : (order.total ?? 0);
+              // Use paidCents if available (paid orders), otherwise use order.total (unpaid orders)
+              const totalForTaxCalc = paidCents > 0 ? paidCents : (order.total ?? 0);
 
-            // Tax = total - revenueSubtotal - serviceCharge + discount
-            taxCents = Math.max(0, 
-              totalForTaxCalc  // Works for both paid and unpaid orders
-              - revenueSubtotal 
-              - (order.serviceCharge?.amount ?? 0)
-              + (order.discount?.amount ?? 0)
-            );
+              // Tax = total - revenueSubtotal - serviceCharge + discount
+              taxCents = Math.max(0, 
+                totalForTaxCalc
+                - revenueSubtotal 
+                - (order.serviceCharge?.amount ?? 0)
+                + (order.discount?.amount ?? 0)
+              );
 
-            console.log(`Order ${order.id} tax calculation:`, {
-              orderTotal: order.total,
-              paidCents,
-              totalForTaxCalc,
-              paymentState: order.paymentState,
-              revenueSubtotal,
-              serviceCharge: order.serviceCharge?.amount ?? 0,
-              discount: order.discount?.amount ?? 0,
-              calculatedTaxCents: taxCents,
-            });
+              console.log(`Order ${order.id} calculated tax (no payment tax):`, {
+                orderTotal: order.total,
+                paidCents,
+                totalForTaxCalc,
+                revenueSubtotal,
+                serviceCharge: order.serviceCharge?.amount ?? 0,
+                discount: order.discount?.amount ?? 0,
+                calculatedTaxCents: taxCents,
+              });
+            } else {
+              console.log(`Order ${order.id} using payment tax: ${taxCents / 100}`);
+            }
 
             await supabase.from("clover_orders").upsert(
               {

@@ -103,9 +103,10 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         return;
       }
 
-      // Parse quantity
+      // Parse quantity - preserve 0 quantities, only use fallback for invalid/missing values
       const quantityStr = getMappedValue('quantity');
-      const quantity = safeParseFloat(quantityStr, 1) || 1;
+      const parsedQuantity = safeParseFloat(quantityStr, 1);
+      const quantity = (parsedQuantity === null || parsedQuantity === undefined || isNaN(parsedQuantity)) ? 1 : parsedQuantity;
 
       // Parse prices - prefer gross sales over net sales when we have discount adjustments
       // This is because gross sales represents the transaction amount before discounts,
@@ -253,6 +254,9 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                 date: extractedDate.date,
                 confidence: extractedDate.confidence,
               });
+            } else {
+              // Clear any stale date from previous uploads
+              setDetectedDate(null);
             }
 
             // Try to load saved templates and find best match

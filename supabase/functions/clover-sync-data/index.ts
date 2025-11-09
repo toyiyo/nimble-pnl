@@ -470,12 +470,18 @@ Deno.serve(async (req) => {
               }
             }
 
-            // Calculate closed time for adjustments (ISO string format)
-            const closedTime = order.clientCreatedTime
-              ? new Date(order.clientCreatedTime).toISOString()
+            // Calculate closed time for adjustments
+            // Extract date object for time extraction
+            const closedDateTime = order.clientCreatedTime
+              ? new Date(order.clientCreatedTime)
               : order.createdTime
-                ? new Date(order.createdTime).toISOString()
+                ? new Date(order.createdTime)
                 : null;
+            
+            // Extract just the time portion in HH:MM:SS format for sale_time column
+            const closedTime = closedDateTime
+              ? closedDateTime.toISOString().split('T')[1].split('.')[0]
+              : null;
 
             // Extract and store adjustments (don't create fake line items)
             // This keeps revenue metrics clean and accounting-compliant

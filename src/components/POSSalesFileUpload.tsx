@@ -6,13 +6,18 @@ import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 import { Upload, FileText, AlertCircle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import Papa from 'papaparse';
+import { ColumnMappingDialog, ColumnMapping } from './ColumnMappingDialog';
+import { suggestColumnMappings, isSummaryRow } from '@/utils/csvColumnMapping';
+import { extractDateFromFilename } from '@/utils/filenameDateExtraction';
+import { loadMappingTemplates, findBestMatchingTemplate, applyTemplate } from '@/utils/mappingTemplates';
 
 interface POSSalesFileUploadProps {
   onFileProcessed: (data: ParsedSale[]) => void;
 }
 
-interface ParsedSale {
+export interface ParsedSale {
   itemName: string;
   quantity: number;
   totalPrice?: number;
@@ -22,309 +27,261 @@ interface ParsedSale {
   orderId?: string;
   category?: string;  // Added for Toast's "Sales Category"
   tags?: string;      // Added for Toast's "Item tags"
+  adjustmentType?: 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee';
+  isSummaryRow?: boolean;
+  summaryRowReason?: string;
   rawData: Record<string, unknown>;
 }
 
 export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFileProcessed }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsingErrors, setParsingErrors] = useState<{ rowNumber: number; reason: string }[]>([]);
+  const [showMappingDialog, setShowMappingDialog] = useState(false);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [csvRawData, setCsvRawData] = useState<Record<string, string>[]>([]);
+  const [suggestedMappings, setSuggestedMappings] = useState<ColumnMapping[]>([]);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [detectedDate, setDetectedDate] = useState<{ date: Date; confidence: string } | null>(null);
   const { toast } = useToast();
+  const { selectedRestaurant } = useRestaurantContext();
 
-  const parseCSVFile = async (file: File): Promise<ParsedSale[]> => {
+  const parseCSVWithMappings = (
+    data: Record<string, string>[],
+    mappings: ColumnMapping[]
+  ): ParsedSale[] => {
+    const skippedRows: { rowNumber: number; reason: string }[] = [];
+    const parsedSales: ParsedSale[] = [];
+
+    // Helper function to normalize numeric strings before parsing
+    const normalizeNumericString = (value: string | undefined): string => {
+      if (!value) return '';
+      
+      // Remove currency symbols, thousands separators, and trim
+      let normalized = value.trim()
+        .replace(/[$£€¥]/g, '')  // Remove currency symbols (all occurrences)
+        .replace(/,/g, '');     // Remove thousands separators
+      
+      // Handle parentheses for negative values: (123.45) -> -123.45
+      if (normalized.startsWith('(') && normalized.endsWith(')')) {
+        normalized = '-' + normalized.substring(1, normalized.length - 1);
+      }
+      
+      return normalized;
+    };
+    
+    // Helper function to safely parse a numeric value with proper fallback
+    const safeParseFloat = (value: string | undefined, fallback: number | undefined): number | undefined => {
+      if (!value) return fallback;
+      const normalized = normalizeNumericString(value);
+      if (normalized === '') return fallback;
+      
+      const parsed = parseFloat(normalized);
+      return isNaN(parsed) ? fallback : parsed;
+    };
+
+    // Get adjustment mappings once (used for determining gross vs net preference)
+    const adjustmentMappings = mappings.filter(m => m.isAdjustment && m.adjustmentType);
+
+    data.forEach((row, index) => {
+      // Check if this is a summary row
+      const summaryCheck = isSummaryRow(row);
+      
+      // Get mapped values
+      const getMappedValue = (targetField: string): string | undefined => {
+        const mapping = mappings.find(m => m.targetField === targetField);
+        return mapping ? row[mapping.csvColumn] : undefined;
+      };
+
+      const itemName = getMappedValue('itemName') || '';
+      
+      // Skip rows with no item name unless it looks like a summary row
+      if (!itemName && !summaryCheck.isSummary) {
+        skippedRows.push({
+          rowNumber: index + 1,
+          reason: 'Missing item name',
+        });
+        return;
+      }
+
+      // Parse quantity
+      const quantityStr = getMappedValue('quantity');
+      const quantity = safeParseFloat(quantityStr, 1) || 1;
+
+      // Parse prices - prefer gross sales over net sales when we have discount adjustments
+      // This is because gross sales represents the transaction amount before discounts,
+      // and discounts will be tracked separately as adjustment entries
+      const netSales = safeParseFloat(getMappedValue('netSales'), undefined);
+      const grossSales = safeParseFloat(getMappedValue('grossSales'), undefined);
+      const totalPriceRaw = safeParseFloat(getMappedValue('totalPrice'), undefined);
+      const unitPriceRaw = safeParseFloat(getMappedValue('unitPrice'), undefined);
+
+      // Check if we have discount adjustments for this item
+      const hasDiscountForItem = adjustmentMappings.some(m => m.adjustmentType === 'discount');
+
+      // Determine the best total price
+      // When discounts are tracked separately, use gross sales (before discount)
+      const totalPrice = hasDiscountForItem 
+        ? (grossSales ?? totalPriceRaw ?? netSales)
+        : (netSales ?? totalPriceRaw ?? grossSales);
+      const unitPrice = unitPriceRaw ?? (totalPrice !== undefined ? totalPrice / quantity : undefined);
+
+      // Parse date and time
+      let saleDate = getMappedValue('saleDate') || '';
+      if (saleDate) {
+        const dateObj = new Date(saleDate);
+        if (!isNaN(dateObj.getTime())) {
+          saleDate = dateObj.toISOString().split('T')[0];
+        } else {
+          saleDate = '';
+        }
+      }
+
+      const saleTime = getMappedValue('saleTime');
+      const orderId = getMappedValue('orderId');
+      const category = getMappedValue('category');
+      const department = getMappedValue('department');
+
+      // Create the main sale record
+      const baseSale: ParsedSale = {
+        itemName: itemName.trim(),
+        quantity,
+        totalPrice,
+        unitPrice,
+        saleDate,
+        saleTime: saleTime || undefined,
+        orderId: orderId || `manual_upload_${Date.now()}_${index}`,
+        category: category || department || undefined,
+        isSummaryRow: summaryCheck.isSummary,
+        summaryRowReason: summaryCheck.reason,
+        rawData: {
+          ...row,
+          _parsedMeta: {
+            posSystem: 'manual_upload',
+            importedAt: new Date().toISOString(),
+            rowIndex: index,
+          }
+        },
+      };
+
+      parsedSales.push(baseSale);
+
+      // Process adjustment columns (discount, tax, tip, etc.)
+      adjustmentMappings.forEach(adjMapping => {
+        const adjValue = row[adjMapping.csvColumn];
+        const adjAmount = safeParseFloat(adjValue, undefined);
+        
+        if (adjAmount && adjAmount !== 0) {
+          // Create a separate adjustment entry
+          const adjustmentName = `${itemName || 'Item'} - ${adjMapping.adjustmentType}`;
+          
+          parsedSales.push({
+            itemName: adjustmentName,
+            quantity: 1,
+            // Discounts should be negative, others positive
+            totalPrice: adjMapping.adjustmentType === 'discount' ? -Math.abs(adjAmount) : Math.abs(adjAmount),
+            unitPrice: adjMapping.adjustmentType === 'discount' ? -Math.abs(adjAmount) : Math.abs(adjAmount),
+            saleDate,
+            saleTime: saleTime || undefined,
+            orderId: orderId || `manual_upload_${Date.now()}_${index}_adj`,
+            category: `Adjustment - ${adjMapping.adjustmentType}`,
+            adjustmentType: adjMapping.adjustmentType,
+            isSummaryRow: summaryCheck.isSummary,
+            rawData: {
+              ...row,
+              _parsedMeta: {
+                posSystem: 'manual_upload',
+                importedAt: new Date().toISOString(),
+                rowIndex: index,
+                isAdjustment: true,
+                parentItemName: itemName,
+              }
+            },
+          });
+        }
+      });
+    });
+
+    if (skippedRows.length > 0) {
+      setParsingErrors(skippedRows);
+    }
+
+    return parsedSales;
+  };
+
+  const parseCSVFile = async (file: File, mappings?: ColumnMapping[]): Promise<ParsedSale[]> => {
     return new Promise((resolve, reject) => {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
-        complete: (results) => {
+        transformHeader: (header: string, index: number) => {
+          // Handle duplicate headers by appending index
+          // Papa Parse will warn but we'll make it unique
+          return header.trim() || `Column_${index}`;
+        },
+        complete: async (results) => {
           try {
-            // Keep track of skipped rows for reporting
-            const skippedRows: { rowNumber: number; reason: string }[] = [];
+            const data = results.data as Record<string, string>[];
+            const headers = results.meta.fields || [];
+
+            if (headers.length === 0 || data.length === 0) {
+              reject(new Error('CSV file appears to be empty'));
+              return;
+            }
             
-            // Check if the CSV has a date column at all
-            const firstRow = results.data[0] as Record<string, string>;
-            const hasDateColumn = firstRow && (
-              'Date' in firstRow || 
-              'date' in firstRow || 
-              'Sale Date' in firstRow ||
-              'sale_date' in firstRow ||
-              'Order Date' in firstRow ||
-              'Transaction Date' in firstRow
-            );
+            // Check for any errors in parsing
+            if (results.errors && results.errors.length > 0) {
+              console.warn('CSV parsing warnings:', results.errors);
+              // Only reject if there are fatal errors, not warnings
+              const fatalErrors = results.errors.filter(err => err.type === 'Quotes' || err.type === 'FieldMismatch');
+              if (fatalErrors.length > 0) {
+                reject(new Error(`CSV parsing errors: ${fatalErrors.map(e => e.message).join(', ')}`));
+                return;
+              }
+            }
+
+            // If mappings provided, use them directly
+            if (mappings) {
+              const parsedSales = parseCSVWithMappings(data, mappings);
+              resolve(parsedSales);
+              return;
+            }
+
+            // Try to extract date from filename
+            const extractedDate = extractDateFromFilename(file.name);
+            if (extractedDate) {
+              setDetectedDate({
+                date: extractedDate.date,
+                confidence: extractedDate.confidence,
+              });
+            }
+
+            // Try to load saved templates and find best match
+            let finalMappings = suggestColumnMappings(headers, data.slice(0, 10));
             
-            // Track if we need to prompt for a date
-            const needsDateInput = !hasDateColumn;
-            
-            // Process rows, filtering out invalid ones
-            const parsedSales = results.data
-              .map((row: Record<string, string>, index: number) => {
-                // Flexible column mapping - try to detect common column names
-                // TOAST POS typically uses: Item, Quantity, Amount, Date, Time
-                
-                // Find item name column (case insensitive)
-                // For Toast POS: check for both "Item" and "Modifier" since modifiers have their name in the "Modifier" column
-                const itemName = 
-                  row['Item'] || 
-                  row['item'] ||
-                  row['Modifier'] ||
-                  row['modifier'] ||
-                  row['Size modifier'] || // Handle additional fields from Toast
-                  row['Item Name'] || 
-                  row['item_name'] ||
-                  row['Product'] ||
-                  row['product'] ||
-                  row['Menu Item'] ||
-                  row['Name'] ||
-                  row['name'] ||
-                  '';
-
-                // Helper function to normalize numeric strings before parsing
-                const normalizeNumericString = (value: string | undefined): string => {
-                  if (!value) return '';
-                  
-                  // Remove currency symbols, thousands separators, and trim
-                  let normalized = value.trim()
-                    .replace(/[$£€¥]/g, '')  // Remove currency symbols (all occurrences)
-                    .replace(/,/g, '');     // Remove thousands separators
-                  
-                  // Handle parentheses for negative values: (123.45) -> -123.45
-                  if (normalized.startsWith('(') && normalized.endsWith(')')) {
-                    normalized = '-' + normalized.substring(1, normalized.length - 1);
-                  }
-                  
-                  return normalized;
-                };
-                
-                // Helper function to safely parse a numeric value with proper fallback
-                const safeParseFloat = (value: string | undefined, fallback: number | undefined): number | undefined => {
-                  if (!value) return fallback;
-                  const normalized = normalizeNumericString(value);
-                  if (normalized === '') return fallback;
-                  
-                  const parsed = parseFloat(normalized);
-                  return isNaN(parsed) ? fallback : parsed;
-                };
-
-                // Find quantity column - Toast POS uses "Qty sold"
-                const quantityStr = 
-                  row['Qty sold'] || 
-                  row['qty sold'] ||
-                  row['Quantity'] || 
-                  row['quantity'] || 
-                  row['Qty'] || 
-                  row['qty'] || 
-                  row['Count'] ||
-                  '';
-                
-                // For quantity, we want to preserve 0 but fallback to 1 for missing/invalid values
-                const quantity = safeParseFloat(quantityStr, 1);
-
-                // Find price columns
-                // Toast POS has several price fields - try to use the most appropriate one
-                const grossSales = safeParseFloat(row['Gross sales'] || row['gross sales'] || '', undefined);
-                const netSales = safeParseFloat(row['Net sales'] || row['net sales'] || '', undefined);
-                const avgPrice = safeParseFloat(row['Avg. price'] || row['avg. price'] || row['avg price'] || '', undefined);
-                const avgItemPrice = safeParseFloat(row['Avg. item price (not incl. mods)'] || '', undefined);
-                
-                // For total price, prioritize net or gross sales over other fields as they represent actual revenue
-                const totalPriceStr = 
-                  // Try to find the best available price column
-                  // Only look up raw strings if the parsed values weren't found
-                  (netSales !== undefined) ? String(netSales) :
-                  (grossSales !== undefined) ? String(grossSales) :
-                  row['Total'] || 
-                  row['total'] || 
-                  row['Amount'] || 
-                  row['amount'] ||
-                  row['Total Amount'] ||
-                  row['Price'] ||
-                  '';
-                
-                // Only parse if we need to (i.e., we got a string, not a pre-parsed value)
-                const totalPrice = (netSales !== undefined) ? netSales :
-                                  (grossSales !== undefined) ? grossSales :
-                                  safeParseFloat(totalPriceStr, undefined);
-
-                // For unit price, try to use avg price fields first
-                const unitPriceStr =
-                  // Try to find the best available unit price column
-                  // Only look up raw strings if the parsed values weren't found
-                  (avgPrice !== undefined) ? String(avgPrice) :
-                  (avgItemPrice !== undefined) ? String(avgItemPrice) :
-                  row['Unit Price'] ||
-                  row['unit_price'] ||
-                  row['Price'] ||
-                  row['price'] ||
-                  '';
-                
-                // Only parse if we need to (i.e., we got a string, not a pre-parsed value)
-                const unitPrice = (avgPrice !== undefined) ? avgPrice :
-                                 (avgItemPrice !== undefined) ? avgItemPrice :
-                                 safeParseFloat(unitPriceStr, undefined);
-
-                // Find date column
-                let saleDate = 
-                  row['Date'] || 
-                  row['date'] || 
-                  row['Sale Date'] ||
-                  row['sale_date'] ||
-                  row['Order Date'] ||
-                  row['Transaction Date'] ||
-                  '';
-
-                let hasDateWarning = false;
-
-                // Only validate date if the CSV has a date column
-                if (!needsDateInput) {
-                  // Try to parse and format date
-                  if (saleDate) {
-                    const dateObj = new Date(saleDate);
-                    if (!isNaN(dateObj.getTime())) {
-                      saleDate = dateObj.toISOString().split('T')[0];
-                    } else {
-                      // Mark as having a date warning - DO NOT default to today
-                      hasDateWarning = true;
-                      skippedRows.push({ 
-                        rowNumber: index + 1, 
-                        reason: 'Invalid date format - could not parse date' 
-                      });
-                      return null;
-                    }
-                  } else {
-                    // Mark as having a date warning - DO NOT default to today
-                    hasDateWarning = true;
-                    skippedRows.push({ 
-                      rowNumber: index + 1, 
-                      reason: 'Missing date - date column is required' 
-                    });
-                    return null;
-                  }
-                } else {
-                  // No date column in CSV - will be prompted for date in UI
-                  saleDate = ''; // Empty string indicates date needed
-                }
-
-                // Find time column
-                const saleTime = 
-                  row['Time'] || 
-                  row['time'] || 
-                  row['Sale Time'] ||
-                  row['Order Time'] ||
-                  '';
-
-                // Get additional Toast-specific IDs
-                const masterId = row['masterId'] || '';
-                const parentId = row['parentId'] || '';
-                const itemGuid = row['itemGuid'] || '';
-
-                // Create a more reliable unique ID for POS data
-                // Priority: Use real POS identifiers when available, then create unique fallback
-                let orderId = '';
-                
-                // If we have Toast-specific IDs, use them for a unique compound identifier
-                if (itemGuid || masterId || parentId) {
-                  // For Toast data, create a compound ID from all available IDs
-                  // Include date and time to make it unique per transaction
-                  const datePart = saleDate || `row${index}`;
-                  const timeComponent = saleTime ? `_${saleTime.replace(/:/g, '')}` : '';
-                  orderId = `manual_upload_${itemGuid || 'none'}_${masterId || 'none'}_${parentId || 'none'}_${itemName.replace(/\s+/g, '_').toLowerCase()}_${datePart}${timeComponent}`;
-                } else {
-                  // For other POS systems, try to find a transaction ID
-                  const externalOrderId = 
-                    row['Order ID'] ||
-                    row['order_id'] ||
-                    row['Check #'] ||
-                    row['Check Number'] ||
-                    row['Transaction ID'] ||
-                    '';
-                  
-                  if (externalOrderId) {
-                    // Use the POS system's transaction ID - this is unique per transaction
-                    orderId = externalOrderId;
-                  } else {
-                    // FALLBACK: No POS identifiers available
-                    // Include time AND row index to ensure uniqueness for multiple sales of same item
-                    // This allows multiple transactions of the same item on the same day
-                    const priceForId = totalPrice || unitPrice || 0;
-                    const timeComponent = saleTime ? `_${saleTime.replace(/:/g, '')}` : '';
-                    // Include row index to ensure each row gets a unique ID
-                    orderId = `manual_upload_${itemName.replace(/\s+/g, '_').toLowerCase()}_${quantity}_${saleDate}${timeComponent}_${priceForId.toFixed(2)}_row${index}`;
-                  }
-                }
-                  
-                // Get item category - useful for categorizing sales
-                const itemCategory = 
-                  row['Sales Category'] || 
-                  row['sales category'] ||
-                  row['Category'] ||
-                  row['category'] ||
-                  '';
-                  
-                // Get item tags - useful for filtering
-                const itemTags = 
-                  row['Item tags'] || 
-                  row['item tags'] ||
-                  row['Tags'] ||
-                  row['tags'] ||
-                  '';
-
-                // If no item name, track this row as skipped but don't throw an error
-                if (!itemName) {
-                  skippedRows.push({ 
-                    rowNumber: index + 1, 
-                    reason: 'Missing item name' 
-                  });
-                  return null;
-                }
-                
-                // Flag items with zero quantity or voided transactions
-                const voidAmount = safeParseFloat(row['Void amount'], 0);
-                const isVoidedOrZeroQuantity = quantity === 0 || (totalPrice === 0 && voidAmount && voidAmount > 0);
-
-                return {
-                  itemName: itemName.trim(),
-                  quantity,
-                  totalPrice,
-                  unitPrice,
-                  saleDate,
-                  saleTime: saleTime || undefined,
-                  orderId: orderId || undefined,
-                  // Add additional fields to the main object
-                  category: itemCategory || undefined,
-                  tags: itemTags || undefined,
-                  // Store enhanced metadata in rawData
-                  rawData: {
-                    ...row,
-                    _parsedMeta: {
-                      posSystem: 'manual_upload',
-                      masterId,
-                      parentId,
-                      itemGuid,
-                      compoundOrderId: orderId, // Store the compound ID we created
-                      importedAt: new Date().toISOString(),
-                      hasDateWarning, // Flag if date had issues
-                      isVoidedOrZeroQuantity, // Flag voided or zero-quantity items
-                      voidAmount,
-                    }
-                  },
-                };
-              })
-              // Filter out null entries (skipped rows)
-              .filter((sale) => sale !== null) as ParsedSale[];
-
-            // If we skipped any rows, log them and include in the toast message
-            if (skippedRows.length > 0) {
-              console.warn('Skipped rows during CSV import:', skippedRows);
+            if (selectedRestaurant?.restaurant_id) {
+              const { templates } = await loadMappingTemplates(selectedRestaurant.restaurant_id);
+              const bestTemplate = findBestMatchingTemplate(headers, templates);
               
-              // We'll attach the skipped rows info to the parsed sales to display in the toast
-              (parsedSales as any).skippedRows = skippedRows;
+              if (bestTemplate) {
+                // Apply the template
+                finalMappings = applyTemplate(bestTemplate, headers);
+                toast({
+                  title: 'Template applied',
+                  description: `Using saved mapping template: "${bestTemplate.template_name}"`,
+                });
+              }
             }
-
-            // Attach metadata about whether we need date input
-            if (needsDateInput) {
-              (parsedSales as any).needsDateInput = true;
-            }
-
-            resolve(parsedSales);
+            
+            // Always show mapping dialog to allow users to review and adjust mappings
+            // This gives users control even when auto-mapping is confident
+            setCsvHeaders(headers);
+            setCsvRawData(data);
+            setSuggestedMappings(finalMappings);
+            setPendingFile(file);
+            setShowMappingDialog(true);
+            
+            // Don't resolve yet - wait for user to confirm mappings
+            reject(new Error('PENDING_MAPPING'));
           } catch (error) {
             reject(error);
           }
@@ -334,6 +291,95 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         },
       });
     });
+  };
+
+  const handleMappingConfirm = async (confirmedMappings: ColumnMapping[], templateName?: string) => {
+    setShowMappingDialog(false);
+    setIsProcessing(true);
+
+    try {
+      if (!pendingFile) {
+        throw new Error('No file available');
+      }
+
+      // Save template if requested
+      if (templateName && selectedRestaurant?.restaurant_id) {
+        const { saveMappingTemplate } = await import('@/utils/mappingTemplates');
+        const result = await saveMappingTemplate(
+          selectedRestaurant.restaurant_id,
+          templateName,
+          csvHeaders,
+          confirmedMappings
+        );
+        
+        if (result.success) {
+          toast({
+            title: 'Template saved',
+            description: `Mapping template "${templateName}" has been saved for future use`,
+          });
+        } else {
+          toast({
+            title: 'Template save failed',
+            description: result.error || 'Failed to save template',
+            variant: 'destructive',
+          });
+        }
+      }
+
+      const parsedSales = await parseCSVFile(pendingFile, confirmedMappings);
+      
+      if (parsedSales.length === 0) {
+        toast({
+          title: "No data found",
+          description: "The CSV file appears to be empty after filtering",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // If we detected a date from the filename, set it on all rows that don't have dates
+      if (detectedDate) {
+        const dateStr = detectedDate.date.toISOString().split('T')[0];
+        parsedSales.forEach(sale => {
+          if (!sale.saleDate) {
+            sale.saleDate = dateStr;
+          }
+        });
+      }
+
+      // Check if any rows are missing dates (after filename date application)
+      const rowsMissingDates = parsedSales.some(sale => !sale.saleDate);
+      if (rowsMissingDates) {
+        // Set a flag on the array to indicate date input is needed
+        (parsedSales as any).needsDateInput = true;
+      }
+
+      // Check for summary rows
+      const hasSummaryRows = parsedSales.some(sale => sale.isSummaryRow);
+      if (hasSummaryRows) {
+        toast({
+          title: 'Summary rows detected',
+          description: 'Some rows appear to be totals or summaries. They are highlighted in the review screen.',
+        });
+      }
+
+      toast({
+        title: "File processed",
+        description: `Successfully parsed ${parsedSales.length} records`,
+      });
+
+      onFileProcessed(parsedSales);
+    } catch (error) {
+      console.error('Error processing file:', error);
+      toast({
+        title: "Error processing file",
+        description: error instanceof Error ? error.message : "Failed to parse CSV file",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+      setPendingFile(null);
+    }
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -365,37 +411,22 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         return;
       }
 
-      // Check if we need date input from user
-      const needsDateInput = (parsedSales as any).needsDateInput;
-      
-      // Check if we have skipped rows
-      const skippedRows = (parsedSales as any).skippedRows;
-      if (skippedRows && skippedRows.length > 0) {
-        // Store errors for prominent display
-        setParsingErrors(skippedRows);
-          
-        toast({
-          title: "File processed with warnings",
-          description: `Successfully parsed ${parsedSales.length} sales records. See details below.`,
-          variant: "destructive",
-        });
-      } else if (needsDateInput) {
-        toast({
-          title: "Date required",
-          description: `Parsed ${parsedSales.length} items. Please enter a sale date to continue.`,
-        });
-      } else {
-        toast({
-          title: "File processed",
-          description: `Successfully parsed ${parsedSales.length} sales records`,
-        });
-      }
+      toast({
+        title: "File processed",
+        description: `Successfully parsed ${parsedSales.length} records`,
+      });
 
-      // Clean up the skipped rows property before passing to the parent
-      delete (parsedSales as any).skippedRows;
-      // Keep needsDateInput flag for parent component
       onFileProcessed(parsedSales);
     } catch (error) {
+      // Special case: mapping dialog is being shown, don't show error
+      if (error instanceof Error && error.message === 'PENDING_MAPPING') {
+        toast({
+          title: "Review column mappings",
+          description: "Please confirm how your CSV columns map to our fields",
+        });
+        return;
+      }
+
       console.error('Error processing file:', error);
       const errorMessage = error instanceof Error ? error.message : "Failed to parse CSV file";
       toast({
@@ -482,12 +513,23 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
             <li>• Recommended: Date, Quantity, Price/Amount, Time, Order ID</li>
             <li>• Files without dates will prompt you to enter a date during review</li>
             <li>• Column names are case-insensitive and flexible</li>
-            <li>• Toast POS exports are fully supported (items & modifiers)</li>
-            <li>• Summary rows without item names will be skipped</li>
+            <li>• <strong>Automatic adjustment detection</strong>: Columns with discounts, taxes, and tips create separate entries</li>
+            <li>• Summary rows (like "Totals:") are automatically detected and excluded</li>
             <li>• Duplicate transactions are automatically detected and prevented</li>
           </ul>
         </div>
       </CardContent>
+
+      <ColumnMappingDialog
+        open={showMappingDialog}
+        onOpenChange={setShowMappingDialog}
+        csvHeaders={csvHeaders}
+        sampleData={csvRawData.slice(0, 10)}
+        suggestedMappings={suggestedMappings}
+        onConfirm={handleMappingConfirm}
+        detectedDate={detectedDate}
+        restaurantId={selectedRestaurant?.restaurant_id}
+      />
     </Card>
   );
 };

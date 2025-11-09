@@ -258,23 +258,42 @@ export default function POSSales() {
   const dashboardMetrics = useMemo(() => {
     const totalSales = filteredSales.length;
     
-    // For revenue, use child splits totals if sale is split, otherwise use the sale's total
-    const totalRevenue = filteredSales.reduce((sum, sale) => {
+    // Separate revenue items from pass-through items based on adjustment_type
+    let revenue = 0;
+    let passThroughAmount = 0;
+    
+    filteredSales.forEach(sale => {
+      // Calculate total for this sale (including child splits if applicable)
+      let saleTotal = 0;
+      
       if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
         // Sum child split amounts for split sales
-        return sum + sale.child_splits.reduce((childSum, split) => 
+        saleTotal = sale.child_splits.reduce((childSum, split) => 
           childSum + (split.totalPrice || 0), 0
         );
+      } else {
+        // Use parent sale amount for non-split sales
+        saleTotal = sale.totalPrice || 0;
       }
-      // Use parent sale amount for non-split sales
-      return sum + (sale.totalPrice || 0);
-    }, 0);
+      
+      // Categorize as revenue or pass-through based on adjustment_type
+      if (sale.adjustment_type) {
+        // Items with adjustment_type are pass-through (tax, tip, service_charge, discount, fee)
+        passThroughAmount += saleTotal;
+      } else {
+        // Items without adjustment_type are revenue
+        revenue += saleTotal;
+      }
+    });
     
+    const collectedAtPOS = revenue + passThroughAmount;
     const uniqueItems = new Set(filteredSales.map(sale => sale.itemName)).size;
     
     return {
       totalSales,
-      totalRevenue,
+      revenue,
+      passThroughAmount,
+      collectedAtPOS,
       uniqueItems,
       unmappedCount: unmappedItems.length,
     };
@@ -389,8 +408,10 @@ export default function POSSales() {
         : "All Time";
 
       const metrics = [
+        { label: "Collected at POS", value: `$${dashboardMetrics.collectedAtPOS.toFixed(2)}` },
+        { label: "Revenue", value: `$${dashboardMetrics.revenue.toFixed(2)}` },
+        { label: "Pass-Through Items", value: `$${dashboardMetrics.passThroughAmount.toFixed(2)}` },
         { label: "Total Sales", value: dashboardMetrics.totalSales.toString() },
-        { label: "Total Revenue", value: `$${dashboardMetrics.totalRevenue.toFixed(2)}` },
         { label: "Unique Items", value: dashboardMetrics.uniqueItems.toString() },
       ];
 
@@ -502,7 +523,9 @@ export default function POSSales() {
       {/* Dashboard Metrics */}
       <POSSalesDashboard
         totalSales={dashboardMetrics.totalSales}
-        totalRevenue={dashboardMetrics.totalRevenue}
+        totalRevenue={dashboardMetrics.revenue}
+        passThroughAmount={dashboardMetrics.passThroughAmount}
+        collectedAtPOS={dashboardMetrics.collectedAtPOS}
         uniqueItems={dashboardMetrics.uniqueItems}
         unmappedCount={dashboardMetrics.unmappedCount}
       />

@@ -57,7 +57,12 @@ export function usePeriodMetrics(
   refetch: () => void;
 } {
   // Get revenue from unified_sales (correct source)
-  const { data: revenueData, isLoading: revenueLoading, refetch: refetchRevenue } = useRevenueBreakdown(
+  const {
+    data: revenueData,
+    isLoading: revenueLoading,
+    refetch: refetchRevenue,
+    error: revenueError,
+  } = useRevenueBreakdown(
     restaurantId,
     dateFrom,
     dateTo
@@ -69,6 +74,7 @@ export function usePeriodMetrics(
     totalLaborCost,
     isLoading: costsLoading,
     refetch: refetchCosts,
+    error: costsError,
   } = useCostsFromSource(restaurantId, dateFrom, dateTo);
   
   const metrics = useMemo((): PeriodMetrics | null => {
@@ -124,7 +130,7 @@ export function usePeriodMetrics(
   return {
     data: metrics,
     isLoading: revenueLoading || costsLoading,
-    error: null,
+    error: revenueError ?? costsError ?? null,
     refetch,
   };
 }

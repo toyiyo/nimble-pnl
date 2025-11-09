@@ -360,7 +360,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
 
       toast({
         title: "Import successful",
-        description: `Successfully imported ${editableSales.length} sales records`,
+        description: `Successfully imported ${recordsToInsert.length} sales record${recordsToInsert.length === 1 ? '' : 's'}`,
       });
 
       onImportComplete();

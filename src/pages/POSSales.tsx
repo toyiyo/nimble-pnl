@@ -258,8 +258,9 @@ export default function POSSales() {
   const dashboardMetrics = useMemo(() => {
     const totalSales = filteredSales.length;
     
-    // Separate revenue items from pass-through items based on adjustment_type
+    // Separate revenue items from discounts and pass-through items based on adjustment_type
     let revenue = 0;
+    let discounts = 0;
     let passThroughAmount = 0;
     
     filteredSales.forEach(sale => {
@@ -276,9 +277,12 @@ export default function POSSales() {
         saleTotal = sale.totalPrice || 0;
       }
       
-      // Categorize as revenue or pass-through based on adjustment_type
-      if (sale.adjustment_type) {
-        // Items with adjustment_type are pass-through (tax, tip, service_charge, discount, fee)
+      // Categorize based on adjustment_type
+      if (sale.adjustment_type === 'discount') {
+        // Discounts are negative and shown separately
+        discounts += saleTotal;
+      } else if (sale.adjustment_type) {
+        // Other adjustment types are pass-through (tax, tip, service_charge, fee)
         passThroughAmount += saleTotal;
       } else {
         // Items without adjustment_type are revenue
@@ -286,12 +290,13 @@ export default function POSSales() {
       }
     });
     
-    const collectedAtPOS = revenue + passThroughAmount;
+    const collectedAtPOS = revenue + passThroughAmount + discounts;
     const uniqueItems = new Set(filteredSales.map(sale => sale.itemName)).size;
     
     return {
       totalSales,
       revenue,
+      discounts,
       passThroughAmount,
       collectedAtPOS,
       uniqueItems,
@@ -410,6 +415,7 @@ export default function POSSales() {
       const metrics = [
         { label: "Collected at POS", value: `$${dashboardMetrics.collectedAtPOS.toFixed(2)}` },
         { label: "Revenue", value: `$${dashboardMetrics.revenue.toFixed(2)}` },
+        { label: "Discounts", value: `$${dashboardMetrics.discounts.toFixed(2)}` },
         { label: "Pass-Through Items", value: `$${dashboardMetrics.passThroughAmount.toFixed(2)}` },
         { label: "Total Sales", value: dashboardMetrics.totalSales.toString() },
         { label: "Unique Items", value: dashboardMetrics.uniqueItems.toString() },
@@ -524,6 +530,7 @@ export default function POSSales() {
       <POSSalesDashboard
         totalSales={dashboardMetrics.totalSales}
         totalRevenue={dashboardMetrics.revenue}
+        discounts={dashboardMetrics.discounts}
         passThroughAmount={dashboardMetrics.passThroughAmount}
         collectedAtPOS={dashboardMetrics.collectedAtPOS}
         uniqueItems={dashboardMetrics.uniqueItems}

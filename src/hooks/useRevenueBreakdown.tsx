@@ -137,6 +137,7 @@ export function useRevenueBreakdown(
           tax_categories: [],
           tip_categories: [],
           other_liability_categories: [],
+          adjustments: [],
           uncategorized_revenue: 0,
           totals: {
             total_collected_at_pos: 0,

@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { TrendingUp, DollarSign, Package, AlertCircle, Clock } from "lucide-react";
+import { TrendingUp, DollarSign, Package, AlertCircle, Clock, TrendingDown } from "lucide-react";
 import { format } from "date-fns";
 
 interface DashboardMetric {
@@ -13,6 +13,7 @@ interface DashboardMetric {
 interface POSSalesDashboardProps {
   totalSales: number;
   totalRevenue: number;
+  discounts: number;
   passThroughAmount: number;
   collectedAtPOS: number;
   uniqueItems: number;
@@ -23,6 +24,7 @@ interface POSSalesDashboardProps {
 export const POSSalesDashboard = ({
   totalSales,
   totalRevenue,
+  discounts,
   passThroughAmount,
   collectedAtPOS,
   uniqueItems,
@@ -43,6 +45,12 @@ export const POSSalesDashboard = ({
       gradient: "from-green-500/10 to-emerald-500/10",
     },
     {
+      label: "Discounts",
+      value: `$${discounts.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: <TrendingDown className="h-5 w-5" />,
+      gradient: "from-red-500/10 to-rose-500/10",
+    },
+    {
       label: "Pass-Through Items",
       value: `$${passThroughAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: <AlertCircle className="h-5 w-5" />,
@@ -58,7 +66,7 @@ export const POSSalesDashboard = ({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {metrics.map((metric, index) => (
           <Card
             key={index}

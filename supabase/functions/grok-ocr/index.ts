@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { logAICall, type AICallMetadata } from "../_shared/braintrust.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

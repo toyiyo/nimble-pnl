@@ -347,8 +347,8 @@ Deno.serve(async (req) => {
                 const paysData = await paysResp.json();
                 const payments = paysData.elements ?? [];
 
-                // Sum taxes, tips, and amounts from payments (source of truth)
-                taxCents = payments.reduce((s, p) => s + (p.taxAmount ?? 0), 0);
+                // Sum tips and amounts from payments (source of truth)
+                // Note: taxAmount is not provided by Clover API - we calculate it later from order total
                 tipCents = payments.reduce((s, p) => s + (p.tipAmount ?? 0), 0);
                 paidCents = payments.reduce((s, p) => s + (p.amount ?? 0), 0); // includes tax, excludes tip
 
@@ -371,13 +371,11 @@ Deno.serve(async (req) => {
               } else {
                 console.warn(`Failed to fetch payments for order ${order.id}:`, await paysResp.text());
                 // Fallback to order-level fields if payment fetch fails
-                taxCents = order.taxAmount ?? 0;
                 tipCents = order.tipAmount ?? 0;
               }
             } catch (paymentError) {
               console.error(`Error fetching payments for order ${order.id}:`, paymentError.message);
               // Fallback to order-level fields
-              taxCents = order.taxAmount ?? 0;
               tipCents = order.tipAmount ?? 0;
             }
 
@@ -435,11 +433,39 @@ Deno.serve(async (req) => {
                 );
               }
             }
+
+            // Calculate tax from order total minus line items subtotal
+            // This is the only reliable way to get tax since Clover doesn't provide it directly
+            const revenueSubtotal = order.lineItems?.elements
+              ?.filter(li => li.isRevenue)
+              .reduce((sum, li) => {
+                const qty = (li.unitQty ?? 1000) / 1000;
+                const price = li.price ?? 0;
+                return sum + (price * qty);
+              }, 0) ?? 0;
+
+            // Tax = order.total - revenueSubtotal - serviceCharge + discount
+            // (discounts reduce the subtotal, so add back to get pre-discount amount)
+            taxCents = Math.max(0, 
+              (order.total ?? 0) 
+              - revenueSubtotal 
+              - (order.serviceCharge?.amount ?? 0)
+              + (order.discount?.amount ?? 0)
+            );
+
+            console.log(`Order ${order.id} tax calculation:`, {
+              orderTotal: order.total,
+              revenueSubtotal,
+              serviceCharge: order.serviceCharge?.amount ?? 0,
+              discount: order.discount?.amount ?? 0,
+              calculatedTaxCents: taxCents,
+            });
+
             // Extract and store adjustments (don't create fake line items)
             // This keeps revenue metrics clean and accounting-compliant
             const adjustments = [];
 
-            // Tax (from payments - source of truth)
+            // Tax (calculated from order total)
             // Respect taxRemoved flag - if true, tax was removed and should be 0
             if (taxCents > 0 && !order.taxRemoved) {
               // Check if this is a VAT order (tax included in prices)

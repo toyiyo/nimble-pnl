@@ -8,6 +8,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -25,8 +27,9 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, CheckCircle, Info } from 'lucide-react';
+import { AlertCircle, CheckCircle, Info, Save, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
 
 export interface ColumnMapping {
   csvColumn: string;
@@ -42,7 +45,9 @@ export interface ColumnMappingDialogProps {
   csvHeaders: string[];
   sampleData: Record<string, string>[];
   suggestedMappings: ColumnMapping[];
-  onConfirm: (mappings: ColumnMapping[]) => void;
+  onConfirm: (mappings: ColumnMapping[], saveAsTemplate?: string) => void;
+  detectedDate?: { date: Date; confidence: string } | null;
+  restaurantId?: string;
 }
 
 // Target fields available for mapping
@@ -73,8 +78,12 @@ export const ColumnMappingDialog: React.FC<ColumnMappingDialogProps> = ({
   sampleData,
   suggestedMappings,
   onConfirm,
+  detectedDate,
+  restaurantId,
 }) => {
   const [mappings, setMappings] = useState<ColumnMapping[]>(suggestedMappings);
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState('');
 
   // Update mappings when suggestions change
   React.useEffect(() => {
@@ -144,6 +153,20 @@ export const ColumnMappingDialog: React.FC<ColumnMappingDialogProps> = ({
         </DialogHeader>
 
         <div className="space-y-4">
+          {detectedDate && (
+            <Alert className="border-blue-300 bg-blue-50">
+              <Calendar className="h-4 w-4 text-blue-700" />
+              <AlertDescription>
+                <p className="font-medium text-blue-900 mb-1">Date detected from filename</p>
+                <p className="text-sm text-blue-700">
+                  Found date: <strong>{format(detectedDate.date, 'PPP')}</strong> (confidence: {detectedDate.confidence})
+                  {' '}
+                  You can confirm or change this date in the next step.
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {!validation.isValid && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -279,13 +302,47 @@ export const ColumnMappingDialog: React.FC<ColumnMappingDialogProps> = ({
               </ul>
             </AlertDescription>
           </Alert>
+
+          {restaurantId && (
+            <div className="border rounded-lg p-4 bg-muted/50">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="checkbox"
+                  id="save-template"
+                  checked={saveAsTemplate}
+                  onChange={(e) => setSaveAsTemplate(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="save-template" className="font-medium cursor-pointer">
+                  Save this mapping as a template
+                </Label>
+              </div>
+              {saveAsTemplate && (
+                <div className="mt-2">
+                  <Input
+                    placeholder="Template name (e.g., 'My POS Export')"
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Save this mapping to automatically apply it to future files with the same column structure
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={() => onConfirm(mappings)} disabled={!validation.isValid}>
+          <Button 
+            onClick={() => onConfirm(mappings, saveAsTemplate && templateName ? templateName : undefined)} 
+            disabled={!validation.isValid || (saveAsTemplate && !templateName)}
+          >
+            {saveAsTemplate && <Save className="w-4 h-4 mr-2" />}
             Continue with Mapping
           </Button>
         </DialogFooter>

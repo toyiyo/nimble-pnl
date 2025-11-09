@@ -6,9 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 import { Upload, FileText, AlertCircle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import Papa from 'papaparse';
 import { ColumnMappingDialog, ColumnMapping } from './ColumnMappingDialog';
 import { suggestColumnMappings, isSummaryRow } from '@/utils/csvColumnMapping';
+import { extractDateFromFilename } from '@/utils/filenameDateExtraction';
+import { loadMappingTemplates, findBestMatchingTemplate, applyTemplate } from '@/utils/mappingTemplates';
 
 interface POSSalesFileUploadProps {
   onFileProcessed: (data: ParsedSale[]) => void;
@@ -38,7 +41,9 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
   const [csvRawData, setCsvRawData] = useState<Record<string, string>[]>([]);
   const [suggestedMappings, setSuggestedMappings] = useState<ColumnMapping[]>([]);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [detectedDate, setDetectedDate] = useState<{ date: Date; confidence: string } | null>(null);
   const { toast } = useToast();
+  const { selectedRestaurant } = useRestaurantContext();
 
   const parseCSVWithMappings = (
     data: Record<string, string>[],
@@ -213,7 +218,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
           // Papa Parse will warn but we'll make it unique
           return header.trim() || `Column_${index}`;
         },
-        complete: (results) => {
+        complete: async (results) => {
           try {
             const data = results.data as Record<string, string>[];
             const headers = results.meta.fields || [];
@@ -241,18 +246,37 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
               return;
             }
 
-            // Otherwise, attempt auto-mapping
-            const suggestedMappings = suggestColumnMappings(headers, data.slice(0, 10));
+            // Try to extract date from filename
+            const extractedDate = extractDateFromFilename(file.name);
+            if (extractedDate) {
+              setDetectedDate({
+                date: extractedDate.date,
+                confidence: extractedDate.confidence,
+              });
+            }
+
+            // Try to load saved templates and find best match
+            let finalMappings = suggestColumnMappings(headers, data.slice(0, 10));
             
-            // Check if auto-mapping is confident enough
-            const highConfidenceMappings = suggestedMappings.filter(m => m.confidence === 'high');
-            const hasRequiredFields = suggestedMappings.some(m => m.targetField === 'itemName');
+            if (selectedRestaurant?.restaurant_id) {
+              const { templates } = await loadMappingTemplates(selectedRestaurant.restaurant_id);
+              const bestTemplate = findBestMatchingTemplate(headers, templates);
+              
+              if (bestTemplate) {
+                // Apply the template
+                finalMappings = applyTemplate(bestTemplate, headers);
+                toast({
+                  title: 'Template applied',
+                  description: `Using saved mapping template: "${bestTemplate.template_name}"`,
+                });
+              }
+            }
             
             // Always show mapping dialog to allow users to review and adjust mappings
             // This gives users control even when auto-mapping is confident
             setCsvHeaders(headers);
             setCsvRawData(data);
-            setSuggestedMappings(suggestedMappings);
+            setSuggestedMappings(finalMappings);
             setPendingFile(file);
             setShowMappingDialog(true);
             
@@ -269,13 +293,37 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
     });
   };
 
-  const handleMappingConfirm = async (confirmedMappings: ColumnMapping[]) => {
+  const handleMappingConfirm = async (confirmedMappings: ColumnMapping[], templateName?: string) => {
     setShowMappingDialog(false);
     setIsProcessing(true);
 
     try {
       if (!pendingFile) {
         throw new Error('No file available');
+      }
+
+      // Save template if requested
+      if (templateName && selectedRestaurant?.restaurant_id) {
+        const { saveMappingTemplate } = await import('@/utils/mappingTemplates');
+        const result = await saveMappingTemplate(
+          selectedRestaurant.restaurant_id,
+          templateName,
+          csvHeaders,
+          confirmedMappings
+        );
+        
+        if (result.success) {
+          toast({
+            title: 'Template saved',
+            description: `Mapping template "${templateName}" has been saved for future use`,
+          });
+        } else {
+          toast({
+            title: 'Template save failed',
+            description: result.error || 'Failed to save template',
+            variant: 'destructive',
+          });
+        }
       }
 
       const parsedSales = await parseCSVFile(pendingFile, confirmedMappings);
@@ -287,6 +335,16 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
           variant: "destructive",
         });
         return;
+      }
+
+      // If we detected a date from the filename, set it on all rows that don't have dates
+      if (detectedDate) {
+        const dateStr = detectedDate.date.toISOString().split('T')[0];
+        parsedSales.forEach(sale => {
+          if (!sale.saleDate) {
+            sale.saleDate = dateStr;
+          }
+        });
       }
 
       // Check for summary rows
@@ -462,6 +520,8 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         sampleData={csvRawData.slice(0, 10)}
         suggestedMappings={suggestedMappings}
         onConfirm={handleMappingConfirm}
+        detectedDate={detectedDate}
+        restaurantId={selectedRestaurant?.restaurant_id}
       />
     </Card>
   );

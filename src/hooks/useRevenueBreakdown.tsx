@@ -11,6 +11,12 @@ export interface RevenueCategory {
   transaction_count: number;
 }
 
+export interface AdjustmentBreakdown {
+  adjustment_type: string;
+  total_amount: number;
+  transaction_count: number;
+}
+
 export interface RevenueBreakdownData {
   revenue_categories: RevenueCategory[];
   discount_categories: RevenueCategory[];
@@ -18,6 +24,7 @@ export interface RevenueBreakdownData {
   tax_categories: RevenueCategory[];
   tip_categories: RevenueCategory[];
   other_liability_categories: RevenueCategory[];
+  adjustments: AdjustmentBreakdown[];
   uncategorized_revenue: number;
   totals: {
     total_collected_at_pos: number;
@@ -249,6 +256,49 @@ export function useRevenueBreakdown(
         .filter(a => a.adjustment_type === 'fee')
         .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
 
+      // Build adjustments breakdown array
+      const adjustmentsBreakdown: AdjustmentBreakdown[] = [];
+      
+      if (adjustmentTaxC > 0) {
+        adjustmentsBreakdown.push({
+          adjustment_type: 'tax',
+          total_amount: fromC(adjustmentTaxC),
+          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'tax').length,
+        });
+      }
+      
+      if (adjustmentTipsC > 0) {
+        adjustmentsBreakdown.push({
+          adjustment_type: 'tip',
+          total_amount: fromC(adjustmentTipsC),
+          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'tip').length,
+        });
+      }
+      
+      if (adjustmentServiceChargeC > 0) {
+        adjustmentsBreakdown.push({
+          adjustment_type: 'service_charge',
+          total_amount: fromC(adjustmentServiceChargeC),
+          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'service_charge').length,
+        });
+      }
+      
+      if (adjustmentFeesC > 0) {
+        adjustmentsBreakdown.push({
+          adjustment_type: 'fee',
+          total_amount: fromC(adjustmentFeesC),
+          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'fee').length,
+        });
+      }
+      
+      if (adjustmentDiscountsC > 0) {
+        adjustmentsBreakdown.push({
+          adjustment_type: 'discount',
+          total_amount: fromC(adjustmentDiscountsC),
+          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'discount').length,
+        });
+      }
+
       // Combine categorized amounts with adjustment amounts
       const combinedTaxC = totalTaxC + adjustmentTaxC;
       const combinedTipsC = totalTipsC + adjustmentTipsC;
@@ -299,6 +349,7 @@ export function useRevenueBreakdown(
         other_liability_categories: otherLiabilityCategories.sort((a, b) => 
           (a.account_code || '').localeCompare(b.account_code || '')
         ),
+        adjustments: adjustmentsBreakdown,
         uncategorized_revenue: uncategorizedRevenue,
         totals: {
           total_collected_at_pos: totalCollectedAtPOS,

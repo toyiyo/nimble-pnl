@@ -17,14 +17,12 @@ import {
   Calendar,
   BarChart3
 } from 'lucide-react';
-import { usePnLAnalytics } from '@/hooks/usePnLAnalytics';
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useCostsFromSource } from '@/hooks/useCostsFromSource';
 
 interface DetailedPnLBreakdownProps {
   restaurantId: string;
@@ -68,26 +66,12 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
     actualDateTo
   );
   
-  // Fetch daily cost data for trends (still from daily_pnl)
-  const { data: dailyCosts, isLoading: costsLoading } = useQuery({
-    queryKey: ['pnl-costs-breakdown', restaurantId, days, dateFrom, dateTo],
-    queryFn: async () => {
-      if (!restaurantId) return null;
-      
-      const { data, error } = await supabase
-        .from('daily_pnl')
-        .select('date, food_cost, labor_cost')
-        .eq('restaurant_id', restaurantId)
-        .gte('date', format(actualDateFrom, 'yyyy-MM-dd'))
-        .lte('date', format(actualDateTo, 'yyyy-MM-dd'))
-        .order('date', { ascending: false });
-      
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!restaurantId,
-    staleTime: 30000,
-  });
+  // Fetch daily cost data for trends (from source tables)
+  const { dailyCosts, isLoading: costsLoading } = useCostsFromSource(
+    restaurantId,
+    actualDateFrom,
+    actualDateTo
+  );
 
   const loading = metricsLoading || revenueLoading || costsLoading;
   
@@ -130,12 +114,13 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
     // Helper to calculate trend from daily cost data
     const getTrend = (metric: 'food_cost' | 'labor_cost') => {
       if (!dailyCosts || dailyCosts.length < 2) return [];
-      return dailyCosts.slice(-7).reverse().map(d => d[metric] || 0);
+      // Get last 7 days, reverse to show chronological order
+      return dailyCosts.slice(-7).map(d => d[metric] || 0);
     };
 
     const getPrimeCostTrend = () => {
       if (!dailyCosts || dailyCosts.length < 2) return [];
-      return dailyCosts.slice(-7).reverse().map(d => (d.food_cost || 0) + (d.labor_cost || 0));
+      return dailyCosts.slice(-7).map(d => (d.food_cost || 0) + (d.labor_cost || 0));
     };
 
     const getInsight = (currentPct: number, previousPct: number, benchmark: number, metricName: string) => {

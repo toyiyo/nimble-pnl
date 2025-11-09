@@ -239,7 +239,7 @@ Deno.serve(async (req) => {
         // Note: lineItems.discounts allows us to capture item-level discounts
         ordersUrl.searchParams.set(
           "expand",
-          "lineItems, lineItems.discounts, employee, refunds, credits, voids, customers, serviceCharge, discounts, orderType",
+          "lineItems, employee, refunds, credits, voids, customers, serviceCharge, discounts, orderType",
         );
         ordersUrl.searchParams.set("limit", limit.toString());
         ordersUrl.searchParams.set("offset", offset.toString());
@@ -474,10 +474,10 @@ Deno.serve(async (req) => {
                 },
               });
             }
-            
+
             // Add line-item discounts to adjustments
             adjustments.push(...lineItemDiscounts);
-            
+
             // Upsert all adjustments
             if (adjustments.length > 0) {
               await supabase.from("unified_sales").upsert(adjustments, {

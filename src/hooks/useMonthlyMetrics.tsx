@@ -19,10 +19,10 @@ export interface MonthlyMetrics {
 
 /**
  * Hook to fetch monthly aggregated metrics from unified_sales (revenue + liabilities) 
- * and daily_pnl (costs). This is the correct source for monthly financial data.
+ * and source tables (inventory_transactions + daily_labor_costs for costs).
  * 
  * ✅ Use this hook for monthly performance tables
- * ❌ Don't use getMonthlyData() from useDailyPnL (incorrect revenue)
+ * ❌ Don't use getMonthlyData() from useDailyPnL (incorrect/outdated)
  */
 export function useMonthlyMetrics(
   restaurantId: string | null,
@@ -34,7 +34,8 @@ export function useMonthlyMetrics(
     queryFn: async () => {
       if (!restaurantId) return [];
 
-      // Fetch all sales to properly handle split sales (use LEFT JOIN to include uncategorized)
+      // Fetch sales excluding pass-through items (adjustment_type IS NOT NULL)
+      // Pass-through items include: tips, sales tax, service charges, discounts, fees
       const { data: salesData, error: salesError } = await supabase
         .from('unified_sales')
         .select(`
@@ -52,9 +53,21 @@ export function useMonthlyMetrics(
         `)
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'));
+        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
+        .is('adjustment_type', null);
 
       if (salesError) throw salesError;
+
+      // Fetch adjustments separately (Square/Clover pass-through items)
+      const { data: adjustmentsData, error: adjustmentsError } = await supabase
+        .from('unified_sales')
+        .select('sale_date, adjustment_type, total_price')
+        .eq('restaurant_id', restaurantId)
+        .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
+        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
+        .not('adjustment_type', 'is', null);
+
+      if (adjustmentsError) throw adjustmentsError;
 
       // Filter out parent sales that have been split into children
       // Include: unsplit sales (no children) + all child splits
@@ -132,18 +145,102 @@ export function useMonthlyMetrics(
         }
       });
 
-      // Fetch costs from daily_pnl
-      const { data: costsData, error: costsError } = await supabase
-        .from('daily_pnl')
-        .select('date, food_cost, labor_cost')
+      // Process adjustments (Square/Clover pass-through items)
+      adjustmentsData?.forEach((adjustment) => {
+        const [year, monthNum, day] = adjustment.sale_date.split('-').map(Number);
+        const localDate = new Date(year, monthNum - 1, day);
+        const monthKey = format(localDate, 'yyyy-MM');
+
+        if (!monthlyMap.has(monthKey)) {
+          monthlyMap.set(monthKey, {
+            period: monthKey,
+            gross_revenue: 0,
+            total_collected_at_pos: 0,
+            net_revenue: 0,
+            discounts: 0,
+            refunds: 0,
+            sales_tax: 0,
+            tips: 0,
+            other_liabilities: 0,
+            food_cost: 0,
+            labor_cost: 0,
+            has_data: false,
+          });
+        }
+
+        const month = monthlyMap.get(monthKey)!;
+        month.has_data = true;
+
+        // Categorize based on adjustment_type
+        const priceInCents = Math.round(adjustment.total_price * 100);
+        
+        switch (adjustment.adjustment_type) {
+          case 'tax':
+            month.sales_tax += priceInCents;
+            break;
+          case 'tip':
+            month.tips += priceInCents;
+            break;
+          case 'service_charge':
+          case 'fee':
+            month.other_liabilities += priceInCents;
+            break;
+          case 'discount':
+            month.discounts += Math.abs(priceInCents);
+            break;
+        }
+      });
+
+      // Fetch food costs from inventory_transactions (source of truth)
+      const { data: foodCostsData, error: foodCostsError } = await supabase
+        .from('inventory_transactions')
+        .select('created_at, total_cost')
+        .eq('restaurant_id', restaurantId)
+        .in('transaction_type', ['purchase', 'receipt'])
+        .gte('created_at', format(dateFrom, 'yyyy-MM-dd'))
+        .lte('created_at', format(dateTo, 'yyyy-MM-dd') + 'T23:59:59.999Z');
+
+      if (foodCostsError) throw foodCostsError;
+
+      // Fetch labor costs from daily_labor_costs (source of truth)
+      const { data: laborCostsData, error: laborCostsError } = await supabase
+        .from('daily_labor_costs')
+        .select('date, total_labor_cost')
         .eq('restaurant_id', restaurantId)
         .gte('date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('date', format(dateTo, 'yyyy-MM-dd'));
 
-      if (costsError) throw costsError;
+      if (laborCostsError) throw laborCostsError;
 
-      // Aggregate costs by month
-      costsData?.forEach((day) => {
+      // Aggregate food costs by month
+      foodCostsData?.forEach((transaction) => {
+        const transactionDate = new Date(transaction.created_at);
+        const monthKey = format(transactionDate, 'yyyy-MM');
+        
+        if (!monthlyMap.has(monthKey)) {
+          monthlyMap.set(monthKey, {
+            period: monthKey,
+            gross_revenue: 0,
+            total_collected_at_pos: 0,
+            net_revenue: 0,
+            discounts: 0,
+            refunds: 0,
+            sales_tax: 0,
+            tips: 0,
+            other_liabilities: 0,
+            food_cost: 0,
+            labor_cost: 0,
+            has_data: true,
+          });
+        }
+
+        const month = monthlyMap.get(monthKey)!;
+        // Use cents to avoid floating-point precision errors
+        month.food_cost += Math.round((transaction.total_cost || 0) * 100);
+      });
+
+      // Aggregate labor costs by month
+      laborCostsData?.forEach((day) => {
         // Parse date as local date, not UTC midnight
         const [year, monthNum, dayNum] = day.date.split('-').map(Number);
         const localDate = new Date(year, monthNum - 1, dayNum);
@@ -168,8 +265,7 @@ export function useMonthlyMetrics(
 
         const month = monthlyMap.get(monthKey)!;
         // Use cents to avoid floating-point precision errors
-        month.food_cost += Math.round((day.food_cost || 0) * 100);
-        month.labor_cost += Math.round((day.labor_cost || 0) * 100);
+        month.labor_cost += Math.round((day.total_labor_cost || 0) * 100);
       });
 
       // Calculate net_revenue and total_collected_at_pos for each month

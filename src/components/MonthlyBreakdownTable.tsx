@@ -210,7 +210,8 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   const monthDate = parse(month.period, 'yyyy-MM', new Date());
                   const expenseMonth = getExpenseDataForMonth(month.period);
                   
-                  // Use expense data from bank transactions (preferred) or fallback to daily_pnl
+                  // Use expense data from bank transactions (preferred source)
+                  // Food/labor costs now come from source tables via useMonthlyMetrics
                   const foodCost = expenseMonth?.foodCost || month.food_cost;
                   const laborCost = expenseMonth?.laborCost || month.labor_cost;
                   const totalExpenses = expenseMonth?.totalExpenses || (month.food_cost + month.labor_cost);
@@ -538,7 +539,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                               )}
 
                               {/* Collected at POS Summary */}
-                              {breakdown?.has_categorization_data && breakdown?.totals && (
+                              {breakdown?.totals && (
                                 <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
                                   <div className="flex justify-between items-center mb-2">
                                     <div className="flex items-center gap-2">
@@ -578,7 +579,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                               )}
 
                               {/* Pass-Through Collections */}
-                              {breakdown?.has_categorization_data && breakdown?.totals && (breakdown.totals.sales_tax > 0 || breakdown.totals.tips > 0 || breakdown.totals.other_liabilities > 0) && (
+                              {breakdown?.totals && (breakdown.totals.sales_tax > 0 || breakdown.totals.tips > 0 || breakdown.totals.other_liabilities > 0) && (
                                 <div>
                                   <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                                     Pass-Through Collections (Not Revenue)
@@ -613,6 +614,23 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                         </span>
                                       </div>
                                     )}
+                                    {breakdown.totals.other_liabilities > 0 && breakdown.adjustments
+                                      .filter(adj => adj.adjustment_type === 'service_charge' || adj.adjustment_type === 'fee')
+                                      .map((adjustment, idx) => (
+                                      <div key={idx} className="flex items-center justify-between p-2 rounded bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 text-xs">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-medium">
+                                            {adjustment.adjustment_type === 'service_charge' ? 'Service Charges' : 'Fees'}
+                                          </span>
+                                          <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-purple-600">
+                                            Liability
+                                          </Badge>
+                                        </div>
+                                        <span className="font-semibold text-purple-700">
+                                          {formatCurrency(adjustment.total_amount)}
+                                        </span>
+                                      </div>
+                                    ))}
                                     {breakdown.other_liability_categories.map((category) => (
                                       <div key={category.account_id} className="flex items-center justify-between p-2 rounded bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 text-xs">
                                         <div className="flex items-center gap-2">

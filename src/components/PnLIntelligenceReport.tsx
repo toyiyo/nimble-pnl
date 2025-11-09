@@ -26,7 +26,7 @@ import {
   Zap,
   Award
 } from 'lucide-react';
-import { usePnLAnalytics } from '@/hooks/usePnLAnalytics';
+import { usePnLAnalyticsFromSource } from '@/hooks/usePnLAnalyticsFromSource';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import {
   LineChart, 
@@ -60,7 +60,7 @@ interface PnLIntelligenceReportProps {
 }
 
 export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLIntelligenceReportProps) {
-  const { data, loading } = usePnLAnalytics(restaurantId, { dateFrom, dateTo });
+  const { data, loading } = usePnLAnalyticsFromSource(restaurantId, { dateFrom, dateTo });
   
   // Memoize fallback dates to prevent unnecessary React Query refetches
   const defaultDateFrom = useMemo(() => {

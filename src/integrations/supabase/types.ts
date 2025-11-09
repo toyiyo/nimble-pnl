@@ -692,6 +692,44 @@ export type Database = {
           },
         ]
       }
+      csv_mapping_templates: {
+        Row: {
+          column_mappings: Json
+          created_at: string | null
+          csv_headers: string[]
+          id: string
+          restaurant_id: string
+          template_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          column_mappings: Json
+          created_at?: string | null
+          csv_headers: string[]
+          id?: string
+          restaurant_id: string
+          template_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          column_mappings?: Json
+          created_at?: string | null
+          csv_headers?: string[]
+          id?: string
+          restaurant_id?: string
+          template_name?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "csv_mapping_templates_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       daily_food_costs: {
         Row: {
           created_at: string

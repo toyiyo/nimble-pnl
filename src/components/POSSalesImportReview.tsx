@@ -158,6 +158,8 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     // Format the date in the restaurant's timezone to ensure it stays as the selected date
     const dateString = formatInTimeZone(date, timezone, 'yyyy-MM-dd');
     
+    const countWithoutDate = editableSales.filter(s => !s.saleDate).length;
+    
     // Apply the date to all sales
     setEditableSales(prev =>
       prev.map(sale => ({
@@ -168,9 +170,12 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
       }))
     );
     
+    // Clear the needsDateInput flag after applying
+    setNeedsDateInput(false);
+    
     toast({
-      title: "Date applied",
-      description: `Applied ${format(date, 'MMM d, yyyy')} to all ${editableSales.length} sales records`,
+      title: "✓ Date applied to all rows",
+      description: `Set ${format(date, 'MMM d, yyyy')} for all ${editableSales.length} sales records`,
     });
   };
 
@@ -463,23 +468,54 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
               </div>
             </Alert>
           )}
-          {needsDateInput && (
-            <Alert className="mb-4">
-              <Calendar className="h-4 w-4" />
+          {needsDateInput && !selectedDate && (
+            <Alert className="mb-4 border-orange-300 bg-orange-50">
+              <Calendar className="h-4 w-4 text-orange-700" />
               <AlertDescription>
                 <div className="flex items-center gap-4 mt-2">
-                  <span className="text-sm font-medium">This file doesn't contain date information. Please select the sale date:</span>
+                  <span className="text-sm font-medium text-orange-900">⚠️ This file doesn't contain date information. Please select the sale date for all rows:</span>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         className={cn(
-                          "w-[240px] justify-start text-left font-normal",
+                          "w-[240px] justify-start text-left font-normal border-orange-300",
                           !selectedDate && "text-muted-foreground"
                         )}
                       >
                         <Calendar className="mr-2 h-4 w-4" />
                         {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={handleApplyDate}
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          {needsDateInput && selectedDate && (
+            <Alert className="mb-4 border-green-300 bg-green-50">
+              <CheckCircle className="h-4 w-4 text-green-700" />
+              <AlertDescription>
+                <div className="flex items-center gap-4 mt-2">
+                  <span className="text-sm font-medium text-green-900">✓ Date applied to all rows: {format(selectedDate, "PPP")}</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-green-300"
+                      >
+                        <Calendar className="mr-2 h-4 w-4" />
+                        Change Date
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">

@@ -347,6 +347,13 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         });
       }
 
+      // Check if any rows are missing dates (after filename date application)
+      const rowsMissingDates = parsedSales.some(sale => !sale.saleDate);
+      if (rowsMissingDates) {
+        // Set a flag on the array to indicate date input is needed
+        (parsedSales as any).needsDateInput = true;
+      }
+
       // Check for summary rows
       const hasSummaryRows = parsedSales.some(sale => sale.isSummaryRow);
       if (hasSummaryRows) {

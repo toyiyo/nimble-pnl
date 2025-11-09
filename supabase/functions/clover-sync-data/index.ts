@@ -470,6 +470,13 @@ Deno.serve(async (req) => {
               }
             }
 
+            // Calculate closed time for adjustments (ISO string format)
+            const closedTime = order.clientCreatedTime
+              ? new Date(order.clientCreatedTime).toISOString()
+              : order.createdTime
+                ? new Date(order.createdTime).toISOString()
+                : null;
+
             // Extract and store adjustments (don't create fake line items)
             // This keeps revenue metrics clean and accounting-compliant
             const adjustments = [];

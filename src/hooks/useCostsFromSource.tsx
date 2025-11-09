@@ -76,8 +76,7 @@ export function useCostsFromSource(
   }, [foodCosts.dailyCosts, laborCosts.dailyCosts]);
 
   const refetch = () => {
-    foodCosts.refetch();
-    laborCosts.refetch();
+    return Promise.all([foodCosts.refetch(), laborCosts.refetch()]);
   };
 
   return {

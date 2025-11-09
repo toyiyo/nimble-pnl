@@ -115,7 +115,7 @@ export function usePnLAnalyticsFromSource(
   const normalizedEndDate = startDate > endDate ? startDate : endDate;
   
   const rawPeriodDays = Math.ceil((normalizedEndDate.getTime() - normalizedStartDate.getTime()) / (1000 * 60 * 60 * 24));
-  const periodDays = Math.max(1, rawPeriodDays);
+  const periodDays = Math.max(1, rawPeriodDays + 1); // Add 1 to make the range inclusive
   const previousPeriodStart = subDays(normalizedStartDate, periodDays);
   const previousPeriodEnd = subDays(normalizedStartDate, 1);
 

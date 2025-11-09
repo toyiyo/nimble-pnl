@@ -444,10 +444,10 @@ Deno.serve(async (req) => {
                 return sum + (price * qty);
               }, 0) ?? 0;
 
-            // Tax = order.total - revenueSubtotal - serviceCharge + discount
-            // (discounts reduce the subtotal, so add back to get pre-discount amount)
+            // Tax = paidAmount - revenueSubtotal - serviceCharge + discount
+            // paidCents includes tax (but not tip), so this gives us the tax amount
             taxCents = Math.max(0, 
-              (order.total ?? 0) 
+              paidCents  // Use actual amount paid (includes tax)
               - revenueSubtotal 
               - (order.serviceCharge?.amount ?? 0)
               + (order.discount?.amount ?? 0)
@@ -455,6 +455,7 @@ Deno.serve(async (req) => {
 
             console.log(`Order ${order.id} tax calculation:`, {
               orderTotal: order.total,
+              paidCents,
               revenueSubtotal,
               serviceCharge: order.serviceCharge?.amount ?? 0,
               discount: order.discount?.amount ?? 0,

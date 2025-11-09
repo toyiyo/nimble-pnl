@@ -239,7 +239,7 @@ Deno.serve(async (req) => {
         // Note: No spaces after commas - Clover API requires proper formatting
         ordersUrl.searchParams.set(
           "expand",
-          "lineItems,employee,refunds,credits,voids,customers,serviceCharge,discounts,orderType",
+          "lineItems, employee, refunds, credits, voids, customers, serviceCharge, discounts, orderType",
         );
         ordersUrl.searchParams.set("limit", limit.toString());
         ordersUrl.searchParams.set("offset", offset.toString());
@@ -331,40 +331,42 @@ Deno.serve(async (req) => {
               }).format(utcDate);
               serviceDate = localDateStr; // Already in YYYY-MM-DD format from 'en-CA' locale
             }
-            
+
             // Fetch payments for this order (authoritative source for taxes/tips)
             const paysUrl = `${BASE_URL}/orders/${order.id}/payments?limit=1000`;
             let taxCents = 0;
             let tipCents = 0;
             let paidCents = 0;
-            
+
             try {
               const paysResp = await fetch(paysUrl, {
-                headers: { Authorization: `Bearer ${accessToken}` }
+                headers: { Authorization: `Bearer ${accessToken}` },
               });
-              
+
               if (paysResp.ok) {
                 const paysData = await paysResp.json();
                 const payments = paysData.elements ?? [];
-                
+
                 // Sum taxes, tips, and amounts from payments (source of truth)
                 taxCents = payments.reduce((s, p) => s + (p.taxAmount ?? 0), 0);
                 tipCents = payments.reduce((s, p) => s + (p.tipAmount ?? 0), 0);
                 paidCents = payments.reduce((s, p) => s + (p.amount ?? 0), 0); // includes tax, excludes tip
-                
+
                 console.log(`Order ${order.id} payments:`, {
                   paymentCount: payments.length,
                   taxCents,
                   tipCents,
                   paidCents,
-                  orderTotalCents: order.total ?? 0
+                  orderTotalCents: order.total ?? 0,
                 });
-                
+
                 // Reconciliation check: payment amounts should match order total (±1 cent tolerance)
                 const orderTotalCents = order.total ?? 0;
                 const delta = Math.abs(orderTotalCents - paidCents);
                 if (delta > 1 && paidCents > 0) {
-                  console.warn(`Order ${order.id} mismatch: order.total=${orderTotalCents}, sum(payment.amount)=${paidCents}`);
+                  console.warn(
+                    `Order ${order.id} mismatch: order.total=${orderTotalCents}, sum(payment.amount)=${paidCents}`,
+                  );
                 }
               } else {
                 console.warn(`Failed to fetch payments for order ${order.id}:`, await paysResp.text());
@@ -378,7 +380,7 @@ Deno.serve(async (req) => {
               taxCents = order.taxAmount ?? 0;
               tipCents = order.tipAmount ?? 0;
             }
-            
+
             await supabase.from("clover_orders").upsert(
               {
                 restaurant_id: restaurantId,
@@ -436,7 +438,7 @@ Deno.serve(async (req) => {
             // Extract and store adjustments (don't create fake line items)
             // This keeps revenue metrics clean and accounting-compliant
             const adjustments = [];
-            
+
             // Tax (from payments - source of truth)
             // Respect taxRemoved flag - if true, tax was removed and should be 0
             if (taxCents > 0 && !order.taxRemoved) {
@@ -459,7 +461,7 @@ Deno.serve(async (req) => {
                 },
               });
             }
-            
+
             // Tips (from payments - source of truth)
             if (tipCents > 0) {
               adjustments.push({
@@ -477,7 +479,7 @@ Deno.serve(async (req) => {
                 },
               });
             }
-            
+
             // Service Charge
             if (order.serviceCharge?.amount) {
               adjustments.push({
@@ -494,26 +496,26 @@ Deno.serve(async (req) => {
                 },
               });
             }
-            
+
             // Process all discounts from order.discounts array
             // This handles both order-level and line-item level discounts
             if (order.discounts?.elements) {
               for (const disc of order.discounts.elements) {
                 const amountOff = disc.amount ? disc.amount / 100 : 0;
                 if (amountOff <= 0) continue; // Skip zero or no-amount discounts
-                
+
                 // Determine if discount is tied to a specific line item
                 let itemName = null;
                 if (disc.lineItemRef?.id) {
                   // Find the line item name by matching the ID
-                  const li = order.lineItems?.elements?.find(li => li.id === disc.lineItemRef.id);
+                  const li = order.lineItems?.elements?.find((li) => li.id === disc.lineItemRef.id);
                   if (li) itemName = li.name;
                 }
-                
+
                 // Construct entry name
                 const discountName = disc.name || "Discount";
                 const entryName = itemName ? `${itemName} - ${discountName}` : discountName;
-                
+
                 adjustments.push({
                   restaurant_id: restaurantId,
                   pos_system: "clover",

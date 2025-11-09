@@ -34,7 +34,8 @@ export function useMonthlyMetrics(
     queryFn: async () => {
       if (!restaurantId) return [];
 
-      // Fetch all sales to properly handle split sales (use LEFT JOIN to include uncategorized)
+      // Fetch sales excluding pass-through items (adjustment_type IS NOT NULL)
+      // Pass-through items include: tips, sales tax, service charges, discounts, fees
       const { data: salesData, error: salesError } = await supabase
         .from('unified_sales')
         .select(`
@@ -52,7 +53,8 @@ export function useMonthlyMetrics(
         `)
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'));
+        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
+        .is('adjustment_type', null);
 
       if (salesError) throw salesError;
 

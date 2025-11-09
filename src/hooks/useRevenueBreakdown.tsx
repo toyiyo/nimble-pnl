@@ -56,7 +56,8 @@ export function useRevenueBreakdown(
       const fromStr = dateFrom.toISOString().split('T')[0];
       const toStr = dateTo.toISOString().split('T')[0];
 
-      // Query ALL unified_sales to properly handle split sales
+      // Query unified_sales excluding pass-through items (adjustment_type IS NOT NULL)
+      // Pass-through items include: tips, sales tax, service charges, discounts, fees
       const { data: sales, error } = await supabase
         .from('unified_sales')
         .select(`
@@ -76,7 +77,8 @@ export function useRevenueBreakdown(
         `)
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', fromStr)
-        .lte('sale_date', toStr);
+        .lte('sale_date', toStr)
+        .is('adjustment_type', null);
 
       if (error) throw error;
 

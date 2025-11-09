@@ -614,6 +614,23 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                         </span>
                                       </div>
                                     )}
+                                    {breakdown.totals.other_liabilities > 0 && breakdown.adjustments
+                                      .filter(adj => adj.adjustment_type === 'service_charge' || adj.adjustment_type === 'fee')
+                                      .map((adjustment, idx) => (
+                                      <div key={idx} className="flex items-center justify-between p-2 rounded bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 text-xs">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-medium">
+                                            {adjustment.adjustment_type === 'service_charge' ? 'Service Charges' : 'Fees'}
+                                          </span>
+                                          <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-purple-600">
+                                            Liability
+                                          </Badge>
+                                        </div>
+                                        <span className="font-semibold text-purple-700">
+                                          {formatCurrency(adjustment.total_amount)}
+                                        </span>
+                                      </div>
+                                    ))}
                                     {breakdown.other_liability_categories.map((category) => (
                                       <div key={category.account_id} className="flex items-center justify-between p-2 rounded bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 text-xs">
                                         <div className="flex items-center gap-2">

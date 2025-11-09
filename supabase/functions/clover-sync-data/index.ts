@@ -236,10 +236,10 @@ Deno.serve(async (req) => {
         ordersUrl.searchParams.set("filter", `modifiedTime>=${startTimestamp}`);
         // Only expand fields that are covered by basic Orders read permission
         // Tax, tips, and totals are available on the order object without expansion
-        // Note: lineItems.discounts allows us to capture item-level discounts
+        // Note: No spaces after commas - Clover API requires proper formatting
         ordersUrl.searchParams.set(
           "expand",
-          "lineItems, employee, refunds, credits, voids, customers, serviceCharge, discounts, orderType",
+          "lineItems,employee,refunds,credits,voids,customers,serviceCharge,discounts,orderType",
         );
         ordersUrl.searchParams.set("limit", limit.toString());
         ordersUrl.searchParams.set("offset", offset.toString());
@@ -357,8 +357,7 @@ Deno.serve(async (req) => {
                 onConflict: "restaurant_id,order_id",
               },
             );
-            // Store line items and extract line-item discounts
-            const lineItemDiscounts = [];
+            // Store line items (discounts will be handled separately from order.discounts array)
             if (order.lineItems?.elements) {
               for (const lineItem of order.lineItems.elements) {
                 // Clover stores quantities in thousands (1000 = 1 item) and prices in cents (3000 = $30.00)
@@ -384,36 +383,13 @@ Deno.serve(async (req) => {
                     onConflict: "restaurant_id,order_id,line_item_id",
                   },
                 );
-
-                // Extract line-item level discounts
-                if (lineItem.discounts?.elements && lineItem.discounts.elements.length > 0) {
-                  for (const discount of lineItem.discounts.elements) {
-                    // Clover stores discount amounts in cents
-                    const discountAmount = discount.amount ? discount.amount / 100 : 0;
-                    if (discountAmount > 0) {
-                      lineItemDiscounts.push({
-                        restaurant_id: restaurantId,
-                        pos_system: "clover",
-                        external_order_id: order.id,
-                        item_name: `${lineItem.name || "Item"} - ${discount.name || "Discount"}`,
-                        item_type: "discount",
-                        adjustment_type: "discount",
-                        total_price: -discountAmount, // Negative because it reduces the total
-                        sale_date: serviceDate,
-                        raw_data: {
-                          lineItemId: lineItem.id,
-                          lineItemName: lineItem.name,
-                          discount: discount,
-                        },
-                      });
-                    }
-                  }
-                }
               }
             }
             // Extract and store adjustments (don't create fake line items)
             // This keeps revenue metrics clean and accounting-compliant
             const adjustments = [];
+            
+            // Tax
             if (order.taxAmount) {
               adjustments.push({
                 restaurant_id: restaurantId,
@@ -429,6 +405,8 @@ Deno.serve(async (req) => {
                 },
               });
             }
+            
+            // Tips
             if (order.tipAmount) {
               adjustments.push({
                 restaurant_id: restaurantId,
@@ -444,6 +422,8 @@ Deno.serve(async (req) => {
                 },
               });
             }
+            
+            // Service Charge
             if (order.serviceCharge?.amount) {
               adjustments.push({
                 restaurant_id: restaurantId,
@@ -459,24 +439,43 @@ Deno.serve(async (req) => {
                 },
               });
             }
-            if (order.discount?.amount) {
-              adjustments.push({
-                restaurant_id: restaurantId,
-                pos_system: "clover",
-                external_order_id: order.id,
-                item_name: order.discount.name || "Discount",
-                item_type: "discount",
-                adjustment_type: "discount",
-                total_price: -(order.discount.amount / 100),
-                sale_date: serviceDate,
-                raw_data: {
-                  discount: order.discount,
-                },
-              });
+            
+            // Process all discounts from order.discounts array
+            // This handles both order-level and line-item level discounts
+            if (order.discounts?.elements) {
+              for (const disc of order.discounts.elements) {
+                const amountOff = disc.amount ? disc.amount / 100 : 0;
+                if (amountOff <= 0) continue; // Skip zero or no-amount discounts
+                
+                // Determine if discount is tied to a specific line item
+                let itemName = null;
+                if (disc.lineItemRef?.id) {
+                  // Find the line item name by matching the ID
+                  const li = order.lineItems?.elements?.find(li => li.id === disc.lineItemRef.id);
+                  if (li) itemName = li.name;
+                }
+                
+                // Construct entry name
+                const discountName = disc.name || "Discount";
+                const entryName = itemName ? `${itemName} - ${discountName}` : discountName;
+                
+                adjustments.push({
+                  restaurant_id: restaurantId,
+                  pos_system: "clover",
+                  external_order_id: order.id,
+                  item_name: entryName,
+                  item_type: "discount",
+                  adjustment_type: "discount",
+                  total_price: -amountOff, // Discounts as negative revenue
+                  sale_date: serviceDate,
+                  raw_data: {
+                    discount: disc,
+                    lineItemRef: disc.lineItemRef,
+                    lineItemName: itemName,
+                  },
+                });
+              }
             }
-
-            // Add line-item discounts to adjustments
-            adjustments.push(...lineItemDiscounts);
 
             // Upsert all adjustments
             if (adjustments.length > 0) {

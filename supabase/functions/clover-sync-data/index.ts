@@ -589,7 +589,7 @@ Deno.serve(async (req) => {
               const { error: adjustmentError } = await supabase
                 .from("unified_sales")
                 .upsert(adjustments, {
-                  onConflict: "unified_sales_unique_clover",
+                  onConflict: "restaurant_id,pos_system,external_order_id,external_item_id",
                 });
               
               if (adjustmentError) {

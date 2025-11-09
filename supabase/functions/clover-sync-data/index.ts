@@ -293,7 +293,9 @@ Deno.serve(async (req) => {
         
         // Use modifiedTime which is more commonly supported in Clover API
         ordersUrl.searchParams.set('filter', `modifiedTime>=${startTimestamp}`);
-        ordersUrl.searchParams.set('expand', 'lineItems,lineItems.appliedTaxes,taxRates,totals,payments');
+        // Only expand fields that are covered by basic Orders read permission
+        // Tax, tips, and totals are available on the order object without expansion
+        ordersUrl.searchParams.set('expand', 'lineItems');
         ordersUrl.searchParams.set('limit', limit.toString());
         ordersUrl.searchParams.set('offset', offset.toString());
 

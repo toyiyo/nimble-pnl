@@ -22,15 +22,67 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    // Step 1: Authenticate the caller
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('No authorization header');
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    
+    // Check if this is an internal service role call (from webhook/oauth) or user call
+    const isServiceRoleCall = token === serviceRoleKey;
+    
+    let userId: string | undefined;
+
+    if (!isServiceRoleCall) {
+      // Authenticate user for regular calls
+      const anonClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { auth: { persistSession: false } }
+      );
+
+      const { data: { user }, error: userError } = await anonClient.auth.getUser(token);
+      if (userError || !user) {
+        throw new Error('Unauthorized');
+      }
+      
+      userId = user.id;
+      console.log('Square sync authenticated user:', userId);
+    } else {
+      console.log('Square sync service role call (from webhook/oauth)');
+    }
 
     const body: SquareSyncRequest = await req.json();
     const { restaurantId, action, dateRange } = body;
 
-    console.log('Square sync started:', { restaurantId, action, dateRange });
+    if (!restaurantId) {
+      throw new Error('Restaurant ID is required');
+    }
+
+    console.log('Square sync started:', { restaurantId, action, dateRange, userId: userId || 'service-role' });
+
+    // Step 2: Create service role client for privileged operations
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      serviceRoleKey
+    );
+
+    // Step 3: Verify user has access to this restaurant (only for non-service-role calls)
+    if (!isServiceRoleCall && userId) {
+      const { data: userRestaurant, error: accessError } = await supabase
+        .from('user_restaurants')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('restaurant_id', restaurantId)
+        .single();
+
+      if (accessError || !userRestaurant || !['owner', 'manager'].includes(userRestaurant.role)) {
+        throw new Error('Access denied');
+      }
+    }
 
     // Get Square connection and decrypt tokens
     const { data: connection, error: connectionError } = await supabase

@@ -64,6 +64,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       ai_confidence: sale.ai_confidence as "high" | "medium" | "low" | undefined,
       ai_reasoning: sale.ai_reasoning,
       item_type: sale.item_type as "sale" | "tip" | "tax" | "discount" | "comp" | "service_charge" | "other" | undefined,
+      adjustment_type: sale.adjustment_type as "tax" | "tip" | "service_charge" | "discount" | "fee" | null | undefined,
       is_categorized: sale.is_categorized || false,
       is_split: sale.is_split || false,
       parent_sale_id: sale.parent_sale_id,
@@ -211,6 +212,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     totalPrice?: number;
     saleDate: string;
     saleTime?: string;
+    adjustmentType?: 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | null;
   }) => {
     if (!restaurantId) return false;
 
@@ -222,6 +224,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
           pos_system: 'manual',
           external_order_id: `manual_${Date.now()}`,
           item_name: saleData.itemName,
+          adjustment_type: saleData.adjustmentType || null,
           quantity: saleData.quantity,
           unit_price: saleData.unitPrice,
           total_price: saleData.totalPrice,
@@ -256,6 +259,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     totalPrice?: number;
     saleDate: string;
     saleTime?: string;
+    adjustmentType?: 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | null;
   }) => {
     if (!restaurantId) return false;
 
@@ -264,6 +268,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
         .from('unified_sales')
         .update({
           item_name: saleData.itemName,
+          adjustment_type: saleData.adjustmentType || null,
           quantity: saleData.quantity,
           unit_price: saleData.unitPrice,
           total_price: saleData.totalPrice,

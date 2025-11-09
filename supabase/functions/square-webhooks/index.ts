@@ -307,6 +307,71 @@ async function handleOrderUpdated(data: any, restaurantId: string, accessToken: 
     }
   }
 
+  // Extract and store adjustments (don't create fake line items)
+  // This keeps revenue metrics clean and accounting-compliant
+  const adjustments = [];
+
+  if (order.total_tax_money) {
+    adjustments.push({
+      restaurant_id: restaurantId,
+      pos_system: 'square',
+      external_order_id: order.id,
+      item_name: 'Sales Tax',
+      adjustment_type: 'tax',
+      total_price: parseFloat(order.total_tax_money.amount) / 100,
+      sale_date: serviceDate,
+      raw_data: { total_tax_money: order.total_tax_money }
+    });
+  }
+
+  if (order.total_tip_money) {
+    adjustments.push({
+      restaurant_id: restaurantId,
+      pos_system: 'square',
+      external_order_id: order.id,
+      item_name: 'Tips',
+      adjustment_type: 'tip',
+      total_price: parseFloat(order.total_tip_money.amount) / 100,
+      sale_date: serviceDate,
+      raw_data: { total_tip_money: order.total_tip_money }
+    });
+  }
+
+  if (order.total_service_charge_money) {
+    adjustments.push({
+      restaurant_id: restaurantId,
+      pos_system: 'square',
+      external_order_id: order.id,
+      item_name: 'Service Charge',
+      adjustment_type: 'service_charge',
+      total_price: parseFloat(order.total_service_charge_money.amount) / 100,
+      sale_date: serviceDate,
+      raw_data: { total_service_charge_money: order.total_service_charge_money }
+    });
+  }
+
+  if (order.total_discount_money) {
+    adjustments.push({
+      restaurant_id: restaurantId,
+      pos_system: 'square',
+      external_order_id: order.id,
+      item_name: 'Discount',
+      adjustment_type: 'discount',
+      total_price: -(parseFloat(order.total_discount_money.amount) / 100), // negative for discounts
+      sale_date: serviceDate,
+      raw_data: { total_discount_money: order.total_discount_money }
+    });
+  }
+
+  // Upsert all adjustments
+  if (adjustments.length > 0) {
+    await supabase
+      .from('unified_sales')
+      .upsert(adjustments, {
+        onConflict: 'restaurant_id,pos_system,external_order_id,item_name'
+      });
+  }
+
   // Sync this order to unified_sales so it appears in POS and triggers auto deductions
   await supabase.rpc('sync_square_to_unified_sales', {
     p_restaurant_id: restaurantId

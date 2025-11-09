@@ -210,7 +210,8 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   const monthDate = parse(month.period, 'yyyy-MM', new Date());
                   const expenseMonth = getExpenseDataForMonth(month.period);
                   
-                  // Use expense data from bank transactions (preferred) or fallback to daily_pnl
+                  // Use expense data from bank transactions (preferred source)
+                  // Food/labor costs now come from source tables via useMonthlyMetrics
                   const foodCost = expenseMonth?.foodCost || month.food_cost;
                   const laborCost = expenseMonth?.laborCost || month.labor_cost;
                   const totalExpenses = expenseMonth?.totalExpenses || (month.food_cost + month.labor_cost);

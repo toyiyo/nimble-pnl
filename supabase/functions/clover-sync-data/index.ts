@@ -236,9 +236,10 @@ Deno.serve(async (req) => {
         ordersUrl.searchParams.set("filter", `modifiedTime>=${startTimestamp}`);
         // Only expand fields that are covered by basic Orders read permission
         // Tax, tips, and totals are available on the order object without expansion
+        // Note: lineItems.discounts allows us to capture item-level discounts
         ordersUrl.searchParams.set(
           "expand",
-          "lineItems, lineItems.appliedTaxes,lineItems.discounts, employee, refunds, credits, voids, customers, serviceCharge, discounts, orderType",
+          "lineItems, lineItems.discounts, employee, refunds, credits, voids, customers, serviceCharge, discounts, orderType",
         );
         ordersUrl.searchParams.set("limit", limit.toString());
         ordersUrl.searchParams.set("offset", offset.toString());
@@ -356,7 +357,8 @@ Deno.serve(async (req) => {
                 onConflict: "restaurant_id,order_id",
               },
             );
-            // Store line items
+            // Store line items and extract line-item discounts
+            const lineItemDiscounts = [];
             if (order.lineItems?.elements) {
               for (const lineItem of order.lineItems.elements) {
                 // Clover stores quantities in thousands (1000 = 1 item) and prices in cents (3000 = $30.00)
@@ -382,6 +384,31 @@ Deno.serve(async (req) => {
                     onConflict: "restaurant_id,order_id,line_item_id",
                   },
                 );
+
+                // Extract line-item level discounts
+                if (lineItem.discounts?.elements && lineItem.discounts.elements.length > 0) {
+                  for (const discount of lineItem.discounts.elements) {
+                    // Clover stores discount amounts in cents
+                    const discountAmount = discount.amount ? discount.amount / 100 : 0;
+                    if (discountAmount > 0) {
+                      lineItemDiscounts.push({
+                        restaurant_id: restaurantId,
+                        pos_system: "clover",
+                        external_order_id: order.id,
+                        item_name: `${lineItem.name || "Item"} - ${discount.name || "Discount"}`,
+                        item_type: "discount",
+                        adjustment_type: "discount",
+                        total_price: -discountAmount, // Negative because it reduces the total
+                        sale_date: serviceDate,
+                        raw_data: {
+                          lineItemId: lineItem.id,
+                          lineItemName: lineItem.name,
+                          discount: discount,
+                        },
+                      });
+                    }
+                  }
+                }
               }
             }
             // Extract and store adjustments (don't create fake line items)
@@ -447,6 +474,10 @@ Deno.serve(async (req) => {
                 },
               });
             }
+            
+            // Add line-item discounts to adjustments
+            adjustments.push(...lineItemDiscounts);
+            
             // Upsert all adjustments
             if (adjustments.length > 0) {
               await supabase.from("unified_sales").upsert(adjustments, {

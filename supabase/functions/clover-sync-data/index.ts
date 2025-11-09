@@ -444,10 +444,13 @@ Deno.serve(async (req) => {
                 return sum + (price * qty);
               }, 0) ?? 0;
 
-            // Tax = paidAmount - revenueSubtotal - serviceCharge + discount
-            // paidCents includes tax (but not tip), so this gives us the tax amount
+            // Use paidCents if available (paid orders), otherwise use order.total (unpaid orders)
+            // paidCents = 0 for orders with paymentState: "OPEN"
+            const totalForTaxCalc = paidCents > 0 ? paidCents : (order.total ?? 0);
+
+            // Tax = total - revenueSubtotal - serviceCharge + discount
             taxCents = Math.max(0, 
-              paidCents  // Use actual amount paid (includes tax)
+              totalForTaxCalc  // Works for both paid and unpaid orders
               - revenueSubtotal 
               - (order.serviceCharge?.amount ?? 0)
               + (order.discount?.amount ?? 0)
@@ -456,6 +459,8 @@ Deno.serve(async (req) => {
             console.log(`Order ${order.id} tax calculation:`, {
               orderTotal: order.total,
               paidCents,
+              totalForTaxCalc,
+              paymentState: order.paymentState,
               revenueSubtotal,
               serviceCharge: order.serviceCharge?.amount ?? 0,
               discount: order.discount?.amount ?? 0,

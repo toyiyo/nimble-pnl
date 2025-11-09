@@ -23,7 +23,8 @@ BEGIN
   INTO v_gross, v_txn_count
   FROM public.unified_sales us
   WHERE us.restaurant_id = p_restaurant_id
-    AND us.sale_date::date = p_date;
+    AND us.sale_date::date = p_date
+    AND us.adjustment_type IS NULL;  -- Exclude pass-throughs
 
   -- Upsert daily sales
   INSERT INTO public.daily_sales (

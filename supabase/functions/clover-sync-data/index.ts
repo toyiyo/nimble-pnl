@@ -293,7 +293,7 @@ Deno.serve(async (req) => {
         
         // Use modifiedTime which is more commonly supported in Clover API
         ordersUrl.searchParams.set('filter', `modifiedTime>=${startTimestamp}`);
-        ordersUrl.searchParams.set('expand', 'lineItems');
+        ordersUrl.searchParams.set('expand', 'lineItems,lineItems.appliedTaxes,taxRates,totals,payments');
         ordersUrl.searchParams.set('limit', limit.toString());
         ordersUrl.searchParams.set('offset', offset.toString());
 
@@ -450,6 +450,75 @@ Deno.serve(async (req) => {
                     onConflict: 'restaurant_id,order_id,line_item_id'
                   });
               }
+            }
+
+            // Extract and store adjustments (don't create fake line items)
+            // This keeps revenue metrics clean and accounting-compliant
+            const adjustments = [];
+
+            if (order.taxAmount) {
+              adjustments.push({
+                restaurant_id: restaurantId,
+                pos_system: 'clover',
+                external_order_id: order.id,
+                item_name: 'Sales Tax',
+                item_type: 'tax',
+                adjustment_type: 'tax',
+                total_price: order.taxAmount / 100,
+                sale_date: serviceDate,
+                raw_data: { taxAmount: order.taxAmount }
+              });
+            }
+
+            if (order.tipAmount) {
+              adjustments.push({
+                restaurant_id: restaurantId,
+                pos_system: 'clover',
+                external_order_id: order.id,
+                item_name: 'Tips',
+                item_type: 'tip',
+                adjustment_type: 'tip',
+                total_price: order.tipAmount / 100,
+                sale_date: serviceDate,
+                raw_data: { tipAmount: order.tipAmount }
+              });
+            }
+
+            if (order.serviceCharge?.amount) {
+              adjustments.push({
+                restaurant_id: restaurantId,
+                pos_system: 'clover',
+                external_order_id: order.id,
+                item_name: order.serviceCharge.name || 'Service Charge',
+                item_type: 'service_charge',
+                adjustment_type: 'service_charge',
+                total_price: order.serviceCharge.amount / 100,
+                sale_date: serviceDate,
+                raw_data: { serviceCharge: order.serviceCharge }
+              });
+            }
+
+            if (order.discount?.amount) {
+              adjustments.push({
+                restaurant_id: restaurantId,
+                pos_system: 'clover',
+                external_order_id: order.id,
+                item_name: order.discount.name || 'Discount',
+                item_type: 'discount',
+                adjustment_type: 'discount',
+                total_price: -(order.discount.amount / 100), // negative for discounts
+                sale_date: serviceDate,
+                raw_data: { discount: order.discount }
+              });
+            }
+
+            // Upsert all adjustments
+            if (adjustments.length > 0) {
+              await supabase
+                .from('unified_sales')
+                .upsert(adjustments, {
+                  onConflict: 'restaurant_id,pos_system,external_order_id,item_name'
+                });
             }
 
             ordersSynced++;

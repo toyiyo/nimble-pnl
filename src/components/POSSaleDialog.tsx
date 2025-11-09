@@ -20,6 +20,7 @@ import {
   FormDescription,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { usePOSItems } from '@/hooks/usePOSItems';
 import { useRecipes } from '@/hooks/useRecipes';
@@ -47,6 +48,7 @@ const saleSchema = z.object({
   totalPrice: z.number().min(0, 'Total price must be positive').optional(),
   saleDate: z.string().min(1, 'Sale date is required'),
   saleTime: z.string().optional(),
+  adjustmentType: z.enum(['revenue', 'tax', 'tip', 'service_charge', 'discount', 'fee']).optional(),
 });
 
 type SaleFormValues = z.infer<typeof saleSchema>;
@@ -63,6 +65,7 @@ interface POSSaleDialogProps {
     unitPrice?: number;
     saleDate: string;
     saleTime?: string;
+    adjustmentType?: 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | null;
   } | null;
 }
 
@@ -88,6 +91,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       totalPrice: undefined,
       saleDate: new Date().toISOString().split('T')[0],
       saleTime: new Date().toTimeString().slice(0, 5),
+      adjustmentType: 'revenue',
     },
   });
 
@@ -101,6 +105,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
         totalPrice: editingSale.totalPrice,
         saleDate: editingSale.saleDate,
         saleTime: editingSale.saleTime || '',
+        adjustmentType: editingSale.adjustmentType ? editingSale.adjustmentType : 'revenue',
       });
     } else {
       form.reset({
@@ -110,6 +115,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
         totalPrice: undefined,
         saleDate: new Date().toISOString().split('T')[0],
         saleTime: new Date().toTimeString().slice(0, 5),
+        adjustmentType: 'revenue',
       });
     }
   }, [editingSale, form]);
@@ -216,6 +222,9 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   const onSubmit = async (values: SaleFormValues) => {
     let success = false;
     
+    // Convert 'revenue' to null for the adjustmentType
+    const adjustmentType = values.adjustmentType === 'revenue' ? null : values.adjustmentType as 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | undefined;
+    
     if (editingSale) {
       success = await updateManualSale(editingSale.id, {
         itemName: values.itemName,
@@ -224,6 +233,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
         totalPrice: values.totalPrice,
         saleDate: values.saleDate,
         saleTime: values.saleTime,
+        adjustmentType,
       });
     } else {
       success = await createManualSale({
@@ -233,6 +243,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
         totalPrice: values.totalPrice,
         saleDate: values.saleDate,
         saleTime: values.saleTime,
+        adjustmentType,
       });
     }
 
@@ -424,6 +435,35 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                       Recipe mapped - inventory will be deducted
                     </FormDescription>
                   )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="adjustmentType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Entry Type</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value || 'revenue'}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select entry type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="revenue">Revenue (Regular Sale)</SelectItem>
+                      <SelectItem value="tax">Sales Tax</SelectItem>
+                      <SelectItem value="tip">Tip</SelectItem>
+                      <SelectItem value="service_charge">Service Charge</SelectItem>
+                      <SelectItem value="discount">Discount</SelectItem>
+                      <SelectItem value="fee">Fee</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription className="text-xs">
+                    Select "Revenue" for regular sales. Choose tax, tip, etc. to record adjustments separately.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

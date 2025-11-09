@@ -3146,6 +3146,7 @@ export type Database = {
       }
       unified_sales: {
         Row: {
+          adjustment_type: string | null
           ai_confidence: string | null
           ai_reasoning: string | null
           category_id: string | null
@@ -3172,6 +3173,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          adjustment_type?: string | null
           ai_confidence?: string | null
           ai_reasoning?: string | null
           category_id?: string | null
@@ -3198,6 +3200,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          adjustment_type?: string | null
           ai_confidence?: string | null
           ai_reasoning?: string | null
           category_id?: string | null

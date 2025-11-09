@@ -338,6 +338,7 @@ Deno.serve(async (req) => {
             let tipCents = 0;
             let paidCents = 0;
             let paymentCount = 0;
+            let taxFromPayments = false;
 
             try {
               const paysResp = await fetch(paysUrl, {
@@ -354,6 +355,10 @@ Deno.serve(async (req) => {
                 tipCents = payments.reduce((s, p) => s + (p.tipAmount ?? 0), 0);
                 taxCents = payments.reduce((s, p) => s + (p.taxAmount ?? 0), 0);
                 paidCents = payments.reduce((s, p) => s + (p.amount ?? 0), 0); // includes tax, excludes tip
+                
+                if (taxCents > 0) {
+                  taxFromPayments = true;
+                }
 
                 console.log(`Order ${order.id} payments:`, {
                   paymentCount: payments.length,
@@ -518,7 +523,7 @@ Deno.serve(async (req) => {
                 sale_date: serviceDate,
                 sale_time: closedTime,
                 raw_data: {
-                  from: "payments",
+                  from: taxFromPayments ? "payments" : "calculated",
                   taxCents,
                   isVat: order.isVat ?? false,
                   taxRemoved: order.taxRemoved ?? false,

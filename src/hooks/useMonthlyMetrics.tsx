@@ -58,6 +58,17 @@ export function useMonthlyMetrics(
 
       if (salesError) throw salesError;
 
+      // Fetch adjustments separately (Square/Clover pass-through items)
+      const { data: adjustmentsData, error: adjustmentsError } = await supabase
+        .from('unified_sales')
+        .select('sale_date, adjustment_type, total_price')
+        .eq('restaurant_id', restaurantId)
+        .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
+        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
+        .not('adjustment_type', 'is', null);
+
+      if (adjustmentsError) throw adjustmentsError;
+
       // Filter out parent sales that have been split into children
       // Include: unsplit sales (no children) + all child splits
       const parentIdsWithChildren = new Set(
@@ -131,6 +142,52 @@ export function useMonthlyMetrics(
           month.discounts += Math.round(Math.abs(sale.total_price) * 100);
         } else if (sale.item_type === 'refund') {
           month.refunds += Math.round(Math.abs(sale.total_price) * 100);
+        }
+      });
+
+      // Process adjustments (Square/Clover pass-through items)
+      adjustmentsData?.forEach((adjustment) => {
+        const [year, monthNum, day] = adjustment.sale_date.split('-').map(Number);
+        const localDate = new Date(year, monthNum - 1, day);
+        const monthKey = format(localDate, 'yyyy-MM');
+
+        if (!monthlyMap.has(monthKey)) {
+          monthlyMap.set(monthKey, {
+            period: monthKey,
+            gross_revenue: 0,
+            total_collected_at_pos: 0,
+            net_revenue: 0,
+            discounts: 0,
+            refunds: 0,
+            sales_tax: 0,
+            tips: 0,
+            other_liabilities: 0,
+            food_cost: 0,
+            labor_cost: 0,
+            has_data: false,
+          });
+        }
+
+        const month = monthlyMap.get(monthKey)!;
+        month.has_data = true;
+
+        // Categorize based on adjustment_type
+        const priceInCents = Math.round(adjustment.total_price * 100);
+        
+        switch (adjustment.adjustment_type) {
+          case 'tax':
+            month.sales_tax += priceInCents;
+            break;
+          case 'tip':
+            month.tips += priceInCents;
+            break;
+          case 'service_charge':
+          case 'fee':
+            month.other_liabilities += priceInCents;
+            break;
+          case 'discount':
+            month.discounts += Math.abs(priceInCents);
+            break;
         }
       });
 

@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
         // Tax, tips, and totals are available on the order object without expansion
         ordersUrl.searchParams.set(
           "expand",
-          "lineItems, employee, refunds, credits, voids, customers, serviceCharge, discounts, orderType",
+          "lineItems, lineItems.appliedTaxes,lineItems.discounts, employee, refunds, credits, voids, customers, serviceCharge, discounts, orderType",
         );
         ordersUrl.searchParams.set("limit", limit.toString());
         ordersUrl.searchParams.set("offset", offset.toString());

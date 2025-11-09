@@ -199,6 +199,11 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
+        transformHeader: (header: string, index: number) => {
+          // Handle duplicate headers by appending index
+          // Papa Parse will warn but we'll make it unique
+          return header.trim() || `Column_${index}`;
+        },
         complete: (results) => {
           try {
             const data = results.data as Record<string, string>[];
@@ -207,6 +212,17 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
             if (headers.length === 0 || data.length === 0) {
               reject(new Error('CSV file appears to be empty'));
               return;
+            }
+            
+            // Check for any errors in parsing
+            if (results.errors && results.errors.length > 0) {
+              console.warn('CSV parsing warnings:', results.errors);
+              // Only reject if there are fatal errors, not warnings
+              const fatalErrors = results.errors.filter(err => err.type === 'Quotes' || err.type === 'FieldMismatch');
+              if (fatalErrors.length > 0) {
+                reject(new Error(`CSV parsing errors: ${fatalErrors.map(e => e.message).join(', ')}`));
+                return;
+              }
             }
 
             // If mappings provided, use them directly

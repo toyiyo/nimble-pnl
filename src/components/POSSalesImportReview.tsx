@@ -15,7 +15,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckCircle, AlertCircle, Edit2, Save, X, Upload, Calendar } from 'lucide-react';
+import { CheckCircle, AlertCircle, Edit2, Save, X, Upload, Calendar, Info } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { cn } from '@/lib/utils';

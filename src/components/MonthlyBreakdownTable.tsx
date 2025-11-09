@@ -539,7 +539,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                               )}
 
                               {/* Collected at POS Summary */}
-                              {breakdown?.has_categorization_data && breakdown?.totals && (
+                              {breakdown?.totals && (
                                 <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
                                   <div className="flex justify-between items-center mb-2">
                                     <div className="flex items-center gap-2">
@@ -579,7 +579,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                               )}
 
                               {/* Pass-Through Collections */}
-                              {breakdown?.has_categorization_data && breakdown?.totals && (breakdown.totals.sales_tax > 0 || breakdown.totals.tips > 0 || breakdown.totals.other_liabilities > 0) && (
+                              {breakdown?.totals && (breakdown.totals.sales_tax > 0 || breakdown.totals.tips > 0 || breakdown.totals.other_liabilities > 0) && (
                                 <div>
                                   <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                                     Pass-Through Collections (Not Revenue)

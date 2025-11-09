@@ -448,11 +448,13 @@ Deno.serve(async (req) => {
                 restaurant_id: restaurantId,
                 pos_system: "clover",
                 external_order_id: order.id,
+                external_item_id: `${order.id}_tax`,
                 item_name: taxLabel,
                 item_type: "tax",
                 adjustment_type: "tax",
                 total_price: taxCents / 100,
                 sale_date: serviceDate,
+                sale_time: closedTime,
                 raw_data: {
                   from: "payments",
                   taxCents,
@@ -468,11 +470,13 @@ Deno.serve(async (req) => {
                 restaurant_id: restaurantId,
                 pos_system: "clover",
                 external_order_id: order.id,
+                external_item_id: `${order.id}_tip`,
                 item_name: "Tips",
                 item_type: "tip",
                 adjustment_type: "tip",
                 total_price: tipCents / 100,
                 sale_date: serviceDate,
+                sale_time: closedTime,
                 raw_data: {
                   from: "payments",
                   tipCents,
@@ -486,11 +490,13 @@ Deno.serve(async (req) => {
                 restaurant_id: restaurantId,
                 pos_system: "clover",
                 external_order_id: order.id,
+                external_item_id: `${order.id}_service_charge`,
                 item_name: order.serviceCharge.name || "Service Charge",
                 item_type: "service_charge",
                 adjustment_type: "service_charge",
                 total_price: order.serviceCharge.amount / 100,
                 sale_date: serviceDate,
+                sale_time: closedTime,
                 raw_data: {
                   serviceCharge: order.serviceCharge,
                 },
@@ -520,11 +526,13 @@ Deno.serve(async (req) => {
                   restaurant_id: restaurantId,
                   pos_system: "clover",
                   external_order_id: order.id,
+                  external_item_id: `${order.id}_discount_${disc.id}`,
                   item_name: entryName,
                   item_type: "discount",
                   adjustment_type: "discount",
                   total_price: -amountOff, // Discounts as negative revenue
                   sale_date: serviceDate,
+                  sale_time: closedTime,
                   raw_data: {
                     discount: disc,
                     lineItemRef: disc.lineItemRef,
@@ -536,9 +544,16 @@ Deno.serve(async (req) => {
 
             // Upsert all adjustments
             if (adjustments.length > 0) {
-              await supabase.from("unified_sales").upsert(adjustments, {
-                onConflict: "restaurant_id,pos_system,external_order_id,item_name",
-              });
+              const { error: adjustmentError } = await supabase
+                .from("unified_sales")
+                .upsert(adjustments, {
+                  onConflict: "restaurant_id,pos_system,external_order_id,external_item_id",
+                });
+              
+              if (adjustmentError) {
+                console.error("Failed to upsert adjustments:", adjustmentError);
+                errors.push(`Adjustment sync error: ${adjustmentError.message}`);
+              }
             }
             ordersSynced++;
           } catch (orderError) {

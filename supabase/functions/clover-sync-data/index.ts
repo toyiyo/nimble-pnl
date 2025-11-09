@@ -337,6 +337,7 @@ Deno.serve(async (req) => {
             let taxCents = 0;
             let tipCents = 0;
             let paidCents = 0;
+            let paymentCount = 0;
 
             try {
               const paysResp = await fetch(paysUrl, {
@@ -346,10 +347,12 @@ Deno.serve(async (req) => {
               if (paysResp.ok) {
                 const paysData = await paysResp.json();
                 const payments = paysData.elements ?? [];
+                paymentCount = payments.length;
 
-                // Sum tips and amounts from payments (source of truth)
-                // Note: taxAmount is not provided by Clover API - we calculate it later from order total
+                // Sum tips, tax, and amounts from payments (source of truth)
+                // taxAmount is provided by Clover Payment API when tax is collected
                 tipCents = payments.reduce((s, p) => s + (p.tipAmount ?? 0), 0);
+                taxCents = payments.reduce((s, p) => s + (p.taxAmount ?? 0), 0);
                 paidCents = payments.reduce((s, p) => s + (p.amount ?? 0), 0); // includes tax, excludes tip
 
                 console.log(`Order ${order.id} payments:`, {
@@ -358,6 +361,7 @@ Deno.serve(async (req) => {
                   tipCents,
                   paidCents,
                   orderTotalCents: order.total ?? 0,
+                  taxFromPayments: taxCents > 0,
                 });
 
                 // Reconciliation check: payment amounts should match order total (±1 cent tolerance)
@@ -412,7 +416,7 @@ Deno.serve(async (req) => {
                 calculatedTaxCents: taxCents,
               });
             } else {
-              console.log(`Order ${order.id} using payment tax: ${taxCents / 100}`);
+              console.log(`Order ${order.id} using payment tax from ${paymentCount} payment(s): ${taxCents / 100}`);
             }
 
             await supabase.from("clover_orders").upsert(

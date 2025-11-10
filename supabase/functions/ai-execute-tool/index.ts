@@ -146,7 +146,7 @@ async function executeGetKpis(
     .from('inventory_transactions')
     .select('total_cost')
     .eq('restaurant_id', restaurantId)
-    .in('transaction_type', ['purchase', 'receipt'])
+    .eq('transaction_type', 'usage')
     .gte('created_at', startDateStr)
     .lte('created_at', endDateStr + 'T23:59:59.999Z');
 

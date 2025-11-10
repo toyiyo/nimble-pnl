@@ -599,52 +599,6 @@ const Index = () => {
                 </div>
               </Collapsible>
 
-              {/* ===== BANKING SECTION ===== */}
-
-              {/* Bank Snapshot Section - NOW COLLAPSIBLE */}
-              <Collapsible open={bankingOpen} onOpenChange={setBankingOpen}>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-8 bg-gradient-to-r from-cyan-500 to-cyan-600 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">🏦 Banking</h2>
-                    </div>
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-2">
-                        {bankingOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        {bankingOpen ? "Collapse" : "Expand"}
-                      </Button>
-                    </CollapsibleTrigger>
-                  </div>
-                  <CollapsibleContent>
-                    {!banksLoading && connectedBanks && connectedBanks.length > 0 ? (
-                      <BankSnapshotSection 
-                        restaurantId={selectedRestaurant.restaurant_id}
-                      />
-                    ) : !banksLoading && (!connectedBanks || connectedBanks.length === 0) ? (
-                      <Card className="border-dashed border-2 border-cyan-500/30 bg-gradient-to-br from-cyan-500/5 to-transparent">
-                        <CardContent className="py-12 text-center">
-                          <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-transparent mb-4">
-                            <Landmark className="h-12 w-12 text-cyan-600" />
-                          </div>
-                          <h3 className="text-lg font-semibold mb-2">Connect Your Bank for Financial Insights</h3>
-                          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                            Get real-time cash flow tracking, spending analysis, and AI-powered financial intelligence by connecting your bank account.
-                          </p>
-                          <Button 
-                            onClick={() => navigate('/banking')} 
-                            className="gap-2"
-                          >
-                            <Landmark className="h-4 w-4" />
-                            Connect Bank Account
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    ) : null}
-                  </CollapsibleContent>
-                </div>
-              </Collapsible>
-
               {/* Revenue Mix Section - Collapsible */}
               {!revenueLoading && revenueBreakdown && revenueBreakdown.has_categorization_data && (
                 <Collapsible open={revenueOpen} onOpenChange={setRevenueOpen}>
@@ -817,6 +771,52 @@ const Index = () => {
                   </div>
                 </Collapsible>
               )}
+
+              {/* ===== BANKING SECTION ===== */}
+
+              {/* Bank Snapshot Section - NOW COLLAPSIBLE */}
+              <Collapsible open={bankingOpen} onOpenChange={setBankingOpen}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-8 bg-gradient-to-r from-cyan-500 to-cyan-600 rounded-full" />
+                      <h2 className="text-2xl font-bold tracking-tight">🏦 Banking</h2>
+                    </div>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        {bankingOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        {bankingOpen ? "Collapse" : "Expand"}
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  <CollapsibleContent>
+                    {!banksLoading && connectedBanks && connectedBanks.length > 0 ? (
+                      <BankSnapshotSection 
+                        restaurantId={selectedRestaurant.restaurant_id}
+                      />
+                    ) : !banksLoading && (!connectedBanks || connectedBanks.length === 0) ? (
+                      <Card className="border-dashed border-2 border-cyan-500/30 bg-gradient-to-br from-cyan-500/5 to-transparent">
+                        <CardContent className="py-12 text-center">
+                          <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-transparent mb-4">
+                            <Landmark className="h-12 w-12 text-cyan-600" />
+                          </div>
+                          <h3 className="text-lg font-semibold mb-2">Connect Your Bank for Financial Insights</h3>
+                          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                            Get real-time cash flow tracking, spending analysis, and AI-powered financial intelligence by connecting your bank account.
+                          </p>
+                          <Button 
+                            onClick={() => navigate('/banking')} 
+                            className="gap-2"
+                          >
+                            <Landmark className="h-4 w-4" />
+                            Connect Bank Account
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ) : null}
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
 
               {/* Money Going Out Section - Collapsible */}
               <Collapsible open={moneyOutOpen} onOpenChange={setMoneyOutOpen}>

@@ -60,6 +60,7 @@ function executeNavigate(args: any): any {
 /**
  * Execute get_kpis tool
  * Returns comprehensive KPIs including revenue, COGS, labor, prime cost, and profitability metrics
+ * Uses shared calculation logic from periodMetrics.ts
  */
 async function executeGetKpis(
   args: any,
@@ -67,6 +68,9 @@ async function executeGetKpis(
   supabase: any
 ): Promise<any> {
   const { period, start_date, end_date } = args;
+  
+  // Import shared calculation module
+  const { calculatePeriodMetrics } = await import('../_shared/periodMetrics.ts');
   
   // Calculate date range based on period
   const now = new Date();
@@ -109,11 +113,12 @@ async function executeGetKpis(
   const startDateStr = startDate.toISOString().split('T')[0];
   const endDateStr = endDate.toISOString().split('T')[0];
 
-  // ====== REVENUE CALCULATION ======
-  // Fetch sales data (excluding split parent sales to avoid double-counting)
-  const { data: allSales, error: salesError } = await supabase
+  // ====== FETCH DATA FROM DATABASE ======
+  
+  // Fetch sales (excluding adjustments)
+  const { data: sales, error: salesError } = await supabase
     .from('unified_sales')
-    .select('id, total_price, sale_date, item_type, parent_sale_id, is_categorized, chart_of_accounts!category_id(account_type, account_subtype)')
+    .select('id, total_price, item_type, parent_sale_id, is_categorized, chart_of_accounts!category_id(account_type, account_subtype)')
     .eq('restaurant_id', restaurantId)
     .gte('sale_date', startDateStr)
     .lte('sale_date', endDateStr)
@@ -123,54 +128,20 @@ async function executeGetKpis(
     throw new Error(`Failed to fetch sales: ${salesError.message}`);
   }
 
-  // Filter out parent sales that have been split into children
-  const parentIdsWithChildren = new Set(
-    allSales?.filter((s: any) => s.parent_sale_id !== null).map((s: any) => s.parent_sale_id) || []
-  );
-  const validSales = allSales?.filter((s: any) => !parentIdsWithChildren.has(s.id)) || [];
+  // Fetch adjustments separately
+  const { data: adjustments, error: adjustmentsError } = await supabase
+    .from('unified_sales')
+    .select('adjustment_type, total_price')
+    .eq('restaurant_id', restaurantId)
+    .gte('sale_date', startDateStr)
+    .lte('sale_date', endDateStr)
+    .not('adjustment_type', 'is', null);
 
-  // Calculate revenue components
-  let grossRevenue = 0;
-  let discounts = 0;
-  let refunds = 0;
-  let salesTax = 0;
-  let tips = 0;
-  let otherLiabilities = 0;
+  if (adjustmentsError) {
+    throw new Error(`Failed to fetch adjustments: ${adjustmentsError.message}`);
+  }
 
-  validSales.forEach((sale: any) => {
-    if (!sale.is_categorized || !sale.chart_of_accounts) {
-      // Uncategorized sales treated as revenue
-      if (sale.item_type === 'sale' || !sale.item_type) {
-        grossRevenue += sale.total_price || 0;
-      }
-      return;
-    }
-
-    if (sale.item_type === 'sale' || !sale.item_type) {
-      if (sale.chart_of_accounts.account_type === 'revenue') {
-        grossRevenue += sale.total_price || 0;
-      } else if (sale.chart_of_accounts.account_type === 'liability') {
-        const subtype = sale.chart_of_accounts.account_subtype?.toLowerCase() || '';
-        if (subtype.includes('sales') && subtype.includes('tax')) {
-          salesTax += sale.total_price || 0;
-        } else if (subtype.includes('tip')) {
-          tips += sale.total_price || 0;
-        } else {
-          otherLiabilities += sale.total_price || 0;
-        }
-      }
-    } else if (sale.item_type === 'discount') {
-      discounts += Math.abs(sale.total_price || 0);
-    } else if (sale.item_type === 'refund') {
-      refunds += Math.abs(sale.total_price || 0);
-    }
-  });
-
-  const netRevenue = grossRevenue - discounts - refunds;
-  const totalCollectedAtPOS = grossRevenue + salesTax + tips + otherLiabilities;
-
-  // ====== COST OF GOODS SOLD (COGS / Food Cost) ======
-  // Get food cost from inventory_transactions (source of truth)
+  // Fetch food costs (COGS)
   const { data: foodCostData, error: foodCostError } = await supabase
     .from('inventory_transactions')
     .select('total_cost')
@@ -183,10 +154,7 @@ async function executeGetKpis(
     throw new Error(`Failed to fetch food costs: ${foodCostError.message}`);
   }
 
-  const foodCost = Math.abs(foodCostData?.reduce((sum: number, t: any) => sum + (t.total_cost || 0), 0) || 0);
-
-  // ====== LABOR COST ======
-  // Get labor cost from daily_labor_costs (source of truth)
+  // Fetch labor costs
   const { data: laborCostData, error: laborCostError } = await supabase
     .from('daily_labor_costs')
     .select('total_labor_cost')
@@ -198,17 +166,7 @@ async function executeGetKpis(
     throw new Error(`Failed to fetch labor costs: ${laborCostError.message}`);
   }
 
-  const laborCost = laborCostData?.reduce((sum: number, d: any) => sum + (d.total_labor_cost || 0), 0) || 0;
-
-  // ====== CALCULATED METRICS ======
-  const primeCost = foodCost + laborCost;
-  const foodCostPercentage = netRevenue > 0 ? (foodCost / netRevenue) * 100 : 0;
-  const laborCostPercentage = netRevenue > 0 ? (laborCost / netRevenue) * 100 : 0;
-  const primeCostPercentage = netRevenue > 0 ? (primeCost / netRevenue) * 100 : 0;
-  const grossProfit = netRevenue - primeCost;
-  const profitMargin = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
-
-  // ====== INVENTORY VALUE ======
+  // Fetch inventory value
   const { data: inventory, error: invError } = await supabase
     .from('products')
     .select('current_stock, cost_per_unit')
@@ -221,13 +179,22 @@ async function executeGetKpis(
   const inventoryValue = inventory?.reduce((sum: number, item: any) => 
     sum + ((item.current_stock || 0) * (item.cost_per_unit || 0)), 0) || 0;
 
-  // ====== BANK TRANSACTION COUNT ======
+  // Get bank transaction count
   const { count: transactionCount } = await supabase
     .from('bank_transactions')
     .select('*', { count: 'exact', head: true })
     .eq('restaurant_id', restaurantId)
     .gte('transaction_date', startDateStr)
     .lte('transaction_date', endDateStr);
+
+  // ====== CALCULATE METRICS USING SHARED MODULE ======
+  
+  const metrics = calculatePeriodMetrics(
+    sales || [],
+    adjustments || [],
+    foodCostData || [],
+    laborCostData || []
+  );
 
   return {
     ok: true,
@@ -236,52 +203,16 @@ async function executeGetKpis(
       start_date: startDateStr,
       end_date: endDateStr,
       
-      // Revenue metrics
-      revenue: {
-        gross_revenue: grossRevenue,
-        discounts: discounts,
-        refunds: refunds,
-        net_revenue: netRevenue,
-        total_collected_at_pos: totalCollectedAtPOS,
-        sales_count: validSales.length,
-      },
+      // All metrics from shared calculation module
+      revenue: metrics.revenue,
+      costs: metrics.costs,
+      profitability: metrics.profitability,
+      liabilities: metrics.liabilities,
+      benchmarks: metrics.benchmarks,
       
-      // Cost metrics (COGS + Labor)
-      costs: {
-        food_cost: foodCost,
-        food_cost_percentage: Math.round(foodCostPercentage * 10) / 10,
-        labor_cost: laborCost,
-        labor_cost_percentage: Math.round(laborCostPercentage * 10) / 10,
-        prime_cost: primeCost,
-        prime_cost_percentage: Math.round(primeCostPercentage * 10) / 10,
-      },
-      
-      // Profitability metrics
-      profitability: {
-        gross_profit: grossProfit,
-        profit_margin: Math.round(profitMargin * 10) / 10,
-      },
-      
-      // Liabilities (pass-through items)
-      liabilities: {
-        sales_tax: salesTax,
-        tips: tips,
-        other_liabilities: otherLiabilities,
-      },
-      
-      // Other metrics
+      // Additional metrics not in shared module
       inventory_value: inventoryValue,
       bank_transaction_count: transactionCount || 0,
-      
-      // Benchmark indicators
-      benchmarks: {
-        food_cost_status: foodCostPercentage <= 32 ? 'good' : foodCostPercentage <= 35 ? 'caution' : 'high',
-        labor_cost_status: laborCostPercentage <= 30 ? 'good' : laborCostPercentage <= 35 ? 'caution' : 'high',
-        prime_cost_status: primeCostPercentage <= 60 ? 'good' : primeCostPercentage <= 65 ? 'caution' : 'high',
-        target_food_cost: '28-32%',
-        target_labor_cost: '25-30%',
-        target_prime_cost: '55-60%',
-      },
     },
   };
 }

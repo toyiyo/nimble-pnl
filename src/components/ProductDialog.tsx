@@ -31,6 +31,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Upload, Calculator, Package } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 import { CreateProductData, Product } from '@/hooks/useProducts';
 import { useUnitConversion } from '@/hooks/useUnitConversion';
@@ -141,6 +142,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   initialData,
   editProduct,
 }) => {
+  const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string>('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | undefined>();
@@ -310,6 +312,17 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       console.log('[ProductDialog] handleSubmit called with data:', data);
       console.log('[ProductDialog] editProduct:', editProduct);
       console.log('[ProductDialog] Form values:', form.getValues());
+    }
+
+    // Critical validation: SKU must not be empty
+    if (!data.sku || data.sku.trim() === '') {
+      console.error('[ProductDialog] SKU is empty! Form data:', data);
+      toast({
+        title: "Error",
+        description: "SKU is required and cannot be empty",
+        variant: "destructive",
+      });
+      return;
     }
 
     // Handle new supplier creation if needed

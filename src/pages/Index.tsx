@@ -501,7 +501,7 @@ const Index = () => {
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
-                    title="Food Cost (COGS)"
+                    title="COGS"
                     value={periodData ? `$${periodData.food_cost.toFixed(0)}` : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.food_cost_percentage, previousPeriodData.food_cost_percentage),

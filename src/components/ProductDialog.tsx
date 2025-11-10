@@ -380,7 +380,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   <FormItem>
                     <FormLabel>SKU *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., BEEF-001" value={field.value || ''} />
+                      <Input {...field} placeholder="e.g., BEEF-001" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -394,7 +394,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   <FormItem>
                     <FormLabel>Product Name *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., Ground Beef 80/20" value={field.value || ''} />
+                      <Input {...field} placeholder="e.g., Ground Beef 80/20" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -565,11 +565,10 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                       </FormLabel>
                       <FormControl>
                        <Input
-                          {...field}
                           type="number"
                           step="0.01"
                           placeholder="0.00"
-                          value={field.value || ''}
+                          value={field.value ?? ''}
                           onChange={(e) => {
                             const value = e.target.value;
                             field.onChange(value ? parseFloat(value) : undefined);

@@ -70,6 +70,9 @@ const Index = () => {
   const [revenueOpen, setRevenueOpen] = useState(true);
   const [moneyOutOpen, setMoneyOutOpen] = useState(true);
   const [monthlyOpen, setMonthlyOpen] = useState(true);
+  const [bankingOpen, setBankingOpen] = useState(true);
+  const [operationsOpen, setOperationsOpen] = useState(true);
+  const [quickActionsOpen, setQuickActionsOpen] = useState(true);
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
     type: 'today',
@@ -460,50 +463,14 @@ const Index = () => {
               {/* AI Insights */}
               <DashboardInsights insights={insights} />
 
-              {/* Bank Snapshot Section - Current State (Real-time) */}
-              {!banksLoading && connectedBanks && connectedBanks.length > 0 ? (
-                <BankSnapshotSection 
-                  restaurantId={selectedRestaurant.restaurant_id}
-                />
-              ) : !banksLoading && (!connectedBanks || connectedBanks.length === 0) ? (
-                <Card className="border-dashed border-2 border-cyan-500/30 bg-gradient-to-br from-cyan-500/5 to-transparent">
-                  <CardContent className="py-12 text-center">
-                    <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-transparent mb-4">
-                      <Landmark className="h-12 w-12 text-cyan-600" />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2">Connect Your Bank for Financial Insights</h3>
-                    <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                      Get real-time cash flow tracking, spending analysis, and AI-powered financial intelligence by connecting your bank account.
-                    </p>
-                    <Button 
-                      onClick={() => navigate('/banking')} 
-                      className="gap-2"
-                    >
-                      <Landmark className="h-4 w-4" />
-                      Connect Bank Account
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : null}
-
-              {/* Operations Health Card */}
-              <OperationsHealthCard
-                primeCost={periodData?.prime_cost_percentage || 0}
-                primeCostTarget={62}
-                lowInventoryCount={lowStockItems.length}
-                unmappedPOSCount={unmappedItems?.length || 0}
-                uncategorizedTransactions={transactionsData?.length || 0}
-              />
-
-              {/* Quick Actions */}
-              <DashboardQuickActions restaurantId={selectedRestaurant.restaurant_id} />
-
-              {/* Period Selector */}
+              {/* Period Selector - MOVED TO TOP */}
               <PeriodSelector
                 selectedPeriod={selectedPeriod}
                 onPeriodChange={setSelectedPeriod}
               />
 
+              {/* ===== OPERATIONAL METRICS SECTION ===== */}
+              
               {/* Key Metrics - Collapsible */}
               <Collapsible open={metricsOpen} onOpenChange={setMetricsOpen}>
                 <div className="space-y-4">
@@ -607,6 +574,27 @@ const Index = () => {
                     )}
                   </div>
                 )}
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+
+              {/* Monthly Performance Table - Collapsible */}
+              <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" />
+                      <h2 className="text-2xl font-bold tracking-tight">Monthly Performance</h2>
+                    </div>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        {monthlyOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        {monthlyOpen ? "Collapse" : "Expand"}
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  <CollapsibleContent>
+                    <MonthlyBreakdownTable monthlyData={monthlyData} />
                   </CollapsibleContent>
                 </div>
               </Collapsible>
@@ -784,6 +772,52 @@ const Index = () => {
                 </Collapsible>
               )}
 
+              {/* ===== BANKING SECTION ===== */}
+
+              {/* Bank Snapshot Section - NOW COLLAPSIBLE */}
+              <Collapsible open={bankingOpen} onOpenChange={setBankingOpen}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-8 bg-gradient-to-r from-cyan-500 to-cyan-600 rounded-full" />
+                      <h2 className="text-2xl font-bold tracking-tight">🏦 Banking</h2>
+                    </div>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        {bankingOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        {bankingOpen ? "Collapse" : "Expand"}
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  <CollapsibleContent>
+                    {!banksLoading && connectedBanks && connectedBanks.length > 0 ? (
+                      <BankSnapshotSection 
+                        restaurantId={selectedRestaurant.restaurant_id}
+                      />
+                    ) : !banksLoading && (!connectedBanks || connectedBanks.length === 0) ? (
+                      <Card className="border-dashed border-2 border-cyan-500/30 bg-gradient-to-br from-cyan-500/5 to-transparent">
+                        <CardContent className="py-12 text-center">
+                          <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-transparent mb-4">
+                            <Landmark className="h-12 w-12 text-cyan-600" />
+                          </div>
+                          <h3 className="text-lg font-semibold mb-2">Connect Your Bank for Financial Insights</h3>
+                          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                            Get real-time cash flow tracking, spending analysis, and AI-powered financial intelligence by connecting your bank account.
+                          </p>
+                          <Button 
+                            onClick={() => navigate('/banking')} 
+                            className="gap-2"
+                          >
+                            <Landmark className="h-4 w-4" />
+                            Connect Bank Account
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ) : null}
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+
               {/* Money Going Out Section - Collapsible */}
               <Collapsible open={moneyOutOpen} onOpenChange={setMoneyOutOpen}>
                 <div className="space-y-4">
@@ -838,23 +872,52 @@ const Index = () => {
                 </div>
               </Collapsible>
 
-              {/* Monthly Performance Table - Collapsible */}
-              <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>
+              {/* ===== OTHER SECTIONS ===== */}
+
+              {/* Operations Health Card - NOW COLLAPSIBLE */}
+              <Collapsible open={operationsOpen} onOpenChange={setOperationsOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="h-1 w-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">Monthly Performance</h2>
+                      <div className="h-1 w-8 bg-gradient-to-r from-orange-500 to-orange-600 rounded-full" />
+                      <h2 className="text-2xl font-bold tracking-tight">⚙️ Operations Health</h2>
                     </div>
                     <CollapsibleTrigger asChild>
                       <Button variant="ghost" size="sm" className="gap-2">
-                        {monthlyOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        {monthlyOpen ? "Collapse" : "Expand"}
+                        {operationsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        {operationsOpen ? "Collapse" : "Expand"}
                       </Button>
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
-                    <MonthlyBreakdownTable monthlyData={monthlyData} />
+                    <OperationsHealthCard
+                      primeCost={periodData?.prime_cost_percentage || 0}
+                      primeCostTarget={62}
+                      lowInventoryCount={lowStockItems.length}
+                      unmappedPOSCount={unmappedItems?.length || 0}
+                      uncategorizedTransactions={transactionsData?.length || 0}
+                    />
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+
+              {/* Quick Actions - NOW COLLAPSIBLE */}
+              <Collapsible open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-8 bg-gradient-to-r from-purple-500 to-purple-600 rounded-full" />
+                      <h2 className="text-2xl font-bold tracking-tight">⚡ Quick Actions</h2>
+                    </div>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        {quickActionsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        {quickActionsOpen ? "Collapse" : "Expand"}
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  <CollapsibleContent>
+                    <DashboardQuickActions restaurantId={selectedRestaurant.restaurant_id} />
                   </CollapsibleContent>
                 </div>
               </Collapsible>

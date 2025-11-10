@@ -17,7 +17,7 @@ export interface FoodCostsResult {
 
 /**
  * Query food costs directly from inventory_transactions (source of truth).
- * Filters for 'purchase' and 'receipt' transaction types.
+ * Filters for 'usage' transaction type (cost of goods consumed/used).
  * 
  * @param restaurantId - Restaurant ID to filter transactions
  * @param dateFrom - Start date for the period
@@ -38,7 +38,7 @@ export function useFoodCosts(
         .from('inventory_transactions')
         .select('created_at, total_cost, transaction_type')
         .eq('restaurant_id', restaurantId)
-        .in('transaction_type', ['purchase', 'receipt'])
+        .eq('transaction_type', 'usage')
         .gte('created_at', format(dateFrom, 'yyyy-MM-dd'))
         .lte('created_at', format(dateTo, 'yyyy-MM-dd') + 'T23:59:59.999Z')
         .order('created_at', { ascending: true });

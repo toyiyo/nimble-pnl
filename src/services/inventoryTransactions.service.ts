@@ -163,7 +163,13 @@ export function calculateTransactionsSummary(
     const type = transaction.transaction_type as keyof typeof summary;
     if (summary[type]) {
       summary[type].count += 1;
-      summary[type].totalCost += Math.abs(transaction.total_cost || 0);
+      // For transfers, use actual value (positive + negative = 0)
+      // For other types, use absolute value to show total cost
+      if (type === 'transfer') {
+        summary[type].totalCost += transaction.total_cost || 0;
+      } else {
+        summary[type].totalCost += Math.abs(transaction.total_cost || 0);
+      }
     }
   });
 

@@ -184,8 +184,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                     <span className="sm:hidden">Net Rev</span>
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
-                    <span className="hidden sm:inline">Food Cost</span>
-                    <span className="sm:hidden">COGS</span>
+                    COGS
                   </th>
                   <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
                     Labor

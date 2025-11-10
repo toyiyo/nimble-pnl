@@ -191,12 +191,13 @@ export function useMonthlyMetrics(
         }
       });
 
-      // Fetch food costs from inventory_transactions (source of truth)
+      // Fetch COGS (Cost of Goods Used) from inventory_transactions (source of truth)
+      // Use 'usage' type to track actual product consumption when recipes are sold
       const { data: foodCostsData, error: foodCostsError } = await supabase
         .from('inventory_transactions')
         .select('created_at, total_cost')
         .eq('restaurant_id', restaurantId)
-        .in('transaction_type', ['purchase', 'receipt'])
+        .eq('transaction_type', 'usage')
         .gte('created_at', format(dateFrom, 'yyyy-MM-dd'))
         .lte('created_at', format(dateTo, 'yyyy-MM-dd') + 'T23:59:59.999Z');
 
@@ -212,7 +213,7 @@ export function useMonthlyMetrics(
 
       if (laborCostsError) throw laborCostsError;
 
-      // Aggregate food costs by month
+      // Aggregate COGS (Cost of Goods Used) by month
       foodCostsData?.forEach((transaction) => {
         const transactionDate = new Date(transaction.created_at);
         const monthKey = format(transactionDate, 'yyyy-MM');

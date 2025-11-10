@@ -106,6 +106,30 @@ export const useProducts = (restaurantId: string | null) => {
 
       if (error) throw error;
 
+      // Create product-supplier relationship if supplier info is provided
+      if (data && productData.supplier_id && productData.cost_per_unit) {
+        const { error: supplierError } = await supabase
+          .from('product_suppliers')
+          .insert({
+            restaurant_id: data.restaurant_id,
+            product_id: data.id,
+            supplier_id: productData.supplier_id,
+            last_unit_cost: productData.cost_per_unit,
+            supplier_sku: productData.supplier_sku,
+            is_preferred: true,  // First supplier is default preferred
+          });
+
+        if (supplierError) {
+          console.error('Error creating product-supplier relationship:', supplierError);
+          // Don't throw - product was created successfully, just log the error
+          toast({
+            title: "Warning",
+            description: "Product created but supplier relationship could not be saved",
+            variant: "destructive",
+          });
+        }
+      }
+
       // Log initial stock as purchase if there's stock being added
       if (data && (productData.current_stock || 0) > 0) {
         await logPurchase(

@@ -1,5 +1,12 @@
 // Braintrust telemetry integration for AI observability
-import { initLogger } from "npm:braintrust";
+// Import is wrapped in try-catch to handle missing npm package gracefully
+let initLogger: any = null;
+try {
+  const braintrust = await import("npm:braintrust");
+  initLogger = braintrust.initLogger;
+} catch (error) {
+  console.log('[Braintrust] Package not available - tracing disabled');
+}
 
 // Lazy-initialized logger instance
 let logger: any = null;
@@ -12,6 +19,14 @@ let loggerInitialized = false;
 export function getBraintrustLogger() {
   if (loggerInitialized) {
     return logger;
+  }
+
+  // Check if initLogger is available
+  if (!initLogger) {
+    console.log('[Braintrust] Package not available - tracing disabled');
+    loggerInitialized = true;
+    logger = null;
+    return null;
   }
 
   const apiKey = Deno.env.get('BRAINTRUST_API_KEY');

@@ -27,7 +27,7 @@ export async function saveMappingTemplate(
         restaurant_id: restaurantId,
         template_name: templateName,
         csv_headers: csvHeaders,
-        column_mappings: mappings,
+        column_mappings: mappings as any, // Cast to Json type
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'restaurant_id,template_name',
@@ -66,7 +66,13 @@ export async function loadMappingTemplates(
       return { templates: [], error: error.message };
     }
 
-    return { templates: data || [] };
+    // Cast column_mappings from Json to ColumnMapping[]
+    const templates: MappingTemplate[] = (data || []).map(template => ({
+      ...template,
+      column_mappings: template.column_mappings as unknown as ColumnMapping[],
+    }));
+
+    return { templates };
   } catch (error) {
     console.error('Error loading mapping templates:', error);
     return { 

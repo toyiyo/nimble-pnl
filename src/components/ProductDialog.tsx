@@ -305,6 +305,13 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   };
 
   const handleSubmit = async (data: ProductFormData) => {
+    // Debug logging for create flow
+    if (import.meta.env.DEV) {
+      console.log('[ProductDialog] handleSubmit called with data:', data);
+      console.log('[ProductDialog] editProduct:', editProduct);
+      console.log('[ProductDialog] Form values:', form.getValues());
+    }
+
     // Handle new supplier creation if needed
     let supplierIdToUse = selectedSupplierId;
     if (isNewSupplier && data.supplier_name) {
@@ -346,6 +353,11 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       pos_item_name: cleanValue(data.pos_item_name),
       image_url: imageUrl || data.image_url,
     };
+
+    // Debug logging for create flow
+    if (import.meta.env.DEV) {
+      console.log('[ProductDialog] productData being submitted:', productData);
+    }
 
     await onSubmit(productData);
     onOpenChange(false);

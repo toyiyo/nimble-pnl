@@ -175,8 +175,18 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
     } : {
       sku: initialData?.sku || '',
       name: initialData?.name || '',
+      description: '',
+      brand: '',
+      category: '',
+      size_value: undefined,
+      size_unit: '',
       package_qty: 1,  // Default to buying 1 package
+      uom_purchase: '',
+      uom_recipe: '',
       
+      cost_per_unit: undefined,
+      supplier_name: '',
+      supplier_sku: '',
       par_level_min: 0,
       par_level_max: 0,
       current_stock: 0,
@@ -189,6 +199,12 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   React.useEffect(() => {
     if (editProduct?.image_url) {
       setImageUrl(editProduct.image_url);
+    }
+    // Set supplier ID when editing a product
+    if (editProduct?.supplier_id) {
+      setSelectedSupplierId(editProduct.supplier_id);
+    } else {
+      setSelectedSupplierId(undefined);
     }
   }, [editProduct]);
 
@@ -217,7 +233,17 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
     } : {
       sku: initialData?.sku || '',
       name: initialData?.name || '',
+      description: '',
+      brand: '',
+      category: '',
+      size_value: undefined,
+      size_unit: '',
       package_qty: 1,
+      uom_purchase: '',
+      uom_recipe: '',
+      cost_per_unit: undefined,
+      supplier_name: '',
+      supplier_sku: '',
       par_level_min: 0,
       par_level_max: 0,
       current_stock: 0,
@@ -288,28 +314,36 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       }
     }
 
+    // Helper function to convert empty strings to null/undefined
+    const cleanValue = (value: string | number | undefined | null): string | number | undefined | null => {
+      if (typeof value === 'string' && value.trim() === '') {
+        return undefined;
+      }
+      return value;
+    };
+
     const productData: CreateProductData = {
       restaurant_id: restaurantId,
       gtin: initialData?.gtin,
       sku: data.sku,
       name: data.name,
-      description: data.description,
-      brand: data.brand,
-      category: data.category,
+      description: cleanValue(data.description),
+      brand: cleanValue(data.brand),
+      category: cleanValue(data.category),
       size_value: data.size_value,
-      size_unit: data.size_unit,
+      size_unit: cleanValue(data.size_unit),
       package_qty: data.package_qty,
-      uom_purchase: data.uom_purchase,
-      uom_recipe: data.uom_recipe,
+      uom_purchase: cleanValue(data.uom_purchase),
+      uom_recipe: cleanValue(data.uom_recipe),
       cost_per_unit: data.cost_per_unit,
-      supplier_name: data.supplier_name,
-      supplier_sku: data.supplier_sku,
+      supplier_name: cleanValue(data.supplier_name),
+      supplier_sku: cleanValue(data.supplier_sku),
       supplier_id: supplierIdToUse,
       par_level_min: data.par_level_min,
       par_level_max: data.par_level_max,
       current_stock: data.current_stock,
       reorder_point: data.reorder_point,
-      pos_item_name: data.pos_item_name,
+      pos_item_name: cleanValue(data.pos_item_name),
       image_url: imageUrl || data.image_url,
     };
 

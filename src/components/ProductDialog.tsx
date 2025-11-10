@@ -643,11 +643,14 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                     <FormLabel>Current Stock</FormLabel>
                     <FormControl>
                       <Input
-                        {...field}
+                        name={field.name}
+                        ref={field.ref}
                         type="number"
                         step="0.01"
                         min="0"
                         placeholder="0"
+                        value={field.value ?? ''}
+                        onBlur={field.onBlur}
                         onChange={(e) => field.onChange(Number(e.target.value))}
                       />
                     </FormControl>
@@ -664,11 +667,14 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                     <FormLabel>Reorder Point</FormLabel>
                     <FormControl>
                       <Input
-                        {...field}
+                        name={field.name}
+                        ref={field.ref}
                         type="number"
                         step="0.01"
                         min="0"
                         placeholder="0"
+                        value={field.value ?? ''}
+                        onBlur={field.onBlur}
                         onChange={(e) => field.onChange(Number(e.target.value))}
                       />
                     </FormControl>
@@ -689,11 +695,14 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                       <FormLabel>Minimum Par Level</FormLabel>
                       <FormControl>
                         <Input
-                          {...field}
+                          name={field.name}
+                          ref={field.ref}
                           type="number"
                           step="0.01"
                           min="0"
                           placeholder="0"
+                          value={field.value ?? ''}
+                          onBlur={field.onBlur}
                           onChange={(e) => field.onChange(Number(e.target.value))}
                         />
                       </FormControl>
@@ -713,11 +722,14 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                       <FormLabel>Maximum Par Level</FormLabel>
                       <FormControl>
                         <Input
-                          {...field}
+                          name={field.name}
+                          ref={field.ref}
                           type="number"
                           step="0.01"
                           min="0"
                           placeholder="0"
+                          value={field.value ?? ''}
+                          onBlur={field.onBlur}
                           onChange={(e) => field.onChange(Number(e.target.value))}
                         />
                       </FormControl>

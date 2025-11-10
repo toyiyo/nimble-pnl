@@ -47,19 +47,19 @@ const productSchema = z.object({
   description: z.string().optional(),
   brand: z.string().optional(),
   category: z.string().optional(),
-  size_value: z.number().positive().optional(),
+  size_value: z.coerce.number().positive().optional(),
   size_unit: z.string().optional(),
-  package_qty: z.number().int().positive().optional(),
+  package_qty: z.coerce.number().int().positive().optional(),
   uom_purchase: z.string().optional(),
   uom_recipe: z.string().optional(),
   
-  cost_per_unit: z.number().min(0).optional(),
+  cost_per_unit: z.coerce.number().min(0).optional(),
   supplier_name: z.string().optional(),
   supplier_sku: z.string().optional(),
-  par_level_min: z.number().min(0).optional(),
-  par_level_max: z.number().min(0).optional(),
-  current_stock: z.number().min(0).optional(),
-  reorder_point: z.number().min(0).optional(),
+  par_level_min: z.coerce.number().min(0).optional(),
+  par_level_max: z.coerce.number().min(0).optional(),
+  current_stock: z.coerce.number().min(0).optional(),
+  reorder_point: z.coerce.number().min(0).optional(),
   pos_item_name: z.string().optional(),
   image_url: z.string().optional(),
 });
@@ -583,7 +583,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                           value={field.value ?? ''}
                           onChange={(e) => {
                             const value = e.target.value;
-                            field.onChange(value ? parseFloat(value) : undefined);
+                            field.onChange(value === '' ? undefined : Number(value));
                           }}
                         />
                       </FormControl>
@@ -663,7 +663,10 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                         placeholder="0"
                         value={field.value ?? ''}
                         onBlur={field.onBlur}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === '' ? undefined : Number(value));
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -687,7 +690,10 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                         placeholder="0"
                         value={field.value ?? ''}
                         onBlur={field.onBlur}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === '' ? undefined : Number(value));
+                        }}
                       />
                     </FormControl>
                     <FormDescription>
@@ -715,7 +721,10 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                           placeholder="0"
                           value={field.value ?? ''}
                           onBlur={field.onBlur}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            field.onChange(value === '' ? undefined : Number(value));
+                          }}
                         />
                       </FormControl>
                       <FormDescription>
@@ -742,7 +751,10 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                           placeholder="0"
                           value={field.value ?? ''}
                           onBlur={field.onBlur}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            field.onChange(value === '' ? undefined : Number(value));
+                          }}
                         />
                       </FormControl>
                       <FormDescription>

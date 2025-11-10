@@ -59,6 +59,8 @@ function executeNavigate(args: any): any {
 
 /**
  * Execute get_kpis tool
+ * Returns comprehensive KPIs including revenue, COGS, labor, prime cost, and profitability metrics
+ * Uses shared calculation logic from periodMetrics.ts
  */
 async function executeGetKpis(
   args: any,
@@ -66,6 +68,9 @@ async function executeGetKpis(
   supabase: any
 ): Promise<any> {
   const { period, start_date, end_date } = args;
+  
+  // Import shared calculation module
+  const { calculatePeriodMetrics } = await import('../_shared/periodMetrics.ts');
   
   // Calculate date range based on period
   const now = new Date();
@@ -108,19 +113,58 @@ async function executeGetKpis(
   const startDateStr = startDate.toISOString().split('T')[0];
   const endDateStr = endDate.toISOString().split('T')[0];
 
-  // Fetch sales data
+  // ====== FETCH DATA FROM DATABASE ======
+  
+  // Fetch sales (excluding adjustments)
   const { data: sales, error: salesError } = await supabase
     .from('unified_sales')
-    .select('total_price, sale_date')
+    .select('id, total_price, item_type, parent_sale_id, is_categorized, chart_of_accounts!category_id(account_type, account_subtype)')
     .eq('restaurant_id', restaurantId)
     .gte('sale_date', startDateStr)
-    .lte('sale_date', endDateStr);
+    .lte('sale_date', endDateStr)
+    .is('adjustment_type', null);
 
   if (salesError) {
     throw new Error(`Failed to fetch sales: ${salesError.message}`);
   }
 
-  const totalRevenue = sales?.reduce((sum: number, sale: any) => sum + (sale.total_price || 0), 0) || 0;
+  // Fetch adjustments separately
+  const { data: adjustments, error: adjustmentsError } = await supabase
+    .from('unified_sales')
+    .select('adjustment_type, total_price')
+    .eq('restaurant_id', restaurantId)
+    .gte('sale_date', startDateStr)
+    .lte('sale_date', endDateStr)
+    .not('adjustment_type', 'is', null);
+
+  if (adjustmentsError) {
+    throw new Error(`Failed to fetch adjustments: ${adjustmentsError.message}`);
+  }
+
+  // Fetch food costs (COGS)
+  const { data: foodCostData, error: foodCostError } = await supabase
+    .from('inventory_transactions')
+    .select('total_cost')
+    .eq('restaurant_id', restaurantId)
+    .eq('transaction_type', 'usage')
+    .gte('created_at', startDateStr)
+    .lte('created_at', endDateStr + 'T23:59:59.999Z');
+
+  if (foodCostError) {
+    throw new Error(`Failed to fetch food costs: ${foodCostError.message}`);
+  }
+
+  // Fetch labor costs
+  const { data: laborCostData, error: laborCostError } = await supabase
+    .from('daily_labor_costs')
+    .select('total_labor_cost')
+    .eq('restaurant_id', restaurantId)
+    .gte('date', startDateStr)
+    .lte('date', endDateStr);
+
+  if (laborCostError) {
+    throw new Error(`Failed to fetch labor costs: ${laborCostError.message}`);
+  }
 
   // Fetch inventory value
   const { data: inventory, error: invError } = await supabase
@@ -135,7 +179,7 @@ async function executeGetKpis(
   const inventoryValue = inventory?.reduce((sum: number, item: any) => 
     sum + ((item.current_stock || 0) * (item.cost_per_unit || 0)), 0) || 0;
 
-  // Get transaction count for the period
+  // Get bank transaction count
   const { count: transactionCount } = await supabase
     .from('bank_transactions')
     .select('*', { count: 'exact', head: true })
@@ -143,18 +187,32 @@ async function executeGetKpis(
     .gte('transaction_date', startDateStr)
     .lte('transaction_date', endDateStr);
 
+  // ====== CALCULATE METRICS USING SHARED MODULE ======
+  
+  const metrics = calculatePeriodMetrics(
+    sales || [],
+    adjustments || [],
+    foodCostData || [],
+    laborCostData || []
+  );
+
   return {
     ok: true,
     data: {
       period,
       start_date: startDateStr,
       end_date: endDateStr,
-      metrics: {
-        total_revenue: totalRevenue,
-        inventory_value: inventoryValue,
-        transaction_count: transactionCount || 0,
-        sales_count: sales?.length || 0,
-      },
+      
+      // All metrics from shared calculation module
+      revenue: metrics.revenue,
+      costs: metrics.costs,
+      profitability: metrics.profitability,
+      liabilities: metrics.liabilities,
+      benchmarks: metrics.benchmarks,
+      
+      // Additional metrics not in shared module
+      inventory_value: inventoryValue,
+      bank_transaction_count: transactionCount || 0,
     },
   };
 }

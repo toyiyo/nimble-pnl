@@ -76,7 +76,7 @@ export const Inventory: React.FC = () => {
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [wasteProduct, setWasteProduct] = useState<Product | null>(null);
   const [transferProduct, setTransferProduct] = useState<Product | null>(null);
-  const [activeTab, setActiveTab] = useState('scanner');
+  const [activeTab, setActiveTab] = useState('products');
   const [showQuickInventoryDialog, setShowQuickInventoryDialog] = useState(false);
   const [quickInventoryProduct, setQuickInventoryProduct] = useState<Product | null>(null);
   const [scanMode, setScanMode] = useState<'add' | 'reconcile'>('add');
@@ -893,13 +893,13 @@ export const Inventory: React.FC = () => {
       <div className="max-w-7xl mx-auto p-4 md:p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto" role="tablist">
-            <TabsTrigger value="scanner" className="flex-col py-2 px-1" aria-label="Scanner tab">
-              <span className="text-xs md:text-sm">Scanner</span>
-              <span className="text-lg" aria-hidden="true">{currentMode === 'scanner' ? '📱' : '📸'}</span>
-            </TabsTrigger>
             <TabsTrigger value="products" className="flex-col py-2 px-1" aria-label={`Products tab, ${products.length} items`}>
               <span className="text-xs md:text-sm">Products</span>
               <span className="text-xs">({products.length})</span>
+            </TabsTrigger>
+            <TabsTrigger value="scanner" className="flex-col py-2 px-1" aria-label="Scanner tab">
+              <span className="text-xs md:text-sm">Scanner</span>
+              <span className="text-lg" aria-hidden="true">{currentMode === 'scanner' ? '📱' : '📸'}</span>
             </TabsTrigger>
             <TabsTrigger value="low-stock" className="flex-col py-2 px-1" aria-label={`Low stock tab${lowStockProducts.length > 0 ? `, ${lowStockProducts.length} alerts` : ''}`}>
               <span className="text-xs md:text-sm">Low Stock</span>

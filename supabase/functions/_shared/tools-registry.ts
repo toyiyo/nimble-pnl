@@ -56,7 +56,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     // KPI/Metrics tools - available to all users
     {
       name: 'get_kpis',
-      description: 'Get key performance indicators for the restaurant. Returns metrics like revenue, costs, margins, inventory value, etc.',
+      description: 'Get key performance indicators for the restaurant. Returns comprehensive metrics including revenue, COGS (Cost of Goods Sold / Food Cost), labor cost, prime cost, margins, profitability, and inventory value. Use this to answer questions about costs, profitability, and financial performance.',
       parameters: {
         type: 'object',
         properties: {

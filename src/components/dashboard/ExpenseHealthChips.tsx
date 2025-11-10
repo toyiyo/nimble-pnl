@@ -106,13 +106,13 @@ export const ExpenseHealthChips = ({ startDate, endDate, periodLabel }: ExpenseH
       </CardHeader>
       <CardContent>
         <div className="flex flex-wrap gap-3">
-          {/* Food Cost % */}
+          {/* COGS % */}
           {data.foodCostPercentage > 0 && (
             <Badge variant="outline" className={`${getStatusColor(foodCostStatus)} py-2 px-3`}>
               <div className="flex items-center gap-2">
                 {getStatusIcon(foodCostStatus)}
                 <div>
-                  <div className="text-xs font-normal">Food Cost</div>
+                  <div className="text-xs font-normal">COGS</div>
                   <div className="font-semibold">
                     {data.foodCostPercentage.toFixed(1)}%
                   </div>

@@ -84,13 +84,16 @@ export function useMonthlyMetrics(
       // Group sales by month and categorize
       const monthlyMap = new Map<string, MonthlyMetrics>();
       
-      // Debug: Track categorization for alcohol sales
+      // Debug: Track categorization for alcohol sales with detailed path tracking
       const alcoholSales: any[] = [];
+      const alcoholSalesProcessing: any[] = [];
 
       filteredSales?.forEach((sale) => {
         // Debug: Track alcohol sales
-        if (sale.chart_account?.account_code === '4020' || 
-            sale.chart_account?.account_name?.toLowerCase().includes('alcohol')) {
+        const isAlcohol = sale.chart_account?.account_code === '4020' || 
+                         sale.chart_account?.account_name?.toLowerCase().includes('alcohol');
+        
+        if (isAlcohol) {
           alcoholSales.push({
             price: sale.total_price,
             is_categorized: sale.is_categorized,
@@ -98,6 +101,7 @@ export function useMonthlyMetrics(
             account_type: sale.chart_account?.account_type,
             account_code: sale.chart_account?.account_code,
             item_type: sale.item_type,
+            normalized_item_type: String(sale.item_type || 'sale').toLowerCase(),
           });
         }
         
@@ -132,6 +136,19 @@ export function useMonthlyMetrics(
           // Match useRevenueBreakdown logic: normalize item_type to lowercase for comparison
           if (String(sale.item_type || 'sale').toLowerCase() === 'sale') {
             month.gross_revenue += Math.round(sale.total_price * 100);
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: 'uncategorized -> gross_revenue',
+              });
+            }
+          } else {
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: 'uncategorized -> SKIPPED (not sale)',
+              });
+            }
           }
           return;
         }
@@ -144,6 +161,12 @@ export function useMonthlyMetrics(
         if (normalizedItemType === 'sale') {
           if (sale.chart_account.account_type === 'revenue') {
             month.gross_revenue += Math.round(sale.total_price * 100);
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: 'categorized -> revenue -> gross_revenue',
+              });
+            }
           } else if (sale.chart_account.account_type === 'liability') {
             // Categorize liabilities by checking BOTH subtype and account_name
             const subtype = sale.chart_account.account_subtype?.toLowerCase() || '';
@@ -152,23 +175,72 @@ export function useMonthlyMetrics(
             if ((subtype.includes('sales') && subtype.includes('tax')) ||
                 (accountName.includes('sales') && accountName.includes('tax'))) {
               month.sales_tax += Math.round(sale.total_price * 100);
+              if (isAlcohol) {
+                alcoholSalesProcessing.push({
+                  price: sale.total_price,
+                  path: 'categorized -> liability -> sales_tax',
+                });
+              }
             } else if (subtype.includes('tip') || accountName.includes('tip')) {
               month.tips += Math.round(sale.total_price * 100);
+              if (isAlcohol) {
+                alcoholSalesProcessing.push({
+                  price: sale.total_price,
+                  path: 'categorized -> liability -> tips',
+                });
+              }
             } else {
               month.other_liabilities += Math.round(sale.total_price * 100);
+              if (isAlcohol) {
+                alcoholSalesProcessing.push({
+                  price: sale.total_price,
+                  path: 'categorized -> liability -> other_liabilities',
+                });
+              }
+            }
+          } else {
+            // This is the problem! Sale with item_type='sale' but account_type is neither 'revenue' nor 'liability'
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: `categorized -> item_type=sale -> SKIPPED (account_type='${sale.chart_account.account_type}')`,
+              });
             }
           }
         } else if (normalizedItemType === 'discount') {
           month.discounts += Math.round(Math.abs(sale.total_price) * 100);
+          if (isAlcohol) {
+            alcoholSalesProcessing.push({
+              price: sale.total_price,
+              path: 'categorized -> discount',
+            });
+          }
         } else if (normalizedItemType === 'refund') {
           month.refunds += Math.round(Math.abs(sale.total_price) * 100);
+          if (isAlcohol) {
+            alcoholSalesProcessing.push({
+              price: sale.total_price,
+              path: 'categorized -> refund',
+            });
+          }
+        } else {
+          // Item type is not sale, discount, or refund - SKIPPED!
+          if (isAlcohol) {
+            alcoholSalesProcessing.push({
+              price: sale.total_price,
+              path: `categorized -> SKIPPED (item_type='${normalizedItemType}')`,
+            });
+          }
         }
       });
       
       // Debug: Log alcohol sales
       if (alcoholSales.length > 0) {
         console.group('🍺 Alcohol Sales Debug (useMonthlyMetrics)');
+        console.log('Raw alcohol sales found:');
         console.table(alcoholSales);
+        console.log('Processing paths:');
+        console.table(alcoholSalesProcessing);
         console.log('Total alcohol sales found:', alcoholSales.length);
         console.log('Total alcohol revenue:', alcoholSales.reduce((sum, s) => sum + s.price, 0));
         console.groupEnd();

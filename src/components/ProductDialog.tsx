@@ -314,17 +314,6 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       console.log('[ProductDialog] Form values:', form.getValues());
     }
 
-    // Critical validation: SKU must not be empty
-    if (!data.sku || data.sku.trim() === '') {
-      console.error('[ProductDialog] SKU is empty! Form data:', data);
-      toast({
-        title: "Error",
-        description: "SKU is required and cannot be empty",
-        variant: "destructive",
-      });
-      return;
-    }
-
     // Handle new supplier creation if needed
     let supplierIdToUse = selectedSupplierId;
     if (isNewSupplier && data.supplier_name) {

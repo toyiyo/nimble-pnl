@@ -343,6 +343,7 @@ export function ReconciliationItemDetail({
         mode="add"
         onSave={handleAddFind}
         currentTotal={currentItem.actual_quantity || 0}
+        restaurantId={restaurantId}
       />
     </>
   );

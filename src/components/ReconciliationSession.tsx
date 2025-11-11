@@ -620,6 +620,7 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
           mode="add"
           onSave={handleQuickInventorySave}
           currentTotal={items.find(i => i.product_id === scannedProduct.id)?.actual_quantity || 0}
+          restaurantId={restaurantId}
         />
       )}
 

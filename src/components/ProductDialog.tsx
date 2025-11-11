@@ -31,6 +31,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Upload, Calculator, Package } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 import { CreateProductData, Product } from '@/hooks/useProducts';
 import { useUnitConversion } from '@/hooks/useUnitConversion';
@@ -47,19 +48,19 @@ const productSchema = z.object({
   description: z.string().optional(),
   brand: z.string().optional(),
   category: z.string().optional(),
-  size_value: z.number().positive().optional(),
+  size_value: z.coerce.number().positive().optional(),
   size_unit: z.string().optional(),
-  package_qty: z.number().int().positive().optional(),
+  package_qty: z.coerce.number().int().positive().optional(),
   uom_purchase: z.string().optional(),
   uom_recipe: z.string().optional(),
   
-  cost_per_unit: z.number().min(0).optional(),
+  cost_per_unit: z.coerce.number().min(0).optional(),
   supplier_name: z.string().optional(),
   supplier_sku: z.string().optional(),
-  par_level_min: z.number().min(0).optional(),
-  par_level_max: z.number().min(0).optional(),
-  current_stock: z.number().min(0).optional(),
-  reorder_point: z.number().min(0).optional(),
+  par_level_min: z.coerce.number().min(0).optional(),
+  par_level_max: z.coerce.number().min(0).optional(),
+  current_stock: z.coerce.number().min(0).optional(),
+  reorder_point: z.coerce.number().min(0).optional(),
   pos_item_name: z.string().optional(),
   image_url: z.string().optional(),
 });
@@ -141,6 +142,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   initialData,
   editProduct,
 }) => {
+  const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string>('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | undefined>();
@@ -175,8 +177,18 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
     } : {
       sku: initialData?.sku || '',
       name: initialData?.name || '',
+      description: '',
+      brand: '',
+      category: '',
+      size_value: undefined,
+      size_unit: '',
       package_qty: 1,  // Default to buying 1 package
+      uom_purchase: '',
+      uom_recipe: '',
       
+      cost_per_unit: undefined,
+      supplier_name: '',
+      supplier_sku: '',
       par_level_min: 0,
       par_level_max: 0,
       current_stock: 0,
@@ -189,6 +201,12 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   React.useEffect(() => {
     if (editProduct?.image_url) {
       setImageUrl(editProduct.image_url);
+    }
+    // Set supplier ID when editing a product
+    if (editProduct?.supplier_id) {
+      setSelectedSupplierId(editProduct.supplier_id);
+    } else {
+      setSelectedSupplierId(undefined);
     }
   }, [editProduct]);
 
@@ -217,7 +235,17 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
     } : {
       sku: initialData?.sku || '',
       name: initialData?.name || '',
+      description: '',
+      brand: '',
+      category: '',
+      size_value: undefined,
+      size_unit: '',
       package_qty: 1,
+      uom_purchase: '',
+      uom_recipe: '',
+      cost_per_unit: undefined,
+      supplier_name: '',
+      supplier_sku: '',
       par_level_min: 0,
       par_level_max: 0,
       current_stock: 0,
@@ -279,6 +307,13 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   };
 
   const handleSubmit = async (data: ProductFormData) => {
+    // Debug logging for create flow
+    if (import.meta.env.DEV) {
+      console.log('[ProductDialog] handleSubmit called with data:', data);
+      console.log('[ProductDialog] editProduct:', editProduct);
+      console.log('[ProductDialog] Form values:', form.getValues());
+    }
+
     // Handle new supplier creation if needed
     let supplierIdToUse = selectedSupplierId;
     if (isNewSupplier && data.supplier_name) {
@@ -288,30 +323,45 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       }
     }
 
+    // Helper function to convert empty strings to null for string fields
+    const cleanValue = (value: string | undefined | null): string | null => {
+      if (value == null) {
+        return null;
+      }
+      const trimmed = value.trim();
+      return trimmed === '' ? null : trimmed;
+    };
+
     const productData: CreateProductData = {
       restaurant_id: restaurantId,
       gtin: initialData?.gtin,
       sku: data.sku,
       name: data.name,
-      description: data.description,
-      brand: data.brand,
-      category: data.category,
+      description: cleanValue(data.description),
+      brand: cleanValue(data.brand),
+      category: cleanValue(data.category),
       size_value: data.size_value,
-      size_unit: data.size_unit,
+      size_unit: cleanValue(data.size_unit),
       package_qty: data.package_qty,
-      uom_purchase: data.uom_purchase,
-      uom_recipe: data.uom_recipe,
+      uom_purchase: cleanValue(data.uom_purchase),
+      uom_recipe: cleanValue(data.uom_recipe),
       cost_per_unit: data.cost_per_unit,
-      supplier_name: data.supplier_name,
-      supplier_sku: data.supplier_sku,
+      supplier_name: cleanValue(data.supplier_name),
+      supplier_sku: cleanValue(data.supplier_sku),
       supplier_id: supplierIdToUse,
       par_level_min: data.par_level_min,
       par_level_max: data.par_level_max,
       current_stock: data.current_stock,
       reorder_point: data.reorder_point,
-      pos_item_name: data.pos_item_name,
+      pos_item_name: cleanValue(data.pos_item_name),
       image_url: imageUrl || data.image_url,
     };
+
+    // Debug logging for create flow
+    if (import.meta.env.DEV) {
+      console.log('[ProductDialog] productData being submitted:', productData);
+      console.log('[ProductDialog] SKU value specifically:', data.sku, 'Type:', typeof data.sku, 'Length:', data.sku?.length);
+    }
 
     await onSubmit(productData);
     onOpenChange(false);
@@ -346,7 +396,16 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   <FormItem>
                     <FormLabel>SKU *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., BEEF-001" value={field.value || ''} />
+                      <Input 
+                        {...field}
+                        onChange={(e) => {
+                          if (import.meta.env.DEV) {
+                            console.log('[ProductDialog] SKU field onChange:', e.target.value);
+                          }
+                          field.onChange(e);
+                        }}
+                        placeholder="e.g., BEEF-001" 
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -360,7 +419,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   <FormItem>
                     <FormLabel>Product Name *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., Ground Beef 80/20" value={field.value || ''} />
+                      <Input {...field} placeholder="e.g., Ground Beef 80/20" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -531,14 +590,13 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                       </FormLabel>
                       <FormControl>
                        <Input
-                          {...field}
                           type="number"
                           step="0.01"
                           placeholder="0.00"
-                          value={field.value || ''}
+                          value={field.value ?? ''}
                           onChange={(e) => {
                             const value = e.target.value;
-                            field.onChange(value ? parseFloat(value) : undefined);
+                            field.onChange(value === '' ? undefined : Number(value));
                           }}
                         />
                       </FormControl>
@@ -610,12 +668,18 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                     <FormLabel>Current Stock</FormLabel>
                     <FormControl>
                       <Input
-                        {...field}
+                        name={field.name}
+                        ref={field.ref}
                         type="number"
                         step="0.01"
                         min="0"
                         placeholder="0"
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        value={field.value ?? ''}
+                        onBlur={field.onBlur}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === '' ? undefined : Number(value));
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -631,12 +695,18 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                     <FormLabel>Reorder Point</FormLabel>
                     <FormControl>
                       <Input
-                        {...field}
+                        name={field.name}
+                        ref={field.ref}
                         type="number"
                         step="0.01"
                         min="0"
                         placeholder="0"
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        value={field.value ?? ''}
+                        onBlur={field.onBlur}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === '' ? undefined : Number(value));
+                        }}
                       />
                     </FormControl>
                     <FormDescription>
@@ -656,12 +726,18 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                       <FormLabel>Minimum Par Level</FormLabel>
                       <FormControl>
                         <Input
-                          {...field}
+                          name={field.name}
+                          ref={field.ref}
                           type="number"
                           step="0.01"
                           min="0"
                           placeholder="0"
-                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          value={field.value ?? ''}
+                          onBlur={field.onBlur}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            field.onChange(value === '' ? undefined : Number(value));
+                          }}
                         />
                       </FormControl>
                       <FormDescription>
@@ -680,12 +756,18 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                       <FormLabel>Maximum Par Level</FormLabel>
                       <FormControl>
                         <Input
-                          {...field}
+                          name={field.name}
+                          ref={field.ref}
                           type="number"
                           step="0.01"
                           min="0"
                           placeholder="0"
-                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          value={field.value ?? ''}
+                          onBlur={field.onBlur}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            field.onChange(value === '' ? undefined : Number(value));
+                          }}
                         />
                       </FormControl>
                       <FormDescription>

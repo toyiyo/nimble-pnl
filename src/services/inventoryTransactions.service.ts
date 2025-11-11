@@ -163,7 +163,13 @@ export function calculateTransactionsSummary(
     const type = transaction.transaction_type as keyof typeof summary;
     if (summary[type]) {
       summary[type].count += 1;
-      summary[type].totalCost += Math.abs(transaction.total_cost || 0);
+      // For transfers, use actual value (positive + negative = 0)
+      // For other types, use absolute value to show total cost
+      if (type === 'transfer') {
+        summary[type].totalCost += transaction.total_cost || 0;
+      } else {
+        summary[type].totalCost += Math.abs(transaction.total_cost || 0);
+      }
     }
   });
 
@@ -216,7 +222,12 @@ export function groupTransactions(
   return Object.entries(groups).map(([key, items]) => ({
     group_name: key,
     count: items.length,
-    total_cost: items.reduce((sum, item) => sum + Math.abs(item.total_cost || 0), 0),
+    total_cost: items.reduce((sum, item) => {
+      // For transfers, use actual value (positive + negative = 0)
+      // For other types, use absolute value to show total cost
+      const isTransfer = item.transaction_type === 'transfer';
+      return sum + (isTransfer ? (item.total_cost || 0) : Math.abs(item.total_cost || 0));
+    }, 0),
     items: items.slice(0, 10), // Limit items per group
   }));
 }

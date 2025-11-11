@@ -76,7 +76,7 @@ export const Inventory: React.FC = () => {
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [wasteProduct, setWasteProduct] = useState<Product | null>(null);
   const [transferProduct, setTransferProduct] = useState<Product | null>(null);
-  const [activeTab, setActiveTab] = useState('scanner');
+  const [activeTab, setActiveTab] = useState('products');
   const [showQuickInventoryDialog, setShowQuickInventoryDialog] = useState(false);
   const [quickInventoryProduct, setQuickInventoryProduct] = useState<Product | null>(null);
   const [scanMode, setScanMode] = useState<'add' | 'reconcile'>('add');
@@ -643,23 +643,23 @@ export const Inventory: React.FC = () => {
       const productData: CreateProductData = {
         restaurant_id: selectedProduct.restaurant_id,
         gtin: selectedProduct.gtin,
-        sku: selectedProduct.sku,
+        sku: updates.sku || selectedProduct.sku, // FIX: Use updates.sku first
         name: updates.name || selectedProduct.name,
         description: updates.description || selectedProduct.description,
         brand: updates.brand || selectedProduct.brand,
         category: updates.category || selectedProduct.category,
-        size_value: selectedProduct.size_value,
+        size_value: updates.size_value || selectedProduct.size_value, // FIX: Use updates.size_value first
         size_unit: updates.size_unit || selectedProduct.size_unit,
-        package_qty: selectedProduct.package_qty,
+        package_qty: updates.package_qty || selectedProduct.package_qty, // FIX: Use updates.package_qty first
         uom_purchase: updates.uom_purchase || selectedProduct.uom_purchase,
-        uom_recipe: selectedProduct.uom_recipe,
+        uom_recipe: updates.uom_recipe || selectedProduct.uom_recipe, // FIX: Use updates.uom_recipe first
         cost_per_unit: updates.cost_per_unit || selectedProduct.cost_per_unit,
         current_stock: quantityToAdd, // Set initial stock to the quantity being added
-        par_level_min: selectedProduct.par_level_min,
-        par_level_max: selectedProduct.par_level_max,
-        reorder_point: selectedProduct.reorder_point,
+        par_level_min: updates.par_level_min || selectedProduct.par_level_min, // FIX: Use updates.par_level_min first
+        par_level_max: updates.par_level_max || selectedProduct.par_level_max, // FIX: Use updates.par_level_max first
+        reorder_point: updates.reorder_point || selectedProduct.reorder_point, // FIX: Use updates.reorder_point first
         supplier_name: updates.supplier_name || selectedProduct.supplier_name,
-        supplier_sku: selectedProduct.supplier_sku,
+        supplier_sku: updates.supplier_sku || selectedProduct.supplier_sku, // FIX: Use updates.supplier_sku first
         barcode_data: selectedProduct.barcode_data,
       };
 
@@ -893,13 +893,13 @@ export const Inventory: React.FC = () => {
       <div className="max-w-7xl mx-auto p-4 md:p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto" role="tablist">
-            <TabsTrigger value="scanner" className="flex-col py-2 px-1" aria-label="Scanner tab">
-              <span className="text-xs md:text-sm">Scanner</span>
-              <span className="text-lg" aria-hidden="true">{currentMode === 'scanner' ? '📱' : '📸'}</span>
-            </TabsTrigger>
             <TabsTrigger value="products" className="flex-col py-2 px-1" aria-label={`Products tab, ${products.length} items`}>
               <span className="text-xs md:text-sm">Products</span>
               <span className="text-xs">({products.length})</span>
+            </TabsTrigger>
+            <TabsTrigger value="scanner" className="flex-col py-2 px-1" aria-label="Scanner tab">
+              <span className="text-xs md:text-sm">Scanner</span>
+              <span className="text-lg" aria-hidden="true">{currentMode === 'scanner' ? '📱' : '📸'}</span>
             </TabsTrigger>
             <TabsTrigger value="low-stock" className="flex-col py-2 px-1" aria-label={`Low stock tab${lowStockProducts.length > 0 ? `, ${lowStockProducts.length} alerts` : ''}`}>
               <span className="text-xs md:text-sm">Low Stock</span>

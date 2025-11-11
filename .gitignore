@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test files
+test-ai-kpis-tool.js
+test-shared-calculations.js
+test-results/

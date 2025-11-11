@@ -370,6 +370,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
     // Debug logging for create flow
     if (import.meta.env.DEV) {
       console.log('[ProductDialog] productData being submitted:', productData);
+      console.log('[ProductDialog] SKU value specifically:', data.sku, 'Type:', typeof data.sku, 'Length:', data.sku?.length);
     }
 
     await onSubmit(productData);
@@ -405,7 +406,14 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   <FormItem>
                     <FormLabel>SKU *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., BEEF-001" />
+                      <Input 
+                        {...field}
+                        onChange={(e) => {
+                          console.log('[ProductDialog] SKU field onChange:', e.target.value);
+                          field.onChange(e);
+                        }}
+                        placeholder="e.g., BEEF-001" 
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

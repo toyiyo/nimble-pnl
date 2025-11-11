@@ -153,61 +153,13 @@ export function useMonthlyMetrics(
           return;
         }
 
-        // Categorize based on item_type and account_type
+        // Categorize based on account_type FIRST (to match useRevenueBreakdown logic)
+        // Then use item_type to determine if it's a discount/refund
         // Use cents to avoid floating-point precision errors
-        // Normalize item_type to lowercase for case-insensitive comparison
         const normalizedItemType = String(sale.item_type || 'sale').toLowerCase();
         
-        if (normalizedItemType === 'sale') {
-          if (sale.chart_account.account_type === 'revenue') {
-            month.gross_revenue += Math.round(sale.total_price * 100);
-            if (isAlcohol) {
-              alcoholSalesProcessing.push({
-                price: sale.total_price,
-                path: 'categorized -> revenue -> gross_revenue',
-              });
-            }
-          } else if (sale.chart_account.account_type === 'liability') {
-            // Categorize liabilities by checking BOTH subtype and account_name
-            const subtype = sale.chart_account.account_subtype?.toLowerCase() || '';
-            const accountName = sale.chart_account.account_name?.toLowerCase() || '';
-
-            if ((subtype.includes('sales') && subtype.includes('tax')) ||
-                (accountName.includes('sales') && accountName.includes('tax'))) {
-              month.sales_tax += Math.round(sale.total_price * 100);
-              if (isAlcohol) {
-                alcoholSalesProcessing.push({
-                  price: sale.total_price,
-                  path: 'categorized -> liability -> sales_tax',
-                });
-              }
-            } else if (subtype.includes('tip') || accountName.includes('tip')) {
-              month.tips += Math.round(sale.total_price * 100);
-              if (isAlcohol) {
-                alcoholSalesProcessing.push({
-                  price: sale.total_price,
-                  path: 'categorized -> liability -> tips',
-                });
-              }
-            } else {
-              month.other_liabilities += Math.round(sale.total_price * 100);
-              if (isAlcohol) {
-                alcoholSalesProcessing.push({
-                  price: sale.total_price,
-                  path: 'categorized -> liability -> other_liabilities',
-                });
-              }
-            }
-          } else {
-            // This is the problem! Sale with item_type='sale' but account_type is neither 'revenue' nor 'liability'
-            if (isAlcohol) {
-              alcoholSalesProcessing.push({
-                price: sale.total_price,
-                path: `categorized -> item_type=sale -> SKIPPED (account_type='${sale.chart_account.account_type}')`,
-              });
-            }
-          }
-        } else if (normalizedItemType === 'discount') {
+        // Handle discounts and refunds first (regardless of account_type)
+        if (normalizedItemType === 'discount') {
           month.discounts += Math.round(Math.abs(sale.total_price) * 100);
           if (isAlcohol) {
             alcoholSalesProcessing.push({
@@ -215,7 +167,10 @@ export function useMonthlyMetrics(
               path: 'categorized -> discount',
             });
           }
-        } else if (normalizedItemType === 'refund') {
+          return;
+        }
+        
+        if (normalizedItemType === 'refund') {
           month.refunds += Math.round(Math.abs(sale.total_price) * 100);
           if (isAlcohol) {
             alcoholSalesProcessing.push({
@@ -223,12 +178,57 @@ export function useMonthlyMetrics(
               path: 'categorized -> refund',
             });
           }
-        } else {
-          // Item type is not sale, discount, or refund - SKIPPED!
+          return;
+        }
+        
+        // Now categorize by account_type (matching useRevenueBreakdown)
+        if (sale.chart_account.account_type === 'revenue') {
+          // All revenue account items go to gross_revenue (regardless of item_type)
+          // This matches useRevenueBreakdown which includes all categorized revenue
+          month.gross_revenue += Math.round(sale.total_price * 100);
           if (isAlcohol) {
             alcoholSalesProcessing.push({
               price: sale.total_price,
-              path: `categorized -> SKIPPED (item_type='${normalizedItemType}')`,
+              path: `categorized -> revenue -> gross_revenue (item_type='${normalizedItemType}')`,
+            });
+          }
+        } else if (sale.chart_account.account_type === 'liability') {
+          // Categorize liabilities by checking BOTH subtype and account_name
+          const subtype = sale.chart_account.account_subtype?.toLowerCase() || '';
+          const accountName = sale.chart_account.account_name?.toLowerCase() || '';
+
+          if ((subtype.includes('sales') && subtype.includes('tax')) ||
+              (accountName.includes('sales') && accountName.includes('tax'))) {
+            month.sales_tax += Math.round(sale.total_price * 100);
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: 'categorized -> liability -> sales_tax',
+              });
+            }
+          } else if (subtype.includes('tip') || accountName.includes('tip')) {
+            month.tips += Math.round(sale.total_price * 100);
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: 'categorized -> liability -> tips',
+              });
+            }
+          } else {
+            month.other_liabilities += Math.round(sale.total_price * 100);
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: 'categorized -> liability -> other_liabilities',
+              });
+            }
+          }
+        } else {
+          // Account type is neither revenue nor liability - skip
+          if (isAlcohol) {
+            alcoholSalesProcessing.push({
+              price: sale.total_price,
+              path: `categorized -> SKIPPED (account_type='${sale.chart_account.account_type}')`,
             });
           }
         }

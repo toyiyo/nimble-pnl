@@ -409,7 +409,9 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                       <Input 
                         {...field}
                         onChange={(e) => {
-                          console.log('[ProductDialog] SKU field onChange:', e.target.value);
+                          if (import.meta.env.DEV) {
+                            console.log('[ProductDialog] SKU field onChange:', e.target.value);
+                          }
                           field.onChange(e);
                         }}
                         placeholder="e.g., BEEF-001" 

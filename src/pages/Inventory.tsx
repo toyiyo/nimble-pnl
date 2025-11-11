@@ -643,23 +643,23 @@ export const Inventory: React.FC = () => {
       const productData: CreateProductData = {
         restaurant_id: selectedProduct.restaurant_id,
         gtin: selectedProduct.gtin,
-        sku: selectedProduct.sku,
+        sku: updates.sku || selectedProduct.sku, // FIX: Use updates.sku first
         name: updates.name || selectedProduct.name,
         description: updates.description || selectedProduct.description,
         brand: updates.brand || selectedProduct.brand,
         category: updates.category || selectedProduct.category,
-        size_value: selectedProduct.size_value,
+        size_value: updates.size_value || selectedProduct.size_value, // FIX: Use updates.size_value first
         size_unit: updates.size_unit || selectedProduct.size_unit,
-        package_qty: selectedProduct.package_qty,
+        package_qty: updates.package_qty || selectedProduct.package_qty, // FIX: Use updates.package_qty first
         uom_purchase: updates.uom_purchase || selectedProduct.uom_purchase,
-        uom_recipe: selectedProduct.uom_recipe,
+        uom_recipe: updates.uom_recipe || selectedProduct.uom_recipe, // FIX: Use updates.uom_recipe first
         cost_per_unit: updates.cost_per_unit || selectedProduct.cost_per_unit,
         current_stock: quantityToAdd, // Set initial stock to the quantity being added
-        par_level_min: selectedProduct.par_level_min,
-        par_level_max: selectedProduct.par_level_max,
-        reorder_point: selectedProduct.reorder_point,
+        par_level_min: updates.par_level_min || selectedProduct.par_level_min, // FIX: Use updates.par_level_min first
+        par_level_max: updates.par_level_max || selectedProduct.par_level_max, // FIX: Use updates.par_level_max first
+        reorder_point: updates.reorder_point || selectedProduct.reorder_point, // FIX: Use updates.reorder_point first
         supplier_name: updates.supplier_name || selectedProduct.supplier_name,
-        supplier_sku: selectedProduct.supplier_sku,
+        supplier_sku: updates.supplier_sku || selectedProduct.supplier_sku, // FIX: Use updates.supplier_sku first
         barcode_data: selectedProduct.barcode_data,
       };
 

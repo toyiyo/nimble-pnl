@@ -126,26 +126,86 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   const netIncome = grossProfit - totalExpenses;
 
   const handleExportCSV = () => {
-    const csvContent = [
+    const csvRows = [
       ['Income Statement'],
       [`Period: ${format(dateFrom, 'MMM dd, yyyy')} - ${format(dateTo, 'MMM dd, yyyy')}`],
       [''],
-      ['Revenue'],
-      ...incomeData!.revenue.map(acc => [acc.account_code, acc.account_name, acc.current_balance]),
-      ['', 'Total Revenue', totalRevenue],
-      [''],
-      ['Cost of Goods Sold'],
-      ...incomeData!.cogs.map(acc => [acc.account_code, acc.account_name, acc.current_balance]),
-      ['', 'Total COGS', totalCOGS],
-      [''],
-      ['', 'Gross Profit', grossProfit],
-      [''],
-      ['Operating Expenses'],
-      ...incomeData!.expenses.map(acc => [acc.account_code, acc.account_name, acc.current_balance]),
-      ['', 'Total Expenses', totalExpenses],
-      [''],
-      ['', 'Net Income', netIncome],
-    ].map(row => row.join(',')).join('\n');
+    ];
+    
+    // Revenue Section - Use revenueBreakdown if available, otherwise fall back to incomeData
+    if (revenueBreakdown && revenueBreakdown.revenue_categories.length > 0) {
+      csvRows.push(['REVENUE']);
+      
+      // Revenue Categories from POS Sales
+      revenueBreakdown.revenue_categories.forEach((category) => {
+        csvRows.push([category.account_code, category.account_name, category.total_amount]);
+      });
+      
+      csvRows.push(['', 'Gross Revenue', revenueBreakdown.totals.gross_revenue]);
+      
+      // Discounts, Refunds & Comps
+      if (revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories?.length > 0) {
+        csvRows.push(['']);
+        csvRows.push(['Less: Deductions']);
+        
+        revenueBreakdown.discount_categories.forEach((category) => {
+          csvRows.push([category.account_code, category.account_name, -Math.abs(category.total_amount)]);
+        });
+        
+        if (revenueBreakdown.refund_categories) {
+          revenueBreakdown.refund_categories.forEach((category) => {
+            csvRows.push([category.account_code, category.account_name, -Math.abs(category.total_amount)]);
+          });
+        }
+      }
+      
+      // Net Revenue
+      csvRows.push(['', 'Net Sales Revenue', revenueBreakdown.totals.net_revenue]);
+      
+      // Pass-Through Collections (if any)
+      if (revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) {
+        csvRows.push(['']);
+        csvRows.push(['OTHER COLLECTIONS (Pass-Through)']);
+        
+        revenueBreakdown.tax_categories.forEach((category) => {
+          csvRows.push([category.account_code, `${category.account_name} (Liability)`, category.total_amount]);
+        });
+        
+        revenueBreakdown.tip_categories.forEach((category) => {
+          csvRows.push([category.account_code, `${category.account_name} (Liability)`, category.total_amount]);
+        });
+      }
+    } else {
+      // Fallback to journal entries if no POS categorization
+      csvRows.push(['Revenue']);
+      incomeData!.revenue.forEach(acc => {
+        csvRows.push([acc.account_code, acc.account_name, acc.current_balance]);
+      });
+      csvRows.push(['', 'Total Revenue', totalRevenue]);
+    }
+    
+    csvRows.push(['']);
+    
+    // COGS Section
+    csvRows.push(['Cost of Goods Sold']);
+    incomeData!.cogs.forEach(acc => {
+      csvRows.push([acc.account_code, acc.account_name, acc.current_balance]);
+    });
+    csvRows.push(['', 'Total COGS', totalCOGS]);
+    csvRows.push(['']);
+    csvRows.push(['', 'Gross Profit', grossProfit]);
+    csvRows.push(['']);
+    
+    // Expenses Section
+    csvRows.push(['Operating Expenses']);
+    incomeData!.expenses.forEach(acc => {
+      csvRows.push([acc.account_code, acc.account_name, acc.current_balance]);
+    });
+    csvRows.push(['', 'Total Expenses', totalExpenses]);
+    csvRows.push(['']);
+    csvRows.push(['', 'Net Income', netIncome]);
+    
+    const csvContent = csvRows.map(row => row.join(',')).join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -170,34 +230,112 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   };
 
   const handleExportPDF = () => {
-    const data = [
-      ...incomeData!.revenue.map(acc => ({
+    const data = [];
+    
+    // Revenue Section - Use revenueBreakdown if available, otherwise fall back to incomeData
+    if (revenueBreakdown && revenueBreakdown.revenue_categories.length > 0) {
+      data.push({ label: 'REVENUE', amount: undefined, isBold: true });
+      
+      // Revenue Categories from POS Sales
+      revenueBreakdown.revenue_categories.forEach((category) => {
+        data.push({
+          label: `${category.account_code} - ${category.account_name}`,
+          amount: category.total_amount,
+          indent: 1,
+        });
+      });
+      
+      data.push({ label: 'Gross Revenue', amount: revenueBreakdown.totals.gross_revenue, isSubtotal: true });
+      
+      // Discounts, Refunds & Comps
+      if (revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories?.length > 0) {
+        data.push({ label: '', amount: undefined });
+        data.push({ label: 'Less: Deductions', amount: undefined, isBold: true });
+        
+        revenueBreakdown.discount_categories.forEach((category) => {
+          data.push({
+            label: `${category.account_code} - ${category.account_name}`,
+            amount: -Math.abs(category.total_amount),
+            indent: 1,
+          });
+        });
+        
+        if (revenueBreakdown.refund_categories) {
+          revenueBreakdown.refund_categories.forEach((category) => {
+            data.push({
+              label: `${category.account_code} - ${category.account_name}`,
+              amount: -Math.abs(category.total_amount),
+              indent: 1,
+            });
+          });
+        }
+      }
+      
+      // Net Revenue
+      data.push({ label: 'Net Sales Revenue', amount: revenueBreakdown.totals.net_revenue, isSubtotal: true });
+      
+      // Pass-Through Collections (if any)
+      if (revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) {
+        data.push({ label: '', amount: undefined });
+        data.push({ label: 'OTHER COLLECTIONS (Pass-Through)', amount: undefined, isBold: true });
+        
+        revenueBreakdown.tax_categories.forEach((category) => {
+          data.push({
+            label: `${category.account_code} - ${category.account_name} (Liability)`,
+            amount: category.total_amount,
+            indent: 1,
+          });
+        });
+        
+        revenueBreakdown.tip_categories.forEach((category) => {
+          data.push({
+            label: `${category.account_code} - ${category.account_name} (Liability)`,
+            amount: category.total_amount,
+            indent: 1,
+          });
+        });
+      }
+    } else {
+      // Fallback to journal entries if no POS categorization
+      data.push({ label: 'REVENUE', amount: undefined, isBold: true });
+      incomeData!.revenue.forEach(acc => {
+        data.push({
+          label: `${acc.account_code} - ${acc.account_name}`,
+          amount: acc.current_balance,
+          indent: 1,
+        });
+      });
+      data.push({ label: 'Total Revenue', amount: totalRevenue, isSubtotal: true });
+    }
+    
+    data.push({ label: '', amount: undefined });
+    
+    // COGS Section
+    data.push({ label: 'Cost of Goods Sold', amount: undefined, isBold: true });
+    incomeData!.cogs.forEach(acc => {
+      data.push({
         label: `${acc.account_code} - ${acc.account_name}`,
         amount: acc.current_balance,
         indent: 1,
-      })),
-      { label: 'Total Revenue', amount: totalRevenue, isSubtotal: true },
-      { label: '', amount: undefined },
-      { label: 'Cost of Goods Sold', amount: undefined, isBold: true },
-      ...incomeData!.cogs.map(acc => ({
+      });
+    });
+    data.push({ label: 'Total COGS', amount: totalCOGS, isSubtotal: true });
+    data.push({ label: '', amount: undefined });
+    data.push({ label: 'Gross Profit', amount: grossProfit, isTotal: true });
+    data.push({ label: '', amount: undefined });
+    
+    // Expenses Section
+    data.push({ label: 'Operating Expenses', amount: undefined, isBold: true });
+    incomeData!.expenses.forEach(acc => {
+      data.push({
         label: `${acc.account_code} - ${acc.account_name}`,
         amount: acc.current_balance,
         indent: 1,
-      })),
-      { label: 'Total COGS', amount: totalCOGS, isSubtotal: true },
-      { label: '', amount: undefined },
-      { label: 'Gross Profit', amount: grossProfit, isTotal: true },
-      { label: '', amount: undefined },
-      { label: 'Operating Expenses', amount: undefined, isBold: true },
-      ...incomeData!.expenses.map(acc => ({
-        label: `${acc.account_code} - ${acc.account_name}`,
-        amount: acc.current_balance,
-        indent: 1,
-      })),
-      { label: 'Total Expenses', amount: totalExpenses, isSubtotal: true },
-      { label: '', amount: undefined },
-      { label: 'Net Income', amount: netIncome, isTotal: true },
-    ];
+      });
+    });
+    data.push({ label: 'Total Expenses', amount: totalExpenses, isSubtotal: true });
+    data.push({ label: '', amount: undefined });
+    data.push({ label: 'Net Income', amount: netIncome, isTotal: true });
 
     const filename = generateStandardFilename(
       'income-statement',

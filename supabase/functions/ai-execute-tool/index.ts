@@ -118,7 +118,7 @@ async function executeGetKpis(
   // Fetch sales (excluding adjustments)
   const { data: sales, error: salesError } = await supabase
     .from('unified_sales')
-    .select('id, total_price, item_type, parent_sale_id, is_categorized, chart_of_accounts!category_id(account_type, account_subtype)')
+    .select('id, total_price, item_type, parent_sale_id, is_categorized, chart_account:chart_of_accounts!category_id(account_type, account_subtype)')
     .eq('restaurant_id', restaurantId)
     .gte('sale_date', startDateStr)
     .lte('sale_date', endDateStr)

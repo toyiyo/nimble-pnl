@@ -285,6 +285,48 @@ const Index = () => {
   // Monthly data from new metrics hook
   const monthlyData = monthlyMetrics || [];
 
+  // Reconciliation check: Validate that Performance Overview and Monthly Performance match
+  // This helps catch data consistency issues between the two views
+  useEffect(() => {
+    if (!periodMetrics || !monthlyData || monthlyData.length === 0) return;
+    
+    // Find the current month's data in monthlyData
+    const currentMonth = format(selectedPeriod.from, 'yyyy-MM');
+    const monthlyEntry = monthlyData.find(m => m.period === currentMonth);
+    
+    if (!monthlyEntry) return;
+    
+    // Compare net revenue (should be within $1 due to rounding)
+    const overviewNetRevenue = periodMetrics.netRevenue;
+    const monthlyNetRevenue = monthlyEntry.net_revenue;
+    const revenueDiff = Math.abs(overviewNetRevenue - monthlyNetRevenue);
+    
+    // Compare COGS/food cost
+    const overviewFoodCost = periodMetrics.foodCost;
+    const monthlyFoodCost = monthlyEntry.food_cost;
+    const foodCostDiff = Math.abs(overviewFoodCost - monthlyFoodCost);
+    
+    // Log any significant discrepancies
+    if (revenueDiff > 1) {
+      console.warn('Revenue reconciliation mismatch:', {
+        period: selectedPeriod.label,
+        performanceOverview: overviewNetRevenue,
+        monthlyPerformance: monthlyNetRevenue,
+        difference: overviewNetRevenue - monthlyNetRevenue,
+      });
+    }
+    
+    if (foodCostDiff > 1) {
+      console.warn('Food cost reconciliation mismatch:', {
+        period: selectedPeriod.label,
+        performanceOverview: overviewFoodCost,
+        monthlyPerformance: monthlyFoodCost,
+        difference: overviewFoodCost - monthlyFoodCost,
+      });
+    }
+  }, [periodMetrics, monthlyData, selectedPeriod]);
+
+
   // Generate AI insights with memoization
   const insights = useMemo(() => {
     const insightsArray: Array<{

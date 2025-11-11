@@ -122,7 +122,10 @@ export function useMonthlyMetrics(
 
         // Categorize based on item_type and account_type
         // Use cents to avoid floating-point precision errors
-        if (sale.item_type === 'sale' || !sale.item_type) {
+        // Normalize item_type to lowercase for case-insensitive comparison
+        const normalizedItemType = String(sale.item_type || 'sale').toLowerCase();
+        
+        if (normalizedItemType === 'sale') {
           if (sale.chart_account.account_type === 'revenue') {
             month.gross_revenue += Math.round(sale.total_price * 100);
           } else if (sale.chart_account.account_type === 'liability') {
@@ -139,9 +142,9 @@ export function useMonthlyMetrics(
               month.other_liabilities += Math.round(sale.total_price * 100);
             }
           }
-        } else if (sale.item_type === 'discount') {
+        } else if (normalizedItemType === 'discount') {
           month.discounts += Math.round(Math.abs(sale.total_price) * 100);
-        } else if (sale.item_type === 'refund') {
+        } else if (normalizedItemType === 'refund') {
           month.refunds += Math.round(Math.abs(sale.total_price) * 100);
         }
       });

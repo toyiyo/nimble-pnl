@@ -271,6 +271,21 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   };
 
   const handleSubmit = async (data: UpdateFormData) => {
+    // Critical validation: SKU must not be empty
+    if (!data.sku || data.sku.trim() === '') {
+      console.error('[ProductUpdateDialog] SKU is empty! Form data:', data);
+      toast({
+        title: "Error",
+        description: "SKU is required and cannot be empty",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Debug logging
+    console.log('[ProductUpdateDialog] handleSubmit called with data:', data);
+    console.log('[ProductUpdateDialog] SKU value specifically:', data.sku, 'Type:', typeof data.sku, 'Length:', data.sku?.length);
+
     const isNewProduct = !product.id;
     const currentStock = product.current_stock || 0;
     
@@ -307,6 +322,9 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       image_url: imageUrl || data.image_url,
       current_stock: finalStock,
     };
+
+    console.log('[ProductUpdateDialog] updates object being sent:', updates);
+    console.log('[ProductUpdateDialog] updates.sku specifically:', updates.sku);
 
     await onUpdate(updates, quantityToAdd);
     onOpenChange(false);
@@ -579,7 +597,14 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                       <FormItem>
                         <FormLabel>SKU *</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="e.g., BEEF-001" />
+                          <Input 
+                            {...field}
+                            onChange={(e) => {
+                              console.log('[ProductUpdateDialog] SKU field onChange:', e.target.value);
+                              field.onChange(e);
+                            }}
+                            placeholder="e.g., BEEF-001" 
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

@@ -83,8 +83,24 @@ export function useMonthlyMetrics(
 
       // Group sales by month and categorize
       const monthlyMap = new Map<string, MonthlyMetrics>();
+      
+      // Debug: Track categorization for alcohol sales
+      const alcoholSales: any[] = [];
 
       filteredSales?.forEach((sale) => {
+        // Debug: Track alcohol sales
+        if (sale.chart_account?.account_code === '4020' || 
+            sale.chart_account?.account_name?.toLowerCase().includes('alcohol')) {
+          alcoholSales.push({
+            price: sale.total_price,
+            is_categorized: sale.is_categorized,
+            has_account: !!sale.chart_account,
+            account_type: sale.chart_account?.account_type,
+            account_code: sale.chart_account?.account_code,
+            item_type: sale.item_type,
+          });
+        }
+        
         // Parse date as local date, not UTC midnight
         const [year, monthNum, day] = sale.sale_date.split('-').map(Number);
         const localDate = new Date(year, monthNum - 1, day);
@@ -148,6 +164,15 @@ export function useMonthlyMetrics(
           month.refunds += Math.round(Math.abs(sale.total_price) * 100);
         }
       });
+      
+      // Debug: Log alcohol sales
+      if (alcoholSales.length > 0) {
+        console.group('🍺 Alcohol Sales Debug (useMonthlyMetrics)');
+        console.table(alcoholSales);
+        console.log('Total alcohol sales found:', alcoholSales.length);
+        console.log('Total alcohol revenue:', alcoholSales.reduce((sum, s) => sum + s.price, 0));
+        console.groupEnd();
+      }
 
       // Process adjustments (Square/Clover pass-through items)
       adjustmentsData?.forEach((adjustment) => {

@@ -237,7 +237,8 @@ export function useMonthlyMetrics(
 
         const month = monthlyMap.get(monthKey)!;
         // Use cents to avoid floating-point precision errors
-        month.food_cost += Math.round((transaction.total_cost || 0) * 100);
+        // Use Math.abs() because costs may be stored as negative (accounting convention)
+        month.food_cost += Math.round(Math.abs(transaction.total_cost || 0) * 100);
       });
 
       // Aggregate labor costs by month
@@ -266,7 +267,8 @@ export function useMonthlyMetrics(
 
         const month = monthlyMap.get(monthKey)!;
         // Use cents to avoid floating-point precision errors
-        month.labor_cost += Math.round((day.total_labor_cost || 0) * 100);
+        // Use Math.abs() because costs may be stored as negative (accounting convention)
+        month.labor_cost += Math.round(Math.abs(day.total_labor_cost || 0) * 100);
       });
 
       // Calculate net_revenue and total_collected_at_pos for each month

@@ -50,7 +50,9 @@ export function useFoodCosts(
       
       data?.forEach((transaction) => {
         const transactionDate = format(new Date(transaction.created_at), 'yyyy-MM-dd');
-        const cost = transaction.total_cost || 0;
+        // Use Math.abs() because inventory costs may be stored as negative values (accounting convention)
+        // but profit calculations expect positive cost values
+        const cost = Math.abs(transaction.total_cost || 0);
         dailyMap.set(transactionDate, (dailyMap.get(transactionDate) || 0) + cost);
       });
 

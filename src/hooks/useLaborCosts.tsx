@@ -50,10 +50,12 @@ export function useLaborCosts(
 
       const dailyCosts: LaborCostData[] = (data || []).map((row) => ({
         date: row.date,
-        total_labor_cost: Number(row.total_labor_cost) || 0,
-        hourly_wages: Number(row.hourly_wages) || 0,
-        salary_wages: Number(row.salary_wages) || 0,
-        benefits: Number(row.benefits) || 0,
+        // Use Math.abs() because labor costs may be stored as negative values (accounting convention)
+        // but profit calculations expect positive cost values
+        total_labor_cost: Math.abs(Number(row.total_labor_cost) || 0),
+        hourly_wages: Math.abs(Number(row.hourly_wages) || 0),
+        salary_wages: Math.abs(Number(row.salary_wages) || 0),
+        benefits: Math.abs(Number(row.benefits) || 0),
         total_hours: Number(row.total_hours) || 0,
       }));
 

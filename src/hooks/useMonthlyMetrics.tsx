@@ -90,7 +90,7 @@ export function useMonthlyMetrics(
 
       filteredSales?.forEach((sale) => {
         // Debug: Track alcohol sales
-        const isAlcohol = sale.chart_account?.account_code === '4020' || 
+        const isAlcohol = (sale.chart_account as any)?.account_code === '4020' || 
                          sale.chart_account?.account_name?.toLowerCase().includes('alcohol');
         
         if (isAlcohol) {
@@ -99,7 +99,7 @@ export function useMonthlyMetrics(
             is_categorized: sale.is_categorized,
             has_account: !!sale.chart_account,
             account_type: sale.chart_account?.account_type,
-            account_code: sale.chart_account?.account_code,
+            account_code: (sale.chart_account as any)?.account_code,
             item_type: sale.item_type,
             normalized_item_type: String(sale.item_type || 'sale').toLowerCase(),
           });

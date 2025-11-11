@@ -144,10 +144,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       
       // Revenue Categories from POS Sales
       revenueBreakdown.revenue_categories.forEach((category) => {
-        csvRows.push([category.account_code, category.account_name, category.total_amount]);
+        csvRows.push([category.account_code, category.account_name, String(category.total_amount)]);
       });
       
-      csvRows.push(['', 'Gross Revenue', revenueBreakdown.totals.gross_revenue]);
+      csvRows.push(['', 'Gross Revenue', String(revenueBreakdown.totals.gross_revenue)]);
       
       // Discounts, Refunds & Comps
       if (revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories?.length > 0) {
@@ -155,18 +155,18 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         csvRows.push(['Less: Deductions']);
         
         revenueBreakdown.discount_categories.forEach((category) => {
-          csvRows.push([category.account_code, category.account_name, -Math.abs(category.total_amount)]);
+          csvRows.push([category.account_code, category.account_name, String(-Math.abs(category.total_amount))]);
         });
         
         if (revenueBreakdown.refund_categories) {
           revenueBreakdown.refund_categories.forEach((category) => {
-            csvRows.push([category.account_code, category.account_name, -Math.abs(category.total_amount)]);
+            csvRows.push([category.account_code, category.account_name, String(-Math.abs(category.total_amount))]);
           });
         }
       }
       
       // Net Revenue
-      csvRows.push(['', 'Net Sales Revenue', revenueBreakdown.totals.net_revenue]);
+      csvRows.push(['', 'Net Sales Revenue', String(revenueBreakdown.totals.net_revenue)]);
       
       // Pass-Through Collections (if any)
       if (revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) {
@@ -174,20 +174,20 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         csvRows.push(['OTHER COLLECTIONS (Pass-Through)']);
         
         revenueBreakdown.tax_categories.forEach((category) => {
-          csvRows.push([category.account_code, `${category.account_name} (Liability)`, category.total_amount]);
+          csvRows.push([category.account_code, `${category.account_name} (Liability)`, String(category.total_amount)]);
         });
         
         revenueBreakdown.tip_categories.forEach((category) => {
-          csvRows.push([category.account_code, `${category.account_name} (Liability)`, category.total_amount]);
+          csvRows.push([category.account_code, `${category.account_name} (Liability)`, String(category.total_amount)]);
         });
       }
     } else {
       // Fallback to journal entries if no POS categorization
       csvRows.push(['Revenue']);
       incomeData!.revenue.forEach(acc => {
-        csvRows.push([acc.account_code, acc.account_name, acc.current_balance]);
+        csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance)]);
       });
-      csvRows.push(['', 'Total Revenue', totalRevenue]);
+      csvRows.push(['', 'Total Revenue', String(totalRevenue)]);
     }
     
     csvRows.push(['']);
@@ -195,21 +195,21 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     // COGS Section
     csvRows.push(['Cost of Goods Sold']);
     incomeData!.cogs.forEach(acc => {
-      csvRows.push([acc.account_code, acc.account_name, acc.current_balance]);
+      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance)]);
     });
-    csvRows.push(['', 'Total COGS', totalCOGS]);
+    csvRows.push(['', 'Total COGS', String(totalCOGS)]);
     csvRows.push(['']);
-    csvRows.push(['', 'Gross Profit', grossProfit]);
+    csvRows.push(['', 'Gross Profit', String(grossProfit)]);
     csvRows.push(['']);
     
     // Expenses Section
     csvRows.push(['Operating Expenses']);
     incomeData!.expenses.forEach(acc => {
-      csvRows.push([acc.account_code, acc.account_name, acc.current_balance]);
+      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance)]);
     });
-    csvRows.push(['', 'Total Expenses', totalExpenses]);
+    csvRows.push(['', 'Total Expenses', String(totalExpenses)]);
     csvRows.push(['']);
-    csvRows.push(['', 'Net Income', netIncome]);
+    csvRows.push(['', 'Net Income', String(netIncome)]);
     
     const csvContent = csvRows.map(row => row.join(',')).join('\n');
 

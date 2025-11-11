@@ -273,10 +273,18 @@ serve(async (req) => {
     }
 
     const data = await finalResponse.json();
-    const enhancedText = data.choices[0].message.content;
+    let enhancedText = data.choices[0].message.content;
+
+    // Strip markdown code blocks if present
+    if (enhancedText.includes('```')) {
+      const jsonMatch = enhancedText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        enhancedText = jsonMatch[1];
+      }
+    }
 
     try {
-      const enhancedData = JSON.parse(enhancedText);
+      const enhancedData = JSON.parse(enhancedText.trim());
       console.log('✅ Successfully enhanced product data:', enhancedData);
       
       return new Response(JSON.stringify({ enhancedData }), {

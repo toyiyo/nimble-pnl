@@ -12,6 +12,7 @@ import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { useMonthlyMetrics } from '@/hooks/useMonthlyMetrics';
 import { usePendingOutflowsSummary } from '@/hooks/usePendingOutflows';
+import { useInventoryPurchases } from '@/hooks/useInventoryPurchases';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -107,6 +108,13 @@ const Index = () => {
   // Revenue breakdown is used by periodMetrics internally but we also need it for detailed display
   // React Query will cache this with the same key, so no duplicate network requests
   const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
+    selectedRestaurant?.restaurant_id || null,
+    selectedPeriod.from,
+    selectedPeriod.to
+  );
+
+  // Fetch inventory purchases for the selected period
+  const { data: inventoryPurchases, isLoading: purchasesLoading } = useInventoryPurchases(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,
     selectedPeriod.to
@@ -574,7 +582,7 @@ const Index = () => {
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" role="region" aria-label="Performance metrics">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4" role="region" aria-label="Performance metrics">
                   <DashboardMetricCard
                     title="Your Sales (after discounts/refunds)"
                     value={periodData ? `$${periodData.net_revenue.toFixed(0)}` : '--'}
@@ -584,6 +592,15 @@ const Index = () => {
                     } : undefined}
                     icon={DollarSign}
                     variant={periodData && previousPeriodData && periodData.net_revenue > previousPeriodData.net_revenue ? 'success' : 'default'}
+                    sparklineData={undefined}
+                    periodLabel={selectedPeriod.label}
+                  />
+                  <DashboardMetricCard
+                    title="Inventory Purchases"
+                    value={inventoryPurchases ? `$${inventoryPurchases.totalPurchases.toFixed(0)}` : '--'}
+                    icon={Package}
+                    variant="default"
+                    subtitle={inventoryPurchases ? `${inventoryPurchases.purchaseCount} purchase${inventoryPurchases.purchaseCount !== 1 ? 's' : ''}` : undefined}
                     sparklineData={undefined}
                     periodLabel={selectedPeriod.label}
                   />

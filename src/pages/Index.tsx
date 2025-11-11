@@ -294,34 +294,79 @@ const Index = () => {
     const currentMonth = format(selectedPeriod.from, 'yyyy-MM');
     const monthlyEntry = monthlyData.find(m => m.period === currentMonth);
     
-    if (!monthlyEntry) return;
+    if (!monthlyEntry) {
+      console.info('Reconciliation check: No monthly entry found for', currentMonth, 'Available periods:', monthlyData.map(m => m.period));
+      return;
+    }
     
-    // Compare net revenue (should be within $1 due to rounding)
+    // Compare gross revenue, discounts, and net revenue
+    const overviewGrossRevenue = periodMetrics.grossRevenue;
+    const monthlyGrossRevenue = monthlyEntry.gross_revenue;
+    const grossRevenueDiff = Math.abs(overviewGrossRevenue - monthlyGrossRevenue);
+    
+    const overviewDiscounts = periodMetrics.discounts;
+    const monthlyDiscounts = monthlyEntry.discounts;
+    const discountsDiff = Math.abs(overviewDiscounts - monthlyDiscounts);
+    
     const overviewNetRevenue = periodMetrics.netRevenue;
     const monthlyNetRevenue = monthlyEntry.net_revenue;
-    const revenueDiff = Math.abs(overviewNetRevenue - monthlyNetRevenue);
+    const netRevenueDiff = Math.abs(overviewNetRevenue - monthlyNetRevenue);
     
     // Compare COGS/food cost
     const overviewFoodCost = periodMetrics.foodCost;
     const monthlyFoodCost = monthlyEntry.food_cost;
     const foodCostDiff = Math.abs(overviewFoodCost - monthlyFoodCost);
     
-    // Log any significant discrepancies
-    if (revenueDiff > 1) {
-      console.warn('Revenue reconciliation mismatch:', {
-        period: selectedPeriod.label,
-        performanceOverview: overviewNetRevenue,
-        monthlyPerformance: monthlyNetRevenue,
-        difference: overviewNetRevenue - monthlyNetRevenue,
+    // Log detailed comparison (always log for debugging)
+    console.group(`📊 Reconciliation Check: ${selectedPeriod.label}`);
+    console.table({
+      'Gross Revenue': {
+        'Performance Overview': `$${overviewGrossRevenue.toFixed(2)}`,
+        'Monthly Performance': `$${monthlyGrossRevenue.toFixed(2)}`,
+        'Difference': `$${(overviewGrossRevenue - monthlyGrossRevenue).toFixed(2)}`,
+      },
+      'Discounts': {
+        'Performance Overview': `$${overviewDiscounts.toFixed(2)}`,
+        'Monthly Performance': `$${monthlyDiscounts.toFixed(2)}`,
+        'Difference': `$${(overviewDiscounts - monthlyDiscounts).toFixed(2)}`,
+      },
+      'Net Revenue': {
+        'Performance Overview': `$${overviewNetRevenue.toFixed(2)}`,
+        'Monthly Performance': `$${monthlyNetRevenue.toFixed(2)}`,
+        'Difference': `$${(overviewNetRevenue - monthlyNetRevenue).toFixed(2)}`,
+      },
+      'COGS/Food Cost': {
+        'Performance Overview': `$${overviewFoodCost.toFixed(2)}`,
+        'Monthly Performance': `$${monthlyFoodCost.toFixed(2)}`,
+        'Difference': `$${(overviewFoodCost - monthlyFoodCost).toFixed(2)}`,
+      },
+    });
+    console.groupEnd();
+    
+    // Warn about significant discrepancies
+    if (grossRevenueDiff > 1) {
+      console.warn('⚠️ Gross Revenue mismatch detected:', {
+        difference: `$${(overviewGrossRevenue - monthlyGrossRevenue).toFixed(2)}`,
+        percentDiff: ((grossRevenueDiff / overviewGrossRevenue) * 100).toFixed(2) + '%',
+      });
+    }
+    
+    if (discountsDiff > 1) {
+      console.warn('⚠️ Discounts mismatch detected:', {
+        difference: `$${(overviewDiscounts - monthlyDiscounts).toFixed(2)}`,
+      });
+    }
+    
+    if (netRevenueDiff > 1) {
+      console.warn('⚠️ Net Revenue mismatch detected:', {
+        difference: `$${(overviewNetRevenue - monthlyNetRevenue).toFixed(2)}`,
+        percentDiff: ((netRevenueDiff / overviewNetRevenue) * 100).toFixed(2) + '%',
       });
     }
     
     if (foodCostDiff > 1) {
-      console.warn('Food cost reconciliation mismatch:', {
-        period: selectedPeriod.label,
-        performanceOverview: overviewFoodCost,
-        monthlyPerformance: monthlyFoodCost,
-        difference: overviewFoodCost - monthlyFoodCost,
+      console.warn('⚠️ Food Cost mismatch detected:', {
+        difference: `$${(overviewFoodCost - monthlyFoodCost).toFixed(2)}`,
       });
     }
   }, [periodMetrics, monthlyData, selectedPeriod]);

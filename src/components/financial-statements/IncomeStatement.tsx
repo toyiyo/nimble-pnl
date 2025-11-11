@@ -122,7 +122,13 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   const totalRevenue = incomeData?.revenue.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
   const totalCOGS = incomeData?.cogs.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
   const totalExpenses = incomeData?.expenses.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
-  const grossProfit = totalRevenue - totalCOGS;
+  
+  // Use revenue breakdown data if available, otherwise fall back to journal entries
+  const effectiveRevenue = (revenueBreakdown && revenueBreakdown.revenue_categories.length > 0) 
+    ? revenueBreakdown.totals.net_revenue 
+    : totalRevenue;
+  
+  const grossProfit = effectiveRevenue - totalCOGS;
   const netIncome = grossProfit - totalExpenses;
 
   const handleExportCSV = () => {

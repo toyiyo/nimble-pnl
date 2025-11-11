@@ -114,6 +114,27 @@ export function useRevenueBreakdown(
 
       const totalCount = filteredSales.length;
 
+      // Debug: Track alcohol sales
+      const alcoholSales = filteredSales?.filter((s: any) => 
+        s.chart_account?.account_code === '4020' || 
+        s.chart_account?.account_name?.toLowerCase().includes('alcohol')
+      ) || [];
+      
+      if (alcoholSales.length > 0) {
+        console.group('🍺 Alcohol Sales Debug (useRevenueBreakdown)');
+        console.table(alcoholSales.map((s: any) => ({
+          price: s.total_price,
+          is_categorized: s.is_categorized,
+          has_account: !!s.chart_account,
+          account_type: s.chart_account?.account_type,
+          account_code: s.chart_account?.account_code,
+          item_type: s.item_type,
+        })));
+        console.log('Total alcohol sales found:', alcoholSales.length);
+        console.log('Total alcohol revenue:', alcoholSales.reduce((sum: number, s: any) => sum + s.total_price, 0));
+        console.groupEnd();
+      }
+
       // Separate categorized and uncategorized sales
       const categorizedSales = filteredSales?.filter((s: any) => s.is_categorized && s.chart_account) || [];
       // Only include actual 'sale' items in uncategorized (exclude refunds, voids, pass-throughs)

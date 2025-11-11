@@ -323,12 +323,13 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       }
     }
 
-    // Helper function to convert empty strings to null/undefined for string fields
-    const cleanValue = (value: string | undefined | null): string | undefined => {
-      if (typeof value === 'string' && value.trim() === '') {
-        return undefined;
+    // Helper function to convert empty strings to null for string fields
+    const cleanValue = (value: string | undefined | null): string | null => {
+      if (value == null) {
+        return null;
       }
-      return value || undefined;
+      const trimmed = value.trim();
+      return trimmed === '' ? null : trimmed;
     };
 
     const productData: CreateProductData = {

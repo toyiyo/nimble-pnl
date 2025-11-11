@@ -113,7 +113,8 @@ export function useMonthlyMetrics(
         // Only process categorized sales (skip uncategorized to match useRevenueBreakdown logic)
         if (!sale.is_categorized || !sale.chart_account) {
           // Uncategorized sales are treated as revenue for reporting purposes
-          if (sale.item_type === 'sale' || !sale.item_type) {
+          // Match useRevenueBreakdown logic: normalize item_type to lowercase for comparison
+          if (String(sale.item_type || 'sale').toLowerCase() === 'sale') {
             month.gross_revenue += Math.round(sale.total_price * 100);
           }
           return;

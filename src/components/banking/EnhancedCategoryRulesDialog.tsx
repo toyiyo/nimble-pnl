@@ -163,6 +163,14 @@ export const EnhancedCategoryRulesDialog = ({
       autoApply: rule.auto_apply,
     });
     setShowNewRule(true);
+    
+    // Scroll to the form smoothly after a short delay to ensure it's rendered
+    setTimeout(() => {
+      const formElement = document.getElementById('rule-form');
+      if (formElement) {
+        formElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 100);
   };
 
   const handleSaveEdit = async () => {
@@ -517,11 +525,28 @@ export const EnhancedCategoryRulesDialog = ({
                 Add New Rule
               </Button>
             ) : (
-              <Card className="bg-muted/50">
+              <Card id="rule-form" className="bg-muted/50 border-2 border-primary/50 shadow-lg">
                 <CardContent className="p-4 space-y-4">
-                  <h3 className="text-sm font-medium">
-                    {editingRuleId ? 'Edit Rule' : 'New Categorization Rule'}
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium flex items-center gap-2">
+                      {editingRuleId ? (
+                        <>
+                          <Edit2 className="h-4 w-4 text-primary" />
+                          Edit Rule: {formData.ruleName}
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4 text-primary" />
+                          New Categorization Rule
+                        </>
+                      )}
+                    </h3>
+                    {editingRuleId && (
+                      <Badge variant="outline" className="text-xs">
+                        Editing
+                      </Badge>
+                    )}
+                  </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">

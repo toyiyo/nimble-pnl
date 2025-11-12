@@ -28,10 +28,13 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { restaurantId, applyTo = 'both' } = await req.json();
+    const { restaurantId, applyTo = 'both', batchLimit = 1000 } = await req.json();
     if (!restaurantId) {
       throw new Error('Restaurant ID is required');
     }
+    
+    console.log(`Applying rules to ${applyTo} for restaurant ${restaurantId} (batch limit: ${batchLimit})`);
+
 
     // Verify user has access to this restaurant
     const { data: userRestaurant, error: accessError } = await supabaseClient
@@ -50,9 +53,11 @@ serve(async (req) => {
 
     // Apply rules to bank transactions
     if (applyTo === 'bank_transactions' || applyTo === 'both') {
+      console.log('Applying rules to bank transactions...');
       const { data: bankData, error: bankError } = await supabaseClient
         .rpc('apply_rules_to_bank_transactions', {
-          p_restaurant_id: restaurantId
+          p_restaurant_id: restaurantId,
+          p_batch_limit: batchLimit
         });
 
       if (bankError) {
@@ -62,14 +67,17 @@ serve(async (req) => {
 
       if (bankData && bankData.length > 0) {
         bankResults = bankData[0];
+        console.log(`Bank transactions result: ${bankResults.applied_count} applied of ${bankResults.total_count} processed`);
       }
     }
 
     // Apply rules to POS sales
     if (applyTo === 'pos_sales' || applyTo === 'both') {
+      console.log('Applying rules to POS sales...');
       const { data: posData, error: posError } = await supabaseClient
         .rpc('apply_rules_to_pos_sales', {
-          p_restaurant_id: restaurantId
+          p_restaurant_id: restaurantId,
+          p_batch_limit: batchLimit
         });
 
       if (posError) {
@@ -79,6 +87,7 @@ serve(async (req) => {
 
       if (posData && posData.length > 0) {
         posResults = posData[0];
+        console.log(`POS sales result: ${posResults.applied_count} applied of ${posResults.total_count} processed`);
       }
     }
 

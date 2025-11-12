@@ -250,14 +250,19 @@ export function useApplyRulesV2() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ restaurantId, applyTo = 'both' }: { 
+    mutationFn: async ({ 
+      restaurantId, 
+      applyTo = 'both',
+      batchLimit = 1000
+    }: { 
       restaurantId: string; 
-      applyTo?: 'bank_transactions' | 'pos_sales' | 'both' 
+      applyTo?: 'bank_transactions' | 'pos_sales' | 'both';
+      batchLimit?: number;
     }) => {
       const { data, error } = await supabase.functions.invoke(
         'apply-categorization-rules',
         {
-          body: { restaurantId, applyTo }
+          body: { restaurantId, applyTo, batchLimit }
         }
       );
 
@@ -265,10 +270,24 @@ export function useApplyRulesV2() {
       return data;
     },
     onSuccess: (data) => {
-      const result = data as { message: string; count: number };
+      const result = data as { message: string; count: number; details?: any };
+      
+      let description = result?.message || 'Categorization rules applied successfully';
+      
+      // Add note if processing was limited
+      if (result?.details) {
+        const bank = result.details.bank;
+        const pos = result.details.pos;
+        const totalProcessed = (bank?.total_count || 0) + (pos?.total_count || 0);
+        
+        if (totalProcessed >= 1000) {
+          description += '\n\nNote: Processed in batches. Click "Apply Rules" again to continue processing remaining records.';
+        }
+      }
+      
       toast({
         title: "Rules applied",
-        description: result?.message || 'Categorization rules applied successfully',
+        description,
       });
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['unified-sales'] });

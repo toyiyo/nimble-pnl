@@ -131,3 +131,12 @@ verify_jwt = true
 
 [functions.stripe-verify-connection-session]
 verify_jwt = true
+
+[functions.apply-categorization-rules]
+verify_jwt = true
+
+[functions.ai-suggest-categorization-rules]
+verify_jwt = true
+
+[functions.categorize-uncategorized-transactions]
+verify_jwt = true

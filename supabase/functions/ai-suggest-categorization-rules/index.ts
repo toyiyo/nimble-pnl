@@ -308,8 +308,8 @@ serve(async (req) => {
       restaurantId
     );
 
-    if (!result.success || !result.data) {
-      throw new Error(result.error || 'Failed to get AI suggestions');
+    if (!result || !result.data) {
+      throw new Error('Failed to get AI suggestions');
     }
 
     // Parse and validate the response

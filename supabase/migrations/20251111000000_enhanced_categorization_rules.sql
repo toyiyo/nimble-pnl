@@ -496,3 +496,116 @@ COMMENT ON FUNCTION find_matching_rules_for_bank_transaction IS 'Finds the highe
 COMMENT ON FUNCTION find_matching_rules_for_pos_sale IS 'Finds the highest priority matching rule for a POS sale';
 COMMENT ON FUNCTION apply_rules_to_bank_transactions IS 'Applies categorization rules to all uncategorized bank transactions';
 COMMENT ON FUNCTION apply_rules_to_pos_sales IS 'Applies categorization rules to all uncategorized POS sales';
+
+-- Trigger to auto-apply categorization rules when new POS sales are synced
+CREATE OR REPLACE FUNCTION auto_apply_pos_categorization_rules()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_rule RECORD;
+  v_sale_json JSONB;
+  v_auto_apply BOOLEAN;
+BEGIN
+  -- Only process uncategorized sales
+  IF NEW.is_categorized = false OR NEW.category_id IS NULL THEN
+    -- Build sale JSONB for matching
+    v_sale_json := jsonb_build_object(
+      'item_name', NEW.item_name,
+      'total_price', NEW.total_price,
+      'pos_category', NEW.pos_category
+    );
+    
+    -- Find matching rule
+    SELECT * INTO v_rule
+    FROM find_matching_rules_for_pos_sale(NEW.restaurant_id, v_sale_json)
+    LIMIT 1;
+    
+    -- If rule found, check if auto_apply is enabled
+    IF v_rule.rule_id IS NOT NULL THEN
+      SELECT auto_apply INTO v_auto_apply
+      FROM categorization_rules
+      WHERE id = v_rule.rule_id;
+      
+      IF v_auto_apply THEN
+        NEW.category_id := v_rule.category_id;
+        NEW.is_categorized := true;
+        
+        -- Update rule statistics
+        UPDATE categorization_rules
+        SET 
+          apply_count = apply_count + 1,
+          last_applied_at = now()
+        WHERE id = v_rule.rule_id;
+      END IF;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+-- Create trigger on unified_sales
+DROP TRIGGER IF EXISTS auto_categorize_pos_sale ON unified_sales;
+CREATE TRIGGER auto_categorize_pos_sale
+  BEFORE INSERT ON unified_sales
+  FOR EACH ROW
+  EXECUTE FUNCTION auto_apply_pos_categorization_rules();
+
+-- Trigger to auto-apply categorization rules when new bank transactions are synced
+CREATE OR REPLACE FUNCTION auto_apply_bank_categorization_rules()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_rule RECORD;
+  v_transaction_json JSONB;
+  v_auto_apply BOOLEAN;
+BEGIN
+  -- Only process uncategorized transactions
+  IF NEW.is_categorized = false OR NEW.category_id IS NULL THEN
+    -- Build transaction JSONB for matching
+    v_transaction_json := jsonb_build_object(
+      'description', NEW.description,
+      'amount', NEW.amount,
+      'supplier_id', NEW.supplier_id
+    );
+    
+    -- Find matching rule
+    SELECT * INTO v_rule
+    FROM find_matching_rules_for_bank_transaction(NEW.restaurant_id, v_transaction_json)
+    LIMIT 1;
+    
+    -- If rule found, check if auto_apply is enabled
+    IF v_rule.rule_id IS NOT NULL THEN
+      SELECT auto_apply INTO v_auto_apply
+      FROM categorization_rules
+      WHERE id = v_rule.rule_id;
+      
+      IF v_auto_apply THEN
+        -- Update the transaction with the rule's category
+        NEW.category_id := v_rule.category_id;
+        NEW.is_categorized := true;
+        
+        -- Update rule statistics
+        UPDATE categorization_rules
+        SET 
+          apply_count = apply_count + 1,
+          last_applied_at = now()
+        WHERE id = v_rule.rule_id;
+      END IF;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+-- Create trigger on bank_transactions
+DROP TRIGGER IF EXISTS auto_categorize_bank_transaction ON bank_transactions;
+CREATE TRIGGER auto_categorize_bank_transaction
+  BEFORE INSERT ON bank_transactions
+  FOR EACH ROW
+  EXECUTE FUNCTION auto_apply_bank_categorization_rules();

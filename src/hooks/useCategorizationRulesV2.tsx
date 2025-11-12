@@ -113,6 +113,7 @@ export function useCategorizationRulesV2(appliesTo?: AppliesTo) {
       return (data || []) as CategorizationRule[];
     },
     enabled: !!selectedRestaurant?.restaurant_id,
+    staleTime: 30_000, // 30 seconds - categorization rules are configuration data
   });
 }
 
@@ -269,8 +270,9 @@ export function useApplyRulesV2() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       const result = data as { message: string; count: number; details?: any };
+      const batchLimit = variables.batchLimit || 100; // Fallback to 100 if not provided
       
       let description = result?.message || 'Categorization rules applied successfully';
       
@@ -280,7 +282,7 @@ export function useApplyRulesV2() {
         const pos = result.details.pos;
         const totalProcessed = (bank?.total_count || 0) + (pos?.total_count || 0);
         
-        if (totalProcessed >= 1000) {
+        if (totalProcessed >= batchLimit) {
           description += '\n\nNote: Processed in batches. Click "Apply Rules" again to continue processing remaining records.';
         }
       }

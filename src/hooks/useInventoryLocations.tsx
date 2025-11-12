@@ -53,7 +53,7 @@ export const useInventoryLocations = (restaurantId: string | null) => {
 
       const { data, error } = await (supabase as any)
         .from('inventory_locations')
-        .insert([{ restaurant_id: restaurantId, name }])
+        .insert([{ restaurant_id: restaurantId, name: name.trim() }])
         .select()
         .single();
 

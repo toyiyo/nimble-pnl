@@ -8,7 +8,7 @@ DROP FUNCTION IF EXISTS apply_rules_to_pos_sales(uuid);
 -- Create the apply_rules_to_bank_transactions function with batch limit optimization
 CREATE OR REPLACE FUNCTION apply_rules_to_bank_transactions(
   p_restaurant_id UUID,
-  p_batch_limit INTEGER DEFAULT 1000
+  p_batch_limit INTEGER DEFAULT 100  -- Reduced from 1000 to 100 for safer batching
 )
 RETURNS TABLE (
   applied_count INTEGER,
@@ -73,13 +73,6 @@ BEGIN
         RAISE NOTICE 'Error categorizing transaction %: %', v_transaction.id, SQLERRM;
       END;
     END IF;
-    
-    -- Commit every 100 transactions to avoid long-running transaction issues
-    IF v_batch_count % 100 = 0 THEN
-      -- Note: We can't actually COMMIT in a function, but this comment documents the intent
-      -- In practice, the client should call this function multiple times if needed
-      NULL;
-    END IF;
   END LOOP;
   
   RETURN QUERY SELECT v_applied_count, v_total_count;
@@ -89,7 +82,7 @@ $$;
 -- Create the apply_rules_to_pos_sales function with batch limit optimization
 CREATE OR REPLACE FUNCTION apply_rules_to_pos_sales(
   p_restaurant_id UUID,
-  p_batch_limit INTEGER DEFAULT 1000
+  p_batch_limit INTEGER DEFAULT 100  -- Reduced from 1000 to 100 for safer batching
 )
 RETURNS TABLE (
   applied_count INTEGER,
@@ -162,10 +155,10 @@ $$;
 -- Add comment explaining the batch limit
 COMMENT ON FUNCTION apply_rules_to_bank_transactions IS 
   'Applies categorization rules to uncategorized bank transactions. 
-   Processes up to p_batch_limit transactions (default 1000) to prevent timeouts.
+   Processes up to p_batch_limit transactions (default 100) to prevent timeouts.
    Call multiple times if needed to process all transactions.';
 
 COMMENT ON FUNCTION apply_rules_to_pos_sales IS 
   'Applies categorization rules to uncategorized POS sales. 
-   Processes up to p_batch_limit sales (default 1000) to prevent timeouts.
+   Processes up to p_batch_limit sales (default 100) to prevent timeouts.
    Call multiple times if needed to process all sales.';

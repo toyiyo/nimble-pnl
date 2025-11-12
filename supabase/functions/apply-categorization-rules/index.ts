@@ -28,7 +28,7 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { restaurantId, applyTo = 'both', batchLimit = 1000 } = await req.json();
+    const { restaurantId, applyTo = 'both', batchLimit = 100 } = await req.json();
     if (!restaurantId) {
       throw new Error('Restaurant ID is required');
     }

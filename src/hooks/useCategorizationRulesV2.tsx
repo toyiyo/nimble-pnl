@@ -253,7 +253,7 @@ export function useApplyRulesV2() {
     mutationFn: async ({ 
       restaurantId, 
       applyTo = 'both',
-      batchLimit = 1000
+      batchLimit = 100
     }: { 
       restaurantId: string; 
       applyTo?: 'bank_transactions' | 'pos_sales' | 'both';

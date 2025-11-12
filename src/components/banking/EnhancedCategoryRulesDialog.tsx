@@ -461,7 +461,7 @@ export const EnhancedCategoryRulesDialog = ({
                                     amountMin: suggestion.amount_min,
                                     amountMax: suggestion.amount_max,
                                     supplierId: undefined,
-                                    transactionType: suggestion.transaction_type !== 'any' ? (suggestion.transaction_type as TransactionType) : undefined,
+                                    transactionType: suggestion.transaction_type as TransactionType | undefined,
                                     posCategory: suggestion.pos_category || undefined,
                                     itemNamePattern: suggestion.item_name_pattern || undefined,
                                     itemNameMatchType: suggestion.item_name_pattern ? (suggestion.item_name_match_type as MatchType) : undefined,

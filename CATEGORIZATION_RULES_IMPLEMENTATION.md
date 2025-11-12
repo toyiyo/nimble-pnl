@@ -1,7 +1,7 @@
 # Enhanced Categorization Rules Implementation Summary
 
 ## Overview
-This implementation adds a comprehensive categorization rules system that automatically categorizes both bank transactions and POS sales based on pattern matching rules. The system replaces the basic supplier-only rules with a flexible, multi-criteria pattern matching engine.
+This implementation adds a comprehensive categorization rules system that automatically categorizes both bank transactions and POS sales based on pattern matching rules. The system replaces the basic supplier-only rules with a flexible, multi-criteria pattern matching engine with AI-powered rule suggestions.
 
 ## Key Features
 
@@ -25,11 +25,20 @@ Rules can match on combinations of:
 - **Auto-apply** toggle - when enabled, rules apply automatically to new transactions
 - **Priority** system - higher priority rules match first
 - **Statistics** - track how many times each rule has been applied
+- **AI Suggestions** - analyze existing categorizations to suggest new rules
 
 ### 3. Rule Application
 - **Automatic**: Rules with auto_apply=true run automatically when new transactions/sales are synced
 - **Bulk Apply**: Apply all active rules to existing uncategorized records
 - **Targeted**: Apply rules to either bank transactions, POS sales, or both
+
+### 4. AI-Powered Rule Suggestions (NEW)
+- **Analyze** up to 100 recent categorized transactions or POS sales
+- **Identify** patterns in descriptions, amounts, suppliers, POS categories
+- **Suggest** rules with confidence levels (high/medium/low)
+- **Historical** match counts show how many existing records match the suggested pattern
+- **One-click** application - pre-fills rule form for review before saving
+- **Multi-model fallback** - uses OpenRouter with same pattern as recipe suggestions
 
 ## Database Schema
 
@@ -138,6 +147,54 @@ Returns:
 }
 ```
 
+### `ai-suggest-categorization-rules` (NEW)
+Located: `supabase/functions/ai-suggest-categorization-rules/index.ts`
+
+Purpose: Analyze categorized transactions/sales and suggest new categorization rules using AI
+
+Parameters:
+- `restaurantId` (required)
+- `source` (optional: 'bank' | 'pos') - default: 'bank'
+- `limit` (optional: number) - default: 100 (max categorized records to analyze)
+
+Returns:
+```json
+{
+  "rules": [
+    {
+      "rule_name": "Amazon Supplies",
+      "pattern_type": "description",
+      "description_pattern": "Amazon",
+      "description_match_type": "contains",
+      "account_code": "6100",
+      "category_id": "uuid",
+      "category_name": "Office Supplies",
+      "confidence": "high",
+      "historical_matches": 15,
+      "reasoning": "Consistent categorization of Amazon purchases",
+      "priority": 8,
+      "applies_to": "bank_transactions"
+    }
+  ],
+  "total_analyzed": 100,
+  "source": "bank"
+}
+```
+
+**AI Model Fallback:**
+- Uses OpenRouter API with multi-model fallback
+- Primary: Gemini 2.5 Flash Lite
+- Free models: Llama 4 Maverick Free, Gemma 3 27B Free
+- Paid fallback: Claude Sonnet 4.5, Llama 4 Maverick
+
+**Pattern Analysis:**
+- Identifies recurring description/item name patterns
+- Detects amount ranges that consistently map to categories
+- Recognizes supplier associations
+- Analyzes transaction types and POS categories
+- Calculates confidence based on pattern consistency
+- Counts historical matches in the analyzed dataset
+
 ## Auto-Apply Integration
 
 ### Bank Transactions
@@ -236,6 +293,31 @@ createRule({
 });
 ```
 
+### Example 6: Using AI Suggestions
+```javascript
+// Request AI analysis
+const { mutate: aiSuggestRules } = useAISuggestRules();
+
+aiSuggestRules({ 
+  restaurantId: 'xxx',
+  source: 'bank',  // or 'pos'
+  limit: 100
+}, {
+  onSuccess: (data) => {
+    // data.rules contains AI-suggested rules
+    // Each suggestion includes:
+    // - rule_name, pattern_type, pattern values
+    // - category_id, category_name
+    // - confidence (high/medium/low)
+    // - historical_matches count
+    // - reasoning explanation
+    
+    // User can review and accept suggestions in UI
+    // Clicking "Use This Rule" pre-fills the form
+  }
+});
+```
+
 ## Testing Checklist
 
 - [ ] Create a bank transaction rule with description pattern
@@ -251,6 +333,11 @@ createRule({
 - [ ] Test edit rule functionality
 - [ ] Test delete rule functionality
 - [ ] Verify rule statistics (apply_count, last_applied_at)
+- [ ] **NEW: Test AI rule suggestions for bank transactions**
+- [ ] **NEW: Test AI rule suggestions for POS sales**
+- [ ] **NEW: Verify AI suggestions have confidence levels**
+- [ ] **NEW: Test one-click "Use This Rule" functionality**
+- [ ] **NEW: Verify all chart of account categories display in dropdown**
 
 ## Performance Considerations
 
@@ -297,11 +384,13 @@ Potential additions (not implemented):
 
 ### Backend
 - `supabase/functions/apply-categorization-rules/index.ts` - New edge function
+- `supabase/functions/ai-suggest-categorization-rules/index.ts` - **NEW: AI rule suggestions**
 - `supabase/functions/stripe-sync-transactions/index.ts` - Updated to apply rules
 
 ### Frontend
 - `src/hooks/useCategorizationRulesV2.tsx` - New hook
-- `src/components/banking/EnhancedCategoryRulesDialog.tsx` - New dialog component
+- `src/hooks/useAISuggestRules.tsx` - **NEW: AI suggestions hook**
+- `src/components/banking/EnhancedCategoryRulesDialog.tsx` - New dialog component with AI suggestions
 - `src/pages/Banking.tsx` - Integrated dialog
 - `src/pages/POSSales.tsx` - Integrated dialog
 

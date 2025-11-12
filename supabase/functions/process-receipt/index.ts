@@ -19,6 +19,63 @@ interface ParsedLineItem {
   confidenceScore: number;
 }
 
+// Helper function to parse and validate purchase date from receipt
+function parsePurchaseDate(dateString: string | undefined): string | null {
+  if (!dateString) return null;
+  
+  try {
+    // Try to parse the date string
+    const date = new Date(dateString);
+    
+    // Validate the date is reasonable (not in future, not before 2000)
+    const now = new Date();
+    const minDate = new Date('2000-01-01');
+    
+    if (isNaN(date.getTime()) || date > now || date < minDate) {
+      console.log(`⚠️ Invalid purchase date: ${dateString}`);
+      return null;
+    }
+    
+    // Return in YYYY-MM-DD format
+    return date.toISOString().split('T')[0];
+  } catch (error) {
+    console.error('Error parsing purchase date:', error);
+    return null;
+  }
+}
+
+// Helper function to extract date from filename
+function extractDateFromFilename(filename: string | null): string | null {
+  if (!filename) return null;
+  
+  // Remove file extension
+  const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+  
+  // Pattern 1: YYYY-MM-DD or YYYY_MM_DD or YYYY.MM.DD
+  const isoPattern = /(\d{4})[-_.\/](\d{1,2})[-_.\/](\d{1,2})/;
+  const isoMatch = nameWithoutExt.match(isoPattern);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+  }
+  
+  // Pattern 2: MM-DD-YYYY or MM_DD_YYYY
+  const usPattern = /(\d{1,2})[-_.\/](\d{1,2})[-_.\/](\d{4})/;
+  const usMatch = nameWithoutExt.match(usPattern);
+  if (usMatch) {
+    const [, month, day, year] = usMatch;
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+  }
+  
+  return null;
+}
+
 // Shared analysis prompt for all models
 const RECEIPT_ANALYSIS_PROMPT = `ANALYSIS TARGET: This receipt image contains itemized purchases for restaurant inventory.
 
@@ -48,6 +105,7 @@ RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
 {
   "vendor": "Exact vendor/supplier name from receipt",
   "totalAmount": numeric_total,
+  "purchaseDate": "YYYY-MM-DD format date from receipt (invoice date, order date, delivery date, etc.)",
   "supplierInfo": {
     "name": "distributor name if detected",
     "code": "supplier code if visible",
@@ -678,6 +736,36 @@ serve(async (req) => {
       }
     }
 
+    // Get the receipt filename for date extraction fallback
+    const { data: receiptData } = await supabase
+      .from("receipt_imports")
+      .select("file_name")
+      .eq("id", receiptId)
+      .single();
+
+    // Determine purchase date: prioritize AI extraction, fallback to filename extraction
+    let purchaseDate: string | null = null;
+    
+    // Try to get date from AI-parsed data
+    if (parsedData.purchaseDate) {
+      purchaseDate = parsePurchaseDate(parsedData.purchaseDate);
+      if (purchaseDate) {
+        console.log(`✅ Purchase date from AI: ${purchaseDate}`);
+      }
+    }
+    
+    // Fallback to filename extraction if AI didn't find a date
+    if (!purchaseDate && receiptData?.file_name) {
+      purchaseDate = extractDateFromFilename(receiptData.file_name);
+      if (purchaseDate) {
+        console.log(`✅ Purchase date from filename: ${purchaseDate}`);
+      }
+    }
+    
+    if (!purchaseDate) {
+      console.log('⚠️ No purchase date found, will need user input');
+    }
+
     // Update receipt with parsed data and supplier
     const { error: updateError } = await supabase
       .from("receipt_imports")
@@ -688,6 +776,7 @@ serve(async (req) => {
         status: "processed",
         processed_at: new Date().toISOString(),
         supplier_id: supplierId,
+        purchase_date: purchaseDate,
       })
       .eq("id", receiptId);
 

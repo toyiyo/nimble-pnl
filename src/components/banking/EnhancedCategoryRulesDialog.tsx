@@ -422,39 +422,56 @@ export const EnhancedCategoryRulesDialog = ({
                               <Badge variant="outline" className="text-xs">
                                 {suggestion.historical_matches} matches
                               </Badge>
+                              {!suggestion.category_id && (
+                                <Badge variant="destructive" className="text-xs">
+                                  Category not found
+                                </Badge>
+                              )}
                             </div>
                             <div className="text-sm text-muted-foreground">
                               {suggestion.reasoning}
                             </div>
                             <div className="text-sm font-medium text-primary">
-                              → {suggestion.account_code} - {suggestion.category_name}
+                              → {suggestion.account_code} - {suggestion.category_name || 'Unknown'}
                             </div>
                           </div>
                           <div className="flex flex-col gap-2">
                             <Button
                               size="sm"
-                              onClick={() => {
-                                // Pre-fill form with AI suggestion
-                                setFormData({
-                                  ruleName: suggestion.rule_name,
-                                  appliesTo: suggestion.applies_to,
-                                  descriptionPattern: suggestion.description_pattern || '',
-                                  descriptionMatchType: (suggestion.description_match_type as MatchType) || 'contains',
-                                  amountMin: suggestion.amount_min?.toString() || '',
-                                  amountMax: suggestion.amount_max?.toString() || '',
-                                  supplierId: '',
-                                  transactionType: (suggestion.transaction_type as TransactionType) || 'any',
-                                  posCategory: suggestion.pos_category || '',
-                                  itemNamePattern: suggestion.item_name_pattern || '',
-                                  itemNameMatchType: (suggestion.item_name_match_type as MatchType) || 'contains',
-                                  categoryId: suggestion.category_id || '',
-                                  priority: suggestion.priority.toString(),
-                                  autoApply: true, // Default to enabled for AI suggestions
-                                });
-                                setShowNewRule(true);
-                                // Keep suggestions visible - don't hide them
-                                toast.success('Rule template loaded - review and save');
+                              onClick={async () => {
+                                // Directly create the rule from AI suggestion
+                                if (!suggestion.category_id) {
+                                  toast.error(`Cannot create rule: Category "${suggestion.account_code}" not found in chart of accounts`);
+                                  return;
+                                }
+
+                                try {
+                                  await createRule.mutateAsync({
+                                    restaurantId: selectedRestaurant?.restaurant_id || '',
+                                    ruleName: suggestion.rule_name,
+                                    appliesTo: suggestion.applies_to,
+                                    descriptionPattern: suggestion.description_pattern || undefined,
+                                    descriptionMatchType: suggestion.description_pattern ? (suggestion.description_match_type as MatchType) : undefined,
+                                    amountMin: suggestion.amount_min,
+                                    amountMax: suggestion.amount_max,
+                                    supplierId: undefined,
+                                    transactionType: suggestion.transaction_type !== 'any' ? (suggestion.transaction_type as TransactionType) : undefined,
+                                    posCategory: suggestion.pos_category || undefined,
+                                    itemNamePattern: suggestion.item_name_pattern || undefined,
+                                    itemNameMatchType: suggestion.item_name_pattern ? (suggestion.item_name_match_type as MatchType) : undefined,
+                                    categoryId: suggestion.category_id,
+                                    priority: suggestion.priority || 0,
+                                    autoApply: true, // Default to enabled for AI suggestions
+                                  });
+                                  
+                                  // Remove this suggestion from the list after successful creation
+                                  setSuggestedRules(suggestedRules.filter((_, i) => i !== idx));
+                                  toast.success(`Rule "${suggestion.rule_name}" created successfully`);
+                                } catch (error) {
+                                  toast.error(`Failed to create rule: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                                }
                               }}
+                              disabled={createRule.isPending || !suggestion.category_id}
                             >
                               <Check className="h-4 w-4 mr-2" />
                               Use This Rule

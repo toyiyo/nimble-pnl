@@ -1,7 +1,11 @@
 -- Optimize categorization rule application to prevent timeouts
 -- This migration adds batch processing and limits to the rule application functions
 
--- Drop and recreate the apply_rules_to_bank_transactions function with optimizations
+-- Drop existing functions to avoid overload ambiguity
+DROP FUNCTION IF EXISTS apply_rules_to_bank_transactions(uuid);
+DROP FUNCTION IF EXISTS apply_rules_to_pos_sales(uuid);
+
+-- Create the apply_rules_to_bank_transactions function with batch limit optimization
 CREATE OR REPLACE FUNCTION apply_rules_to_bank_transactions(
   p_restaurant_id UUID,
   p_batch_limit INTEGER DEFAULT 1000
@@ -82,7 +86,7 @@ BEGIN
 END;
 $$;
 
--- Drop and recreate the apply_rules_to_pos_sales function with optimizations  
+-- Create the apply_rules_to_pos_sales function with batch limit optimization
 CREATE OR REPLACE FUNCTION apply_rules_to_pos_sales(
   p_restaurant_id UUID,
   p_batch_limit INTEGER DEFAULT 1000

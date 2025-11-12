@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Plus, Settings2, Edit2, Save, X } from "lucide-react";
+import { Trash2, Plus, Settings2, Edit2, Save, X, Sparkles, Check } from "lucide-react";
 import { toast } from "sonner";
 import {
   useCategorizationRulesV2,
@@ -26,6 +26,7 @@ import { SearchableAccountSelector } from "@/components/banking/SearchableAccoun
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAISuggestRules, type SuggestedRule } from "@/hooks/useAISuggestRules";
 
 interface EnhancedCategoryRulesDialogProps {
   open: boolean;
@@ -77,6 +78,8 @@ export const EnhancedCategoryRulesDialog = ({
   const [showNewRule, setShowNewRule] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [formData, setFormData] = useState<RuleFormData>(emptyFormData);
+  const [suggestedRules, setSuggestedRules] = useState<SuggestedRule[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const appliesTo: AppliesTo = activeTab === 'bank' ? 'bank_transactions' : 'pos_sales';
   
@@ -87,6 +90,7 @@ export const EnhancedCategoryRulesDialog = ({
   const updateRule = useUpdateRuleV2();
   const deleteRule = useDeleteRuleV2();
   const applyRules = useApplyRulesV2();
+  const aiSuggestRules = useAISuggestRules();
 
   const handleSupplierChange = async (value: string, isNew: boolean) => {
     if (isNew) {
@@ -266,16 +270,42 @@ export const EnhancedCategoryRulesDialog = ({
               <div className="text-center py-4 text-muted-foreground">Loading rules...</div>
             ) : rules && rules.length > 0 ? (
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <h3 className="text-sm font-medium">Active Rules</h3>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleApplyRules}
-                    disabled={applyRules.isPending}
-                  >
-                    Apply Rules to Existing Records
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (!selectedRestaurant?.restaurant_id) return;
+                        aiSuggestRules.mutate(
+                          { 
+                            restaurantId: selectedRestaurant.restaurant_id,
+                            source: activeTab === 'bank' ? 'bank' : 'pos'
+                          },
+                          {
+                            onSuccess: (data) => {
+                              setSuggestedRules(data.rules);
+                              setShowSuggestions(true);
+                              toast.success(`Found ${data.rules.length} suggested rules based on ${data.total_analyzed} categorized ${activeTab === 'bank' ? 'transactions' : 'sales'}`);
+                            }
+                          }
+                        );
+                      }}
+                      disabled={aiSuggestRules.isPending}
+                    >
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      {aiSuggestRules.isPending ? 'Analyzing...' : 'AI Suggest Rules'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleApplyRules}
+                      disabled={applyRules.isPending}
+                    >
+                      Apply Rules to Existing Records
+                    </Button>
+                  </div>
                 </div>
                 {rules.map((rule) => (
                   <Card
@@ -352,6 +382,87 @@ export const EnhancedCategoryRulesDialog = ({
             ) : (
               <div className="text-center py-8 text-muted-foreground">
                 No rules configured yet. Create your first rule below.
+              </div>
+            )}
+
+            {/* AI Suggested Rules */}
+            {showSuggestions && suggestedRules.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    AI Suggested Rules ({suggestedRules.length})
+                  </h3>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowSuggestions(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {suggestedRules.map((suggestion, idx) => (
+                    <Card key={idx} className="bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <div className="font-medium">{suggestion.rule_name}</div>
+                              <Badge 
+                                variant={
+                                  suggestion.confidence === 'high' ? 'default' :
+                                  suggestion.confidence === 'medium' ? 'secondary' : 
+                                  'outline'
+                                }
+                                className="text-xs"
+                              >
+                                {suggestion.confidence} confidence
+                              </Badge>
+                              <Badge variant="outline" className="text-xs">
+                                {suggestion.historical_matches} matches
+                              </Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {suggestion.reasoning}
+                            </div>
+                            <div className="text-sm font-medium text-primary">
+                              → {suggestion.account_code} - {suggestion.category_name}
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              // Pre-fill form with AI suggestion
+                              setFormData({
+                                ruleName: suggestion.rule_name,
+                                appliesTo: suggestion.applies_to,
+                                descriptionPattern: suggestion.description_pattern || '',
+                                descriptionMatchType: (suggestion.description_match_type as MatchType) || 'contains',
+                                amountMin: suggestion.amount_min?.toString() || '',
+                                amountMax: suggestion.amount_max?.toString() || '',
+                                supplierId: '',
+                                transactionType: (suggestion.transaction_type as TransactionType) || 'any',
+                                posCategory: suggestion.pos_category || '',
+                                itemNamePattern: suggestion.item_name_pattern || '',
+                                itemNameMatchType: (suggestion.item_name_match_type as MatchType) || 'contains',
+                                categoryId: suggestion.category_id || '',
+                                priority: suggestion.priority.toString(),
+                                autoApply: true, // Default to enabled for AI suggestions
+                              });
+                              setShowNewRule(true);
+                              setShowSuggestions(false);
+                              toast.success('Rule template loaded - review and save');
+                            }}
+                          >
+                            <Check className="h-4 w-4 mr-2" />
+                            Use This Rule
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -509,7 +620,6 @@ export const EnhancedCategoryRulesDialog = ({
                         value={formData.categoryId}
                         onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
                         placeholder="Select category..."
-                        filterByTypes={activeTab === 'bank' ? ['expense', 'cogs', 'revenue'] : ['revenue', 'cogs']}
                       />
                     </div>
 

@@ -430,34 +430,48 @@ export const EnhancedCategoryRulesDialog = ({
                               → {suggestion.account_code} - {suggestion.category_name}
                             </div>
                           </div>
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              // Pre-fill form with AI suggestion
-                              setFormData({
-                                ruleName: suggestion.rule_name,
-                                appliesTo: suggestion.applies_to,
-                                descriptionPattern: suggestion.description_pattern || '',
-                                descriptionMatchType: (suggestion.description_match_type as MatchType) || 'contains',
-                                amountMin: suggestion.amount_min?.toString() || '',
-                                amountMax: suggestion.amount_max?.toString() || '',
-                                supplierId: '',
-                                transactionType: (suggestion.transaction_type as TransactionType) || 'any',
-                                posCategory: suggestion.pos_category || '',
-                                itemNamePattern: suggestion.item_name_pattern || '',
-                                itemNameMatchType: (suggestion.item_name_match_type as MatchType) || 'contains',
-                                categoryId: suggestion.category_id || '',
-                                priority: suggestion.priority.toString(),
-                                autoApply: true, // Default to enabled for AI suggestions
-                              });
-                              setShowNewRule(true);
-                              setShowSuggestions(false);
-                              toast.success('Rule template loaded - review and save');
-                            }}
-                          >
-                            <Check className="h-4 w-4 mr-2" />
-                            Use This Rule
-                          </Button>
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                // Pre-fill form with AI suggestion
+                                setFormData({
+                                  ruleName: suggestion.rule_name,
+                                  appliesTo: suggestion.applies_to,
+                                  descriptionPattern: suggestion.description_pattern || '',
+                                  descriptionMatchType: (suggestion.description_match_type as MatchType) || 'contains',
+                                  amountMin: suggestion.amount_min?.toString() || '',
+                                  amountMax: suggestion.amount_max?.toString() || '',
+                                  supplierId: '',
+                                  transactionType: (suggestion.transaction_type as TransactionType) || 'any',
+                                  posCategory: suggestion.pos_category || '',
+                                  itemNamePattern: suggestion.item_name_pattern || '',
+                                  itemNameMatchType: (suggestion.item_name_match_type as MatchType) || 'contains',
+                                  categoryId: suggestion.category_id || '',
+                                  priority: suggestion.priority.toString(),
+                                  autoApply: true, // Default to enabled for AI suggestions
+                                });
+                                setShowNewRule(true);
+                                // Keep suggestions visible - don't hide them
+                                toast.success('Rule template loaded - review and save');
+                              }}
+                            >
+                              <Check className="h-4 w-4 mr-2" />
+                              Use This Rule
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                // Remove this suggestion from the list
+                                setSuggestedRules(suggestedRules.filter((_, i) => i !== idx));
+                                toast.success('Suggestion dismissed');
+                              }}
+                              aria-label="Dismiss suggestion"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>

@@ -265,48 +265,54 @@ export const EnhancedCategoryRulesDialog = ({
           </TabsList>
 
           <TabsContent value={activeTab} className="space-y-4 mt-4">
+            {/* Action Buttons - Always visible */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-sm font-medium">
+                {rules && rules.length > 0 ? 'Active Rules' : 'Categorization Rules'}
+              </h3>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (!selectedRestaurant?.restaurant_id) return;
+                    aiSuggestRules.mutate(
+                      { 
+                        restaurantId: selectedRestaurant.restaurant_id,
+                        source: activeTab === 'bank' ? 'bank' : 'pos'
+                      },
+                      {
+                        onSuccess: (data) => {
+                          setSuggestedRules(data.rules);
+                          setShowSuggestions(true);
+                          toast.success(`Found ${data.rules.length} suggested rules based on ${data.total_analyzed} categorized ${activeTab === 'bank' ? 'transactions' : 'sales'}`);
+                        }
+                      }
+                    );
+                  }}
+                  disabled={aiSuggestRules.isPending}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  {aiSuggestRules.isPending ? 'Analyzing...' : 'AI Suggest Rules'}
+                </Button>
+                {rules && rules.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleApplyRules}
+                    disabled={applyRules.isPending}
+                  >
+                    Apply Rules to Existing Records
+                  </Button>
+                )}
+              </div>
+            </div>
+
             {/* Existing Rules */}
             {isLoading ? (
               <div className="text-center py-4 text-muted-foreground">Loading rules...</div>
             ) : rules && rules.length > 0 ? (
               <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <h3 className="text-sm font-medium">Active Rules</h3>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        if (!selectedRestaurant?.restaurant_id) return;
-                        aiSuggestRules.mutate(
-                          { 
-                            restaurantId: selectedRestaurant.restaurant_id,
-                            source: activeTab === 'bank' ? 'bank' : 'pos'
-                          },
-                          {
-                            onSuccess: (data) => {
-                              setSuggestedRules(data.rules);
-                              setShowSuggestions(true);
-                              toast.success(`Found ${data.rules.length} suggested rules based on ${data.total_analyzed} categorized ${activeTab === 'bank' ? 'transactions' : 'sales'}`);
-                            }
-                          }
-                        );
-                      }}
-                      disabled={aiSuggestRules.isPending}
-                    >
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      {aiSuggestRules.isPending ? 'Analyzing...' : 'AI Suggest Rules'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleApplyRules}
-                      disabled={applyRules.isPending}
-                    >
-                      Apply Rules to Existing Records
-                    </Button>
-                  </div>
-                </div>
                 {rules.map((rule) => (
                   <Card
                     key={rule.id}

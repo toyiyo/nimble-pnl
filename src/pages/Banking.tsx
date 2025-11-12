@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useBankTransactions } from "@/hooks/useBankTransactions";
 import { BankTransactionList } from "@/components/banking/BankTransactionList";
-import { CategoryRulesDialog } from "@/components/banking/CategoryRulesDialog";
+import { EnhancedCategoryRulesDialog } from "@/components/banking/EnhancedCategoryRulesDialog";
 import { EnhancedReconciliationDialog } from "@/components/banking/EnhancedReconciliationDialog";
 import { ReconciliationReport } from "@/components/banking/ReconciliationReport";
 import { BankConnectionCard } from "@/components/BankConnectionCard";
@@ -580,9 +580,10 @@ export default function Banking() {
 
       {selectedRestaurant && (
         <>
-          <CategoryRulesDialog
+          <EnhancedCategoryRulesDialog
             open={showRulesDialog}
             onOpenChange={setShowRulesDialog}
+            defaultTab="bank"
           />
 
           <EnhancedReconciliationDialog

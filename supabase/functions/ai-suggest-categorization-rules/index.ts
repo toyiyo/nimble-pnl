@@ -309,15 +309,28 @@ serve(async (req) => {
     );
 
     if (!result || !result.data) {
+      console.error('[AI-SUGGEST-RULES] No result returned from AI');
       throw new Error('Failed to get AI suggestions');
     }
+
+    console.log('[AI-SUGGEST-RULES] AI result received:', JSON.stringify(result.data).substring(0, 500));
 
     // Parse and validate the response
     const suggestions = result.data;
     
+    if (!suggestions || !suggestions.rules || !Array.isArray(suggestions.rules)) {
+      console.error('[AI-SUGGEST-RULES] Invalid response structure:', suggestions);
+      throw new Error('Invalid AI response structure - missing rules array');
+    }
+
+    console.log(`[AI-SUGGEST-RULES] Processing ${suggestions.rules.length} suggested rules`);
+    
     // Map account codes to IDs
     const rulesWithIds = suggestions.rules.map((rule: any) => {
       const account = accounts.find(acc => acc.account_code === rule.account_code);
+      if (!account) {
+        console.warn(`[AI-SUGGEST-RULES] Account code ${rule.account_code} not found for rule: ${rule.rule_name}`);
+      }
       return {
         ...rule,
         category_id: account?.id,
@@ -325,6 +338,8 @@ serve(async (req) => {
         applies_to: source === 'bank' ? 'bank_transactions' : 'pos_sales'
       };
     });
+
+    console.log(`[AI-SUGGEST-RULES] Successfully processed all rules, returning response`);
 
     return new Response(
       JSON.stringify({ 
@@ -336,9 +351,10 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error in ai-suggest-categorization-rules:', error);
+    console.error('[AI-SUGGEST-RULES] Error:', error);
+    console.error('[AI-SUGGEST-RULES] Error stack:', error instanceof Error ? error.stack : 'N/A');
     return new Response(
-      JSON.stringify({ error: error.message || 'An error occurred' }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'An error occurred' }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

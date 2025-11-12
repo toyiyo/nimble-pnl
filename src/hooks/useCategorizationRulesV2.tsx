@@ -94,7 +94,7 @@ export function useCategorizationRulesV2(appliesTo?: AppliesTo) {
     queryFn: async () => {
       if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
 
-      let query = supabase
+      let query = (supabase as any)
         .from('categorization_rules')
         .select(`
           *,
@@ -122,7 +122,7 @@ export function useCreateRuleV2() {
 
   return useMutation({
     mutationFn: async (params: CreateRuleParams) => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('categorization_rules')
         .insert({
           restaurant_id: params.restaurantId,
@@ -188,7 +188,7 @@ export function useUpdateRuleV2() {
       if (params.isActive !== undefined) updates.is_active = params.isActive;
       if (params.autoApply !== undefined) updates.auto_apply = params.autoApply;
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('categorization_rules')
         .update(updates)
         .eq('id', params.ruleId)
@@ -221,7 +221,7 @@ export function useDeleteRuleV2() {
 
   return useMutation({
     mutationFn: async (ruleId: string) => {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('categorization_rules')
         .delete()
         .eq('id', ruleId);

@@ -18,8 +18,8 @@ export const useInventoryLocations = (restaurantId: string | null) => {
     queryKey: ['inventory-locations', restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [];
-      
-      const { data, error } = await supabase
+
+      const { data, error } = await (supabase as any)
         .from('inventory_locations')
         .select('*')
         .eq('restaurant_id', restaurantId)
@@ -46,7 +46,12 @@ export const useInventoryLocations = (restaurantId: string | null) => {
         return existing; // Return existing location
       }
 
-      const { data, error } = await supabase
+      const locationData = {
+        restaurant_id: restaurantId,
+        name: name.trim(),
+      };
+
+      const { data, error } = await (supabase as any)
         .from('inventory_locations')
         .insert([{ restaurant_id: restaurantId, name }])
         .select()
@@ -79,7 +84,7 @@ export const useInventoryLocations = (restaurantId: string | null) => {
   // Delete location
   const deleteLocationMutation = useMutation({
     mutationFn: async (locationId: string) => {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('inventory_locations')
         .delete()
         .eq('id', locationId);

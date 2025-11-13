@@ -270,7 +270,9 @@ serve(async (req) => {
     console.log(`🎯 Categorizing ${sales.length} POS sales with streaming...`);
     const aiResult = await callAIWithFallbackStreaming<{ categorizations: any[] }>(
       requestBody,
-      OPENROUTER_API_KEY
+      OPENROUTER_API_KEY,
+      'ai-categorize-pos-sales',
+      restaurantId
     );
 
     if (!aiResult || !aiResult.data.categorizations || aiResult.data.categorizations.length === 0) {

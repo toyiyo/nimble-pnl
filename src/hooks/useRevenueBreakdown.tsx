@@ -11,6 +11,12 @@ export interface RevenueCategory {
   transaction_count: number;
 }
 
+export interface AdjustmentBreakdown {
+  adjustment_type: string;
+  total_amount: number;
+  transaction_count: number;
+}
+
 export interface RevenueBreakdownData {
   revenue_categories: RevenueCategory[];
   discount_categories: RevenueCategory[];
@@ -18,6 +24,7 @@ export interface RevenueBreakdownData {
   tax_categories: RevenueCategory[];
   tip_categories: RevenueCategory[];
   other_liability_categories: RevenueCategory[];
+  adjustments: AdjustmentBreakdown[];
   uncategorized_revenue: number;
   totals: {
     total_collected_at_pos: number;
@@ -56,7 +63,8 @@ export function useRevenueBreakdown(
       const fromStr = dateFrom.toISOString().split('T')[0];
       const toStr = dateTo.toISOString().split('T')[0];
 
-      // Query ALL unified_sales to properly handle split sales
+      // Query unified_sales excluding pass-through items (adjustment_type IS NOT NULL)
+      // Pass-through items include: tips, sales tax, service charges, discounts, fees
       const { data: sales, error } = await supabase
         .from('unified_sales')
         .select(`
@@ -76,9 +84,21 @@ export function useRevenueBreakdown(
         `)
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', fromStr)
-        .lte('sale_date', toStr);
+        .lte('sale_date', toStr)
+        .is('adjustment_type', null);
 
       if (error) throw error;
+
+      // Query adjustments separately (tax, tips, service charges, discounts, fees)
+      const { data: adjustments, error: adjustmentsError } = await supabase
+        .from('unified_sales')
+        .select('adjustment_type, total_price')
+        .eq('restaurant_id', restaurantId)
+        .gte('sale_date', fromStr)
+        .lte('sale_date', toStr)
+        .not('adjustment_type', 'is', null);
+
+      if (adjustmentsError) throw adjustmentsError;
 
       // Filter out parent sales that have been split into children
       // Include: unsplit sales (no children) + all child splits
@@ -93,6 +113,27 @@ export function useRevenueBreakdown(
       ) || [];
 
       const totalCount = filteredSales.length;
+
+      // Debug: Track alcohol sales
+      const alcoholSales = filteredSales?.filter((s: any) => 
+        s.chart_account?.account_code === '4020' || 
+        s.chart_account?.account_name?.toLowerCase().includes('alcohol')
+      ) || [];
+      
+      if (alcoholSales.length > 0) {
+        console.group('🍺 Alcohol Sales Debug (useRevenueBreakdown)');
+        console.table(alcoholSales.map((s: any) => ({
+          price: s.total_price,
+          is_categorized: s.is_categorized,
+          has_account: !!s.chart_account,
+          account_type: s.chart_account?.account_type,
+          account_code: s.chart_account?.account_code,
+          item_type: s.item_type,
+        })));
+        console.log('Total alcohol sales found:', alcoholSales.length);
+        console.log('Total alcohol revenue:', alcoholSales.reduce((sum: number, s: any) => sum + s.total_price, 0));
+        console.groupEnd();
+      }
 
       // Separate categorized and uncategorized sales
       const categorizedSales = filteredSales?.filter((s: any) => s.is_categorized && s.chart_account) || [];
@@ -117,6 +158,7 @@ export function useRevenueBreakdown(
           tax_categories: [],
           tip_categories: [],
           other_liability_categories: [],
+          adjustments: [],
           uncategorized_revenue: 0,
           totals: {
             total_collected_at_pos: 0,
@@ -214,23 +256,93 @@ export function useRevenueBreakdown(
       const totalTaxC = taxCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
       const totalTipsC = tipCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
       const totalOtherLiabilitiesC = otherLiabilityCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
+
+      // Add adjustments from adjustment_type column (Square, Clover pass-through items)
+      const adjustmentTaxC = (adjustments || [])
+        .filter(a => a.adjustment_type === 'tax')
+        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
       
-      // Totals in cents
+      const adjustmentTipsC = (adjustments || [])
+        .filter(a => a.adjustment_type === 'tip')
+        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
+      
+      const adjustmentServiceChargeC = (adjustments || [])
+        .filter(a => a.adjustment_type === 'service_charge')
+        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
+      
+      const adjustmentDiscountsC = (adjustments || [])
+        .filter(a => a.adjustment_type === 'discount')
+        .reduce((sum, a) => sum + Math.abs(toC(a.total_price || 0)), 0);
+      
+      const adjustmentFeesC = (adjustments || [])
+        .filter(a => a.adjustment_type === 'fee')
+        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
+
+      // Build adjustments breakdown array
+      const adjustmentsBreakdown: AdjustmentBreakdown[] = [];
+      
+      if (adjustmentTaxC > 0) {
+        adjustmentsBreakdown.push({
+          adjustment_type: 'tax',
+          total_amount: fromC(adjustmentTaxC),
+          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'tax').length,
+        });
+      }
+      
+      if (adjustmentTipsC > 0) {
+        adjustmentsBreakdown.push({
+          adjustment_type: 'tip',
+          total_amount: fromC(adjustmentTipsC),
+          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'tip').length,
+        });
+      }
+      
+      if (adjustmentServiceChargeC > 0) {
+        adjustmentsBreakdown.push({
+          adjustment_type: 'service_charge',
+          total_amount: fromC(adjustmentServiceChargeC),
+          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'service_charge').length,
+        });
+      }
+      
+      if (adjustmentFeesC > 0) {
+        adjustmentsBreakdown.push({
+          adjustment_type: 'fee',
+          total_amount: fromC(adjustmentFeesC),
+          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'fee').length,
+        });
+      }
+      
+      if (adjustmentDiscountsC > 0) {
+        adjustmentsBreakdown.push({
+          adjustment_type: 'discount',
+          total_amount: fromC(adjustmentDiscountsC),
+          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'discount').length,
+        });
+      }
+
+      // Combine categorized amounts with adjustment amounts
+      const combinedTaxC = totalTaxC + adjustmentTaxC;
+      const combinedTipsC = totalTipsC + adjustmentTipsC;
+      const combinedOtherLiabilitiesC = totalOtherLiabilitiesC + adjustmentServiceChargeC + adjustmentFeesC;
+      const combinedDiscountsC = totalDiscountsC + adjustmentDiscountsC;
+      
+      // Totals in cents - use combined values including adjustments
       const grossRevenueC = categorizedRevenueC + uncategorizedRevenueC;
-      const netRevenueC = grossRevenueC - totalDiscountsC - totalRefundsC;
+      const netRevenueC = grossRevenueC - combinedDiscountsC - totalRefundsC;
       
       // Convert once to dollars for output
       const categorizedRevenue = fromC(categorizedRevenueC);
       const grossRevenue = fromC(grossRevenueC);
-      const totalDiscounts = fromC(totalDiscountsC);
+      const totalDiscounts = fromC(combinedDiscountsC);
       const totalRefunds = fromC(totalRefundsC);
       const netRevenue = fromC(netRevenueC);
-      const totalTax = fromC(totalTaxC);
-      const totalTips = fromC(totalTipsC);
-      const totalOtherLiabilities = fromC(totalOtherLiabilitiesC);
+      const totalTax = fromC(combinedTaxC);
+      const totalTips = fromC(combinedTipsC);
+      const totalOtherLiabilities = fromC(combinedOtherLiabilitiesC);
       
       // Calculate total collected at POS (revenue + pass-through collections)
-      const totalCollectedAtPOSC = grossRevenueC + totalTaxC + totalTipsC + totalOtherLiabilitiesC;
+      const totalCollectedAtPOSC = grossRevenueC + combinedTaxC + combinedTipsC + combinedOtherLiabilitiesC;
       const totalCollectedAtPOS = fromC(totalCollectedAtPOSC);
       
       // Calculate categorization rate based on revenue dollars
@@ -259,6 +371,7 @@ export function useRevenueBreakdown(
         other_liability_categories: otherLiabilityCategories.sort((a, b) => 
           (a.account_code || '').localeCompare(b.account_code || '')
         ),
+        adjustments: adjustmentsBreakdown,
         uncategorized_revenue: uncategorizedRevenue,
         totals: {
           total_collected_at_pos: totalCollectedAtPOS,

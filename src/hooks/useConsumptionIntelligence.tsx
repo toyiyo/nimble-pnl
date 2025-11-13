@@ -95,6 +95,7 @@ async function fetchConsumptionIntelligence(
     .from('inventory_transactions')
     .select(`
       created_at,
+      transaction_date,
       quantity,
       total_cost,
       transaction_type,
@@ -102,8 +103,8 @@ async function fetchConsumptionIntelligence(
       product:products(name, category, cost_per_unit, uom_purchase)
     `)
     .eq('restaurant_id', restaurantId)
-    .gte('created_at', startDate.toISOString())
-    .lte('created_at', endDate.toISOString())
+    .or(`transaction_date.gte.${format(startDate, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${startDate.toISOString()})`)
+    .or(`transaction_date.lte.${format(endDate, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lte.${endDate.toISOString()})`)
     .in('transaction_type', ['usage', 'waste', 'transfer']);
 
   if (currentError) throw currentError;
@@ -111,10 +112,10 @@ async function fetchConsumptionIntelligence(
   // Fetch previous period for comparison
   const { data: previousTransactions, error: previousError } = await supabase
     .from('inventory_transactions')
-    .select('total_cost, quantity, created_at, product:products(name)')
+    .select('total_cost, quantity, created_at, transaction_date, product:products(name)')
     .eq('restaurant_id', restaurantId)
-    .gte('created_at', previousPeriodStart.toISOString())
-    .lt('created_at', startDate.toISOString())
+    .or(`transaction_date.gte.${format(previousPeriodStart, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${previousPeriodStart.toISOString()})`)
+    .or(`transaction_date.lt.${format(startDate, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lt.${startDate.toISOString()})`)
     .in('transaction_type', ['usage', 'waste', 'transfer']);
 
   if (previousError) throw previousError;

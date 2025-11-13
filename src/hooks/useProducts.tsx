@@ -62,7 +62,7 @@ export interface CreateProductData {
 export const useProducts = (restaurantId: string | null) => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { logPurchase, updateProductStockWithAudit } = useInventoryAudit();
+  const { logPurchase, logAdjustment, logWaste, updateProductStockWithAudit } = useInventoryAudit();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -106,9 +106,34 @@ export const useProducts = (restaurantId: string | null) => {
 
       if (error) throw error;
 
-      // Log initial stock as purchase if there's stock being added
+      // Create product-supplier relationship if supplier info is provided
+      if (data && productData.supplier_id && productData.cost_per_unit) {
+        const { error: supplierError } = await supabase
+          .from('product_suppliers')
+          .insert({
+            restaurant_id: data.restaurant_id,
+            product_id: data.id,
+            supplier_id: productData.supplier_id,
+            last_unit_cost: productData.cost_per_unit,
+            supplier_sku: productData.supplier_sku,
+            is_preferred: true,  // First supplier is default preferred
+          });
+
+        if (supplierError) {
+          console.error('Error creating product-supplier relationship:', supplierError);
+          // Don't throw - product was created successfully, just log the error
+          toast({
+            title: "Warning",
+            description: "Product created but supplier relationship could not be saved",
+            variant: "destructive",
+          });
+        }
+      }
+
+      // Log initial stock as adjustment if there's stock being added
+      // Only receipt uploads should create purchases
       if (data && (productData.current_stock || 0) > 0) {
-        await logPurchase(
+        await logAdjustment(
           data.restaurant_id,
           data.id,
           productData.current_stock || 0,
@@ -142,7 +167,7 @@ export const useProducts = (restaurantId: string | null) => {
     updates: Partial<CreateProductData>, 
     currentStock: number,
     newStock: number,
-    transactionType: 'purchase' | 'adjustment' | 'waste' = 'purchase',
+    transactionType: 'adjustment' | 'waste' = 'adjustment',
     reason: string = 'Inventory update'
   ): Promise<boolean> => {
     if (!user || !restaurantId) return false;
@@ -174,21 +199,29 @@ export const useProducts = (restaurantId: string | null) => {
       if (error) throw error;
 
       // Log inventory transaction based on type
+      // Note: Only receipt uploads should create purchases
+      // All manual updates should be adjustments
       if (quantityDifference !== 0) {
         const unitCost = updates.cost_per_unit || currentProduct.cost_per_unit || 0;
         
-        if (transactionType === 'purchase' && quantityDifference > 0) {
-          await logPurchase(
+        if (transactionType === 'adjustment') {
+          await logAdjustment(
             restaurantId,
             id,
             quantityDifference,
             unitCost,
             reason,
-            `purchase_${id}_${Date.now()}`
+            `adjustment_${id}_${Date.now()}`
           );
-        } else if (transactionType === 'adjustment') {
-          // Use updateProductStockWithAudit from the calling component
-          // This will be handled by the calling component
+        } else if (transactionType === 'waste') {
+          await logWaste(
+            restaurantId,
+            id,
+            Math.abs(quantityDifference),
+            unitCost,
+            reason,
+            `waste_${id}_${Date.now()}`
+          );
         }
       }
 

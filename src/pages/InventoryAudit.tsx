@@ -120,7 +120,10 @@ export default function InventoryAudit() {
 
       switch (sortBy) {
         case 'date':
-          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          // Use transaction_date if available, otherwise use created_at
+          const aDate = a.transaction_date || a.created_at;
+          const bDate = b.transaction_date || b.created_at;
+          comparison = new Date(aDate).getTime() - new Date(bDate).getTime();
           if (comparison === 0) {
             comparison = a.id.localeCompare(b.id);
           }
@@ -128,25 +131,33 @@ export default function InventoryAudit() {
         case 'product':
           comparison = a.product_name.localeCompare(b.product_name);
           if (comparison === 0) {
-            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            const aDate = a.transaction_date || a.created_at;
+            const bDate = b.transaction_date || b.created_at;
+            comparison = new Date(bDate).getTime() - new Date(aDate).getTime();
           }
           break;
         case 'quantity':
           comparison = Math.abs(a.quantity) - Math.abs(b.quantity);
           if (comparison === 0) {
-            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            const aDate = a.transaction_date || a.created_at;
+            const bDate = b.transaction_date || b.created_at;
+            comparison = new Date(bDate).getTime() - new Date(aDate).getTime();
           }
           break;
         case 'cost':
           comparison = Math.abs(a.total_cost || 0) - Math.abs(b.total_cost || 0);
           if (comparison === 0) {
-            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            const aDate = a.transaction_date || a.created_at;
+            const bDate = b.transaction_date || b.created_at;
+            comparison = new Date(bDate).getTime() - new Date(aDate).getTime();
           }
           break;
         case 'type':
           comparison = a.transaction_type.localeCompare(b.transaction_type);
           if (comparison === 0) {
-            comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            const aDate = a.transaction_date || a.created_at;
+            const bDate = b.transaction_date || b.created_at;
+            comparison = new Date(bDate).getTime() - new Date(aDate).getTime();
           }
           break;
       }
@@ -213,7 +224,9 @@ export default function InventoryAudit() {
     try {
       const columns = ["Date", "Product", "Type", "Quantity", "Unit Cost", "Total Cost", "Reason"];
       const rows = filteredTransactions.map((transaction) => [
-        formatDateInTimezone(transaction.created_at, selectedRestaurant?.restaurant.timezone || 'UTC', 'MMM dd, yyyy'),
+        transaction.transaction_date 
+          ? formatDateInTimezone(transaction.transaction_date, selectedRestaurant?.restaurant.timezone || 'UTC', 'MMM dd, yyyy')
+          : formatDateInTimezone(transaction.created_at, selectedRestaurant?.restaurant.timezone || 'UTC', 'MMM dd, yyyy'),
         transaction.product_name,
         transaction.transaction_type.charAt(0).toUpperCase() + transaction.transaction_type.slice(1),
         transaction.quantity.toFixed(2),
@@ -583,9 +596,9 @@ export default function InventoryAudit() {
                           </div>
                           <div className="font-semibold text-sm leading-tight">
                             {formatDateInTimezone(
-                              transaction.created_at,
+                              transaction.transaction_date || transaction.created_at,
                               selectedRestaurant.restaurant.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-                              'MMM dd, yyyy HH:mm'
+                              transaction.transaction_date ? 'MMM dd, yyyy' : 'MMM dd, yyyy HH:mm'
                             )}
                           </div>
                         </div>

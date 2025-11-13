@@ -19,10 +19,10 @@ export interface MonthlyMetrics {
 
 /**
  * Hook to fetch monthly aggregated metrics from unified_sales (revenue + liabilities) 
- * and daily_pnl (costs). This is the correct source for monthly financial data.
+ * and source tables (inventory_transactions + daily_labor_costs for costs).
  * 
  * ✅ Use this hook for monthly performance tables
- * ❌ Don't use getMonthlyData() from useDailyPnL (incorrect revenue)
+ * ❌ Don't use getMonthlyData() from useDailyPnL (incorrect/outdated)
  */
 export function useMonthlyMetrics(
   restaurantId: string | null,
@@ -34,7 +34,8 @@ export function useMonthlyMetrics(
     queryFn: async () => {
       if (!restaurantId) return [];
 
-      // Fetch all sales to properly handle split sales
+      // Fetch sales excluding pass-through items (adjustment_type IS NOT NULL)
+      // Pass-through items include: tips, sales tax, service charges, discounts, fees
       const { data: salesData, error: salesError } = await supabase
         .from('unified_sales')
         .select(`
@@ -43,16 +44,30 @@ export function useMonthlyMetrics(
           total_price,
           item_type,
           parent_sale_id,
-          chart_of_accounts!unified_sales_category_id_fkey(
+          is_categorized,
+          chart_account:chart_of_accounts!category_id(
             account_type,
-            account_subtype
+            account_subtype,
+            account_name
           )
         `)
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'));
+        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
+        .is('adjustment_type', null);
 
       if (salesError) throw salesError;
+
+      // Fetch adjustments separately (Square/Clover pass-through items)
+      const { data: adjustmentsData, error: adjustmentsError } = await supabase
+        .from('unified_sales')
+        .select('sale_date, adjustment_type, total_price')
+        .eq('restaurant_id', restaurantId)
+        .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
+        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
+        .not('adjustment_type', 'is', null);
+
+      if (adjustmentsError) throw adjustmentsError;
 
       // Filter out parent sales that have been split into children
       // Include: unsplit sales (no children) + all child splits
@@ -68,9 +83,32 @@ export function useMonthlyMetrics(
 
       // Group sales by month and categorize
       const monthlyMap = new Map<string, MonthlyMetrics>();
+      
+      // Debug: Track categorization for alcohol sales with detailed path tracking
+      const alcoholSales: any[] = [];
+      const alcoholSalesProcessing: any[] = [];
 
       filteredSales?.forEach((sale) => {
-        const monthKey = format(new Date(sale.sale_date), 'yyyy-MM');
+        // Debug: Track alcohol sales
+        const isAlcohol = (sale.chart_account as any)?.account_code === '4020' || 
+                         sale.chart_account?.account_name?.toLowerCase().includes('alcohol');
+        
+        if (isAlcohol) {
+          alcoholSales.push({
+            price: sale.total_price,
+            is_categorized: sale.is_categorized,
+            has_account: !!sale.chart_account,
+            account_type: sale.chart_account?.account_type,
+            account_code: (sale.chart_account as any)?.account_code,
+            item_type: sale.item_type,
+            normalized_item_type: String(sale.item_type || 'sale').toLowerCase(),
+          });
+        }
+        
+        // Parse date as local date, not UTC midnight
+        const [year, monthNum, day] = sale.sale_date.split('-').map(Number);
+        const localDate = new Date(year, monthNum - 1, day);
+        const monthKey = format(localDate, 'yyyy-MM');
 
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {
@@ -92,45 +130,197 @@ export function useMonthlyMetrics(
         const month = monthlyMap.get(monthKey)!;
         month.has_data = true;
 
-        // Categorize based on item_type and account_type
-        // Use cents to avoid floating-point precision errors
-        if (sale.item_type === 'sale') {
-          if (sale.chart_of_accounts?.account_type === 'revenue') {
+        // Only process categorized sales (skip uncategorized to match useRevenueBreakdown logic)
+        if (!sale.is_categorized || !sale.chart_account) {
+          // Uncategorized sales are treated as revenue for reporting purposes
+          // Match useRevenueBreakdown logic: normalize item_type to lowercase for comparison
+          if (String(sale.item_type || 'sale').toLowerCase() === 'sale') {
             month.gross_revenue += Math.round(sale.total_price * 100);
-          } else if (sale.chart_of_accounts?.account_type === 'liability') {
-            // Categorize liabilities by checking subtype
-            const subtype = sale.chart_of_accounts?.account_subtype?.toLowerCase() || '';
-            if (subtype.includes('sales') && subtype.includes('tax')) {
-              month.sales_tax += Math.round(sale.total_price * 100);
-            } else if (subtype.includes('tip')) {
-              month.tips += Math.round(sale.total_price * 100);
-            } else {
-              month.other_liabilities += Math.round(sale.total_price * 100);
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: 'uncategorized -> gross_revenue',
+              });
             }
-          } else if (!sale.chart_of_accounts) {
-            // Treat uncategorized sales as revenue (default)
-            month.gross_revenue += Math.round(sale.total_price * 100);
+          } else {
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: 'uncategorized -> SKIPPED (not sale)',
+              });
+            }
           }
-        } else if (sale.item_type === 'discount') {
+          return;
+        }
+
+        // Categorize based on account_type FIRST (to match useRevenueBreakdown logic)
+        // Then use item_type to determine if it's a discount/refund
+        // Use cents to avoid floating-point precision errors
+        const normalizedItemType = String(sale.item_type || 'sale').toLowerCase();
+        
+        // Handle discounts and refunds first (regardless of account_type)
+        if (normalizedItemType === 'discount') {
           month.discounts += Math.round(Math.abs(sale.total_price) * 100);
-        } else if (sale.item_type === 'refund') {
+          if (isAlcohol) {
+            alcoholSalesProcessing.push({
+              price: sale.total_price,
+              path: 'categorized -> discount',
+            });
+          }
+          return;
+        }
+        
+        if (normalizedItemType === 'refund') {
           month.refunds += Math.round(Math.abs(sale.total_price) * 100);
+          if (isAlcohol) {
+            alcoholSalesProcessing.push({
+              price: sale.total_price,
+              path: 'categorized -> refund',
+            });
+          }
+          return;
+        }
+        
+        // Now categorize by account_type (matching useRevenueBreakdown)
+        if (sale.chart_account.account_type === 'revenue') {
+          // All revenue account items go to gross_revenue (regardless of item_type)
+          // This matches useRevenueBreakdown which includes all categorized revenue
+          month.gross_revenue += Math.round(sale.total_price * 100);
+          if (isAlcohol) {
+            alcoholSalesProcessing.push({
+              price: sale.total_price,
+              path: `categorized -> revenue -> gross_revenue (item_type='${normalizedItemType}')`,
+            });
+          }
+        } else if (sale.chart_account.account_type === 'liability') {
+          // Categorize liabilities by checking BOTH subtype and account_name
+          const subtype = sale.chart_account.account_subtype?.toLowerCase() || '';
+          const accountName = sale.chart_account.account_name?.toLowerCase() || '';
+
+          if ((subtype.includes('sales') && subtype.includes('tax')) ||
+              (accountName.includes('sales') && accountName.includes('tax'))) {
+            month.sales_tax += Math.round(sale.total_price * 100);
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: 'categorized -> liability -> sales_tax',
+              });
+            }
+          } else if (subtype.includes('tip') || accountName.includes('tip')) {
+            month.tips += Math.round(sale.total_price * 100);
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: 'categorized -> liability -> tips',
+              });
+            }
+          } else {
+            month.other_liabilities += Math.round(sale.total_price * 100);
+            if (isAlcohol) {
+              alcoholSalesProcessing.push({
+                price: sale.total_price,
+                path: 'categorized -> liability -> other_liabilities',
+              });
+            }
+          }
+        } else {
+          // Account type is neither revenue nor liability - skip
+          if (isAlcohol) {
+            alcoholSalesProcessing.push({
+              price: sale.total_price,
+              path: `categorized -> SKIPPED (account_type='${sale.chart_account.account_type}')`,
+            });
+          }
+        }
+      });
+      
+      // Debug: Log alcohol sales
+      if (alcoholSales.length > 0) {
+        console.group('🍺 Alcohol Sales Debug (useMonthlyMetrics)');
+        console.log('Raw alcohol sales found:');
+        console.table(alcoholSales);
+        console.log('Processing paths:');
+        console.table(alcoholSalesProcessing);
+        console.log('Total alcohol sales found:', alcoholSales.length);
+        console.log('Total alcohol revenue:', alcoholSales.reduce((sum, s) => sum + s.price, 0));
+        console.groupEnd();
+      }
+
+      // Process adjustments (Square/Clover pass-through items)
+      adjustmentsData?.forEach((adjustment) => {
+        const [year, monthNum, day] = adjustment.sale_date.split('-').map(Number);
+        const localDate = new Date(year, monthNum - 1, day);
+        const monthKey = format(localDate, 'yyyy-MM');
+
+        if (!monthlyMap.has(monthKey)) {
+          monthlyMap.set(monthKey, {
+            period: monthKey,
+            gross_revenue: 0,
+            total_collected_at_pos: 0,
+            net_revenue: 0,
+            discounts: 0,
+            refunds: 0,
+            sales_tax: 0,
+            tips: 0,
+            other_liabilities: 0,
+            food_cost: 0,
+            labor_cost: 0,
+            has_data: false,
+          });
+        }
+
+        const month = monthlyMap.get(monthKey)!;
+        month.has_data = true;
+
+        // Categorize based on adjustment_type
+        const priceInCents = Math.round(adjustment.total_price * 100);
+        
+        switch (adjustment.adjustment_type) {
+          case 'tax':
+            month.sales_tax += priceInCents;
+            break;
+          case 'tip':
+            month.tips += priceInCents;
+            break;
+          case 'service_charge':
+          case 'fee':
+            month.other_liabilities += priceInCents;
+            break;
+          case 'discount':
+            month.discounts += Math.abs(priceInCents);
+            break;
         }
       });
 
-      // Fetch costs from daily_pnl
-      const { data: costsData, error: costsError } = await supabase
-        .from('daily_pnl')
-        .select('date, food_cost, labor_cost')
+      // Fetch COGS (Cost of Goods Used) from inventory_transactions (source of truth)
+      // Use 'usage' type to track actual product consumption when recipes are sold
+      const { data: foodCostsData, error: foodCostsError } = await supabase
+        .from('inventory_transactions')
+        .select('created_at, transaction_date, total_cost')
+        .eq('restaurant_id', restaurantId)
+        .eq('transaction_type', 'usage')
+        .or(`transaction_date.gte.${format(dateFrom, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${format(dateFrom, 'yyyy-MM-dd')})`)
+        .or(`transaction_date.lte.${format(dateTo, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lte.${format(dateTo, 'yyyy-MM-dd')}T23:59:59.999Z)`);
+
+      if (foodCostsError) throw foodCostsError;
+
+      // Fetch labor costs from daily_labor_costs (source of truth)
+      const { data: laborCostsData, error: laborCostsError } = await supabase
+        .from('daily_labor_costs')
+        .select('date, total_labor_cost')
         .eq('restaurant_id', restaurantId)
         .gte('date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('date', format(dateTo, 'yyyy-MM-dd'));
 
-      if (costsError) throw costsError;
+      if (laborCostsError) throw laborCostsError;
 
-      // Aggregate costs by month
-      costsData?.forEach((day) => {
-        const monthKey = format(new Date(day.date), 'yyyy-MM');
+      // Aggregate COGS (Cost of Goods Used) by month
+      foodCostsData?.forEach((transaction) => {
+        // Use transaction_date if available, otherwise use created_at
+        const effectiveDate = transaction.transaction_date 
+          ? new Date(transaction.transaction_date) 
+          : new Date(transaction.created_at);
+        const monthKey = format(effectiveDate, 'yyyy-MM');
         
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {
@@ -151,8 +341,38 @@ export function useMonthlyMetrics(
 
         const month = monthlyMap.get(monthKey)!;
         // Use cents to avoid floating-point precision errors
-        month.food_cost += Math.round((day.food_cost || 0) * 100);
-        month.labor_cost += Math.round((day.labor_cost || 0) * 100);
+        // Use Math.abs() because costs may be stored as negative (accounting convention)
+        month.food_cost += Math.round(Math.abs(transaction.total_cost || 0) * 100);
+      });
+
+      // Aggregate labor costs by month
+      laborCostsData?.forEach((day) => {
+        // Parse date as local date, not UTC midnight
+        const [year, monthNum, dayNum] = day.date.split('-').map(Number);
+        const localDate = new Date(year, monthNum - 1, dayNum);
+        const monthKey = format(localDate, 'yyyy-MM');
+        
+        if (!monthlyMap.has(monthKey)) {
+          monthlyMap.set(monthKey, {
+            period: monthKey,
+            gross_revenue: 0,
+            total_collected_at_pos: 0,
+            net_revenue: 0,
+            discounts: 0,
+            refunds: 0,
+            sales_tax: 0,
+            tips: 0,
+            other_liabilities: 0,
+            food_cost: 0,
+            labor_cost: 0,
+            has_data: true,
+          });
+        }
+
+        const month = monthlyMap.get(monthKey)!;
+        // Use cents to avoid floating-point precision errors
+        // Use Math.abs() because costs may be stored as negative (accounting convention)
+        month.labor_cost += Math.round(Math.abs(day.total_labor_cost || 0) * 100);
       });
 
       // Calculate net_revenue and total_collected_at_pos for each month

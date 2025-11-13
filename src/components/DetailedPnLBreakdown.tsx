@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MetricIcon } from '@/components/MetricIcon';
 import { 
   ChevronDown, 
@@ -17,14 +18,12 @@ import {
   Calendar,
   BarChart3
 } from 'lucide-react';
-import { usePnLAnalytics } from '@/hooks/usePnLAnalytics';
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useCostsFromSource } from '@/hooks/useCostsFromSource';
 
 interface DetailedPnLBreakdownProps {
   restaurantId: string;
@@ -68,26 +67,12 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
     actualDateTo
   );
   
-  // Fetch daily cost data for trends (still from daily_pnl)
-  const { data: dailyCosts, isLoading: costsLoading } = useQuery({
-    queryKey: ['pnl-costs-breakdown', restaurantId, days, dateFrom, dateTo],
-    queryFn: async () => {
-      if (!restaurantId) return null;
-      
-      const { data, error } = await supabase
-        .from('daily_pnl')
-        .select('date, food_cost, labor_cost')
-        .eq('restaurant_id', restaurantId)
-        .gte('date', format(actualDateFrom, 'yyyy-MM-dd'))
-        .lte('date', format(actualDateTo, 'yyyy-MM-dd'))
-        .order('date', { ascending: false });
-      
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!restaurantId,
-    staleTime: 30000,
-  });
+  // Fetch daily cost data for trends (from source tables)
+  const { dailyCosts, isLoading: costsLoading } = useCostsFromSource(
+    restaurantId,
+    actualDateFrom,
+    actualDateTo
+  );
 
   const loading = metricsLoading || revenueLoading || costsLoading;
   
@@ -130,12 +115,13 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
     // Helper to calculate trend from daily cost data
     const getTrend = (metric: 'food_cost' | 'labor_cost') => {
       if (!dailyCosts || dailyCosts.length < 2) return [];
-      return dailyCosts.slice(-7).reverse().map(d => d[metric] || 0);
+      // Get last 7 days, reverse to show chronological order
+      return dailyCosts.slice(-7).map(d => d[metric] || 0);
     };
 
     const getPrimeCostTrend = () => {
       if (!dailyCosts || dailyCosts.length < 2) return [];
-      return dailyCosts.slice(-7).reverse().map(d => (d.food_cost || 0) + (d.labor_cost || 0));
+      return dailyCosts.slice(-7).map(d => (d.food_cost || 0) + (d.labor_cost || 0));
     };
 
     const getInsight = (currentPct: number, previousPct: number, benchmark: number, metricName: string) => {
@@ -176,11 +162,9 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
       {
         id: 'sales',
         label: revenueBreakdown && revenueBreakdown.has_categorization_data 
-          ? 'Total Sales (Gross Revenue)' 
-          : 'Total Sales',
-        value: revenueBreakdown && revenueBreakdown.has_categorization_data
-          ? revenueBreakdown.totals.gross_revenue
-          : current.revenue,
+          ? 'Net Sales (after discounts)' 
+          : 'Net Sales',
+        value: current.revenue, // Always use net revenue as the baseline
         percentage: 100,
         previousValue: previous.revenue,
         previousPercentage: 100,
@@ -188,45 +172,35 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         level: 0,
         trend: [],
         insight: revenueBreakdown && revenueBreakdown.has_categorization_data
-          ? `Gross revenue from ${revenueBreakdown.revenue_categories.reduce((sum, c) => sum + c.transaction_count, 0)} transactions across ${revenueBreakdown.revenue_categories.length} categories`
-          : `Revenue data for ${periodMetrics.daysInPeriod} days`,
-        // Add revenue categories as children if available
+          ? `Net revenue after discounts from ${revenueBreakdown.revenue_categories.reduce((sum, c) => sum + c.transaction_count, 0)} transactions across ${revenueBreakdown.revenue_categories.length} categories`
+          : `Net revenue for ${periodMetrics.daysInPeriod} days`,
+        // Add revenue breakdown as children if available (showing gross components under net)
         children: revenueBreakdown && revenueBreakdown.has_categorization_data
           ? [
-               ...revenueBreakdown.revenue_categories.map(cat => ({
-                id: `sales-${cat.account_id}`,
-                label: `${cat.account_code} - ${cat.account_name}`,
-                value: cat.total_amount,
-                percentage: grossRevenue > 0 ? (cat.total_amount / safeGrossRevenue) * 100 : 0,
+               {
+                id: 'sales-gross',
+                label: 'Gross Revenue',
+                value: revenueBreakdown.totals.gross_revenue,
+                percentage: current.revenue > 0 ? (revenueBreakdown.totals.gross_revenue / current.revenue) * 100 : 0,
                 type: 'line-item' as const,
                 level: 1,
-                insight: `${cat.transaction_count} transactions • ${grossRevenue > 0 ? (cat.total_amount / safeGrossRevenue * 100).toFixed(1) : '0.0'}% of gross`,
+                insight: `Total before discounts and refunds`,
                 status: 'neutral' as const,
-              })),
+              },
               ...(revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories.length > 0 
                 ? [
                     {
                       id: 'sales-deductions',
                       label: 'Less: Discounts & Refunds',
                       value: -(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds),
-                      percentage: grossRevenue > 0 ? -((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / safeGrossRevenue) * 100 : 0,
+                      percentage: current.revenue > 0 ? -((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / current.revenue) * 100 : 0,
                       type: 'line-item' as const,
                       level: 1,
-                      insight: `${grossRevenue > 0 ? ((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / safeGrossRevenue * 100).toFixed(1) : '0.0'}% of gross revenue`,
-                      status: grossRevenue > 0 && (revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / safeGrossRevenue > 0.03 ? 'warning' as const : 'neutral' as const,
+                      insight: `Total discounts: $${revenueBreakdown.totals.total_discounts.toFixed(2)}, Total refunds: $${revenueBreakdown.totals.total_refunds.toFixed(2)}`,
+                      status: current.revenue > 0 && (revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue > 0.05 ? 'warning' as const : 'neutral' as const,
                     },
                   ]
                 : []),
-              {
-                id: 'sales-net',
-                label: 'Net Sales Revenue',
-                value: revenueBreakdown.totals.net_revenue,
-                percentage: grossRevenue > 0 ? (revenueBreakdown.totals.net_revenue / safeGrossRevenue) * 100 : 0,
-                type: 'subtotal' as const,
-                level: 1,
-                insight: `Final revenue after all deductions`,
-                status: 'good' as const,
-              },
             ]
           : undefined,
       },
@@ -264,13 +238,15 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         level: 0,
         benchmark: benchmarks.industry_avg_labor_cost,
         trend: getTrend('labor_cost'),
-        insight: getInsight(
-          current.avg_labor_cost_pct,
-          previous.avg_labor_cost_pct,
-          benchmarks.industry_avg_labor_cost,
-          'Labor cost'
-        ),
-        status: getStatus(current.avg_labor_cost_pct, benchmarks.industry_avg_labor_cost),
+        insight: current.labor_cost === 0 
+          ? 'Labor not yet recorded — metrics incomplete. Add labor costs for accurate prime cost calculation.'
+          : getInsight(
+              current.avg_labor_cost_pct,
+              previous.avg_labor_cost_pct,
+              benchmarks.industry_avg_labor_cost,
+              'Labor cost'
+            ),
+        status: current.labor_cost === 0 ? 'warning' : getStatus(current.avg_labor_cost_pct, benchmarks.industry_avg_labor_cost),
       },
 
       // PRIME COST
@@ -285,38 +261,30 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         level: 0,
         benchmark: benchmarks.industry_avg_prime_cost,
         trend: getPrimeCostTrend(),
-        insight: current.avg_prime_cost_pct > benchmarks.industry_avg_prime_cost 
-          ? `Prime cost exceeds target of ${benchmarks.industry_avg_prime_cost}% - immediate action needed`
-          : `Prime cost within healthy range - target is ${benchmarks.industry_avg_prime_cost}%`,
+        insight: current.labor_cost === 0
+          ? `Prime cost shown as COGS only — labor data not yet tracked`
+          : current.avg_prime_cost_pct > benchmarks.industry_avg_prime_cost 
+            ? `Prime cost exceeds target of ${benchmarks.industry_avg_prime_cost}% - immediate action needed`
+            : `Prime cost within healthy range - target is ${benchmarks.industry_avg_prime_cost}%`,
         status: getStatus(current.avg_prime_cost_pct, benchmarks.industry_avg_prime_cost),
       },
 
-      // CONTRIBUTION MARGIN
+      // GROSS PROFIT / CONTRIBUTION MARGIN
+      // Note: When no operating expenses exist, Contribution Margin = Gross Profit
+      // We show only one to avoid confusion
       {
-        id: 'contribution',
-        label: 'Contribution Margin (Sales - Prime Cost)',
+        id: 'gross-profit',
+        label: 'Gross Profit (Revenue - Prime Cost)',
         value: current.revenue - current.prime_cost,
         percentage: 100 - current.avg_prime_cost_pct,
         previousValue: previous.revenue - previous.prime_cost,
         previousPercentage: 100 - previous.avg_prime_cost_pct,
         type: 'total',
         level: 0,
-        insight: `${(100 - current.avg_prime_cost_pct).toFixed(1)}% margin available for operating expenses and profit`,
+        insight: current.labor_cost === 0
+          ? `Margin available for labor and operating expenses • $${((current.revenue - current.prime_cost) / periodMetrics.daysInPeriod).toFixed(0)} average daily`
+          : `Margin available for operating expenses and profit • $${((current.revenue - current.prime_cost) / periodMetrics.daysInPeriod).toFixed(0)} average daily`,
         status: current.avg_prime_cost_pct < benchmarks.industry_avg_prime_cost ? 'good' : 'warning',
-      },
-
-      // GROSS PROFIT
-      {
-        id: 'gross-profit',
-        label: 'Gross Profit',
-        value: current.revenue - current.food_cost - current.labor_cost,
-        percentage: 100 - current.avg_prime_cost_pct,
-        previousValue: previous.revenue - previous.food_cost - previous.labor_cost,
-        previousPercentage: 100 - previous.avg_prime_cost_pct,
-        type: 'total',
-        level: 0,
-        insight: `$${((current.revenue - current.prime_cost) / periodMetrics.daysInPeriod).toFixed(0)} average daily contribution`,
-        status: 'neutral',
       },
     ];
   }, [periodMetrics, revenueBreakdown, dailyCosts]);
@@ -463,6 +431,17 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         </div>
       </CardHeader>
       <CardContent>
+        {/* Context banner when labor = 0 */}
+        {periodMetrics && periodMetrics.laborCost === 0 && (
+          <Alert className="mb-4 border-amber-200 bg-amber-50">
+            <Info className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-sm text-amber-900">
+              <strong>Labor data not yet recorded</strong> — Prime cost and margin metrics are incomplete. 
+              Add labor costs under the Data Input section for accurate P&L analysis.
+            </AlertDescription>
+          </Alert>
+        )}
+        
         <div className="space-y-3">
           {/* Desktop Table View - Hidden on Mobile */}
           <div className="hidden lg:block">

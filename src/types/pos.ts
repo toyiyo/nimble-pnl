@@ -28,6 +28,7 @@ export interface UnifiedSaleItem {
   parent_sale_id?: string | null;
   child_splits?: UnifiedSaleItem[];
   item_type?: 'sale' | 'tip' | 'tax' | 'discount' | 'comp' | 'service_charge' | 'other';
+  adjustment_type?: 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | null;
   chart_account?: {
     id: string;
     account_name: string;

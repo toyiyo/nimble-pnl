@@ -15,7 +15,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckCircle, AlertCircle, Edit2, Save, X, Upload, Calendar } from 'lucide-react';
+import { CheckCircle, AlertCircle, Edit2, Save, X, Upload, Calendar, Info } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { cn } from '@/lib/utils';
@@ -32,12 +32,17 @@ interface ParsedSale {
   orderId?: string;
   category?: string;  // Added for Toast's "Sales Category"
   tags?: string;      // Added for Toast's "Item tags"
+  adjustmentType?: 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee';
+  isSummaryRow?: boolean;
+  summaryRowReason?: string;
   rawData: {
     _parsedMeta?: {
       compoundOrderId?: string;
       posSystem?: string;
       isVoidedOrZeroQuantity?: boolean;
       voidAmount?: number;
+      isAdjustment?: boolean;
+      parentItemName?: string;
     };
     masterId?: string;
     parentId?: string;
@@ -52,6 +57,7 @@ interface EditableSale extends ParsedSale {
   hasError: boolean;
   errorMessage?: string;
   isVoidedOrZeroQuantity?: boolean;
+  isSummaryRow?: boolean;
   shouldInclude?: boolean; // User's decision to include or exclude
 }
 
@@ -82,6 +88,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     // Convert parsed sales to editable format
     const editable = salesData.map((sale, index) => {
       const isVoided = sale.rawData._parsedMeta?.isVoidedOrZeroQuantity === true;
+      const isSummary = sale.isSummaryRow === true;
       return {
         ...sale,
         id: `temp-${index}`,
@@ -89,7 +96,9 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
         hasError: !sale.itemName || (needsDate && !sale.saleDate),
         errorMessage: !sale.itemName ? 'Item name is required' : (needsDate && !sale.saleDate ? 'Date is required' : undefined),
         isVoidedOrZeroQuantity: isVoided,
-        shouldInclude: !isVoided, // By default, exclude voided items
+        isSummaryRow: isSummary,
+        // Exclude voided items and summary rows by default
+        shouldInclude: !isVoided && !isSummary,
       };
     });
     setEditableSales(editable);
@@ -149,6 +158,8 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     // Format the date in the restaurant's timezone to ensure it stays as the selected date
     const dateString = formatInTimeZone(date, timezone, 'yyyy-MM-dd');
     
+    const countWithoutDate = editableSales.filter(s => !s.saleDate).length;
+    
     // Apply the date to all sales
     setEditableSales(prev =>
       prev.map(sale => ({
@@ -159,9 +170,12 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
       }))
     );
     
+    // Clear the needsDateInput flag after applying
+    setNeedsDateInput(false);
+    
     toast({
-      title: "Date applied",
-      description: `Applied ${format(date, 'MMM d, yyyy')} to all ${editableSales.length} sales records`,
+      title: "✓ Date applied to all rows",
+      description: `Set ${format(date, 'MMM d, yyyy')} for all ${editableSales.length} sales records`,
     });
   };
 
@@ -223,6 +237,9 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
             `toast_${sale.rawData.itemGuid}_${sale.rawData.masterId}` : 
             // Finally, generate a fallback ID
             `file_import_${Date.now()}_${sale.id}`);
+        
+        // Determine item_type based on adjustment_type
+        const itemType = sale.adjustmentType || 'sale';
             
         return {
           restaurant_id: selectedRestaurant.restaurant_id,
@@ -234,6 +251,8 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
           total_price: sale.totalPrice ?? (sale.unitPrice != null ? sale.unitPrice * sale.quantity : undefined),
           sale_date: sale.saleDate,
           sale_time: sale.saleTime,
+          item_type: itemType,
+          adjustment_type: sale.adjustmentType || null,
           // Remove the category field from direct insert since it doesn't exist in the DB schema
           // Instead, store it only in the raw_data JSON field
           raw_data: {
@@ -341,7 +360,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
 
       toast({
         title: "Import successful",
-        description: `Successfully imported ${editableSales.length} sales records`,
+        description: `Successfully imported ${recordsToInsert.length} sales record${recordsToInsert.length === 1 ? '' : 's'}`,
       });
 
       onImportComplete();
@@ -371,7 +390,9 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
   const validCount = editableSales.filter(s => !s.hasError && s.shouldInclude !== false).length;
   const errorCount = editableSales.filter(s => s.hasError).length;
   const voidedCount = editableSales.filter(s => s.isVoidedOrZeroQuantity).length;
+  const summaryCount = editableSales.filter(s => s.isSummaryRow).length;
   const excludedCount = editableSales.filter(s => s.shouldInclude === false).length;
+  const adjustmentCount = editableSales.filter(s => s.adjustmentType).length;
 
   return (
     <div className="space-y-4">
@@ -384,11 +405,23 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                 Review and edit the imported sales data before saving
               </CardDescription>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Badge variant="outline" className="text-success">
                 <CheckCircle className="w-3 h-3 mr-1" />
                 {validCount} Valid
               </Badge>
+              {adjustmentCount > 0 && (
+                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
+                  <Info className="w-3 h-3 mr-1" />
+                  {adjustmentCount} Adjustments
+                </Badge>
+              )}
+              {summaryCount > 0 && (
+                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  {summaryCount} Summary Rows
+                </Badge>
+              )}
               {errorCount > 0 && (
                 <Badge variant="destructive">
                   <AlertCircle className="w-3 h-3 mr-1" />
@@ -435,18 +468,18 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
               </div>
             </Alert>
           )}
-          {needsDateInput && (
-            <Alert className="mb-4">
-              <Calendar className="h-4 w-4" />
+          {needsDateInput && !selectedDate && (
+            <Alert className="mb-4 border-orange-300 bg-orange-50">
+              <Calendar className="h-4 w-4 text-orange-700" />
               <AlertDescription>
                 <div className="flex items-center gap-4 mt-2">
-                  <span className="text-sm font-medium">This file doesn't contain date information. Please select the sale date:</span>
+                  <span className="text-sm font-medium text-orange-900">⚠️ This file doesn't contain date information. Please select the sale date for all rows:</span>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         className={cn(
-                          "w-[240px] justify-start text-left font-normal",
+                          "w-[240px] justify-start text-left font-normal border-orange-300",
                           !selectedDate && "text-muted-foreground"
                         )}
                       >
@@ -464,6 +497,67 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                       />
                     </PopoverContent>
                   </Popover>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          {needsDateInput && selectedDate && (
+            <Alert className="mb-4 border-green-300 bg-green-50">
+              <CheckCircle className="h-4 w-4 text-green-700" />
+              <AlertDescription>
+                <div className="flex items-center gap-4 mt-2">
+                  <span className="text-sm font-medium text-green-900">✓ Date applied to all rows: {format(selectedDate, "PPP")}</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-green-300"
+                      >
+                        <Calendar className="mr-2 h-4 w-4" />
+                        Change Date
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={handleApplyDate}
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          {summaryCount > 0 && (
+            <Alert className="mb-4 border-amber-300 bg-amber-50">
+              <AlertCircle className="h-4 w-4 text-amber-700" />
+              <AlertDescription>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-amber-900">
+                    Found {summaryCount} summary row{summaryCount !== 1 ? 's' : ''} (e.g., "Totals:", aggregate rows).
+                  </p>
+                  <p className="text-sm text-amber-700">
+                    Summary rows are excluded by default as they contain aggregated data, not individual sales. Review these carefully before including them.
+                  </p>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          {adjustmentCount > 0 && (
+            <Alert className="mb-4 border-blue-300 bg-blue-50">
+              <Info className="h-4 w-4 text-blue-700" />
+              <AlertDescription>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-blue-900">
+                    Found {adjustmentCount} adjustment{adjustmentCount !== 1 ? 's' : ''} (discounts, taxes, tips, fees).
+                  </p>
+                  <p className="text-sm text-blue-700">
+                    Adjustments will be tracked separately using the new adjustment system and won't count towards revenue.
+                  </p>
                 </div>
               </AlertDescription>
             </Alert>
@@ -512,6 +606,8 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                       className={cn(
                         sale.hasError ? 'bg-destructive/10' : '',
                         sale.isVoidedOrZeroQuantity && 'bg-warning/10',
+                        sale.isSummaryRow && 'bg-amber-50 border-l-4 border-amber-500',
+                        sale.adjustmentType && 'bg-blue-50 border-l-4 border-blue-500',
                         sale.shouldInclude === false && 'opacity-50'
                       )}
                     >
@@ -523,8 +619,18 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                             className={sale.hasError ? 'border-destructive' : ''}
                           />
                         ) : (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             {sale.hasError && <AlertCircle className="w-4 h-4 text-destructive" />}
+                            {sale.isSummaryRow && (
+                              <Badge variant="outline" className="text-xs bg-amber-100 text-amber-800 border-amber-300">
+                                Summary
+                              </Badge>
+                            )}
+                            {sale.adjustmentType && (
+                              <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">
+                                {sale.adjustmentType}
+                              </Badge>
+                            )}
                             {sale.isVoidedOrZeroQuantity && (
                               <Badge variant="outline" className="text-xs">
                                 Voided/Zero
@@ -629,7 +735,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {sale.isVoidedOrZeroQuantity && !sale.isEditing && (
+                          {(sale.isVoidedOrZeroQuantity || sale.isSummaryRow) && !sale.isEditing && (
                             <Button
                               variant={sale.shouldInclude ? "default" : "outline"}
                               size="sm"

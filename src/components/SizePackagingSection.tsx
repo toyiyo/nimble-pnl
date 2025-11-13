@@ -200,12 +200,14 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
               </FormLabel>
               <FormControl>
                 <Input
-                  {...field}
+                  name={field.name}
+                  ref={field.ref}
                   type="number"
                   step="0.01"
                   placeholder="750"
                   className="text-center text-lg font-mono"
                   value={field.value !== undefined && field.value !== null ? String(field.value) : ''}
+                  onBlur={field.onBlur}
                   onChange={(e) => {
                     const value = e.target.value;
                     if (value === '') {

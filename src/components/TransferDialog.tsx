@@ -7,12 +7,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useInventoryAudit } from '@/hooks/useInventoryAudit';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowRightLeft } from 'lucide-react';
 import { Product } from '@/hooks/useProducts';
+import { LocationCombobox } from '@/components/LocationCombobox';
 
 const transferSchema = z.object({
   quantity: z.coerce.number().min(0.1, 'Quantity must be greater than 0'),
@@ -34,19 +34,6 @@ interface TransferDialogProps {
   restaurantId: string;
   onTransferCompleted?: () => void;
 }
-
-const LOCATIONS = [
-  { value: 'main_kitchen', label: 'Main Kitchen' },
-  { value: 'prep_area', label: 'Prep Area' },
-  { value: 'walk_in_cooler', label: 'Walk-in Cooler' },
-  { value: 'walk_in_freezer', label: 'Walk-in Freezer' },
-  { value: 'dry_storage', label: 'Dry Storage' },
-  { value: 'bar_area', label: 'Bar Area' },
-  { value: 'front_of_house', label: 'Front of House' },
-  { value: 'catering_kitchen', label: 'Catering Kitchen' },
-  { value: 'backup_storage', label: 'Backup Storage' },
-  { value: 'other_location', label: 'Other Location' }
-];
 
 export function TransferDialog({ open, onOpenChange, product, restaurantId, onTransferCompleted }: TransferDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -81,8 +68,8 @@ export function TransferDialog({ open, onOpenChange, product, restaurantId, onTr
       }
 
       const unitCost = product.cost_per_unit || 0;
-      const fromLocationLabel = LOCATIONS.find(l => l.value === data.fromLocation)?.label || data.fromLocation;
-      const toLocationLabel = LOCATIONS.find(l => l.value === data.toLocation)?.label || data.toLocation;
+      const fromLocationLabel = data.fromLocation;
+      const toLocationLabel = data.toLocation;
       
       const transferReason = `${data.reason}${data.notes ? ` - ${data.notes}` : ''}`;
 
@@ -165,20 +152,14 @@ export function TransferDialog({ open, onOpenChange, product, restaurantId, onTr
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>From Location</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select source" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {LOCATIONS.map((location) => (
-                          <SelectItem key={location.value} value={location.value}>
-                            {location.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <LocationCombobox
+                        restaurantId={restaurantId}
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        placeholder="Select source"
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -190,20 +171,14 @@ export function TransferDialog({ open, onOpenChange, product, restaurantId, onTr
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>To Location</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select destination" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {LOCATIONS.filter(l => l.value !== form.watch('fromLocation')).map((location) => (
-                          <SelectItem key={location.value} value={location.value}>
-                            {location.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <LocationCombobox
+                        restaurantId={restaurantId}
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        placeholder="Select destination"
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -250,8 +225,8 @@ export function TransferDialog({ open, onOpenChange, product, restaurantId, onTr
                 <p className="text-sm text-blue-800">
                   <strong>Transfer Summary:</strong><br />
                   {form.watch('quantity') || 0} {product.size_unit || 'units'} from{' '}
-                  {LOCATIONS.find(l => l.value === form.watch('fromLocation'))?.label} to{' '}
-                  {LOCATIONS.find(l => l.value === form.watch('toLocation'))?.label}
+                  {form.watch('fromLocation')} to{' '}
+                  {form.watch('toLocation')}
                   <br />
                   <span className="text-xs">This will create two audit entries (OUT/IN) but won't change total stock.</span>
                 </p>

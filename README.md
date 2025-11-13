@@ -10,6 +10,7 @@ EasyShiftHQ is a comprehensive solution that helps restaurants track and analyze
 
 - **[Architecture & Technical Guidelines](ARCHITECTURE.md)** - Detailed technical documentation, design patterns, and best practices
 - **[Integration Patterns](INTEGRATIONS.md)** - Third-party integrations (banks, POS, AI), security, and performance
+- **[Braintrust Telemetry](docs/BRAINTRUST_TELEMETRY.md)** - AI observability and telemetry setup
 - **[GitHub Copilot Instructions](.github/copilot-instructions.md)** - Guidelines for AI coding assistants
 
 ### Quick Links
@@ -19,6 +20,7 @@ EasyShiftHQ is a comprehensive solution that helps restaurants track and analyze
 - [Bank Connections](INTEGRATIONS.md#-bank-connections)
 - [POS Integrations](INTEGRATIONS.md#-pos-system-integrations)
 - [AI Functionality](INTEGRATIONS.md#-ai--machine-learning)
+- [AI Telemetry Setup](docs/BRAINTRUST_TELEMETRY.md#setup)
 - [Edge Functions](INTEGRATIONS.md#-edge-functions-architecture)
 - [Security Best Practices](INTEGRATIONS.md#-security-best-practices)
 

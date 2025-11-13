@@ -238,7 +238,9 @@ serve(async (req) => {
     console.log(`🎯 Categorizing ${transactions.length} transactions with streaming...`);
     const aiResult = await callAIWithFallbackStreaming<{ categorizations: any[] }>(
       requestBody,
-      openRouterApiKey
+      openRouterApiKey,
+      'ai-categorize-transactions',
+      restaurantId
     );
 
     if (!aiResult || !aiResult.data.categorizations || aiResult.data.categorizations.length === 0) {

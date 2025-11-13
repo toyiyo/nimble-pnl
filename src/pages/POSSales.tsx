@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
+import { EnhancedCategoryRulesDialog } from "@/components/banking/EnhancedCategoryRulesDialog";
 import { useUnifiedSales } from "@/hooks/useUnifiedSales";
 import { usePOSIntegrations } from "@/hooks/usePOSIntegrations";
 import { useInventoryDeduction } from "@/hooks/useInventoryDeduction";
@@ -80,6 +81,7 @@ export default function POSSales() {
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const [saleToSplit, setSaleToSplit] = useState<any>(null);
   const [editingCategoryForSale, setEditingCategoryForSale] = useState<string | null>(null);
+  const [showRulesDialog, setShowRulesDialog] = useState(false);
 
   // Filter revenue and liability accounts for categorization (matching split dialog)
   const categoryAccounts = useMemo(() => {
@@ -258,23 +260,47 @@ export default function POSSales() {
   const dashboardMetrics = useMemo(() => {
     const totalSales = filteredSales.length;
     
-    // For revenue, use child splits totals if sale is split, otherwise use the sale's total
-    const totalRevenue = filteredSales.reduce((sum, sale) => {
+    // Separate revenue items from discounts and pass-through items based on adjustment_type
+    let revenue = 0;
+    let discounts = 0;
+    let passThroughAmount = 0;
+    
+    filteredSales.forEach(sale => {
+      // Calculate total for this sale (including child splits if applicable)
+      let saleTotal = 0;
+      
       if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
         // Sum child split amounts for split sales
-        return sum + sale.child_splits.reduce((childSum, split) => 
+        saleTotal = sale.child_splits.reduce((childSum, split) => 
           childSum + (split.totalPrice || 0), 0
         );
+      } else {
+        // Use parent sale amount for non-split sales
+        saleTotal = sale.totalPrice || 0;
       }
-      // Use parent sale amount for non-split sales
-      return sum + (sale.totalPrice || 0);
-    }, 0);
+      
+      // Categorize based on adjustment_type
+      if (sale.adjustment_type === 'discount') {
+        // Discounts are negative and shown separately
+        discounts += saleTotal;
+      } else if (sale.adjustment_type) {
+        // Other adjustment types are pass-through (tax, tip, service_charge, fee)
+        passThroughAmount += saleTotal;
+      } else {
+        // Items without adjustment_type are revenue
+        revenue += saleTotal;
+      }
+    });
     
+    const collectedAtPOS = revenue + passThroughAmount + discounts;
     const uniqueItems = new Set(filteredSales.map(sale => sale.itemName)).size;
     
     return {
       totalSales,
-      totalRevenue,
+      revenue,
+      discounts,
+      passThroughAmount,
+      collectedAtPOS,
       uniqueItems,
       unmappedCount: unmappedItems.length,
     };
@@ -389,8 +415,11 @@ export default function POSSales() {
         : "All Time";
 
       const metrics = [
+        { label: "Collected at POS", value: `$${dashboardMetrics.collectedAtPOS.toFixed(2)}` },
+        { label: "Revenue", value: `$${dashboardMetrics.revenue.toFixed(2)}` },
+        { label: "Discounts", value: `$${dashboardMetrics.discounts.toFixed(2)}` },
+        { label: "Pass-Through Items", value: `$${dashboardMetrics.passThroughAmount.toFixed(2)}` },
         { label: "Total Sales", value: dashboardMetrics.totalSales.toString() },
-        { label: "Total Revenue", value: `$${dashboardMetrics.totalRevenue.toFixed(2)}` },
         { label: "Unique Items", value: dashboardMetrics.uniqueItems.toString() },
       ];
 
@@ -458,6 +487,15 @@ export default function POSSales() {
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
               <Button
+                variant="outline"
+                onClick={() => setShowRulesDialog(true)}
+                className="flex items-center gap-2 hover:bg-background/80 transition-all duration-300"
+              >
+                <Settings2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Categorization Rules</span>
+                <span className="sm:hidden">Rules</span>
+              </Button>
+              <Button
                 onClick={() => {
                   setActiveTab("manual");
                   setEditingSale(null);
@@ -502,7 +540,10 @@ export default function POSSales() {
       {/* Dashboard Metrics */}
       <POSSalesDashboard
         totalSales={dashboardMetrics.totalSales}
-        totalRevenue={dashboardMetrics.totalRevenue}
+        totalRevenue={dashboardMetrics.revenue}
+        discounts={dashboardMetrics.discounts}
+        passThroughAmount={dashboardMetrics.passThroughAmount}
+        collectedAtPOS={dashboardMetrics.collectedAtPOS}
         uniqueItems={dashboardMetrics.uniqueItems}
         unmappedCount={dashboardMetrics.unmappedCount}
       />
@@ -1105,6 +1146,13 @@ export default function POSSales() {
         isOpen={!!saleToSplit}
         onClose={() => setSaleToSplit(null)}
         restaurantId={selectedRestaurant?.restaurant_id || ""}
+      />
+
+      {/* Categorization Rules Dialog */}
+      <EnhancedCategoryRulesDialog
+        open={showRulesDialog}
+        onOpenChange={setShowRulesDialog}
+        defaultTab="pos"
       />
     </div>
   );

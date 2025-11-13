@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Package, Check } from 'lucide-react';
 import { Product } from '@/hooks/useProducts';
+import { LocationCombobox } from '@/components/LocationCombobox';
 
 interface QuickInventoryDialogProps {
   open: boolean;
@@ -14,6 +14,7 @@ interface QuickInventoryDialogProps {
   mode: 'add' | 'reconcile';
   onSave: (quantity: number, location?: string) => Promise<void>;
   currentTotal?: number;
+  restaurantId: string | null;
 }
 
 export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
@@ -22,7 +23,8 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
   product,
   mode,
   onSave,
-  currentTotal
+  currentTotal,
+  restaurantId
 }) => {
   const [quantity, setQuantity] = useState<string>('');
   const [location, setLocation] = useState<string>('');
@@ -130,12 +132,11 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
           {/* Location Input */}
           <div className="space-y-2">
             <Label htmlFor="location">Location (optional)</Label>
-            <Input
-              id="location"
+            <LocationCombobox
+              restaurantId={restaurantId}
               value={location}
-              onChange={(e) => setLocation(e.target.value)}
+              onValueChange={setLocation}
               placeholder="e.g., Bar, Fridge, Storage"
-              className="text-base"
             />
           </div>
 

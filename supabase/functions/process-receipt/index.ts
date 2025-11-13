@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 
 interface ReceiptProcessRequest {
   receiptId: string;
@@ -16,6 +17,63 @@ interface ParsedLineItem {
   parsedUnit: string;
   parsedPrice: number;
   confidenceScore: number;
+}
+
+// Helper function to parse and validate purchase date from receipt
+function parsePurchaseDate(dateString: string | undefined): string | null {
+  if (!dateString) return null;
+  
+  try {
+    // Try to parse the date string
+    const date = new Date(dateString);
+    
+    // Validate the date is reasonable (not in future, not before 2000)
+    const now = new Date();
+    const minDate = new Date('2000-01-01');
+    
+    if (isNaN(date.getTime()) || date > now || date < minDate) {
+      console.log(`⚠️ Invalid purchase date: ${dateString}`);
+      return null;
+    }
+    
+    // Return in YYYY-MM-DD format
+    return date.toISOString().split('T')[0];
+  } catch (error) {
+    console.error('Error parsing purchase date:', error);
+    return null;
+  }
+}
+
+// Helper function to extract date from filename
+function extractDateFromFilename(filename: string | null): string | null {
+  if (!filename) return null;
+  
+  // Remove file extension
+  const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+  
+  // Pattern 1: YYYY-MM-DD or YYYY_MM_DD or YYYY.MM.DD
+  const isoPattern = /(\d{4})[-_.\/](\d{1,2})[-_.\/](\d{1,2})/;
+  const isoMatch = nameWithoutExt.match(isoPattern);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+  }
+  
+  // Pattern 2: MM-DD-YYYY or MM_DD_YYYY
+  const usPattern = /(\d{1,2})[-_.\/](\d{1,2})[-_.\/](\d{4})/;
+  const usMatch = nameWithoutExt.match(usPattern);
+  if (usMatch) {
+    const [, month, day, year] = usMatch;
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+  }
+  
+  return null;
 }
 
 // Shared analysis prompt for all models
@@ -47,6 +105,7 @@ RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
 {
   "vendor": "Exact vendor/supplier name from receipt",
   "totalAmount": numeric_total,
+  "purchaseDate": "YYYY-MM-DD format date from receipt (invoice date, order date, delivery date, etc.)",
   "supplierInfo": {
     "name": "distributor name if detected",
     "code": "supplier code if visible",
@@ -295,6 +354,7 @@ async function callModel(
   isPDF: boolean,
   mediaData: string,
   openRouterApiKey: string,
+  restaurantId?: string,
 ): Promise<Response | null> {
   let retryCount = 0;
 
@@ -303,6 +363,18 @@ async function callModel(
       console.log(`🔄 ${modelConfig.name} attempt ${retryCount + 1}/${modelConfig.maxRetries}...`);
 
       const requestBody = buildRequestBody(modelConfig.id, modelConfig.systemPrompt, isPDF, mediaData);
+
+      const metadata: AICallMetadata = {
+        model: modelConfig.id,
+        provider: "openrouter",
+        restaurant_id: restaurantId,
+        edge_function: 'process-receipt',
+        temperature: requestBody.temperature,
+        max_tokens: requestBody.max_tokens,
+        stream: requestBody.stream || false,
+        attempt: retryCount + 1,
+        success: false,
+      };
 
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -317,21 +389,67 @@ async function callModel(
 
       if (response.ok) {
         console.log(`✅ ${modelConfig.name} succeeded`);
+        
+        // Log successful receipt processing
+        logAICall(
+          'process-receipt:success',
+          { model: modelConfig.id, isPDF },
+          { status: 'success' },
+          { ...metadata, success: true, status_code: 200 },
+          null // Token usage will be tracked via streaming
+        );
+        
         return response;
       }
 
       // Handle rate limiting with exponential backoff
       if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
         console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
+        
+        logAICall(
+          'process-receipt:rate_limit',
+          { model: modelConfig.id },
+          null,
+          { ...metadata, success: false, status_code: 429, error: 'Rate limited' },
+          null
+        );
+        
         await new Promise((resolve) => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
         retryCount++;
       } else {
         const errorText = await response.text();
         console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
+        
+        logAICall(
+          'process-receipt:error',
+          { model: modelConfig.id },
+          null,
+          { ...metadata, success: false, status_code: response.status, error: errorText },
+          null
+        );
+        
         break;
       }
     } catch (error) {
       console.error(`❌ ${modelConfig.name} error:`, error);
+      
+      logAICall(
+        'process-receipt:error',
+        { model: modelConfig.id },
+        null,
+        { 
+          model: modelConfig.id,
+          provider: "openrouter",
+          restaurant_id: restaurantId,
+          edge_function: 'process-receipt',
+          stream: false,
+          attempt: retryCount + 1,
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        },
+        null
+      );
+      
       retryCount++;
       if (retryCount < modelConfig.maxRetries) {
         await new Promise((resolve) => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
@@ -356,6 +474,28 @@ serve(async (req) => {
         status: 400,
       });
     }
+
+    // Initialize Supabase client early to get restaurant_id
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Get receipt info to find restaurant_id (needed for tracing)
+    const { data: receiptInfo, error: receiptInfoError } = await supabase
+      .from("receipt_imports")
+      .select("restaurant_id")
+      .eq("id", receiptId)
+      .single();
+
+    if (receiptInfoError || !receiptInfo) {
+      console.error("Error fetching receipt info:", receiptInfoError);
+      return new Response(JSON.stringify({ error: "Failed to fetch receipt info" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      });
+    }
+
+    const restaurantId = receiptInfo.restaurant_id;
 
     const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
     if (!openRouterApiKey) {
@@ -437,7 +577,7 @@ serve(async (req) => {
     for (const modelConfig of MODELS) {
       console.log(`🚀 Trying ${modelConfig.name}...`);
 
-      const response = await callModel(modelConfig, isProcessingPDF, pdfBase64Data, openRouterApiKey);
+      const response = await callModel(modelConfig, isProcessingPDF, pdfBase64Data, openRouterApiKey, restaurantId);
 
       if (response) {
         finalResponse = response;
@@ -565,26 +705,6 @@ serve(async (req) => {
       );
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Get receipt info to find restaurant_id
-    const { data: receiptInfo, error: receiptInfoError } = await supabase
-      .from("receipt_imports")
-      .select("restaurant_id")
-      .eq("id", receiptId)
-      .single();
-
-    if (receiptInfoError || !receiptInfo) {
-      console.error("Error fetching receipt info:", receiptInfoError);
-      return new Response(JSON.stringify({ error: "Failed to fetch receipt info" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      });
-    }
-
     // Find or create supplier
     let supplierId: string | null = null;
     if (parsedData.vendor) {
@@ -592,7 +712,7 @@ serve(async (req) => {
       const { data: existingSupplier } = await supabase
         .from("suppliers")
         .select("id")
-        .eq("restaurant_id", receiptInfo.restaurant_id)
+        .eq("restaurant_id", restaurantId)
         .eq("name", parsedData.vendor)
         .single();
 
@@ -603,7 +723,7 @@ serve(async (req) => {
         const { data: newSupplier, error: supplierError } = await supabase
           .from("suppliers")
           .insert({
-            restaurant_id: receiptInfo.restaurant_id,
+            restaurant_id: restaurantId,
             name: parsedData.vendor,
             is_active: true,
           })
@@ -616,6 +736,36 @@ serve(async (req) => {
       }
     }
 
+    // Get the receipt filename for date extraction fallback
+    const { data: receiptData } = await supabase
+      .from("receipt_imports")
+      .select("file_name")
+      .eq("id", receiptId)
+      .single();
+
+    // Determine purchase date: prioritize AI extraction, fallback to filename extraction
+    let purchaseDate: string | null = null;
+    
+    // Try to get date from AI-parsed data
+    if (parsedData.purchaseDate) {
+      purchaseDate = parsePurchaseDate(parsedData.purchaseDate);
+      if (purchaseDate) {
+        console.log(`✅ Purchase date from AI: ${purchaseDate}`);
+      }
+    }
+    
+    // Fallback to filename extraction if AI didn't find a date
+    if (!purchaseDate && receiptData?.file_name) {
+      purchaseDate = extractDateFromFilename(receiptData.file_name);
+      if (purchaseDate) {
+        console.log(`✅ Purchase date from filename: ${purchaseDate}`);
+      }
+    }
+    
+    if (!purchaseDate) {
+      console.log('⚠️ No purchase date found, will need user input');
+    }
+
     // Update receipt with parsed data and supplier
     const { error: updateError } = await supabase
       .from("receipt_imports")
@@ -626,6 +776,7 @@ serve(async (req) => {
         status: "processed",
         processed_at: new Date().toISOString(),
         supplier_id: supplierId,
+        purchase_date: purchaseDate,
       })
       .eq("id", receiptId);
 

@@ -1,5 +1,6 @@
 // Shared streaming utilities for AI responses
 import { ModelConfig } from "./ai-caller.ts";
+import { startStreamingSpan, logAICall, type AICallMetadata } from "./braintrust.ts";
 
 /**
  * Process SSE (Server-Sent Events) streaming response and return complete content
@@ -87,7 +88,9 @@ export async function processStreamedResponse(response: Response): Promise<strin
 export async function callModelWithStreaming(
   modelConfig: ModelConfig,
   requestBody: any,
-  openRouterApiKey: string
+  openRouterApiKey: string,
+  edgeFunction: string = 'unknown',
+  restaurantId?: string
 ): Promise<string | null> {
   let retryCount = 0;
   
@@ -101,6 +104,25 @@ export async function callModelWithStreaming(
         model: modelConfig.id,
         stream: true 
       };
+
+      const metadata: AICallMetadata = {
+        model: modelConfig.id,
+        provider: "openrouter",
+        restaurant_id: restaurantId,
+        edge_function: edgeFunction,
+        temperature: streamingBody.temperature,
+        max_tokens: streamingBody.max_tokens,
+        stream: true,
+        attempt: retryCount + 1,
+        success: false,
+      };
+
+      // Start streaming span
+      const endSpan = startStreamingSpan(
+        `${edgeFunction}:streaming`, 
+        { messages: requestBody.messages, model: modelConfig.id },
+        metadata
+      );
 
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -118,24 +140,100 @@ export async function callModelWithStreaming(
         console.log(`✅ ${modelConfig.name} stream started successfully`);
         const content = await processStreamedResponse(response);
         console.log(`✅ ${modelConfig.name} stream completed. Content length: ${content.length}`);
+        
+        // End streaming span with complete content
+        // Note: We don't have token usage for streaming responses from OpenRouter
+        if (endSpan) {
+          endSpan(content, null);
+        }
+        
+        // Also log the successful streaming call
+        logAICall(
+          `${edgeFunction}:streaming:success`,
+          { messages: requestBody.messages, model: modelConfig.id },
+          { content, content_length: content.length },
+          { ...metadata, success: true, status_code: 200 },
+          null
+        );
+        
         return content;
       }
 
       if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
         console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
+        
+        // Log rate limit
+        logAICall(
+          `${edgeFunction}:streaming:rate_limit`,
+          { messages: requestBody.messages, model: modelConfig.id },
+          { error: 'Rate limited' },
+          { ...metadata, success: false, status_code: 429, error: 'Rate limited' },
+          null
+        );
+        
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
         retryCount++;
       } else {
         const errorText = await response.text();
         console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
+        
+        // Log error
+        logAICall(
+          `${edgeFunction}:streaming:error`,
+          { messages: requestBody.messages, model: modelConfig.id },
+          { error: errorText },
+          { ...metadata, success: false, status_code: response.status, error: errorText },
+          null
+        );
+        
         break;
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
       if (error instanceof Error && error.name === 'AbortError') {
         console.error(`❌ ${modelConfig.name} timed out after 90 seconds`);
+        
+        // Log timeout
+        logAICall(
+          `${edgeFunction}:streaming:timeout`,
+          { messages: requestBody.messages, model: modelConfig.id },
+          { error: 'Request timeout after 90s' },
+          { 
+            model: modelConfig.id,
+            provider: "openrouter",
+            restaurant_id: restaurantId,
+            edge_function: edgeFunction,
+            stream: true,
+            attempt: retryCount + 1,
+            success: false,
+            error: 'Request timeout after 90s'
+          },
+          null
+        );
+        
         break; // Don't retry timeouts
       }
       console.error(`❌ ${modelConfig.name} error:`, error);
+      
+      // Log error
+      logAICall(
+        `${edgeFunction}:streaming:error`,
+        { messages: requestBody.messages, model: modelConfig.id },
+        { error: errorMessage },
+        { 
+          model: modelConfig.id,
+          provider: "openrouter",
+          restaurant_id: restaurantId,
+          edge_function: edgeFunction,
+          stream: true,
+          attempt: retryCount + 1,
+          success: false,
+          error: errorMessage
+        },
+        null
+      );
+      
       retryCount++;
       if (retryCount < modelConfig.maxRetries) {
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));

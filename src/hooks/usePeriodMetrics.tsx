@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useRevenueBreakdown } from './useRevenueBreakdown';
-import { format } from 'date-fns';
+import { useCostsFromSource } from './useCostsFromSource';
 
 export interface PeriodMetrics {
   // Revenue from unified_sales (accurate source)
@@ -14,7 +12,7 @@ export interface PeriodMetrics {
   categorizedRevenue: number;
   uncategorizedRevenue: number;
   
-  // Costs from daily_pnl (still valid)
+  // Costs from source tables (inventory_transactions + daily_labor_costs)
   foodCost: number;
   laborCost: number;
   primeCost: number;
@@ -42,11 +40,11 @@ export interface PeriodMetrics {
 }
 
 /**
- * Combined metrics hook that sources revenue from unified_sales and costs from daily_pnl.
+ * Combined metrics hook that sources revenue from unified_sales and costs from source tables.
  * This is the single source of truth for period financial metrics.
  * 
  * ✅ Use this hook for all period-based financial calculations
- * ❌ Do NOT use useDailyPnL or usePnLAnalytics for revenue calculations
+ * ❌ Do NOT use useDailyPnL or usePnLAnalytics for revenue/cost calculations
  */
 export function usePeriodMetrics(
   restaurantId: string | null,
@@ -58,39 +56,26 @@ export function usePeriodMetrics(
   error: Error | null;
   refetch: () => void;
 } {
-  // Get revenue from unified_sales (correct source: $10,950)
-  const { data: revenueData, isLoading: revenueLoading, refetch: refetchRevenue } = useRevenueBreakdown(
+  // Get revenue from unified_sales (correct source)
+  const {
+    data: revenueData,
+    isLoading: revenueLoading,
+    refetch: refetchRevenue,
+    error: revenueError,
+  } = useRevenueBreakdown(
     restaurantId,
     dateFrom,
     dateTo
   );
   
-  // Get costs from daily_pnl (still valid for food/labor costs)
-  const { data: costsData, isLoading: costsLoading, refetch: refetchCosts } = useQuery({
-    queryKey: ['period-costs', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd')],
-    queryFn: async () => {
-      if (!restaurantId) return null;
-      
-      const { data, error } = await supabase
-        .from('daily_pnl')
-        .select('food_cost, labor_cost')
-        .eq('restaurant_id', restaurantId)
-        .gte('date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('date', format(dateTo, 'yyyy-MM-dd'));
-      
-      if (error) throw error;
-      if (!data || data.length === 0) return null;
-      
-      return {
-        totalFoodCost: data.reduce((sum, d) => sum + (d.food_cost || 0), 0),
-        totalLaborCost: data.reduce((sum, d) => sum + (d.labor_cost || 0), 0),
-      };
-    },
-    enabled: !!restaurantId,
-    staleTime: 300000, // 5 minutes - reduce refetch frequency
-    refetchOnWindowFocus: false, // Disable automatic refetch on window focus
-    refetchOnMount: false, // Disable automatic refetch on mount
-  });
+  // Get costs from source tables (inventory_transactions + daily_labor_costs)
+  const {
+    totalFoodCost,
+    totalLaborCost,
+    isLoading: costsLoading,
+    refetch: refetchCosts,
+    error: costsError,
+  } = useCostsFromSource(restaurantId, dateFrom, dateTo);
   
   const metrics = useMemo((): PeriodMetrics | null => {
     if (!revenueData) {
@@ -98,8 +83,8 @@ export function usePeriodMetrics(
     }
     
     const netRevenue = revenueData.totals.net_revenue;
-    const foodCost = costsData?.totalFoodCost || 0;
-    const laborCost = costsData?.totalLaborCost || 0;
+    const foodCost = totalFoodCost;
+    const laborCost = totalLaborCost;
     const primeCost = foodCost + laborCost;
     
     // Calculate days in period (inclusive)
@@ -133,9 +118,9 @@ export function usePeriodMetrics(
       daysInPeriod,
       
       hasRevenueData: revenueData.has_categorization_data || revenueData.totals.gross_revenue > 0,
-      hasCostData: !!costsData,
+      hasCostData: totalFoodCost > 0 || totalLaborCost > 0,
     };
-  }, [revenueData, costsData, dateFrom, dateTo]);
+  }, [revenueData, totalFoodCost, totalLaborCost, dateFrom, dateTo]);
   
   const refetch = () => {
     refetchRevenue();
@@ -145,7 +130,7 @@ export function usePeriodMetrics(
   return {
     data: metrics,
     isLoading: revenueLoading || costsLoading,
-    error: null,
+    error: revenueError ?? costsError ?? null,
     refetch,
   };
 }

@@ -284,11 +284,27 @@ serve(async (req) => {
 
     console.log("[SYNC-TRANSACTIONS] Sync complete:", syncedCount, "new,", skippedCount, "skipped");
 
-    // Auto-categorize newly synced transactions to create journal entries
+    // Auto-categorize newly synced transactions using categorization rules
     if (syncedCount > 0) {
-      console.log("[SYNC-TRANSACTIONS] Auto-categorizing", syncedCount, "new transactions");
+      console.log("[SYNC-TRANSACTIONS] Applying categorization rules to", syncedCount, "new transactions");
       
-      // Get all uncategorized transactions for this bank
+      try {
+        // First try to apply categorization rules
+        const { data: rulesResult, error: rulesError } = await supabaseAdmin.rpc('apply_rules_to_bank_transactions', {
+          p_restaurant_id: bank.restaurant_id
+        });
+
+        if (rulesError) {
+          console.error("[SYNC-TRANSACTIONS] Error applying rules:", rulesError.message);
+        } else if (rulesResult && rulesResult.length > 0) {
+          const { applied_count, total_count } = rulesResult[0];
+          console.log(`[SYNC-TRANSACTIONS] Applied rules to ${applied_count} of ${total_count} transactions`);
+        }
+      } catch (error: any) {
+        console.error("[SYNC-TRANSACTIONS] Error applying categorization rules:", error.message);
+      }
+      
+      // Then categorize any remaining uncategorized transactions with default categories
       const { data: uncategorizedTxns } = await supabaseAdmin
         .from("bank_transactions")
         .select("id, amount")
@@ -313,7 +329,7 @@ serve(async (req) => {
         }
       }
       
-      console.log("[SYNC-TRANSACTIONS] Auto-categorized", categorizedCount, "transactions");
+      console.log("[SYNC-TRANSACTIONS] Auto-categorized", categorizedCount, "transactions with default categories");
       
       // Check for reconciliation boundary violations and auto-fix
       try {

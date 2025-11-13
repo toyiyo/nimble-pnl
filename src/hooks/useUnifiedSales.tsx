@@ -64,6 +64,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       ai_confidence: sale.ai_confidence as "high" | "medium" | "low" | undefined,
       ai_reasoning: sale.ai_reasoning,
       item_type: sale.item_type as "sale" | "tip" | "tax" | "discount" | "comp" | "service_charge" | "other" | undefined,
+      adjustment_type: sale.adjustment_type as "tax" | "tip" | "service_charge" | "discount" | "fee" | null | undefined,
       is_categorized: sale.is_categorized || false,
       is_split: sale.is_split || false,
       parent_sale_id: sale.parent_sale_id,
@@ -211,6 +212,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     totalPrice?: number;
     saleDate: string;
     saleTime?: string;
+    adjustmentType?: 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | null;
   }) => {
     if (!restaurantId) return false;
 
@@ -222,6 +224,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
           pos_system: 'manual',
           external_order_id: `manual_${Date.now()}`,
           item_name: saleData.itemName,
+          adjustment_type: saleData.adjustmentType || null,
           quantity: saleData.quantity,
           unit_price: saleData.unitPrice,
           total_price: saleData.totalPrice,
@@ -249,6 +252,141 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     }
   };
 
+  const createManualSaleWithAdjustments = async (saleData: {
+    itemName: string;
+    quantity: number;
+    unitPrice?: number;
+    totalPrice?: number;
+    saleDate: string;
+    saleTime?: string;
+    adjustments?: {
+      tax?: number;
+      tip?: number;
+      serviceCharge?: number;
+      discount?: number;
+      fee?: number;
+    };
+  }) => {
+    if (!restaurantId) return false;
+
+    try {
+      // Generate a unique order ID to group all entries
+      const orderId = `manual_${Date.now()}`;
+      const entries = [];
+
+      // Main revenue item
+      entries.push({
+        restaurant_id: restaurantId,
+        pos_system: 'manual',
+        external_order_id: orderId,
+        item_name: saleData.itemName,
+        adjustment_type: null,
+        quantity: saleData.quantity,
+        unit_price: saleData.unitPrice,
+        total_price: saleData.totalPrice,
+        sale_date: saleData.saleDate,
+        sale_time: saleData.saleTime,
+      });
+
+      // Add adjustment entries
+      if (saleData.adjustments) {
+        if (saleData.adjustments.tax && saleData.adjustments.tax > 0) {
+          entries.push({
+            restaurant_id: restaurantId,
+            pos_system: 'manual',
+            external_order_id: orderId,
+            item_name: 'Sales Tax',
+            adjustment_type: 'tax',
+            quantity: 1,
+            unit_price: saleData.adjustments.tax,
+            total_price: saleData.adjustments.tax,
+            sale_date: saleData.saleDate,
+            sale_time: saleData.saleTime,
+          });
+        }
+        if (saleData.adjustments.tip && saleData.adjustments.tip > 0) {
+          entries.push({
+            restaurant_id: restaurantId,
+            pos_system: 'manual',
+            external_order_id: orderId,
+            item_name: 'Tip',
+            adjustment_type: 'tip',
+            quantity: 1,
+            unit_price: saleData.adjustments.tip,
+            total_price: saleData.adjustments.tip,
+            sale_date: saleData.saleDate,
+            sale_time: saleData.saleTime,
+          });
+        }
+        if (saleData.adjustments.serviceCharge && saleData.adjustments.serviceCharge > 0) {
+          entries.push({
+            restaurant_id: restaurantId,
+            pos_system: 'manual',
+            external_order_id: orderId,
+            item_name: 'Service Charge',
+            adjustment_type: 'service_charge',
+            quantity: 1,
+            unit_price: saleData.adjustments.serviceCharge,
+            total_price: saleData.adjustments.serviceCharge,
+            sale_date: saleData.saleDate,
+            sale_time: saleData.saleTime,
+          });
+        }
+        if (saleData.adjustments.discount && saleData.adjustments.discount > 0) {
+          entries.push({
+            restaurant_id: restaurantId,
+            pos_system: 'manual',
+            external_order_id: orderId,
+            item_name: 'Discount',
+            adjustment_type: 'discount',
+            quantity: 1,
+            unit_price: saleData.adjustments.discount,
+            total_price: saleData.adjustments.discount,
+            sale_date: saleData.saleDate,
+            sale_time: saleData.saleTime,
+          });
+        }
+        if (saleData.adjustments.fee && saleData.adjustments.fee > 0) {
+          entries.push({
+            restaurant_id: restaurantId,
+            pos_system: 'manual',
+            external_order_id: orderId,
+            item_name: 'Platform Fee',
+            adjustment_type: 'fee',
+            quantity: 1,
+            unit_price: saleData.adjustments.fee,
+            total_price: saleData.adjustments.fee,
+            sale_date: saleData.saleDate,
+            sale_time: saleData.saleTime,
+          });
+        }
+      }
+
+      const { error } = await supabase
+        .from('unified_sales')
+        .insert(entries);
+
+      if (error) throw error;
+
+      const adjCount = entries.length - 1;
+      toast({
+        title: "Sale recorded",
+        description: `Manual sale with ${adjCount} adjustment${adjCount !== 1 ? 's' : ''} has been recorded successfully`,
+      });
+
+      refetchSales();
+      return true;
+    } catch (error) {
+      console.error('Error creating manual sale with adjustments:', error);
+      toast({
+        title: "Error",
+        description: "Failed to record sale",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+
   const updateManualSale = async (saleId: string, saleData: {
     itemName: string;
     quantity: number;
@@ -256,6 +394,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     totalPrice?: number;
     saleDate: string;
     saleTime?: string;
+    adjustmentType?: 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | null;
   }) => {
     if (!restaurantId) return false;
 
@@ -264,6 +403,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
         .from('unified_sales')
         .update({
           item_name: saleData.itemName,
+          adjustment_type: saleData.adjustmentType || null,
           quantity: saleData.quantity,
           unit_price: saleData.unitPrice,
           total_price: saleData.totalPrice,
@@ -334,6 +474,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     getSalesGroupedByItem,
     getSalesByPOSSystem,
     createManualSale,
+    createManualSaleWithAdjustments,
     updateManualSale,
     deleteManualSale,
   };

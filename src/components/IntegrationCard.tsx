@@ -113,7 +113,6 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
       await shift4Integration.disconnectShift4();
       return;
     }
-    }
     
     toast({
       title: "Disconnected",

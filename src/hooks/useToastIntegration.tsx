@@ -10,6 +10,7 @@ interface ToastConnection {
   connected_at: string;
   scopes: string[];
   environment: string;
+  api_url: string;
 }
 
 export const useToastIntegration = (restaurantId: string | null) => {
@@ -36,6 +37,9 @@ export const useToastIntegration = (restaurantId: string | null) => {
       if (data) {
         setConnection(data);
         setIsConnected(true);
+      } else {
+        setConnection(null);
+        setIsConnected(false);
       }
     } catch (error) {
       console.error('Error checking Toast connection:', error);
@@ -48,7 +52,12 @@ export const useToastIntegration = (restaurantId: string | null) => {
     }
   }, [restaurantId, checkConnectionStatus]);
 
-  const connectToast = async () => {
+  const connectToast = async (credentials: {
+    clientId: string;
+    clientSecret: string;
+    apiUrl: string;
+    restaurantGuid?: string;
+  }) => {
     if (!restaurantId) {
       toast({
         title: "Error",
@@ -61,11 +70,15 @@ export const useToastIntegration = (restaurantId: string | null) => {
     setIsConnecting(true);
 
     try {
-      // Call the toast-oauth edge function to get authorization URL
+      // Call the toast-oauth edge function to store credentials
       const { data, error } = await supabase.functions.invoke('toast-oauth', {
         body: {
-          action: 'authorize',
-          restaurantId: restaurantId
+          action: 'connect',
+          restaurantId: restaurantId,
+          clientId: credentials.clientId,
+          clientSecret: credentials.clientSecret,
+          apiUrl: credentials.apiUrl,
+          restaurantGuid: credentials.restaurantGuid,
         }
       });
 
@@ -73,20 +86,53 @@ export const useToastIntegration = (restaurantId: string | null) => {
         throw error;
       }
 
-      if (data?.authorizationUrl) {
-        // Redirect to Toast's authorization page
-        window.location.href = data.authorizationUrl;
+      if (data?.success) {
+        toast({
+          title: "Connection Successful",
+          description: "Toast POS connected successfully!",
+        });
+        
+        // Refresh connection status
+        await checkConnectionStatus();
       } else {
-        throw new Error('No authorization URL returned');
+        throw new Error('Connection failed');
       }
     } catch (error) {
       console.error('Error connecting to Toast:', error);
       toast({
         title: "Connection Failed",
-        description: "Failed to connect to Toast POS. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to connect to Toast POS. Please check your credentials.",
         variant: "destructive",
       });
+    } finally {
       setIsConnecting(false);
+    }
+  };
+
+  const testConnection = async (credentials: {
+    clientId: string;
+    clientSecret: string;
+    apiUrl: string;
+  }) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('toast-oauth', {
+        body: {
+          action: 'test',
+          restaurantId: restaurantId || 'test',
+          clientId: credentials.clientId,
+          clientSecret: credentials.clientSecret,
+          apiUrl: credentials.apiUrl,
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error testing Toast connection:', error);
+      throw error;
     }
   };
 
@@ -166,6 +212,7 @@ export const useToastIntegration = (restaurantId: string | null) => {
     isConnecting,
     connection,
     connectToast,
+    testConnection,
     disconnectToast,
     syncData,
     checkConnectionStatus

@@ -149,17 +149,17 @@ export const ToastSync = ({ restaurantId, isConnected }: ToastSyncProps) => {
           </div>
         )}
 
-        {/* Real-time Webhook Status */}
+        {/* Polling Status */}
         <div className="pt-2 border-t">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Real-time Updates</span>
-            <Badge variant="outline" className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
-              <div className="h-1.5 w-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse" />
-              Active
+            <span className="text-muted-foreground">Data Sync</span>
+            <Badge variant="outline" className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20">
+              <div className="h-1.5 w-1.5 rounded-full bg-blue-500 mr-1.5" />
+              Manual/Scheduled
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Webhooks automatically sync new orders in real-time
+            Data is synced manually or on a schedule (no real-time webhooks)
           </p>
         </div>
       </CardContent>

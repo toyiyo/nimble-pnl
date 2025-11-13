@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
 
     console.log('Toast sync started:', { restaurantId, action, dateRange });
 
-    // Get Toast connection and decrypt tokens
+    // Get Toast connection and decrypt credentials
     const { data: connection, error: connectionError } = await supabase
       .from('toast_connections')
       .select('*')
@@ -43,14 +43,67 @@ Deno.serve(async (req) => {
       throw new Error('Toast connection not found');
     }
 
-    // Decrypt the access token
+    // Decrypt the credentials
     const encryption = await getEncryptionService();
-    const decryptedAccessToken = await encryption.decrypt(connection.access_token);
+    let accessToken = connection.access_token ? await encryption.decrypt(connection.access_token) : null;
+    
+    // Check if token is expired or missing, and refresh it using client credentials
+    const now = new Date();
+    const expiresAt = connection.expires_at ? new Date(connection.expires_at) : null;
+    const isExpired = !expiresAt || expiresAt <= now;
+    
+    if (!accessToken || isExpired) {
+      console.log('Access token missing or expired, obtaining new token via client credentials');
+      
+      // Decrypt client credentials
+      const clientId = await encryption.decrypt(connection.client_id);
+      const clientSecret = await encryption.decrypt(connection.client_secret);
+      
+      // Use client credentials grant to get new access token
+      const tokenRequestBody = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'client_credentials',
+      });
+
+      const tokenResponse = await fetch(`${connection.api_url}/usermgmt/v1/oauth/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: tokenRequestBody.toString(),
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error('Toast token refresh failed:', errorText);
+        throw new Error('Failed to refresh Toast access token. Please reconnect.');
+      }
+
+      const tokenData = await tokenResponse.json();
+      accessToken = tokenData.access_token;
+      
+      // Update stored token
+      const encryptedAccessToken = await encryption.encrypt(accessToken);
+      const newExpiresAt = tokenData.expires_in ? 
+        new Date(Date.now() + tokenData.expires_in * 1000).toISOString() : null;
+      
+      await supabase
+        .from('toast_connections')
+        .update({
+          access_token: encryptedAccessToken,
+          expires_at: newExpiresAt,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', connection.id);
+        
+      console.log('Access token refreshed successfully');
+    }
     
     // Create connection object with decrypted token
     const decryptedConnection = {
       ...connection,
-      access_token: decryptedAccessToken
+      access_token: accessToken
     };
 
     // Log security event for token access
@@ -68,12 +121,10 @@ Deno.serve(async (req) => {
     
     const restaurantTimezone = restaurant?.timezone || 'America/Chicago';
 
-    // Toast API base URL
-    const TOAST_BASE_URL = connection.environment === 'sandbox'
-      ? 'https://ws-sandbox-api.eng.toasttab.com'
-      : 'https://ws-api.toasttab.com';
+    // Toast API base URL from connection (for Standard API)
+    const TOAST_BASE_URL = connection.api_url || 'https://ws-api.toasttab.com';
 
-    console.log(`Using Toast API: ${TOAST_BASE_URL} (${connection.environment})`);
+    console.log(`Using Toast API: ${TOAST_BASE_URL}`);
 
     const results = {
       ordersSynced: 0,

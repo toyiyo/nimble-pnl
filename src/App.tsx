@@ -21,7 +21,6 @@ import Reports from "./pages/Reports";
 import RestaurantSettings from "./pages/RestaurantSettings";
 import SquareCallback from "./pages/SquareCallback";
 import CloverCallback from "./pages/CloverCallback";
-import ToastCallback from "./pages/ToastCallback";
 import { AcceptInvitation } from "./pages/AcceptInvitation";
 import { Inventory } from "./pages/Inventory";
 import InventoryAudit from "./pages/InventoryAudit";
@@ -108,7 +107,6 @@ const App = () => (
             <Route path="/ai-assistant" element={<ProtectedRoute><AiAssistant /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/clover/callback" element={<CloverCallback />} />
-            <Route path="/toast/callback" element={<ToastCallback />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

@@ -9,6 +9,7 @@ import { useToastIntegration } from '@/hooks/useToastIntegration';
 import { SquareSync } from '@/components/SquareSync';
 import { CloverSync } from '@/components/CloverSync';
 import { ToastSync } from '@/components/ToastSync';
+import { ToastCredentialsDialog } from '@/components/ToastCredentialsDialog';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { Plug, Settings, CheckCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ interface IntegrationCardProps {
 
 export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardProps) => {
   const [isConnecting, setIsConnecting] = useState(false);
+  const [showToastDialog, setShowToastDialog] = useState(false);
   const { toast } = useToast();
   
   // Square-specific integration hook
@@ -66,7 +68,8 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     }
     
     if (isToastIntegration) {
-      await toastIntegration.connectToast();
+      // Show credentials dialog instead of OAuth redirect
+      setShowToastDialog(true);
       return;
     }
     
@@ -251,6 +254,16 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
           </div>
         )}
       </CardContent>
+
+      {/* Toast Credentials Dialog */}
+      {isToastIntegration && (
+        <ToastCredentialsDialog
+          open={showToastDialog}
+          onOpenChange={setShowToastDialog}
+          onConnect={toastIntegration.connectToast}
+          onTest={toastIntegration.testConnection}
+        />
+      )}
     </Card>
   );
 };

@@ -25,13 +25,17 @@ export const useInventoryPurchases = (
       }
 
       // Query inventory_transactions for purchases in the date range
+      // Use transaction_date if available, otherwise fall back to created_at
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+      
       const { data, error } = await supabase
         .from('inventory_transactions')
-        .select('total_cost')
+        .select('total_cost, transaction_date, created_at')
         .eq('restaurant_id', restaurantId)
         .eq('transaction_type', 'purchase')
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString());
+        .or(`transaction_date.gte.${startDateStr},and(transaction_date.is.null,created_at.gte.${startDate.toISOString()})`)
+        .or(`transaction_date.lte.${endDateStr},and(transaction_date.is.null,created_at.lte.${endDate.toISOString()})`);
 
       if (error) {
         console.error('Error fetching inventory purchases:', error);

@@ -8,13 +8,17 @@ import { SearchableProductSelector } from '@/components/SearchableProductSelecto
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useReceiptImport, ReceiptLineItem, ReceiptImport } from '@/hooks/useReceiptImport';
 import { useProducts } from '@/hooks/useProducts';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil } from 'lucide-react';
+import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { getUnitOptions } from '@/lib/validUnits';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 import Fuse from 'fuse.js';
 
 interface ReceiptMappingReviewProps {
@@ -206,6 +210,39 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
       toast({
         title: "Error",
         description: "Failed to update supplier",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handlePurchaseDateChange = async (date: Date | undefined) => {
+    if (!date) return;
+    
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const dateString = format(date, 'yyyy-MM-dd');
+      
+      const { error } = await supabase
+        .from('receipt_imports')
+        .update({ purchase_date: dateString })
+        .eq('id', receiptId);
+
+      if (error) throw error;
+
+      setReceiptDetails(prev => prev ? { 
+        ...prev, 
+        purchase_date: dateString 
+      } : null);
+      
+      toast({
+        title: "Purchase Date Updated",
+        description: `Set to ${format(date, 'PPP')}`,
+      });
+    } catch (error) {
+      console.error('Error updating purchase date:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update purchase date",
         variant: "destructive",
       });
     }
@@ -444,6 +481,62 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
               </div>
             </div>
           )}
+          
+          {/* Purchase Date */}
+          <div className="mt-4 p-3 bg-muted/50 rounded-lg border">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium text-muted-foreground">Purchase Date:</span>
+              </div>
+              {isImported ? (
+                <div className="text-sm font-medium">
+                  {receiptDetails.purchase_date 
+                    ? format(new Date(receiptDetails.purchase_date), 'PPP')
+                    : 'Not specified'}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !receiptDetails.purchase_date && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {receiptDetails.purchase_date 
+                          ? format(new Date(receiptDetails.purchase_date), 'PPP')
+                          : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={receiptDetails.purchase_date ? new Date(receiptDetails.purchase_date) : undefined}
+                        onSelect={handlePurchaseDateChange}
+                        disabled={(date) => date > new Date() || date < new Date("2000-01-01")}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {!receiptDetails.purchase_date && (
+                    <p className="text-xs text-muted-foreground">
+                      Set the actual purchase date from the receipt
+                    </p>
+                  )}
+                  {receiptDetails.purchase_date && (
+                    <Badge variant="secondary" className="ml-2">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Set
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
           
           {/* Summary stats and filters */}
           <div className="flex flex-col sm:flex-row gap-4 pt-2">

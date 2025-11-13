@@ -102,10 +102,10 @@ export const useAlertsIntelligence = (restaurantId: string | null) => {
       // Fetch inventory transactions for consumption analysis
       const { data: transactions, error: transactionsError } = await supabase
         .from('inventory_transactions')
-        .select('*')
+        .select('*, transaction_date')
         .eq('restaurant_id', restaurantId)
         .in('transaction_type', ['usage', 'waste', 'purchase'])
-        .gte('created_at', subDays(new Date(), 60).toISOString())
+        .or(`transaction_date.gte.${format(subDays(new Date(), 60), 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${subDays(new Date(), 60).toISOString()})`)
         .order('created_at', { ascending: false });
 
       if (transactionsError) throw transactionsError;
@@ -118,9 +118,12 @@ export const useAlertsIntelligence = (restaurantId: string | null) => {
       products?.forEach(product => {
         // Calculate consumption rate from last 30 days
         const productTransactions = transactions?.filter(
-          t => t.product_id === product.id && 
-          t.transaction_type === 'usage' &&
-          new Date(t.created_at) >= subDays(new Date(), 30)
+          t => {
+            const effectiveDate = new Date(t.transaction_date || t.created_at);
+            return t.product_id === product.id && 
+              t.transaction_type === 'usage' &&
+              effectiveDate >= subDays(new Date(), 30);
+          }
         ) || [];
 
         const totalUsage = productTransactions.reduce((sum, t) => sum + Math.abs(t.quantity || 0), 0);

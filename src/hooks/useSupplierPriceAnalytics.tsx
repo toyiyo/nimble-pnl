@@ -106,6 +106,7 @@ export function useSupplierPriceAnalytics(
           unit_cost,
           quantity,
           created_at,
+          transaction_date,
           supplier_id,
           suppliers (
             id,
@@ -114,8 +115,8 @@ export function useSupplierPriceAnalytics(
         `)
         .eq('restaurant_id', restaurantId)
         .eq('transaction_type', 'purchase')
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString())
+        .or(`transaction_date.gte.${startDate.toISOString().split('T')[0]},and(transaction_date.is.null,created_at.gte.${startDate.toISOString()})`)
+        .or(`transaction_date.lte.${endDate.toISOString().split('T')[0]},and(transaction_date.is.null,created_at.lte.${endDate.toISOString()})`)
         .order('created_at', { ascending: true });
 
       if (transError) throw transError;

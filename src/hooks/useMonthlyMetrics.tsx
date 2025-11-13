@@ -296,11 +296,11 @@ export function useMonthlyMetrics(
       // Use 'usage' type to track actual product consumption when recipes are sold
       const { data: foodCostsData, error: foodCostsError } = await supabase
         .from('inventory_transactions')
-        .select('created_at, total_cost')
+        .select('created_at, transaction_date, total_cost')
         .eq('restaurant_id', restaurantId)
         .eq('transaction_type', 'usage')
-        .gte('created_at', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('created_at', format(dateTo, 'yyyy-MM-dd') + 'T23:59:59.999Z');
+        .or(`transaction_date.gte.${format(dateFrom, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${format(dateFrom, 'yyyy-MM-dd')})`)
+        .or(`transaction_date.lte.${format(dateTo, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lte.${format(dateTo, 'yyyy-MM-dd')}T23:59:59.999Z)`);
 
       if (foodCostsError) throw foodCostsError;
 
@@ -316,8 +316,11 @@ export function useMonthlyMetrics(
 
       // Aggregate COGS (Cost of Goods Used) by month
       foodCostsData?.forEach((transaction) => {
-        const transactionDate = new Date(transaction.created_at);
-        const monthKey = format(transactionDate, 'yyyy-MM');
+        // Use transaction_date if available, otherwise use created_at
+        const effectiveDate = transaction.transaction_date 
+          ? new Date(transaction.transaction_date) 
+          : new Date(transaction.created_at);
+        const monthKey = format(effectiveDate, 'yyyy-MM');
         
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {

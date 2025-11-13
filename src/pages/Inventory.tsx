@@ -665,7 +665,7 @@ export const Inventory: React.FC = () => {
 
       const newProduct = await createProduct(productData);
       if (newProduct) {
-        // Audit log is already created by createProduct hook via logPurchase
+        // Audit log is already created by createProduct hook via logAdjustment
         // No need for duplicate logging here
       toast({
         title: "Product created",

@@ -231,7 +231,7 @@ export const useInventoryAudit = () => {
       });
       return false;
     }
-  }, [logPurchase, logAdjustment, logWaste, toast]);
+  }, [logAdjustment, logWaste, toast]);
 
   return {
     logInventoryTransaction,

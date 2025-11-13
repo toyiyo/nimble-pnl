@@ -5,8 +5,11 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
+import { useShift4Integration } from '@/hooks/useShift4Integration';
 import { SquareSync } from '@/components/SquareSync';
 import { CloverSync } from '@/components/CloverSync';
+import { Shift4Sync } from '@/components/Shift4Sync';
+import { Shift4ConnectDialog } from '@/components/Shift4ConnectDialog';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { Plug, Settings, CheckCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -28,6 +31,7 @@ interface IntegrationCardProps {
 
 export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardProps) => {
   const [isConnecting, setIsConnecting] = useState(false);
+  const [showShift4Dialog, setShowShift4Dialog] = useState(false);
   const { toast } = useToast();
   
   // Square-specific integration hook
@@ -36,14 +40,20 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   // Clover-specific integration hook
   const cloverIntegration = useCloverIntegration(restaurantId);
   
-  // Check if this integration is Square or Clover and if it's connected
+  // Shift4-specific integration hook
+  const shift4Integration = useShift4Integration(restaurantId);
+  
+  // Check if this integration is Square, Clover, or Shift4 and if it's connected
   const isSquareIntegration = integration.id === 'square-pos';
   const isCloverIntegration = integration.id === 'clover-pos';
+  const isShift4Integration = integration.id === 'shift4-pos';
   const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected : 
-                            isCloverIntegration ? cloverIntegration.isConnected : 
+                            isCloverIntegration ? cloverIntegration.isConnected :
+                            isShift4Integration ? shift4Integration.isConnected :
                             integration.connected;
   const actuallyConnecting = isSquareIntegration ? squareIntegration.isConnecting : 
                              isCloverIntegration ? cloverIntegration.isConnecting :
+                             isShift4Integration ? shift4Integration.loading :
                              isConnecting;
 
   const handleConnect = async () => {
@@ -54,6 +64,11 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     
     if (isCloverIntegration) {
       await cloverIntegration.connectClover('na');
+      return;
+    }
+    
+    if (isShift4Integration) {
+      setShowShift4Dialog(true);
       return;
     }
     
@@ -78,6 +93,11 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     }
   };
 
+  const handleShift4Connect = async (secretKey: string, environment: 'production' | 'sandbox') => {
+    await shift4Integration.connectShift4(secretKey, undefined, environment);
+    setShowShift4Dialog(false);
+  };
+
   const handleDisconnect = async () => {
     if (isSquareIntegration) {
       await squareIntegration.disconnectSquare();
@@ -87,6 +107,12 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     if (isCloverIntegration) {
       await cloverIntegration.disconnectClover();
       return;
+    }
+    
+    if (isShift4Integration) {
+      await shift4Integration.disconnectShift4();
+      return;
+    }
     }
     
     toast({
@@ -201,6 +227,8 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
                 `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}` :
               isCloverIntegration && cloverIntegration.connection ?
                 `Connected: ${new Date(cloverIntegration.connection.connected_at).toLocaleDateString()}` :
+              isShift4Integration && shift4Integration.connection ?
+                `Connected: ${new Date(shift4Integration.connection.connected_at).toLocaleDateString()}` :
                 'Last sync: 2 hours ago'
               }
             </div>
@@ -220,9 +248,25 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
                 isConnected={actuallyConnected} 
               />
             )}
+            
+            {/* Shift4 Sync Component */}
+            {isShift4Integration && (
+              <Shift4Sync 
+                restaurantId={restaurantId} 
+                isConnected={actuallyConnected} 
+              />
+            )}
           </div>
         )}
       </CardContent>
+      
+      {/* Shift4 Connect Dialog */}
+      <Shift4ConnectDialog
+        open={showShift4Dialog}
+        onOpenChange={setShowShift4Dialog}
+        onConnect={handleShift4Connect}
+        isLoading={shift4Integration.loading}
+      />
     </Card>
   );
 };

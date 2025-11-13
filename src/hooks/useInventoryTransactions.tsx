@@ -17,6 +17,7 @@ interface InventoryTransaction {
   reason: string;
   reference_id: string;
   created_at: string;
+  transaction_date: string | null;
   performed_by: string;
   location?: string;
   lot_number?: string;

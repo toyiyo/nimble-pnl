@@ -36,20 +36,22 @@ export function useFoodCosts(
 
       const { data, error } = await supabase
         .from('inventory_transactions')
-        .select('created_at, total_cost, transaction_type')
+        .select('created_at, transaction_date, total_cost, transaction_type')
         .eq('restaurant_id', restaurantId)
         .eq('transaction_type', 'usage')
-        .gte('created_at', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('created_at', format(dateTo, 'yyyy-MM-dd') + 'T23:59:59.999Z')
+        .or(`transaction_date.gte.${format(dateFrom, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${format(dateFrom, 'yyyy-MM-dd')})`)
+        .or(`transaction_date.lte.${format(dateTo, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lte.${format(dateTo, 'yyyy-MM-dd')}T23:59:59.999Z)`)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
 
-      // Aggregate by date (convert timestamp to date)
+      // Aggregate by date (use transaction_date if available, otherwise created_at)
       const dailyMap = new Map<string, number>();
       
       data?.forEach((transaction) => {
-        const transactionDate = format(new Date(transaction.created_at), 'yyyy-MM-dd');
+        const transactionDate = transaction.transaction_date 
+          ? transaction.transaction_date 
+          : format(new Date(transaction.created_at), 'yyyy-MM-dd');
         // Use Math.abs() because inventory costs may be stored as negative values (accounting convention)
         // but profit calculations expect positive cost values
         const cost = Math.abs(transaction.total_cost || 0);

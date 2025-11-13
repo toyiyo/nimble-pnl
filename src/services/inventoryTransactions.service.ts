@@ -40,6 +40,7 @@ export interface InventoryTransactionResult {
   expiry_date: string | null;
   location: string | null;
   created_at: string;
+  transaction_date: string | null;
   performed_by: string;
   product?: any; // Supabase returns array, we'll handle it
   supplier?: any;
@@ -78,6 +79,7 @@ export async function fetchInventoryTransactions(
       reason,
       reference_id,
       created_at,
+      transaction_date,
       performed_by,
       location,
       lot_number,
@@ -93,12 +95,21 @@ export async function fetchInventoryTransactions(
     dbQuery = dbQuery.eq('transaction_type', typeFilter);
   }
 
+  // Date filtering: Use transaction_date if available, otherwise fall back to created_at
+  // We need to filter on both fields to catch all transactions in the date range
   if (startDate) {
-    dbQuery = dbQuery.gte('created_at', startDate);
+    // Transaction is included if:
+    // - transaction_date >= startDate OR
+    // - transaction_date is NULL AND created_at >= startDate
+    dbQuery = dbQuery.or(`transaction_date.gte.${startDate},and(transaction_date.is.null,created_at.gte.${startDate})`);
   }
 
   if (endDate) {
-    dbQuery = dbQuery.lte('created_at', `${endDate}T23:59:59`);
+    // Transaction is included if:
+    // - transaction_date <= endDate OR
+    // - transaction_date is NULL AND created_at <= endDate
+    const endDateTime = `${endDate}T23:59:59`;
+    dbQuery = dbQuery.or(`transaction_date.lte.${endDate},and(transaction_date.is.null,created_at.lte.${endDateTime})`);
   }
 
   if (productId) {
@@ -143,6 +154,13 @@ export async function fetchInventoryTransactions(
     product: Array.isArray(item.product) ? item.product[0] : item.product,
     supplier: Array.isArray(item.supplier) ? item.supplier[0] : item.supplier,
   }));
+}
+
+/**
+ * Get the effective transaction date (transaction_date if available, otherwise created_at)
+ */
+export function getEffectiveTransactionDate(transaction: InventoryTransactionResult): string {
+  return transaction.transaction_date || transaction.created_at.split('T')[0];
 }
 
 /**
@@ -207,7 +225,7 @@ export function groupTransactions(
         groupKey = t.supplier?.name || 'No Supplier';
         break;
       case 'date':
-        groupKey = t.created_at.split('T')[0];
+        groupKey = getEffectiveTransactionDate(t);
         break;
       default:
         groupKey = 'all';
@@ -240,7 +258,7 @@ export function exportTransactionsToCSV(transactions: InventoryTransactionResult
   const csvContent = [
     headers.join(','),
     ...transactions.map((t) => [
-      new Date(t.created_at).toISOString().replace('T', ' ').substring(0, 19),
+      getEffectiveTransactionDate(t),
       `"${t.product?.name || 'Unknown Product'}"`,
       t.transaction_type,
       t.quantity,

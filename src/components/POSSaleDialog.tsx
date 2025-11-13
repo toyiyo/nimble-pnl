@@ -49,6 +49,12 @@ const saleSchema = z.object({
   saleDate: z.string().min(1, 'Sale date is required'),
   saleTime: z.string().optional(),
   adjustmentType: z.enum(['revenue', 'tax', 'tip', 'service_charge', 'discount', 'fee']).optional(),
+  // Adjustment fields
+  taxAmount: z.number().min(0, 'Tax must be positive').optional(),
+  tipAmount: z.number().min(0, 'Tip must be positive').optional(),
+  serviceChargeAmount: z.number().min(0, 'Service charge must be positive').optional(),
+  discountAmount: z.number().min(0, 'Discount must be positive').optional(),
+  feeAmount: z.number().min(0, 'Fee must be positive').optional(),
 });
 
 type SaleFormValues = z.infer<typeof saleSchema>;
@@ -75,7 +81,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   restaurantId,
   editingSale = null,
 }) => {
-  const { createManualSale, updateManualSale } = useUnifiedSales(restaurantId);
+  const { createManualSale, createManualSaleWithAdjustments, updateManualSale } = useUnifiedSales(restaurantId);
   const { posItems, loading: posLoading, refetch: refetchPOSItems } = usePOSItems(restaurantId);
   const { recipes, loading: recipesLoading } = useRecipes(restaurantId);
   
@@ -92,6 +98,11 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       saleDate: new Date().toISOString().split('T')[0],
       saleTime: new Date().toTimeString().slice(0, 5),
       adjustmentType: 'revenue',
+      taxAmount: undefined,
+      tipAmount: undefined,
+      serviceChargeAmount: undefined,
+      discountAmount: undefined,
+      feeAmount: undefined,
     },
   });
 
@@ -106,6 +117,11 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
         saleDate: editingSale.saleDate,
         saleTime: editingSale.saleTime || '',
         adjustmentType: editingSale.adjustmentType ? editingSale.adjustmentType : 'revenue',
+        taxAmount: undefined,
+        tipAmount: undefined,
+        serviceChargeAmount: undefined,
+        discountAmount: undefined,
+        feeAmount: undefined,
       });
     } else {
       form.reset({
@@ -116,6 +132,11 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
         saleDate: new Date().toISOString().split('T')[0],
         saleTime: new Date().toTimeString().slice(0, 5),
         adjustmentType: 'revenue',
+        taxAmount: undefined,
+        tipAmount: undefined,
+        serviceChargeAmount: undefined,
+        discountAmount: undefined,
+        feeAmount: undefined,
       });
     }
   }, [editingSale, form]);
@@ -198,6 +219,25 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
     setComboboxOpen(false);
   };
 
+  // Calculate total collected at POS (revenue + adjustments - discounts)
+  const totalCollected = useMemo(() => {
+    const revenue = form.watch('totalPrice') || 0;
+    const tax = form.watch('taxAmount') || 0;
+    const tip = form.watch('tipAmount') || 0;
+    const serviceCharge = form.watch('serviceChargeAmount') || 0;
+    const discount = form.watch('discountAmount') || 0;
+    const fee = form.watch('feeAmount') || 0;
+    
+    return revenue + tax + tip + serviceCharge - discount + fee;
+  }, [
+    form.watch('totalPrice'),
+    form.watch('taxAmount'),
+    form.watch('tipAmount'),
+    form.watch('serviceChargeAmount'),
+    form.watch('discountAmount'),
+    form.watch('feeAmount')
+  ]);
+
   // Handle creating new item with duplicate prevention
   const handleCreateNewItem = (newItemName: string) => {
     // Check for case-insensitive match
@@ -222,10 +262,11 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   const onSubmit = async (values: SaleFormValues) => {
     let success = false;
     
-    // Convert 'revenue' to null for the adjustmentType
-    const adjustmentType = values.adjustmentType === 'revenue' ? null : values.adjustmentType as 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | undefined;
-    
+    // If editing, use the old single-entry method
     if (editingSale) {
+      // Convert 'revenue' to null for the adjustmentType
+      const adjustmentType = values.adjustmentType === 'revenue' ? null : values.adjustmentType as 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | undefined;
+      
       success = await updateManualSale(editingSale.id, {
         itemName: values.itemName,
         quantity: values.quantity,
@@ -236,15 +277,43 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
         adjustmentType,
       });
     } else {
-      success = await createManualSale({
-        itemName: values.itemName,
-        quantity: values.quantity,
-        unitPrice: values.unitPrice,
-        totalPrice: values.totalPrice,
-        saleDate: values.saleDate,
-        saleTime: values.saleTime,
-        adjustmentType,
-      });
+      // Check if any adjustments are provided
+      const hasAdjustments = 
+        (values.taxAmount && values.taxAmount > 0) ||
+        (values.tipAmount && values.tipAmount > 0) ||
+        (values.serviceChargeAmount && values.serviceChargeAmount > 0) ||
+        (values.discountAmount && values.discountAmount > 0) ||
+        (values.feeAmount && values.feeAmount > 0);
+
+      if (hasAdjustments) {
+        // Use batch creation with adjustments
+        success = await createManualSaleWithAdjustments({
+          itemName: values.itemName,
+          quantity: values.quantity,
+          unitPrice: values.unitPrice,
+          totalPrice: values.totalPrice,
+          saleDate: values.saleDate,
+          saleTime: values.saleTime,
+          adjustments: {
+            tax: values.taxAmount,
+            tip: values.tipAmount,
+            serviceCharge: values.serviceChargeAmount,
+            discount: values.discountAmount,
+            fee: values.feeAmount,
+          },
+        });
+      } else {
+        // Use single creation (no adjustments)
+        success = await createManualSale({
+          itemName: values.itemName,
+          quantity: values.quantity,
+          unitPrice: values.unitPrice,
+          totalPrice: values.totalPrice,
+          saleDate: values.saleDate,
+          saleTime: values.saleTime,
+          adjustmentType: null,
+        });
+      }
     }
 
     if (success) {
@@ -440,34 +509,161 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="adjustmentType"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Entry Type</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || 'revenue'}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select entry type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="revenue">Revenue (Regular Sale)</SelectItem>
-                      <SelectItem value="tax">Sales Tax</SelectItem>
-                      <SelectItem value="tip">Tip</SelectItem>
-                      <SelectItem value="service_charge">Service Charge</SelectItem>
-                      <SelectItem value="discount">Discount</SelectItem>
-                      <SelectItem value="fee">Fee</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormDescription className="text-xs">
-                    Select "Revenue" for regular sales. Choose tax, tip, etc. to record adjustments separately.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {!editingSale && (
+              <div className="space-y-4 pt-4 border-t">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Adjustments (Optional)</h3>
+                  <span className="text-xs text-muted-foreground">Add taxes, tips, fees, etc.</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="taxAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Sales Tax</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="tipAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tip</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="serviceChargeAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Service Charge</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="feeAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Platform Fee</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="discountAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Discount</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {totalCollected > 0 && (
+                  <div className="p-4 bg-muted/50 rounded-lg border">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">Total Collected at POS:</span>
+                      <span className="text-lg font-bold text-primary">
+                        ${totalCollected.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {(() => {
+                        const parts = [];
+                        const revenue = form.watch('totalPrice') || 0;
+                        if (revenue > 0) parts.push(`$${revenue.toFixed(2)} revenue`);
+                        
+                        const tax = form.watch('taxAmount') || 0;
+                        if (tax > 0) parts.push(`$${tax.toFixed(2)} tax`);
+                        
+                        const tip = form.watch('tipAmount') || 0;
+                        if (tip > 0) parts.push(`$${tip.toFixed(2)} tip`);
+                        
+                        const serviceCharge = form.watch('serviceChargeAmount') || 0;
+                        if (serviceCharge > 0) parts.push(`$${serviceCharge.toFixed(2)} service charge`);
+                        
+                        const fee = form.watch('feeAmount') || 0;
+                        if (fee > 0) parts.push(`$${fee.toFixed(2)} fee`);
+                        
+                        const discount = form.watch('discountAmount') || 0;
+                        if (discount > 0) parts.push(`-$${discount.toFixed(2)} discount`);
+                        
+                        return parts.join(' + ');
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <FormField

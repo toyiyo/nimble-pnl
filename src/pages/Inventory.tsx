@@ -1915,6 +1915,7 @@ export const Inventory: React.FC = () => {
           product={quickInventoryProduct}
           mode={scanMode}
           onSave={handleQuickInventorySave}
+          restaurantId={selectedRestaurant?.restaurant_id || null}
         />
       )}
     </div>

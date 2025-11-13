@@ -272,6 +272,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
                 toast({
                   title: 'Template applied',
                   description: `Using saved mapping template: "${bestTemplate.template_name}"`,
+                  duration: 3000,
                 });
               }
             }
@@ -320,12 +321,14 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
           toast({
             title: 'Template saved',
             description: `Mapping template "${templateName}" has been saved for future use`,
+            duration: 4000,
           });
         } else {
           toast({
             title: 'Template save failed',
             description: result.error || 'Failed to save template',
             variant: 'destructive',
+            duration: 5000,
           });
         }
       }
@@ -424,10 +427,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
     } catch (error) {
       // Special case: mapping dialog is being shown, don't show error
       if (error instanceof Error && error.message === 'PENDING_MAPPING') {
-        toast({
-          title: "Review column mappings",
-          description: "Please confirm how your CSV columns map to our fields",
-        });
+        // Dialog is being shown - no toast needed as the dialog itself is self-explanatory
         return;
       }
 

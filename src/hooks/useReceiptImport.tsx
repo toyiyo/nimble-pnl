@@ -38,6 +38,7 @@ export interface ReceiptImport {
   created_at: string;
   updated_at: string;
   processed_by: string | null;
+  purchase_date: string | null;
 }
 
 export interface Supplier {
@@ -437,7 +438,7 @@ export const useReceiptImport = () => {
     }
 
     try {
-      // Get all mapped line items and receipt details for vendor info AND supplier_id
+      // Get all mapped line items and receipt details for vendor info, supplier_id, AND purchase_date
       const [lineItemsResult, receiptResult] = await Promise.all([
         supabase
           .from('receipt_line_items')
@@ -446,7 +447,7 @@ export const useReceiptImport = () => {
           .in('mapping_status', ['mapped', 'new_item']),
         supabase
           .from('receipt_imports')
-          .select('vendor_name, supplier_id')
+          .select('vendor_name, supplier_id, purchase_date')
           .eq('id', receiptId)
           .single()
       ]);
@@ -458,6 +459,7 @@ export const useReceiptImport = () => {
       const lineItems = lineItemsResult.data;
       const vendorName = receiptResult.data?.vendor_name || null;
       const supplierId = receiptResult.data?.supplier_id || null;
+      const purchaseDate = receiptResult.data?.purchase_date || null;
 
       let importedCount = 0;
 
@@ -518,7 +520,7 @@ export const useReceiptImport = () => {
             continue;
           }
 
-          // Log inventory transaction WITH supplier tracking
+          // Log inventory transaction WITH supplier tracking and purchase date
           await supabase.from('inventory_transactions').insert({
             restaurant_id: selectedRestaurant.restaurant_id,
             product_id: item.matched_product_id,
@@ -528,7 +530,8 @@ export const useReceiptImport = () => {
             transaction_type: 'purchase',
             reason: `Receipt import from ${receiptId}${vendorName ? ` - ${vendorName}` : ''}`,
             reference_id: `receipt_${receiptId}_${item.id}`,
-            supplier_id: supplierId  // Track which supplier this purchase came from
+            supplier_id: supplierId,  // Track which supplier this purchase came from
+            transaction_date: purchaseDate  // Use actual purchase date from receipt
           });
 
           // Create or update product-supplier relationship
@@ -578,7 +581,7 @@ export const useReceiptImport = () => {
             continue;
           }
 
-          // Log inventory transaction for new product WITH supplier tracking
+          // Log inventory transaction for new product WITH supplier tracking and purchase date
           await supabase.from('inventory_transactions').insert({
             restaurant_id: selectedRestaurant.restaurant_id,
             product_id: newProduct.id,
@@ -588,7 +591,8 @@ export const useReceiptImport = () => {
             transaction_type: 'purchase',
             reason: `Receipt import (new item) from ${receiptId}${vendorName ? ` - ${vendorName}` : ''}`,
             reference_id: `receipt_${receiptId}_${item.id}`,
-            supplier_id: supplierId  // Track which supplier this purchase came from
+            supplier_id: supplierId,  // Track which supplier this purchase came from
+            transaction_date: purchaseDate  // Use actual purchase date from receipt
           });
 
           // Create product-supplier relationship for new product
@@ -600,7 +604,7 @@ export const useReceiptImport = () => {
                 product_id: newProduct.id,
                 supplier_id: supplierId,
                 last_unit_cost: unitPrice,
-                last_purchase_date: new Date().toISOString(),
+                last_purchase_date: purchaseDate || new Date().toISOString(),
                 last_purchase_quantity: item.parsed_quantity || 0,
                 average_unit_cost: unitPrice,
                 purchase_count: 1,

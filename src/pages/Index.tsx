@@ -12,6 +12,7 @@ import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { useMonthlyMetrics } from '@/hooks/useMonthlyMetrics';
 import { usePendingOutflowsSummary } from '@/hooks/usePendingOutflows';
+import { useInventoryPurchases } from '@/hooks/useInventoryPurchases';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -107,6 +108,13 @@ const Index = () => {
   // Revenue breakdown is used by periodMetrics internally but we also need it for detailed display
   // React Query will cache this with the same key, so no duplicate network requests
   const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
+    selectedRestaurant?.restaurant_id || null,
+    selectedPeriod.from,
+    selectedPeriod.to
+  );
+
+  // Fetch inventory purchases for the selected period
+  const { data: inventoryPurchases, isLoading: purchasesLoading } = useInventoryPurchases(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,
     selectedPeriod.to
@@ -284,6 +292,93 @@ const Index = () => {
 
   // Monthly data from new metrics hook
   const monthlyData = monthlyMetrics || [];
+
+  // Reconciliation check: Validate that Performance Overview and Monthly Performance match
+  // This helps catch data consistency issues between the two views
+  useEffect(() => {
+    if (!periodMetrics || !monthlyData || monthlyData.length === 0) return;
+    
+    // Find the current month's data in monthlyData
+    const currentMonth = format(selectedPeriod.from, 'yyyy-MM');
+    const monthlyEntry = monthlyData.find(m => m.period === currentMonth);
+    
+    if (!monthlyEntry) {
+      console.info('Reconciliation check: No monthly entry found for', currentMonth, 'Available periods:', monthlyData.map(m => m.period));
+      return;
+    }
+    
+    // Compare gross revenue, discounts, and net revenue
+    const overviewGrossRevenue = periodMetrics.grossRevenue;
+    const monthlyGrossRevenue = monthlyEntry.gross_revenue;
+    const grossRevenueDiff = Math.abs(overviewGrossRevenue - monthlyGrossRevenue);
+    
+    const overviewDiscounts = periodMetrics.discounts;
+    const monthlyDiscounts = monthlyEntry.discounts;
+    const discountsDiff = Math.abs(overviewDiscounts - monthlyDiscounts);
+    
+    const overviewNetRevenue = periodMetrics.netRevenue;
+    const monthlyNetRevenue = monthlyEntry.net_revenue;
+    const netRevenueDiff = Math.abs(overviewNetRevenue - monthlyNetRevenue);
+    
+    // Compare COGS/food cost
+    const overviewFoodCost = periodMetrics.foodCost;
+    const monthlyFoodCost = monthlyEntry.food_cost;
+    const foodCostDiff = Math.abs(overviewFoodCost - monthlyFoodCost);
+    
+    // Log detailed comparison (always log for debugging)
+    console.group(`📊 Reconciliation Check: ${selectedPeriod.label}`);
+    console.table({
+      'Gross Revenue': {
+        'Performance Overview': `$${overviewGrossRevenue.toFixed(2)}`,
+        'Monthly Performance': `$${monthlyGrossRevenue.toFixed(2)}`,
+        'Difference': `$${(overviewGrossRevenue - monthlyGrossRevenue).toFixed(2)}`,
+      },
+      'Discounts': {
+        'Performance Overview': `$${overviewDiscounts.toFixed(2)}`,
+        'Monthly Performance': `$${monthlyDiscounts.toFixed(2)}`,
+        'Difference': `$${(overviewDiscounts - monthlyDiscounts).toFixed(2)}`,
+      },
+      'Net Revenue': {
+        'Performance Overview': `$${overviewNetRevenue.toFixed(2)}`,
+        'Monthly Performance': `$${monthlyNetRevenue.toFixed(2)}`,
+        'Difference': `$${(overviewNetRevenue - monthlyNetRevenue).toFixed(2)}`,
+      },
+      'COGS/Food Cost': {
+        'Performance Overview': `$${overviewFoodCost.toFixed(2)}`,
+        'Monthly Performance': `$${monthlyFoodCost.toFixed(2)}`,
+        'Difference': `$${(overviewFoodCost - monthlyFoodCost).toFixed(2)}`,
+      },
+    });
+    console.groupEnd();
+    
+    // Warn about significant discrepancies
+    if (grossRevenueDiff > 1) {
+      console.warn('⚠️ Gross Revenue mismatch detected:', {
+        difference: `$${(overviewGrossRevenue - monthlyGrossRevenue).toFixed(2)}`,
+        percentDiff: ((grossRevenueDiff / overviewGrossRevenue) * 100).toFixed(2) + '%',
+      });
+    }
+    
+    if (discountsDiff > 1) {
+      console.warn('⚠️ Discounts mismatch detected:', {
+        difference: `$${(overviewDiscounts - monthlyDiscounts).toFixed(2)}`,
+      });
+    }
+    
+    if (netRevenueDiff > 1) {
+      console.warn('⚠️ Net Revenue mismatch detected:', {
+        difference: `$${(overviewNetRevenue - monthlyNetRevenue).toFixed(2)}`,
+        percentDiff: ((netRevenueDiff / overviewNetRevenue) * 100).toFixed(2) + '%',
+      });
+    }
+    
+    if (foodCostDiff > 1) {
+      console.warn('⚠️ Food Cost mismatch detected:', {
+        difference: `$${(overviewFoodCost - monthlyFoodCost).toFixed(2)}`,
+      });
+    }
+  }, [periodMetrics, monthlyData, selectedPeriod]);
+
 
   // Generate AI insights with memoization
   const insights = useMemo(() => {
@@ -487,7 +582,7 @@ const Index = () => {
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" role="region" aria-label="Performance metrics">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4" role="region" aria-label="Performance metrics">
                   <DashboardMetricCard
                     title="Your Sales (after discounts/refunds)"
                     value={periodData ? `$${periodData.net_revenue.toFixed(0)}` : '--'}
@@ -497,6 +592,15 @@ const Index = () => {
                     } : undefined}
                     icon={DollarSign}
                     variant={periodData && previousPeriodData && periodData.net_revenue > previousPeriodData.net_revenue ? 'success' : 'default'}
+                    sparklineData={undefined}
+                    periodLabel={selectedPeriod.label}
+                  />
+                  <DashboardMetricCard
+                    title="Inventory Purchases"
+                    value={inventoryPurchases ? `$${inventoryPurchases.totalPurchases.toFixed(0)}` : '--'}
+                    icon={Package}
+                    variant="default"
+                    subtitle={inventoryPurchases ? `${inventoryPurchases.purchaseCount} purchase${inventoryPurchases.purchaseCount !== 1 ? 's' : ''}` : undefined}
                     sparklineData={undefined}
                     periodLabel={selectedPeriod.label}
                   />

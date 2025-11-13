@@ -187,7 +187,7 @@ export const useInventoryAudit = () => {
     newStock: number,
     oldStock: number,
     unitCost: number,
-    transactionType: 'purchase' | 'adjustment' | 'waste',
+    transactionType: 'adjustment' | 'waste',
     reason: string,
     referenceId?: string
   ) => {
@@ -205,11 +205,10 @@ export const useInventoryAudit = () => {
       if (updateError) throw updateError;
 
       // Log the transaction
+      // Note: Only receipt uploads should create purchases
+      // This function only handles adjustments and waste
       let auditSuccess = false;
       switch (transactionType) {
-        case 'purchase':
-          auditSuccess = await logPurchase(restaurantId, productId, quantityDifference, unitCost, reason, referenceId);
-          break;
         case 'adjustment':
           auditSuccess = await logAdjustment(restaurantId, productId, quantityDifference, unitCost, reason, referenceId);
           break;
@@ -232,7 +231,7 @@ export const useInventoryAudit = () => {
       });
       return false;
     }
-  }, [logPurchase, logAdjustment, logWaste, toast]);
+  }, [logAdjustment, logWaste, toast]);
 
   return {
     logInventoryTransaction,

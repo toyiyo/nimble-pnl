@@ -62,8 +62,9 @@ export interface MonthlyExpenses {
 }
 
 /**
- * Hook to fetch monthly expense data from bank transactions
+ * Hook to fetch monthly expense data from bank transactions and pending outflows
  * Groups expenses by the 12 standard categories
+ * Includes pending outflows that haven't been matched to bank transactions to avoid double-counting
  */
 export function useMonthlyExpenses(
   restaurantId: string | null,
@@ -90,6 +91,21 @@ export function useMonthlyExpenses(
       // Exclude internal transfers (transfers between owned accounts)
       const txns = (transactions || []).filter(t => !t.is_transfer);
 
+      // Fetch pending outflows (not yet matched to bank transactions)
+      // Only include pending outflows that haven't been matched to avoid double-counting
+      const { data: pendingOutflows, error: pendingError } = await supabase
+        .from('pending_outflows')
+        .select('amount, category_id, issue_date, status, linked_bank_transaction_id, chart_account:chart_of_accounts!category_id(account_name, account_subtype)')
+        .eq('restaurant_id', restaurantId)
+        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
+        .is('linked_bank_transaction_id', null) // Only unmatched pending outflows
+        .gte('issue_date', format(dateFrom, 'yyyy-MM-dd'))
+        .lte('issue_date', format(dateTo, 'yyyy-MM-dd'));
+
+      if (pendingError) throw pendingError;
+
+      const pendingTxns = pendingOutflows || [];
+
       // Group by month
       const monthlyMap = new Map<string, {
         period: string;
@@ -99,6 +115,7 @@ export function useMonthlyExpenses(
         categoryMap: Map<string, { amount: number; count: number }>;
       }>();
 
+      // Process cleared bank transactions
       txns.forEach(t => {
         const monthKey = format(new Date(t.transaction_date), 'yyyy-MM');
 
@@ -138,6 +155,48 @@ export function useMonthlyExpenses(
         const catEntry = month.categoryMap.get(category)!;
         catEntry.amount += txnAmount;
         catEntry.count += 1;
+      });
+
+      // Process pending outflows (not yet matched to bank transactions)
+      pendingTxns.forEach(t => {
+        const monthKey = format(new Date(t.issue_date), 'yyyy-MM');
+
+        if (!monthlyMap.has(monthKey)) {
+          monthlyMap.set(monthKey, {
+            period: monthKey,
+            totalExpenses: 0,
+            laborCost: 0,
+            foodCost: 0,
+            categoryMap: new Map(),
+          });
+        }
+
+        const month = monthlyMap.get(monthKey)!;
+        const txnAmount = t.amount; // Pending outflows are stored as positive amounts
+        
+        month.totalExpenses += txnAmount;
+
+        let category = 'Other/Uncategorized';
+
+        if (t.category_id && t.chart_account) {
+          const accountSubtype = t.chart_account.account_subtype;
+          const accountName = t.chart_account.account_name || '';
+          category = mapToStandardCategory(accountSubtype, accountName);
+
+          // Track food cost and labor separately
+          if (category === 'Inventory/Food Purchases') {
+            month.foodCost += txnAmount;
+          } else if (category === 'Labor/Payroll') {
+            month.laborCost += txnAmount;
+          }
+        }
+
+        if (!month.categoryMap.has(category)) {
+          month.categoryMap.set(category, { amount: 0, count: 0 });
+        }
+        const catEntry = month.categoryMap.get(category)!;
+        catEntry.amount += txnAmount;
+        // Don't increment count for pending outflows since they're not actual transactions yet
       });
 
       // Convert to array format

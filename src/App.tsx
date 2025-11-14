@@ -37,6 +37,7 @@ import FinancialIntelligence from "./pages/FinancialIntelligence";
 import AiAssistant from "./pages/AiAssistant";
 import Scheduling from "./pages/Scheduling";
 import EmployeeClock from "./pages/EmployeeClock";
+import TimePunchesManager from "./pages/TimePunchesManager";
 
 const queryClient = new QueryClient();
 
@@ -101,6 +102,7 @@ const App = () => (
             <Route path="/receipt-import" element={<ProtectedRoute><ReceiptImport /></ProtectedRoute>} />
           <Route path="/scheduling" element={<ProtectedRoute><Scheduling /></ProtectedRoute>} />
           <Route path="/employee/clock" element={<ProtectedRoute><EmployeeClock /></ProtectedRoute>} />
+          <Route path="/time-punches" element={<ProtectedRoute><TimePunchesManager /></ProtectedRoute>} />
           <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />
           <Route path="/financial-intelligence" element={<ProtectedRoute><FinancialIntelligence /></ProtectedRoute>} />
           <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />

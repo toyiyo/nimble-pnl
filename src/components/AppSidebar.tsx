@@ -30,6 +30,7 @@ import {
   TrendingUp,
   Sparkles,
   Clock,
+  ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -53,6 +54,7 @@ const navigationGroups = [
     items: [
       { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
       { path: '/employee/clock', label: 'Time Clock', icon: Clock },
+      { path: '/time-punches', label: 'Time Punches', icon: ClipboardList },
     ],
   },
   {

@@ -48,6 +48,12 @@ const navigationGroups = [
     ],
   },
   {
+    label: 'Operations',
+    items: [
+      { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
+    ],
+  },
+  {
     label: 'Inventory',
     items: [
       { path: '/recipes', label: 'Recipes', icon: ChefHat },

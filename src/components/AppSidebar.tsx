@@ -29,6 +29,7 @@ import {
   LogOut,
   TrendingUp,
   Sparkles,
+  Clock,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -51,6 +52,7 @@ const navigationGroups = [
     label: 'Operations',
     items: [
       { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
+      { path: '/employee/clock', label: 'Time Clock', icon: Clock },
     ],
   },
   {

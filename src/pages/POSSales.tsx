@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,12 +94,19 @@ export default function POSSales() {
 
   // Create a map of POS item name to recipe for quick lookup
   const recipeByItemName = useMemo(() => {
-    const map = new Map<string, { id: string; name: string }>();
+    const map = new Map<string, { 
+      id: string; 
+      name: string; 
+      profitMargin?: number;
+      hasIngredients: boolean;
+    }>();
     recipes.forEach(recipe => {
       if (recipe.pos_item_name) {
         map.set(recipe.pos_item_name.toLowerCase(), {
           id: recipe.id,
-          name: recipe.name
+          name: recipe.name,
+          profitMargin: recipe.profit_margin,
+          hasIngredients: recipe.ingredients ? recipe.ingredients.length > 0 : false
         });
       }
     });
@@ -834,8 +841,16 @@ export default function POSSales() {
                                   className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
                                   onClick={() => navigate(`/recipes?recipeId=${recipeByItemName.get(sale.itemName.toLowerCase())?.id}`)}
                                 >
+                                  {!recipeByItemName.get(sale.itemName.toLowerCase())?.hasIngredients && (
+                                    <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
+                                  )}
                                   <ExternalLink className="h-3 w-3 mr-1" />
                                   {recipeByItemName.get(sale.itemName.toLowerCase())?.name}
+                                  {recipeByItemName.get(sale.itemName.toLowerCase())?.profitMargin != null && (
+                                    <span className="ml-1 font-semibold">
+                                      ({recipeByItemName.get(sale.itemName.toLowerCase())!.profitMargin!.toFixed(0)}%)
+                                    </span>
+                                  )}
                                 </Badge>
                               ) : null}
                               {sale.suggested_category_id && !sale.is_categorized && (
@@ -1070,8 +1085,16 @@ export default function POSSales() {
                                       className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
                                       onClick={() => navigate(`/recipes?recipeId=${recipeByItemName.get(item.item_name.toLowerCase())?.id}`)}
                                     >
+                                      {!recipeByItemName.get(item.item_name.toLowerCase())?.hasIngredients && (
+                                        <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
+                                      )}
                                       <ExternalLink className="h-3 w-3 mr-1" />
                                       {recipeByItemName.get(item.item_name.toLowerCase())?.name}
+                                      {recipeByItemName.get(item.item_name.toLowerCase())?.profitMargin != null && (
+                                        <span className="ml-1 font-semibold">
+                                          ({recipeByItemName.get(item.item_name.toLowerCase())!.profitMargin!.toFixed(0)}%)
+                                        </span>
+                                      )}
                                     </Badge>
                                   ) : null}
                                 </div>

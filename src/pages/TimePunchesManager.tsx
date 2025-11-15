@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useTimePunches, useDeleteTimePunch } from '@/hooks/useTimePunches';
 import { useEmployees } from '@/hooks/useEmployees';
-import { Clock, Trash2, Edit, Download, Search } from 'lucide-react';
+import { Clock, Trash2, Edit, Download, Search, Camera, MapPin, Eye } from 'lucide-react';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -31,6 +32,7 @@ const TimePunchesManager = () => {
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [punchToDelete, setPunchToDelete] = useState<TimePunch | null>(null);
+  const [viewingPunch, setViewingPunch] = useState<TimePunch | null>(null);
 
   const { employees } = useEmployees(restaurantId);
   const { punches, loading } = useTimePunches(
@@ -182,13 +184,34 @@ const TimePunchesManager = () => {
                         {format(new Date(punch.punch_time), 'h:mm:ss a')}
                       </div>
                     </div>
-                    {punch.notes && (
-                      <div className="text-sm text-muted-foreground max-w-xs truncate">
-                        {punch.notes}
-                      </div>
-                    )}
+                    {/* Verification indicators */}
+                    <div className="flex items-center gap-2">
+                      {punch.photo && (
+                        <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
+                          <Camera className="h-3 w-3 mr-1" />
+                          Photo
+                        </Badge>
+                      )}
+                      {punch.location && (
+                        <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20">
+                          <MapPin className="h-3 w-3 mr-1" />
+                          GPS
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <div className="flex gap-2 ml-4">
+                    {(punch.photo || punch.location) && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setViewingPunch(punch)}
+                        aria-label="View verification details"
+                        title="View photo and location"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -214,6 +237,90 @@ const TimePunchesManager = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Verification Details Dialog */}
+      <Dialog open={!!viewingPunch} onOpenChange={() => setViewingPunch(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Verification Details</DialogTitle>
+          </DialogHeader>
+          {viewingPunch && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Employee:</span>
+                  <div className="font-medium">{viewingPunch.employee?.name}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Action:</span>
+                  <div className="font-medium">{getPunchTypeLabel(viewingPunch.punch_type)}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Date:</span>
+                  <div className="font-medium">{format(new Date(viewingPunch.punch_time), 'MMM d, yyyy')}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Time:</span>
+                  <div className="font-medium">{format(new Date(viewingPunch.punch_time), 'h:mm:ss a')}</div>
+                </div>
+              </div>
+
+              {viewingPunch.photo && (
+                <div>
+                  <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                    <Camera className="h-4 w-4" />
+                    Verification Photo
+                  </div>
+                  <div className="rounded-lg overflow-hidden border">
+                    <img 
+                      src={viewingPunch.photo} 
+                      alt="Employee verification photo" 
+                      className="w-full h-auto"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {viewingPunch.location && (
+                <div>
+                  <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    Location
+                  </div>
+                  <div className="p-4 rounded-lg border bg-muted/50 space-y-2">
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Latitude:</span>{' '}
+                      <span className="font-mono">{viewingPunch.location.latitude.toFixed(6)}</span>
+                    </div>
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Longitude:</span>{' '}
+                      <span className="font-mono">{viewingPunch.location.longitude.toFixed(6)}</span>
+                    </div>
+                    <a
+                      href={`https://www.google.com/maps?q=${viewingPunch.location.latitude},${viewingPunch.location.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline text-sm inline-flex items-center gap-1"
+                    >
+                      <MapPin className="h-3 w-3" />
+                      View on Google Maps
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {viewingPunch.device_info && (
+                <div>
+                  <div className="text-sm font-medium mb-2">Device Information</div>
+                  <div className="p-3 rounded-lg border bg-muted/50 text-xs font-mono break-all">
+                    {viewingPunch.device_info}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!punchToDelete} onOpenChange={() => setPunchToDelete(null)}>

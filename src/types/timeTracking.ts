@@ -10,6 +10,7 @@ export interface TimePunch {
     longitude: number;
   };
   device_info?: string;
+  photo?: string; // Base64 data URL of selfie
   notes?: string;
   created_at: string;
   updated_at: string;

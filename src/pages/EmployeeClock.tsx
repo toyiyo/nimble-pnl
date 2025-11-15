@@ -1,17 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee, useEmployeePunchStatus, useCreateTimePunch, useTimePunches } from '@/hooks/useTimePunches';
-import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle } from 'lucide-react';
+import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, Shield, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 const EmployeeClock = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [showCameraDialog, setShowCameraDialog] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [pendingPunchType, setPendingPunchType] = useState<'clock_in' | 'clock_out' | 'break_start' | 'break_end' | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { toast } = useToast();
 
   const { employee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const { status, loading: statusLoading } = useEmployeePunchStatus(employee?.id || null);
@@ -27,18 +37,76 @@ const EmployeeClock = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const handlePunch = async (punchType: 'clock_in' | 'clock_out' | 'break_start' | 'break_end') => {
-    if (!restaurantId || !employee) return;
+  // Cleanup camera stream when component unmounts or dialog closes
+  useEffect(() => {
+    if (!showCameraDialog && cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+  }, [showCameraDialog, cameraStream]);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: 640, height: 480 }
+      });
+      setCameraStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('Camera access error:', error);
+      toast({
+        title: 'Camera Not Available',
+        description: 'Unable to access camera. You can still clock in without a photo.',
+        variant: 'default',
+      });
+    }
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.drawImage(video, 0, 0);
+        const photoData = canvas.toDataURL('image/jpeg', 0.8);
+        setCapturedPhoto(photoData);
+      }
+    }
+  };
+
+  const retakePhoto = () => {
+    setCapturedPhoto(null);
+  };
+
+  const handleInitiatePunch = async (punchType: 'clock_in' | 'clock_out' | 'break_start' | 'break_end') => {
+    setPendingPunchType(punchType);
+    setShowCameraDialog(true);
+    setCapturedPhoto(null);
+    // Start camera automatically
+    setTimeout(startCamera, 100);
+  };
+
+  const handleConfirmPunch = async () => {
+    if (!restaurantId || !employee || !pendingPunchType) return;
 
     // Get device info
     const deviceInfo = `${navigator.userAgent.substring(0, 100)}`;
 
-    // Get location if available
+    // Get location with increased timeout and better error handling
     let location = undefined;
     if (navigator.geolocation) {
       try {
         const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 15000, // Increased timeout to 15 seconds
+            enableHighAccuracy: false, // Faster, less battery intensive
+            maximumAge: 30000, // Accept cached position up to 30 seconds old
+          });
         });
         location = {
           latitude: position.coords.latitude,
@@ -46,17 +114,33 @@ const EmployeeClock = () => {
         };
       } catch (error) {
         console.log('Location not available:', error);
+        // Don't block the punch - location is optional
       }
     }
 
     createPunch.mutate({
       restaurant_id: restaurantId,
       employee_id: employee.id,
-      punch_type: punchType,
+      punch_type: pendingPunchType,
       punch_time: new Date().toISOString(),
       location,
       device_info: deviceInfo,
+      photo: capturedPhoto || undefined,
     });
+
+    // Close dialog and cleanup
+    setShowCameraDialog(false);
+    setPendingPunchType(null);
+    setCapturedPhoto(null);
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+  };
+
+  const handleSkipVerification = () => {
+    // Allow punch without photo
+    handleConfirmPunch();
   };
 
   if (!restaurantId) {
@@ -174,6 +258,7 @@ const EmployeeClock = () => {
       <Card>
         <CardHeader>
           <CardTitle>Quick Actions</CardTitle>
+          <CardDescription>Verify your identity for accurate time tracking</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -181,7 +266,7 @@ const EmployeeClock = () => {
               <Button
                 size="lg"
                 className="h-24 text-xl"
-                onClick={() => handlePunch('clock_in')}
+                onClick={() => handleInitiatePunch('clock_in')}
                 disabled={createPunch.isPending}
               >
                 <LogIn className="mr-2 h-6 w-6" />
@@ -193,7 +278,7 @@ const EmployeeClock = () => {
                   size="lg"
                   variant="outline"
                   className="h-24 text-xl"
-                  onClick={() => handlePunch('break_end')}
+                  onClick={() => handleInitiatePunch('break_end')}
                   disabled={createPunch.isPending}
                 >
                   <PlayCircle className="mr-2 h-6 w-6" />
@@ -203,7 +288,7 @@ const EmployeeClock = () => {
                   size="lg"
                   variant="destructive"
                   className="h-24 text-xl"
-                  onClick={() => handlePunch('clock_out')}
+                  onClick={() => handleInitiatePunch('clock_out')}
                   disabled={createPunch.isPending}
                 >
                   <LogOut className="mr-2 h-6 w-6" />
@@ -216,7 +301,7 @@ const EmployeeClock = () => {
                   size="lg"
                   variant="outline"
                   className="h-24 text-xl"
-                  onClick={() => handlePunch('break_start')}
+                  onClick={() => handleInitiatePunch('break_start')}
                   disabled={createPunch.isPending}
                 >
                   <Coffee className="mr-2 h-6 w-6" />
@@ -226,7 +311,7 @@ const EmployeeClock = () => {
                   size="lg"
                   variant="destructive"
                   className="h-24 text-xl"
-                  onClick={() => handlePunch('clock_out')}
+                  onClick={() => handleInitiatePunch('clock_out')}
                   disabled={createPunch.isPending}
                 >
                   <LogOut className="mr-2 h-6 w-6" />
@@ -235,6 +320,15 @@ const EmployeeClock = () => {
               </>
             )}
           </div>
+
+          {/* Info about verification */}
+          <Alert className="mt-4 bg-primary/5 border-primary/20">
+            <Shield className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-sm">
+              <strong>Why we verify:</strong> Your photo and location help ensure accurate time tracking and protect against time theft. 
+              This keeps your hours fair and secure for payroll.
+            </AlertDescription>
+          </Alert>
         </CardContent>
       </Card>
 
@@ -268,12 +362,127 @@ const EmployeeClock = () => {
                       </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-2">
+                    {punch.photo && <Camera className="h-4 w-4 text-green-600" title="Photo verified" />}
+                    {punch.location && <MapPin className="h-4 w-4 text-blue-600" title="Location verified" />}
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Camera Verification Dialog */}
+      <Dialog open={showCameraDialog} onOpenChange={(open) => {
+        if (!open) {
+          // Cleanup when closing
+          if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+            setCameraStream(null);
+          }
+          setShowCameraDialog(false);
+          setPendingPunchType(null);
+          setCapturedPhoto(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Camera className="h-5 w-5" />
+              Verify Your Identity
+            </DialogTitle>
+            <DialogDescription>
+              Take a quick selfie to confirm it's really you clocking in. This helps prevent time theft and ensures accurate payroll.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Camera Preview or Captured Photo */}
+            <div className="relative aspect-[4/3] bg-muted rounded-lg overflow-hidden">
+              {!capturedPhoto ? (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                  />
+                  {!cameraStream && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-muted">
+                      <div className="text-center space-y-2">
+                        <Camera className="h-12 w-12 mx-auto text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">Starting camera...</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <img src={capturedPhoto} alt="Captured selfie" className="w-full h-full object-cover" />
+              )}
+              <canvas ref={canvasRef} className="hidden" />
+            </div>
+
+            {/* Benefits of verification */}
+            <div className="space-y-2 text-sm">
+              <div className="flex items-start gap-2">
+                <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                <span><strong>Protects your earnings:</strong> Ensures only you can clock in with your account</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                <span><strong>Accurate hours:</strong> Helps resolve any disputes about work time</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                <span><strong>Fair for everyone:</strong> Prevents buddy punching and time theft</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              {!capturedPhoto ? (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={handleSkipVerification}
+                    className="w-full sm:w-auto"
+                  >
+                    Skip Photo
+                  </Button>
+                  <Button
+                    onClick={capturePhoto}
+                    disabled={!cameraStream}
+                    className="w-full sm:w-auto"
+                  >
+                    <Camera className="mr-2 h-4 w-4" />
+                    Take Photo
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={retakePhoto}
+                    className="w-full sm:w-auto"
+                  >
+                    Retake
+                  </Button>
+                  <Button
+                    onClick={handleConfirmPunch}
+                    disabled={createPunch.isPending}
+                    className="w-full sm:w-auto"
+                  >
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Confirm & Clock In
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2 } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,8 @@ import { useSplitPosSale } from "@/hooks/useSplitPosSale";
 import { SplitPosSaleDialog } from "@/components/pos-sales/SplitPosSaleDialog";
 import { SplitSaleView } from "@/components/pos-sales/SplitSaleView";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
+import { useRecipes } from "@/hooks/useRecipes";
+import { useNavigate } from "react-router-dom";
 
 export default function POSSales() {
   const {
@@ -48,6 +50,8 @@ export default function POSSales() {
     selectedRestaurant?.restaurant_id || null,
   );
   const { simulateDeduction } = useInventoryDeduction();
+  const { recipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
+  const navigate = useNavigate();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -87,6 +91,20 @@ export default function POSSales() {
   const categoryAccounts = useMemo(() => {
     return accounts.filter(acc => acc.account_type === 'revenue' || acc.account_type === 'liability');
   }, [accounts]);
+
+  // Create a map of POS item name to recipe for quick lookup
+  const recipeByItemName = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    recipes.forEach(recipe => {
+      if (recipe.pos_item_name) {
+        map.set(recipe.pos_item_name.toLowerCase(), {
+          id: recipe.id,
+          name: recipe.name
+        });
+      }
+    });
+    return map;
+  }, [recipes]);
 
   const handleMapPOSItem = (itemName: string) => {
     setSelectedPOSItemForMapping(itemName);
@@ -802,7 +820,7 @@ export default function POSSales() {
                               <Badge variant="outline" className="text-xs">
                                 {sale.posSystem}
                               </Badge>
-                              {unmappedItems.includes(sale.itemName) && (
+                              {unmappedItems.includes(sale.itemName) ? (
                                 <Badge
                                   variant="destructive"
                                   className="text-xs cursor-pointer hover:scale-105 transition-transform animate-pulse"
@@ -810,7 +828,16 @@ export default function POSSales() {
                                 >
                                   No Recipe
                                 </Badge>
-                              )}
+                              ) : recipeByItemName.has(sale.itemName.toLowerCase()) ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
+                                  onClick={() => navigate(`/recipes?recipeId=${recipeByItemName.get(sale.itemName.toLowerCase())?.id}`)}
+                                >
+                                  <ExternalLink className="h-3 w-3 mr-1" />
+                                  {recipeByItemName.get(sale.itemName.toLowerCase())?.name}
+                                </Badge>
+                              ) : null}
                               {sale.suggested_category_id && !sale.is_categorized && (
                                 <Badge variant="outline" className="bg-accent/10 text-accent-foreground border-accent/30">
                                   <Sparkles className="h-3 w-3 mr-1" />
@@ -1029,7 +1056,7 @@ export default function POSSales() {
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1">
                                   <h3 className="font-semibold text-base mb-1 line-clamp-2">{item.item_name}</h3>
-                                  {unmappedItems.includes(item.item_name) && (
+                                  {unmappedItems.includes(item.item_name) ? (
                                     <Badge
                                       variant="destructive"
                                       className="cursor-pointer hover:scale-105 transition-transform animate-pulse text-xs"
@@ -1037,7 +1064,16 @@ export default function POSSales() {
                                     >
                                       No Recipe
                                     </Badge>
-                                  )}
+                                  ) : recipeByItemName.has(item.item_name.toLowerCase()) ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
+                                      onClick={() => navigate(`/recipes?recipeId=${recipeByItemName.get(item.item_name.toLowerCase())?.id}`)}
+                                    >
+                                      <ExternalLink className="h-3 w-3 mr-1" />
+                                      {recipeByItemName.get(item.item_name.toLowerCase())?.name}
+                                    </Badge>
+                                  ) : null}
                                 </div>
                                 <Badge 
                                   variant="secondary"

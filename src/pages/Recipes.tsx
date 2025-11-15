@@ -529,7 +529,15 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
                 <div className="space-y-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium truncate">{recipe.name}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-medium truncate">{recipe.name}</h3>
+                        {(!recipe.ingredients || recipe.ingredients.length === 0) && (
+                          <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                            <AlertTriangle className="h-3 w-3 mr-1" />
+                            No ingredients
+                          </Badge>
+                        )}
+                      </div>
                       {recipe.description && (
                         <p className="text-sm text-muted-foreground line-clamp-2">{recipe.description}</p>
                       )}
@@ -605,7 +613,15 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
                   <TableRow key={recipe.id}>
                     <TableCell>
                       <div>
-                        <div className="font-medium">{recipe.name}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{recipe.name}</span>
+                          {(!recipe.ingredients || recipe.ingredients.length === 0) && (
+                            <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                              No ingredients
+                            </Badge>
+                          )}
+                        </div>
                         {recipe.description && (
                           <div className="text-sm text-muted-foreground">
                             {recipe.description}

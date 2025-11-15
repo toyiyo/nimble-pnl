@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useTimePunches, useDeleteTimePunch } from '@/hooks/useTimePunches';
 import { useEmployees } from '@/hooks/useEmployees';
+import { supabase } from '@/integrations/supabase/client';
 import { Clock, Trash2, Edit, Download, Search, Camera, MapPin, Eye } from 'lucide-react';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -33,6 +34,8 @@ const TimePunchesManager = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [punchToDelete, setPunchToDelete] = useState<TimePunch | null>(null);
   const [viewingPunch, setViewingPunch] = useState<TimePunch | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [loadingPhoto, setLoadingPhoto] = useState(false);
 
   const { employees } = useEmployees(restaurantId);
   const { punches, loading } = useTimePunches(
@@ -42,6 +45,36 @@ const TimePunchesManager = () => {
     weekEnd
   );
   const deletePunch = useDeleteTimePunch();
+
+  // Fetch photo URL when viewing a punch with photo_path
+  useEffect(() => {
+    const fetchPhotoUrl = async () => {
+      if (viewingPunch?.photo_path) {
+        setLoadingPhoto(true);
+        try {
+          const { data, error } = await supabase.storage
+            .from('time-clock-photos')
+            .createSignedUrl(viewingPunch.photo_path, 3600); // 1 hour expiry
+
+          if (error) {
+            console.error('Error fetching photo URL:', error);
+            setPhotoUrl(null);
+          } else {
+            setPhotoUrl(data.signedUrl);
+          }
+        } catch (error) {
+          console.error('Exception fetching photo:', error);
+          setPhotoUrl(null);
+        } finally {
+          setLoadingPhoto(false);
+        }
+      } else {
+        setPhotoUrl(null);
+      }
+    };
+
+    fetchPhotoUrl();
+  }, [viewingPunch]);
 
   const confirmDelete = () => {
     if (punchToDelete && restaurantId) {
@@ -186,7 +219,7 @@ const TimePunchesManager = () => {
                     </div>
                     {/* Verification indicators */}
                     <div className="flex items-center gap-2">
-                      {punch.photo && (
+                      {punch.photo_path && (
                         <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
                           <Camera className="h-3 w-3 mr-1" />
                           Photo
@@ -201,7 +234,7 @@ const TimePunchesManager = () => {
                     </div>
                   </div>
                   <div className="flex gap-2 ml-4">
-                    {(punch.photo || punch.location) && (
+                    {(punch.photo_path || punch.location) && (
                       <Button
                         size="icon"
                         variant="ghost"
@@ -265,18 +298,28 @@ const TimePunchesManager = () => {
                 </div>
               </div>
 
-              {viewingPunch.photo && (
+              {viewingPunch.photo_path && (
                 <div>
                   <div className="text-sm font-medium mb-2 flex items-center gap-2">
                     <Camera className="h-4 w-4" />
                     Verification Photo
                   </div>
                   <div className="rounded-lg overflow-hidden border">
-                    <img 
-                      src={viewingPunch.photo} 
-                      alt="Employee verification photo" 
-                      className="w-full h-auto"
-                    />
+                    {loadingPhoto ? (
+                      <div className="w-full h-64 flex items-center justify-center bg-muted">
+                        <p className="text-muted-foreground">Loading photo...</p>
+                      </div>
+                    ) : photoUrl ? (
+                      <img 
+                        src={photoUrl} 
+                        alt="Employee verification photo" 
+                        className="w-full h-auto"
+                      />
+                    ) : (
+                      <div className="w-full h-64 flex items-center justify-center bg-muted">
+                        <p className="text-muted-foreground">Photo unavailable</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

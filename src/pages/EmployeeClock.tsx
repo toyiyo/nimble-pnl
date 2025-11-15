@@ -118,6 +118,18 @@ const EmployeeClock = () => {
       }
     }
 
+    // Convert captured photo (base64 data URL) to Blob for storage upload
+    let photoBlob: Blob | undefined;
+    if (capturedPhoto) {
+      try {
+        const response = await fetch(capturedPhoto);
+        photoBlob = await response.blob();
+      } catch (error) {
+        console.error('Error converting photo to blob:', error);
+        // Continue without photo
+      }
+    }
+
     createPunch.mutate({
       restaurant_id: restaurantId,
       employee_id: employee.id,
@@ -125,7 +137,7 @@ const EmployeeClock = () => {
       punch_time: new Date().toISOString(),
       location,
       device_info: deviceInfo,
-      photo: capturedPhoto || undefined,
+      photoBlob,
     });
 
     // Close dialog and cleanup

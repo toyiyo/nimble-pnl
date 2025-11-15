@@ -10,7 +10,7 @@ export interface TimePunch {
     longitude: number;
   };
   device_info?: string;
-  photo?: string; // Base64 data URL of selfie
+  photo_path?: string; // Storage path in time-clock-photos bucket (e.g., restaurant_id/employee_id/punch-timestamp.jpg)
   notes?: string;
   created_at: string;
   updated_at: string;

@@ -75,13 +75,49 @@ export const useCreateTimePunch = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (punch: Omit<TimePunch, 'id' | 'created_at' | 'updated_at' | 'employee'>) => {
+    mutationFn: async (punch: Omit<TimePunch, 'id' | 'created_at' | 'updated_at' | 'employee'> & { photoBlob?: Blob }) => {
       const { data: { user } } = await supabase.auth.getUser();
+      
+      // Upload photo to storage if provided
+      let photo_path: string | undefined;
+      if (punch.photoBlob) {
+        try {
+          const timestamp = Date.now();
+          const filename = `punch-${timestamp}.jpg`;
+          const filePath = `${punch.restaurant_id}/${punch.employee_id}/${filename}`;
+          
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('time-clock-photos')
+            .upload(filePath, punch.photoBlob, {
+              contentType: 'image/jpeg',
+              upsert: false,
+            });
+
+          if (uploadError) {
+            console.error('Photo upload error:', uploadError);
+            // Don't fail the punch if photo upload fails
+            toast({
+              title: 'Photo upload failed',
+              description: 'Punch recorded without photo',
+              variant: 'default',
+            });
+          } else {
+            photo_path = uploadData.path;
+          }
+        } catch (error) {
+          console.error('Photo upload exception:', error);
+          // Continue without photo
+        }
+      }
+      
+      // Remove photoBlob from the punch data and add photo_path
+      const { photoBlob, ...punchData } = punch;
       
       const { data, error } = await supabase
         .from('time_punches')
         .insert({
-          ...punch,
+          ...punchData,
+          photo_path,
           created_by: user?.id,
         })
         .select()

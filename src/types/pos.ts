@@ -1,6 +1,6 @@
 // Common POS system types for unified integration
 
-export type POSSystemType = 'square' | 'toast' | 'clover' | 'resy' | 'manual' | 'manual_upload';
+export type POSSystemType = 'square' | 'toast' | 'clover' | 'resy' | 'shift4' | 'manual' | 'manual_upload';
 
 export interface UnifiedSaleItem {
   id: string;

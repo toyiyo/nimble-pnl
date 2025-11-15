@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle, ChefHat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,6 +58,7 @@ export default function POSSales() {
   const [endDate, setEndDate] = useState("");
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'quantity' | 'amount'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [recipeFilter, setRecipeFilter] = useState<'all' | 'with-recipe' | 'without-recipe'>('all');
   const [showSaleDialog, setShowSaleDialog] = useState(false);
   const [editingSale, setEditingSale] = useState<{
     id: string;
@@ -162,6 +163,13 @@ export default function POSSales() {
       filtered = filtered.filter((sale) => sale.saleDate <= endDate);
     }
     
+    // Apply recipe filter
+    if (recipeFilter === 'with-recipe') {
+      filtered = filtered.filter((sale) => recipeByItemName.has(sale.itemName.toLowerCase()));
+    } else if (recipeFilter === 'without-recipe') {
+      filtered = filtered.filter((sale) => !recipeByItemName.has(sale.itemName.toLowerCase()));
+    }
+    
     // Apply sorting
     filtered.sort((a, b) => {
       let comparison = 0;
@@ -188,7 +196,7 @@ export default function POSSales() {
     });
     
     return filtered;
-  }, [sales, searchTerm, startDate, endDate, sortBy, sortDirection]);
+  }, [sales, searchTerm, startDate, endDate, recipeFilter, recipeByItemName, sortBy, sortDirection]);
 
   // Get sales with AI suggestions
   const suggestedSales = useMemo(() => {
@@ -335,6 +343,7 @@ export default function POSSales() {
     searchTerm, 
     startDate, 
     endDate,
+    recipeFilter !== 'all' ? 'recipe' : '',
     sortBy !== 'date' || sortDirection !== 'desc' ? 'sort' : ''
   ].filter(Boolean).length;
 
@@ -631,6 +640,7 @@ export default function POSSales() {
                       setSearchTerm("");
                       setStartDate("");
                       setEndDate("");
+                      setRecipeFilter('all');
                       setSortBy('date');
                       setSortDirection('desc');
                     }}
@@ -681,6 +691,21 @@ export default function POSSales() {
                       />
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Recipe Filter</label>
+                  <Select value={recipeFilter} onValueChange={(value: 'all' | 'with-recipe' | 'without-recipe') => setRecipeFilter(value)}>
+                    <SelectTrigger className="border-border/50 hover:border-primary/50 transition-colors">
+                      <ChefHat className="w-4 h-4 mr-2" />
+                      <SelectValue placeholder="Filter by recipe..." />
+                    </SelectTrigger>
+                    <SelectContent className="z-50 bg-background">
+                      <SelectItem value="all">All Items</SelectItem>
+                      <SelectItem value="with-recipe">With Recipe</SelectItem>
+                      <SelectItem value="without-recipe">Without Recipe</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">

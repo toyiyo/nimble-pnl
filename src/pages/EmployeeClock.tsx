@@ -88,10 +88,17 @@ const EmployeeClock = () => {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <p className="text-muted-foreground">
             Please contact your manager to link your account to your employee profile.
           </p>
+          {import.meta.env.DEV && (
+            <div className="p-4 bg-muted rounded-lg text-sm space-y-2">
+              <p className="font-semibold">Debug Info (dev mode only):</p>
+              <p>Restaurant ID: {restaurantId}</p>
+              <p>Looking for employee with user_id matching your auth account</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     );

@@ -53,7 +53,7 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Missing required fields: restaurantId, email, or role');
     }
 
-    console.log('Sending team invitation:', { restaurantId, email, role });
+    console.log('Sending team invitation:', { restaurantId, email, role, employeeId });
 
     // Get restaurant details
     const { data: restaurant, error: restaurantError } = await supabase
@@ -133,7 +133,12 @@ const handler = async (req: Request): Promise<Response> => {
       throw invitationError;
     }
 
-    console.log('Team invitation stored:', invitation);
+    console.log('Team invitation stored:', { 
+      id: invitation.id, 
+      email: invitation.email, 
+      role: invitation.role,
+      employee_id: invitation.employee_id 
+    });
 
     // Create invitation acceptance URL
     const invitationUrl = `https://app.easyshifthq.com/accept-invitation?token=${invitationToken}`;

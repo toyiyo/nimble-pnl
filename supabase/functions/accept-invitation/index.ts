@@ -125,19 +125,25 @@ const handler = async (req: Request): Promise<Response> => {
 
     // If this is a staff invitation with an employee_id, link the employee to this user
     if (invitation.role === 'staff' && invitation.employee_id) {
-      const { error: linkError } = await supabase
+      console.log('Linking employee:', invitation.employee_id, 'to user:', user.id);
+      
+      const { data: linkData, error: linkError } = await supabase
         .from('employees')
         .update({ user_id: user.id })
         .eq('id', invitation.employee_id)
-        .eq('restaurant_id', invitation.restaurant_id);
+        .eq('restaurant_id', invitation.restaurant_id)
+        .select()
+        .single();
 
       if (linkError) {
         console.error('Error linking employee to user:', linkError);
         // Don't fail the entire request if employee linking fails
         // The user will still be added to the team
       } else {
-        console.log('Successfully linked employee record to user');
+        console.log('Successfully linked employee record to user:', linkData);
       }
+    } else if (invitation.role === 'staff') {
+      console.log('Staff invitation but no employee_id found');
     }
 
     // Delete any old accepted invitations for this email/restaurant combo to avoid unique constraint violations

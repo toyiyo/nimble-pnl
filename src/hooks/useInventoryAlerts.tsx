@@ -124,22 +124,32 @@ export const useInventoryAlerts = (restaurantId: string | null) => {
       'Reorder Point (with units)',
       'Par Level Min (with units)',
       'Par Level Max (with units)',
+      'Reorder Quantity',
       'Supplier',
       'Unit Cost',
-      'Total Value'
+      'Total Value',
+      'Reorder Total'
     ];
 
-    const rows = lowStockItems.map(item => [
-      item.name,
-      item.category || 'Uncategorized',
-      formatInventoryLevel(item.current_stock, item),
-      formatInventoryLevel(item.reorder_point, item),
-      formatInventoryLevel(item.par_level_min, item),
-      formatInventoryLevel(item.par_level_max, item),
-      item.supplier_name || 'No supplier',
-      item.cost_per_unit ? `$${item.cost_per_unit}` : '',
-      item.cost_per_unit ? `$${(item.current_stock * item.cost_per_unit).toFixed(2)}` : ''
-    ]);
+    const rows = lowStockItems.map(item => {
+      // Calculate reorder quantity: Par Level Max - Current Stock (in purchase units)
+      const reorderQuantity = Math.max(0, item.par_level_max - item.current_stock);
+      const reorderTotal = item.cost_per_unit ? reorderQuantity * item.cost_per_unit : 0;
+      
+      return [
+        item.name,
+        item.category || 'Uncategorized',
+        formatInventoryLevel(item.current_stock, item),
+        formatInventoryLevel(item.reorder_point, item),
+        formatInventoryLevel(item.par_level_min, item),
+        formatInventoryLevel(item.par_level_max, item),
+        formatInventoryLevel(reorderQuantity, item),
+        item.supplier_name || 'No supplier',
+        item.cost_per_unit ? `$${item.cost_per_unit}` : '',
+        item.cost_per_unit ? `$${(item.current_stock * item.cost_per_unit).toFixed(2)}` : '',
+        item.cost_per_unit ? `$${reorderTotal.toFixed(2)}` : ''
+      ];
+    });
 
     const csv = [
       headers.join(','),

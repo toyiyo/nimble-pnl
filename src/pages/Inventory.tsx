@@ -1758,13 +1758,13 @@ export const Inventory: React.FC = () => {
                                <div className="flex justify-between items-center">
                                  <span className="text-sm">Current Stock:</span>
                                  <div className="font-medium text-destructive text-right">
-                                   <span>{formatInventoryLevel(product.current_stock || 0, product, { showBothUnits: false })}</span>
+                                   <span>{formatInventoryLevel(product.current_stock || 0, product, { showBothUnits: false, primaryUnit: 'purchase' })}</span>
                                  </div>
                                </div>
                              <div className="flex justify-between items-center">
                                <span className="text-sm">Reorder Point:</span>
                                <span className="font-medium">
-                                 {formatInventoryLevel(product.reorder_point || 0, product, { showBothUnits: false })}
+                                 {formatInventoryLevel(product.reorder_point || 0, product, { showBothUnits: false, primaryUnit: 'purchase' })}
                                </span>
                              </div>
                             {product.cost_per_unit && (

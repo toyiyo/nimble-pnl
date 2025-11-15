@@ -126,6 +126,7 @@ Real-time Subscription → Update UI
 
 1. **Square** (primary)
 2. **Clover** (secondary)
+3. **SpotOn** (tertiary)
 
 ### Integration Pattern: Adapter Architecture
 
@@ -139,19 +140,19 @@ We use the **Adapter Pattern** to provide a unified interface for multiple POS s
 │              useUnifiedSales.tsx                    │
 └──────────────────────┬──────────────────────────────┘
                        │
-         ┌─────────────┴─────────────┐
-         ▼                           ▼
-┌──────────────────┐        ┌──────────────────┐
-│  Square Adapter  │        │  Clover Adapter  │
-│  (implements     │        │  (implements     │
-│   POSAdapter)    │        │   POSAdapter)    │
-└────────┬─────────┘        └────────┬─────────┘
-         │                           │
-         ▼                           ▼
-┌──────────────────┐        ┌──────────────────┐
-│  Square OAuth &  │        │  Clover OAuth &  │
-│  Webhooks        │        │  Webhooks        │
-└──────────────────┘        └──────────────────┘
+         ┌─────────────┴─────────────┬──────────────┐
+         ▼                           ▼              ▼
+┌──────────────────┐        ┌──────────────────┐  ┌──────────────────┐
+│  Square Adapter  │        │  Clover Adapter  │  │  SpotOn Adapter  │
+│  (implements     │        │  (implements     │  │  (implements     │
+│   POSAdapter)    │        │   POSAdapter)    │  │   POSAdapter)    │
+└────────┬─────────┘        └────────┬─────────┘  └────────┬─────────┘
+         │                           │                      │
+         ▼                           ▼                      ▼
+┌──────────────────┐        ┌──────────────────┐  ┌──────────────────┐
+│  Square OAuth &  │        │  Clover OAuth &  │  │  SpotOn OAuth/   │
+│  Webhooks        │        │  Webhooks        │  │  API Key & Web.  │
+└──────────────────┘        └──────────────────┘  └──────────────────┘
 ```
 
 ### POSAdapter Interface
@@ -226,6 +227,39 @@ const sales = await adapter.fetchSales(restaurantId, startDate, endDate);
 
 Similar pattern with `clover-oauth`, `clover-sync-data`, `clover-webhooks`, etc.
 
+#### SpotOn
+
+SpotOn POS integration follows the same adapter pattern with some unique characteristics:
+
+1. **`spoton-oauth`** - Handles both OAuth and direct API key connection
+   - **Actions**: `authorize` (OAuth), `callback` (OAuth), `connect_with_key` (API Key)
+   - **Flow**: 
+     - OAuth: Generate auth URL → User authorizes → Store encrypted tokens
+     - API Key: Validate key → Store encrypted key
+   - **Security**: Tokens/keys encrypted with AES-GCM using `ENCRYPTION_KEY`
+   - **Base URL**: `https://enterprise.appetize.com`
+
+2. **`spoton-sync-data`** - Manual data synchronization
+   - **Syncs**: Orders and order items
+   - **Features**: Initial sync (30 days), incremental sync (since last sync)
+   - **Rate Limiting**: Respects SpotOn API limits
+   - **Storage**: Raw data in `spoton_orders` and `spoton_order_items` tables
+
+3. **`spoton-webhooks`** - Real-time event handling
+   - **Events**: `order.created`, `order.updated`, `order.cancelled`, `menu.updated`, `item.availability_changed`
+   - **Security**: Verifies HMAC signature using `SPOTON_WEBHOOK_SECRET`
+   - **Processing**: Updates unified_sales table immediately
+   - **Idempotency**: Tracks processed events in `spoton_webhook_events` table
+
+4. **`spoton-webhook-register`** - Registers webhook subscriptions
+   - **Purpose**: Ensures SpotOn sends events to our endpoint
+   - **Subscriptions**: Orders, menu, item availability
+   - **Storage**: Subscription details in `spoton_webhook_subscriptions` table
+
+**Authentication Methods**:
+- **API Key** (recommended for SpotOn): Simple, location-specific access via `x-api-key` header
+- **OAuth2**: For partner integrations with self-serve authorization
+
 ### Webhook Security Pattern
 
 **All POS webhooks follow this pattern:**
@@ -260,7 +294,7 @@ All POS systems write to a single `unified_sales` table with this structure:
 unified_sales (
   id,
   restaurant_id,
-  pos_system,              -- 'square' | 'clover'
+  pos_system,              -- 'square' | 'clover' | 'spoton'
   external_order_id,       -- POS-specific order ID
   external_item_id,        -- POS-specific item ID
   item_name,

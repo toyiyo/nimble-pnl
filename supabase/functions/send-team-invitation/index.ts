@@ -13,6 +13,7 @@ interface RequestBody {
   restaurantId: string;
   email: string;
   role: string;
+  employeeId?: string; // Optional employee ID to link when role is "staff"
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -46,7 +47,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
     );
 
-    const { restaurantId, email, role }: RequestBody = await req.json();
+    const { restaurantId, email, role, employeeId }: RequestBody = await req.json();
 
     if (!restaurantId || !email || !role) {
       throw new Error('Missing required fields: restaurantId, email, or role');
@@ -107,17 +108,24 @@ const handler = async (req: Request): Promise<Response> => {
     console.log('Token hashed successfully with Web Crypto API');
     
     // Store invitation with hashed token in database
+    const invitationData: any = {
+      restaurant_id: restaurantId,
+      invited_by: user.id,
+      email,
+      role,
+      token: hashedToken,
+      status: 'pending',
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    };
+
+    // If employeeId is provided (for staff role), include it in the invitation
+    if (employeeId && role === 'staff') {
+      invitationData.employee_id = employeeId;
+    }
+
     const { data: invitation, error: invitationError } = await supabase
       .from('invitations')
-      .insert({
-        restaurant_id: restaurantId,
-        invited_by: user.id,
-        email,
-        role,
-        token: hashedToken,
-        status: 'pending',
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-      })
+      .insert(invitationData)
       .select()
       .single();
 

@@ -7,6 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Employee } from '@/types/scheduling';
 import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -39,6 +41,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
 
   const createEmployee = useCreateEmployee();
   const updateEmployee = useUpdateEmployee();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (employee) {
@@ -66,7 +69,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     setNotes('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const hourlyRateInCents = Math.round(parseFloat(hourlyRate || '0') * 100);
@@ -95,7 +98,42 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       );
     } else {
       createEmployee.mutate(employeeData, {
-        onSuccess: () => {
+        onSuccess: async (newEmployee) => {
+          // If email is provided, send invitation for "staff" role
+          if (email && email.trim()) {
+            try {
+              const { error } = await supabase.functions.invoke('send-team-invitation', {
+                body: {
+                  restaurantId: restaurantId,
+                  email: email.trim(),
+                  role: 'staff',
+                  employeeId: newEmployee.id, // Pass employee ID for linking
+                },
+              });
+
+              if (error) {
+                console.error('Error sending invitation:', error);
+                toast({
+                  title: 'Employee created',
+                  description: `${name} was added but invitation email failed to send. You can resend from the Team page.`,
+                  variant: 'default',
+                });
+              } else {
+                toast({
+                  title: 'Employee created and invited',
+                  description: `${name} was added and an invitation was sent to ${email}`,
+                });
+              }
+            } catch (error) {
+              console.error('Error invoking send-team-invitation:', error);
+              toast({
+                title: 'Employee created',
+                description: `${name} was added but invitation email failed to send.`,
+                variant: 'default',
+              });
+            }
+          }
+          
           onOpenChange(false);
           resetForm();
         },

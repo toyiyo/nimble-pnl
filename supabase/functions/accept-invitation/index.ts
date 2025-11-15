@@ -123,6 +123,23 @@ const handler = async (req: Request): Promise<Response> => {
       console.log('User is already a member, just marking invitation as accepted');
     }
 
+    // If this is a staff invitation with an employee_id, link the employee to this user
+    if (invitation.role === 'staff' && invitation.employee_id) {
+      const { error: linkError } = await supabase
+        .from('employees')
+        .update({ user_id: user.id })
+        .eq('id', invitation.employee_id)
+        .eq('restaurant_id', invitation.restaurant_id);
+
+      if (linkError) {
+        console.error('Error linking employee to user:', linkError);
+        // Don't fail the entire request if employee linking fails
+        // The user will still be added to the team
+      } else {
+        console.log('Successfully linked employee record to user');
+      }
+    }
+
     // Delete any old accepted invitations for this email/restaurant combo to avoid unique constraint violations
     await supabase
       .from('invitations')

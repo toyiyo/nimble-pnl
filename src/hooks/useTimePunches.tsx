@@ -13,7 +13,23 @@ export const useTimePunches = (restaurantId: string | null, employeeId?: string,
 
       let query = supabase
         .from('time_punches')
-        .select('*, employee:employees(id, name, position)')
+        .select(`
+          id,
+          restaurant_id,
+          employee_id,
+          shift_id,
+          punch_type,
+          punch_time,
+          location,
+          device_info,
+          photo_path,
+          notes,
+          created_at,
+          updated_at,
+          created_by,
+          modified_by,
+          employee:employees(id, name, position)
+        `)
         .eq('restaurant_id', restaurantId);
 
       if (employeeId) {

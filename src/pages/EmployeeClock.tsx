@@ -94,60 +94,66 @@ const EmployeeClock = () => {
   const handleConfirmPunch = async () => {
     if (!restaurantId || !employee || !pendingPunchType) return;
 
-    // Get device info
-    const deviceInfo = `${navigator.userAgent.substring(0, 100)}`;
-
-    // Get location with increased timeout and better error handling
-    let location = undefined;
-    if (navigator.geolocation) {
-      try {
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            timeout: 15000, // Increased timeout to 15 seconds
-            enableHighAccuracy: false, // Faster, less battery intensive
-            maximumAge: 30000, // Accept cached position up to 30 seconds old
-          });
-        });
-        location = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        };
-      } catch (error) {
-        console.log('Location not available:', error);
-        // Don't block the punch - location is optional
-      }
-    }
-
-    // Convert captured photo (base64 data URL) to Blob for storage upload
-    let photoBlob: Blob | undefined;
-    if (capturedPhoto) {
-      try {
-        const response = await fetch(capturedPhoto);
-        photoBlob = await response.blob();
-      } catch (error) {
-        console.error('Error converting photo to blob:', error);
-        // Continue without photo
-      }
-    }
-
-    createPunch.mutate({
-      restaurant_id: restaurantId,
-      employee_id: employee.id,
-      punch_type: pendingPunchType,
-      punch_time: new Date().toISOString(),
-      location,
-      device_info: deviceInfo,
-      photoBlob,
-    });
-
-    // Close dialog and cleanup
+    // Close dialog immediately for better UX
     setShowCameraDialog(false);
+    const photoToProcess = capturedPhoto;
+    const punchType = pendingPunchType;
+    
     setPendingPunchType(null);
     setCapturedPhoto(null);
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
     }
+
+    // Process location and photo asynchronously - don't block the UI
+    (async () => {
+      // Get device info
+      const deviceInfo = `${navigator.userAgent.substring(0, 100)}`;
+
+      // Get location with increased timeout and better error handling
+      let location = undefined;
+      if (navigator.geolocation) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              timeout: 15000, // Increased timeout to 15 seconds
+              enableHighAccuracy: false, // Faster, less battery intensive
+              maximumAge: 30000, // Accept cached position up to 30 seconds old
+            });
+          });
+          location = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          };
+        } catch (error) {
+          console.log('Location not available:', error);
+          // Don't block the punch - location is optional
+        }
+      }
+
+      // Convert captured photo (base64 data URL) to Blob for storage upload
+      let photoBlob: Blob | undefined;
+      if (photoToProcess) {
+        try {
+          const response = await fetch(photoToProcess);
+          photoBlob = await response.blob();
+        } catch (error) {
+          console.error('Error converting photo to blob:', error);
+          // Continue without photo
+        }
+      }
+
+      createPunch.mutate({
+        restaurant_id: restaurantId,
+        employee_id: employee.id,
+        punch_type: punchType,
+        punch_time: new Date().toISOString(),
+        location,
+        device_info: deviceInfo,
+        photoBlob,
+      });
+    })();
   };
 
   const handleSkipVerification = () => {

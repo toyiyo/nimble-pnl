@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,8 +9,15 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useTimePunches, useDeleteTimePunch } from '@/hooks/useTimePunches';
 import { useEmployees } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
-import { Clock, Trash2, Edit, Download, Search, Camera, MapPin, Eye } from 'lucide-react';
-import { format, startOfWeek, endOfWeek } from 'date-fns';
+import { 
+  Clock, Trash2, Edit, Download, Search, Camera, MapPin, Eye,
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table as TableIcon
+} from 'lucide-react';
+import { 
+  format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
+  addDays, addWeeks, addMonths, isSameDay, differenceInMinutes,
+  startOfDay, endOfDay
+} from 'date-fns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog,
@@ -22,29 +29,79 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { TimePunch } from '@/types/timeTracking';
+import { cn } from '@/lib/utils';
+
+type ViewMode = 'day' | 'week' | 'month';
 
 const TimePunchesManager = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
-  const [currentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
-  const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
+  const [viewMode, setViewMode] = useState<ViewMode>('week');
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [punchToDelete, setPunchToDelete] = useState<TimePunch | null>(null);
   const [viewingPunch, setViewingPunch] = useState<TimePunch | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(false);
+  const [tableOpen, setTableOpen] = useState(false);
+  const [photoThumbnails, setPhotoThumbnails] = useState<Record<string, string>>({});
+
+  // Calculate date range based on view mode
+  const dateRange = useMemo(() => {
+    switch (viewMode) {
+      case 'day':
+        return { start: startOfDay(currentDate), end: endOfDay(currentDate) };
+      case 'week':
+        return { 
+          start: startOfWeek(currentDate, { weekStartsOn: 0 }), 
+          end: endOfWeek(currentDate, { weekStartsOn: 0 }) 
+        };
+      case 'month':
+        return {
+          start: startOfMonth(currentDate),
+          end: endOfMonth(currentDate)
+        };
+    }
+  }, [viewMode, currentDate]);
 
   const { employees } = useEmployees(restaurantId);
   const { punches, loading } = useTimePunches(
     restaurantId,
     selectedEmployee !== 'all' ? selectedEmployee : undefined,
-    currentWeekStart,
-    weekEnd
+    dateRange.start,
+    dateRange.end
   );
   const deletePunch = useDeleteTimePunch();
+
+  // Load photo thumbnails for punches with photos
+  useEffect(() => {
+    const loadThumbnails = async () => {
+      const punchesWithPhotos = punches.filter(p => p.photo_path && !photoThumbnails[p.id]);
+      if (punchesWithPhotos.length === 0) return;
+
+      for (const punch of punchesWithPhotos) {
+        if (punch.photo_path) {
+          try {
+            const { data } = await supabase.storage
+              .from('time-clock-photos')
+              .createSignedUrl(punch.photo_path, 3600);
+            
+            if (data) {
+              setPhotoThumbnails(prev => ({ ...prev, [punch.id]: data.signedUrl }));
+            }
+          } catch (error) {
+            console.error('Error loading thumbnail:', error);
+          }
+        }
+      }
+    };
+
+    loadThumbnails();
+  }, [punches]);
 
   // Fetch photo URL when viewing a punch with photo_path
   useEffect(() => {
@@ -54,7 +111,7 @@ const TimePunchesManager = () => {
         try {
           const { data, error } = await supabase.storage
             .from('time-clock-photos')
-            .createSignedUrl(viewingPunch.photo_path, 3600); // 1 hour expiry
+            .createSignedUrl(viewingPunch.photo_path, 3600);
 
           if (error) {
             console.error('Error fetching photo URL:', error);
@@ -112,6 +169,103 @@ const TimePunchesManager = () => {
     return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
 
+  const navigateDate = (direction: 'prev' | 'next' | 'today') => {
+    if (direction === 'today') {
+      setCurrentDate(new Date());
+      return;
+    }
+
+    const increment = direction === 'next' ? 1 : -1;
+    switch (viewMode) {
+      case 'day':
+        setCurrentDate(addDays(currentDate, increment));
+        break;
+      case 'week':
+        setCurrentDate(addWeeks(currentDate, increment));
+        break;
+      case 'month':
+        setCurrentDate(addMonths(currentDate, increment));
+        break;
+    }
+  };
+
+  const getDateRangeLabel = () => {
+    switch (viewMode) {
+      case 'day':
+        return format(currentDate, 'MMMM d, yyyy');
+      case 'week':
+        return `${format(dateRange.start, 'MMM d')} - ${format(dateRange.end, 'MMM d, yyyy')}`;
+      case 'month':
+        return format(currentDate, 'MMMM yyyy');
+    }
+  };
+
+  // Calculate daily hours for timeline
+  const dailyData = useMemo(() => {
+    const days = viewMode === 'day' ? [currentDate] :
+      viewMode === 'week' ? Array.from({ length: 7 }, (_, i) => addDays(dateRange.start, i)) :
+      Array.from({ length: endOfMonth(currentDate).getDate() }, (_, i) => addDays(startOfMonth(currentDate), i));
+
+    return days.map(day => {
+      const dayPunches = filteredPunches.filter(p => 
+        isSameDay(new Date(p.punch_time), day)
+      );
+
+      // Group by employee
+      const employeeHours: Record<string, { hours: number, breaks: number, employee: any }> = {};
+
+      dayPunches.forEach(punch => {
+        const empId = punch.employee_id;
+        if (!employeeHours[empId]) {
+          employeeHours[empId] = { hours: 0, breaks: 0, employee: punch.employee };
+        }
+
+        // Calculate hours based on clock in/out pairs
+        if (punch.punch_type === 'clock_in') {
+          const clockOut = dayPunches.find(p => 
+            p.employee_id === empId && 
+            p.punch_type === 'clock_out' &&
+            new Date(p.punch_time) > new Date(punch.punch_time)
+          );
+          if (clockOut) {
+            const minutes = differenceInMinutes(
+              new Date(clockOut.punch_time),
+              new Date(punch.punch_time)
+            );
+            employeeHours[empId].hours += minutes / 60;
+          }
+        }
+
+        if (punch.punch_type === 'break_start') {
+          const breakEnd = dayPunches.find(p => 
+            p.employee_id === empId && 
+            p.punch_type === 'break_end' &&
+            new Date(p.punch_time) > new Date(punch.punch_time)
+          );
+          if (breakEnd) {
+            const minutes = differenceInMinutes(
+              new Date(breakEnd.punch_time),
+              new Date(punch.punch_time)
+            );
+            employeeHours[empId].breaks += minutes / 60;
+          }
+        }
+      });
+
+      const totalHours = Object.values(employeeHours).reduce((sum, e) => sum + e.hours - e.breaks, 0);
+
+      return {
+        date: day,
+        totalHours,
+        employeeHours: Object.values(employeeHours),
+        punchCount: dayPunches.length
+      };
+    });
+  }, [filteredPunches, viewMode, currentDate, dateRange]);
+
+  const totalWeekHours = dailyData.reduce((sum, day) => sum + day.totalHours, 0);
+  const maxDayHours = Math.max(...dailyData.map(d => d.totalHours), 1);
+
   if (!restaurantId) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -134,16 +288,16 @@ const TimePunchesManager = () => {
                 Time Punches
               </CardTitle>
               <CardDescription>
-                Manage employee time tracking for {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
+                {getDateRangeLabel()} • {totalWeekHours.toFixed(1)} total hours
               </CardDescription>
             </div>
           </div>
         </CardHeader>
       </Card>
 
-      {/* Filters */}
+      {/* Filters & Navigation */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-4">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
@@ -175,101 +329,221 @@ const TimePunchesManager = () => {
               Export
             </Button>
           </div>
+
+          {/* Date navigation */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => navigateDate('prev')}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigateDate('today')}>
+                Today
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigateDate('next')}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <Select value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="day">Day</SelectItem>
+                <SelectItem value="week">Week</SelectItem>
+                <SelectItem value="month">Month</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Punches Table */}
+      {/* Visual Timeline */}
       <Card>
         <CardHeader>
-          <CardTitle>Time Punches ({filteredPunches.length})</CardTitle>
+          <CardTitle>Hours Timeline</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-            </div>
-          ) : filteredPunches.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No time punches found</p>
+            <Skeleton className="h-64 w-full" />
           ) : (
-            <div className="space-y-2">
-              {filteredPunches.map((punch) => (
-                <div
-                  key={punch.id}
-                  className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                >
-                  <div className="flex items-center gap-4 flex-1">
-                    <Badge variant="outline" className={getPunchTypeColor(punch.punch_type)}>
-                      {getPunchTypeLabel(punch.punch_type)}
-                    </Badge>
-                    <div className="flex-1">
-                      <div className="font-medium">{punch.employee?.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {punch.employee?.position}
+            <div className="space-y-4">
+              {/* Timeline bars */}
+              <div className="space-y-2">
+                {dailyData.map((day, index) => (
+                  <div key={index} className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="w-24 text-muted-foreground">
+                        {viewMode === 'month' 
+                          ? format(day.date, 'd')
+                          : format(day.date, 'EEE, MMM d')}
+                      </span>
+                      <div className="flex-1 h-8 bg-muted rounded-lg overflow-hidden relative">
+                        {day.totalHours > 0 && (
+                          <div
+                            className={cn(
+                              "h-full bg-gradient-to-r from-primary to-accent rounded-lg transition-all",
+                              "flex items-center px-2 text-white text-xs font-medium"
+                            )}
+                            style={{ width: `${(day.totalHours / maxDayHours) * 100}%` }}
+                          >
+                            {day.totalHours.toFixed(1)}h
+                          </div>
+                        )}
                       </div>
+                      <span className="w-16 text-sm text-muted-foreground text-right">
+                        {day.punchCount} punches
+                      </span>
                     </div>
-                    <div className="text-right">
-                      <div className="font-medium">
-                        {format(new Date(punch.punch_time), 'MMM d, yyyy')}
+
+                    {/* Employee breakdown on hover/expand */}
+                    {day.employeeHours.length > 0 && (
+                      <div className="ml-26 space-y-1">
+                        {day.employeeHours.map((emp, empIndex) => (
+                          <div key={empIndex} className="flex items-center gap-2 text-xs">
+                            <span className="w-32 text-muted-foreground truncate">
+                              {emp.employee?.name}
+                            </span>
+                            <div className="flex-1 h-4 bg-muted/50 rounded overflow-hidden">
+                              <div
+                                className="h-full bg-accent/70"
+                                style={{ width: `${((emp.hours - emp.breaks) / maxDayHours) * 100}%` }}
+                              />
+                            </div>
+                            <span className="w-20 text-muted-foreground">
+                              {(emp.hours - emp.breaks).toFixed(1)}h
+                              {emp.breaks > 0 && <span className="text-xs"> ({emp.breaks.toFixed(1)}h break)</span>}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        {format(new Date(punch.punch_time), 'h:mm:ss a')}
-                      </div>
-                    </div>
-                    {/* Verification indicators */}
-                    <div className="flex items-center gap-2">
-                      {punch.photo_path && (
-                        <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
-                          <Camera className="h-3 w-3 mr-1" />
-                          Photo
-                        </Badge>
-                      )}
-                      {punch.location && (
-                        <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20">
-                          <MapPin className="h-3 w-3 mr-1" />
-                          GPS
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 ml-4">
-                    {(punch.photo_path || punch.location) && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setViewingPunch(punch)}
-                        aria-label="View verification details"
-                        title="View photo and location"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
                     )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => {
-                        // TODO: Open edit dialog
-                      }}
-                      aria-label="Edit punch"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => setPunchToDelete(punch)}
-                      aria-label="Delete punch"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Collapsible Table View */}
+      <Collapsible open={tableOpen} onOpenChange={setTableOpen}>
+        <Card>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-accent/50 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <TableIcon className="h-5 w-5" />
+                  <CardTitle>Detailed Punch List ({filteredPunches.length})</CardTitle>
+                </div>
+                {tableOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+              </div>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent>
+              {loading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                </div>
+              ) : filteredPunches.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">No time punches found</p>
+              ) : (
+                <div className="space-y-2">
+                  {filteredPunches.map((punch) => (
+                    <div
+                      key={punch.id}
+                      className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-4 flex-1">
+                        {/* Photo thumbnail */}
+                        {punch.photo_path && photoThumbnails[punch.id] && (
+                          <div 
+                            className="w-12 h-12 rounded-lg overflow-hidden border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors"
+                            onClick={() => setViewingPunch(punch)}
+                          >
+                            <img 
+                              src={photoThumbnails[punch.id]} 
+                              alt="Employee photo" 
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+
+                        <Badge variant="outline" className={getPunchTypeColor(punch.punch_type)}>
+                          {getPunchTypeLabel(punch.punch_type)}
+                        </Badge>
+                        <div className="flex-1">
+                          <div className="font-medium">{punch.employee?.name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {punch.employee?.position}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-medium">
+                            {format(new Date(punch.punch_time), 'MMM d, yyyy')}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {format(new Date(punch.punch_time), 'h:mm:ss a')}
+                          </div>
+                        </div>
+                        {/* Verification indicators */}
+                        <div className="flex items-center gap-2">
+                          {punch.photo_path && (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
+                              <Camera className="h-3 w-3 mr-1" />
+                              Photo
+                            </Badge>
+                          )}
+                          {punch.location && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20">
+                              <MapPin className="h-3 w-3 mr-1" />
+                              GPS
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        {(punch.photo_path || punch.location) && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setViewingPunch(punch)}
+                            aria-label="View verification details"
+                            title="View photo and location"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            // TODO: Open edit dialog
+                          }}
+                          aria-label="Edit punch"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setPunchToDelete(punch)}
+                          aria-label="Delete punch"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
 
       {/* Verification Details Dialog */}
       <Dialog open={!!viewingPunch} onOpenChange={() => setViewingPunch(null)}>

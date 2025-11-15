@@ -106,44 +106,56 @@ const EmployeeClock = () => {
       setCameraStream(null);
     }
 
-    // Process location and photo asynchronously - don't block the UI
-    (async () => {
-      // Get device info
-      const deviceInfo = `${navigator.userAgent.substring(0, 100)}`;
+    // Get device info
+    const deviceInfo = `${navigator.userAgent.substring(0, 100)}`;
 
-      // Get location with increased timeout and better error handling
-      let location = undefined;
-      if (navigator.geolocation) {
-        try {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 15000, // Increased timeout to 15 seconds
-              enableHighAccuracy: false, // Faster, less battery intensive
-              maximumAge: 30000, // Accept cached position up to 30 seconds old
+    // Start location fetch in background with very short timeout
+    let locationPromise: Promise<{ latitude: number; longitude: number } | undefined> = Promise.resolve(undefined);
+    if (navigator.geolocation) {
+      locationPromise = new Promise((resolve) => {
+        const timeoutId = setTimeout(() => {
+          console.log('Location timeout - proceeding without location');
+          resolve(undefined);
+        }, 3000); // Only wait 3 seconds max
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            clearTimeout(timeoutId);
+            resolve({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
             });
-          });
-          location = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          };
-        } catch (error) {
-          console.log('Location not available:', error);
-          // Don't block the punch - location is optional
-        }
-      }
+          },
+          (error) => {
+            clearTimeout(timeoutId);
+            console.log('Location not available:', error);
+            resolve(undefined);
+          },
+          {
+            timeout: 3000, // 3 second timeout
+            enableHighAccuracy: false,
+            maximumAge: 60000, // Accept cached position up to 1 minute old
+          }
+        );
+      });
+    }
 
-      // Convert captured photo (base64 data URL) to Blob for storage upload
-      let photoBlob: Blob | undefined;
-      if (photoToProcess) {
-        try {
-          const response = await fetch(photoToProcess);
-          photoBlob = await response.blob();
-        } catch (error) {
+    // Convert photo in background
+    let photoBlobPromise: Promise<Blob | undefined> = Promise.resolve(undefined);
+    if (photoToProcess) {
+      photoBlobPromise = fetch(photoToProcess)
+        .then(response => response.blob())
+        .catch(error => {
           console.error('Error converting photo to blob:', error);
-          // Continue without photo
-        }
-      }
+          return undefined;
+        });
+    }
 
+    // Wait for both with a maximum total time of 3 seconds
+    Promise.race([
+      Promise.all([locationPromise, photoBlobPromise]),
+      new Promise<[undefined, undefined]>(resolve => setTimeout(() => resolve([undefined, undefined]), 3000))
+    ]).then(([location, photoBlob]) => {
       createPunch.mutate({
         restaurant_id: restaurantId,
         employee_id: employee.id,
@@ -153,7 +165,7 @@ const EmployeeClock = () => {
         device_info: deviceInfo,
         photoBlob,
       });
-    })();
+    });
   };
 
   const handleSkipVerification = () => {

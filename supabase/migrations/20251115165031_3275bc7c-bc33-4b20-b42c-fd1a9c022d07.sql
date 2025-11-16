@@ -27,25 +27,49 @@ CREATE INDEX IF NOT EXISTS idx_time_punches_type ON public.time_punches(punch_ty
 ALTER TABLE public.time_punches ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies for time_punches
-DROP POLICY IF EXISTS "Users can view time punches for their restaurants" ON public.time_punches;
-CREATE POLICY "Users can view time punches for their restaurants"
+-- Employees can view their own punches
+DROP POLICY IF EXISTS "Employees can view own time punches" ON public.time_punches;
+CREATE POLICY "Employees can view own time punches"
+  ON public.time_punches FOR SELECT
+  USING (
+    employee_id IN (
+      SELECT id FROM public.employees WHERE user_id = auth.uid()
+    )
+  );
+
+-- Managers can view all time punches for their restaurants
+DROP POLICY IF EXISTS "Managers can view restaurant time punches" ON public.time_punches;
+CREATE POLICY "Managers can view restaurant time punches"
   ON public.time_punches FOR SELECT
   USING (
     EXISTS (
       SELECT 1 FROM public.user_restaurants
       WHERE user_restaurants.restaurant_id = time_punches.restaurant_id
       AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager')
     )
   );
 
-DROP POLICY IF EXISTS "Users can insert time punches for their restaurants" ON public.time_punches;
-CREATE POLICY "Users can insert time punches for their restaurants"
+-- Employees can insert their own punches
+DROP POLICY IF EXISTS "Employees can insert own time punches" ON public.time_punches;
+CREATE POLICY "Employees can insert own time punches"
+  ON public.time_punches FOR INSERT
+  WITH CHECK (
+    employee_id IN (
+      SELECT id FROM public.employees WHERE user_id = auth.uid()
+    )
+  );
+
+-- Managers can insert punches for any employee
+DROP POLICY IF EXISTS "Managers can insert for employees" ON public.time_punches;
+CREATE POLICY "Managers can insert for employees"
   ON public.time_punches FOR INSERT
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.user_restaurants
       WHERE user_restaurants.restaurant_id = time_punches.restaurant_id
       AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager')
     )
   );
 
@@ -98,25 +122,49 @@ CREATE INDEX IF NOT EXISTS idx_employee_tips_recorded ON public.employee_tips(re
 ALTER TABLE public.employee_tips ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies for employee_tips
-DROP POLICY IF EXISTS "Users can view tips for their restaurants" ON public.employee_tips;
-CREATE POLICY "Users can view tips for their restaurants"
+-- Employees can view their own tips
+DROP POLICY IF EXISTS "Employees can view own tips" ON public.employee_tips;
+CREATE POLICY "Employees can view own tips"
+  ON public.employee_tips FOR SELECT
+  USING (
+    employee_id IN (
+      SELECT id FROM public.employees WHERE user_id = auth.uid()
+    )
+  );
+
+-- Managers can view all tips for their restaurants
+DROP POLICY IF EXISTS "Managers can view restaurant tips" ON public.employee_tips;
+CREATE POLICY "Managers can view restaurant tips"
   ON public.employee_tips FOR SELECT
   USING (
     EXISTS (
       SELECT 1 FROM public.user_restaurants
       WHERE user_restaurants.restaurant_id = employee_tips.restaurant_id
       AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager')
     )
   );
 
-DROP POLICY IF EXISTS "Users can insert tips for their restaurants" ON public.employee_tips;
-CREATE POLICY "Users can insert tips for their restaurants"
+-- Employees can insert their own tips
+DROP POLICY IF EXISTS "Employees can insert own tips" ON public.employee_tips;
+CREATE POLICY "Employees can insert own tips"
+  ON public.employee_tips FOR INSERT
+  WITH CHECK (
+    employee_id IN (
+      SELECT id FROM public.employees WHERE user_id = auth.uid()
+    )
+  );
+
+-- Managers can insert tips for any employee
+DROP POLICY IF EXISTS "Managers can insert tips for employees" ON public.employee_tips;
+CREATE POLICY "Managers can insert tips for employees"
   ON public.employee_tips FOR INSERT
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.user_restaurants
       WHERE user_restaurants.restaurant_id = employee_tips.restaurant_id
       AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager')
     )
   );
 

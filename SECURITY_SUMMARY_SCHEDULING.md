@@ -110,6 +110,21 @@ All tables have:
 - `updated_at` timestamp for modification tracking
 - Soft delete capability (status field for employees)
 
+### Security Fixes Applied
+
+#### Fix: `link_employee_to_user` Function Security (2025-11-16)
+
+**Issue:** SECURITY DEFINER function was exposed to generic authenticated role with no authorization checks, allowing any authenticated client to link arbitrary employees to users.
+
+**Resolution (Commit 4137636):**
+1. ✅ **Authentication Check**: Added `auth.uid()` validation to require caller authentication
+2. ✅ **Authorization Enforcement**: Verify caller is owner/manager of employee's restaurant via `user_restaurants` table
+3. ✅ **Race Condition Protection**: Updated UPDATE to use `public.employees` with `AND user_id IS NULL` clause and row count verification
+4. ✅ **Removed Public Grant**: Removed `GRANT EXECUTE TO authenticated` - authorization now enforced within function
+5. ✅ **Search Path Security**: Added `SET search_path = public, pg_temp` to prevent search path attacks
+
+**Impact:** Critical security vulnerability closed. Function now properly restricts access to authorized users only.
+
 ### Conclusion
 
 **PASS**: The scheduling module is secure and ready for deployment.
@@ -117,3 +132,4 @@ All tables have:
 No critical, high, or medium severity vulnerabilities detected.
 All security best practices followed.
 Proper authorization and access controls in place.
+Security vulnerability in `link_employee_to_user` function has been fixed.

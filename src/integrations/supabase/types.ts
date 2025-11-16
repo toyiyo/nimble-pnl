@@ -3477,6 +3477,7 @@ export type Database = {
           location: Json | null
           modified_by: string | null
           notes: string | null
+          photo_path: string | null
           punch_time: string
           punch_type: string
           restaurant_id: string
@@ -3492,6 +3493,7 @@ export type Database = {
           location?: Json | null
           modified_by?: string | null
           notes?: string | null
+          photo_path?: string | null
           punch_time?: string
           punch_type: string
           restaurant_id: string
@@ -3507,6 +3509,7 @@ export type Database = {
           location?: Json | null
           modified_by?: string | null
           notes?: string | null
+          photo_path?: string | null
           punch_time?: string
           punch_type?: string
           restaurant_id?: string

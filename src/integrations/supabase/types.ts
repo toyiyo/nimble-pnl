@@ -2638,12 +2638,12 @@ export type Database = {
       }
       shift_templates: {
         Row: {
-          break_duration: number
+          break_duration: number | null
           created_at: string | null
           day_of_week: number
           end_time: string
           id: string
-          is_active: boolean
+          is_active: boolean | null
           name: string
           position: string
           restaurant_id: string
@@ -2651,12 +2651,12 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          break_duration?: number
+          break_duration?: number | null
           created_at?: string | null
           day_of_week: number
           end_time: string
           id?: string
-          is_active?: boolean
+          is_active?: boolean | null
           name: string
           position: string
           restaurant_id: string
@@ -2664,12 +2664,12 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          break_duration?: number
+          break_duration?: number | null
           created_at?: string | null
           day_of_week?: number
           end_time?: string
           id?: string
-          is_active?: boolean
+          is_active?: boolean | null
           name?: string
           position?: string
           restaurant_id?: string

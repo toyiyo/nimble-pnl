@@ -140,15 +140,17 @@ const handler = async (req: Request): Promise<Response> => {
         .update({ user_id: user.id })
         .eq('id', invitation.employee_id)
         .eq('restaurant_id', invitation.restaurant_id)
-        .select()
-        .single();
+        .is('user_id', null)
+        .select();
 
       if (linkError) {
         console.error('Error linking employee to user:', linkError);
         // Don't fail the entire request if employee linking fails
         // The user will still be added to the team
+      } else if (!linkData || linkData.length === 0) {
+        console.log('No unlinked employee found for id:', invitation.employee_id);
       } else {
-        console.log('Successfully linked employee record to user:', linkData);
+        console.log('Successfully linked employee record to user:', linkData[0]);
       }
     } else if (invitation.role === 'staff' && !invitation.employee_id) {
       // Fallback: Try to find employee by email and link it
@@ -169,16 +171,18 @@ const handler = async (req: Request): Promise<Response> => {
           .from('employees')
           .update({ user_id: user.id })
           .eq('id', employeeByEmail.id)
-          .select()
-          .single();
+          .is('user_id', null)
+          .select();
 
         if (linkError) {
           console.error('Error linking employee (by email) to user:', linkError);
+        } else if (!linkData || linkData.length === 0) {
+          console.log('No unlinked employee found for id:', employeeByEmail.id);
         } else {
-          console.log('Successfully linked employee (by email) to user:', linkData);
+          console.log('Successfully linked employee (by email) to user:', linkData[0]);
         }
       } else {
-        console.log('No unlinking employee found with email:', invitation.email);
+        console.log('No unlinked employee found with email:', invitation.email);
       }
     }
 

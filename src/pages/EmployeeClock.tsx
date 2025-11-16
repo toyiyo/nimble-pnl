@@ -393,7 +393,7 @@ const EmployeeClock = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {punch.photo && <Camera className="h-4 w-4 text-green-600" title="Photo verified" />}
+                    {punch.photo_path && <Camera className="h-4 w-4 text-green-600" title="Photo verified" />}
                     {punch.location && <MapPin className="h-4 w-4 text-blue-600" title="Location verified" />}
                   </div>
                 </div>

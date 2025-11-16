@@ -5,10 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Shift } from '@/types/scheduling';
+import { Shift, RecurrencePattern, RecurrenceType } from '@/types/scheduling';
 import { useCreateShift, useUpdateShift } from '@/hooks/useShifts';
 import { useEmployees } from '@/hooks/useEmployees';
-import { format } from 'date-fns';
+import { format, getDay } from 'date-fns';
+import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
+import { RECURRENCE_PRESETS, getRecurrenceDescription } from '@/utils/recurrenceUtils';
 
 interface ShiftDialogProps {
   open: boolean;
@@ -40,6 +42,9 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
   const [position, setPosition] = useState('Server');
   const [status, setStatus] = useState<'scheduled' | 'confirmed' | 'completed' | 'cancelled'>('scheduled');
   const [notes, setNotes] = useState('');
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType | 'none'>('none');
+  const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern | null>(null);
+  const [customRecurrenceOpen, setCustomRecurrenceOpen] = useState(false);
 
   const { employees } = useEmployees(restaurantId);
   const createShift = useCreateShift();
@@ -79,6 +84,8 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
     setPosition('Server');
     setStatus('scheduled');
     setNotes('');
+    setRecurrenceType('none');
+    setRecurrencePattern(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -114,6 +121,8 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
       position,
       status,
       notes: notes || undefined,
+      recurrence_pattern: recurrencePattern,
+      is_recurring: recurrencePattern !== null,
     };
 
     if (shift) {
@@ -134,6 +143,39 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
         },
       });
     }
+  };
+
+  const handleRecurrenceChange = (value: string) => {
+    if (value === 'none') {
+      setRecurrenceType('none');
+      setRecurrencePattern(null);
+    } else if (value === 'custom') {
+      setRecurrenceType('custom');
+      setCustomRecurrenceOpen(true);
+    } else {
+      // Find preset pattern
+      const preset = RECURRENCE_PRESETS.find(p => p.label === value);
+      if (preset && preset.pattern) {
+        const currentDate = startDate ? new Date(startDate) : new Date();
+        const dayOfWeek = getDay(currentDate);
+        
+        // Adjust pattern based on current date
+        let pattern = { ...preset.pattern } as RecurrencePattern;
+        
+        // For weekly patterns, use the day of the shift
+        if (pattern.type === 'weekly' && pattern.daysOfWeek) {
+          pattern.daysOfWeek = [dayOfWeek];
+        }
+        
+        setRecurrenceType(preset.value as RecurrenceType);
+        setRecurrencePattern(pattern);
+      }
+    }
+  };
+
+  const handleCustomRecurrenceSave = (pattern: RecurrencePattern) => {
+    setRecurrencePattern(pattern);
+    setRecurrenceType(pattern.type);
   };
 
   const activeEmployees = employees.filter((emp) => emp.status === 'active');
@@ -272,6 +314,33 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
               </div>
             </div>
 
+            {/* Recurrence Selection - Only show for new shifts */}
+            {!shift && (
+              <div className="space-y-2">
+                <Label htmlFor="recurrence">Repeat</Label>
+                <Select 
+                  value={recurrencePattern ? getRecurrenceDescription(recurrencePattern) : 'Does not repeat'} 
+                  onValueChange={handleRecurrenceChange}
+                >
+                  <SelectTrigger id="recurrence" aria-label="Repeat pattern">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RECURRENCE_PRESETS.map((preset) => (
+                      <SelectItem key={preset.label} value={preset.label}>
+                        {preset.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {recurrencePattern && (
+                  <p className="text-sm text-muted-foreground">
+                    {getRecurrenceDescription(recurrencePattern)}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>
               <Textarea
@@ -302,6 +371,15 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
           </DialogFooter>
         </form>
       </DialogContent>
+
+      {/* Custom Recurrence Dialog */}
+      <CustomRecurrenceDialog
+        open={customRecurrenceOpen}
+        onOpenChange={setCustomRecurrenceOpen}
+        onSave={handleCustomRecurrenceSave}
+        initialPattern={recurrencePattern || undefined}
+        startDate={startDate ? new Date(startDate) : new Date()}
+      />
     </Dialog>
   );
 };

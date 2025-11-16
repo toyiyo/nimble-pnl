@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Shift } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
+import { generateRecurringDates } from '@/utils/recurrenceUtils';
+import { differenceInHours, parseISO } from 'date-fns';
 
 export const useShifts = (restaurantId: string | null, startDate?: Date, endDate?: Date) => {
   const { toast } = useToast();
@@ -47,20 +49,81 @@ export const useCreateShift = () => {
 
   return useMutation({
     mutationFn: async (shift: Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>) => {
-      const { data, error } = await supabase
-        .from('shifts')
-        .insert(shift)
-        .select()
-        .single();
+      // If shift has recurrence pattern, generate multiple shifts
+      if (shift.recurrence_pattern && shift.is_recurring) {
+        const startDate = parseISO(shift.start_time);
+        const endDate = parseISO(shift.end_time);
+        const shiftDuration = differenceInHours(endDate, startDate);
+        
+        // Generate recurring dates
+        const recurringDates = generateRecurringDates(startDate, shift.recurrence_pattern);
+        
+        // Create parent shift (first occurrence)
+        const { data: parentShift, error: parentError } = await supabase
+          .from('shifts')
+          .insert({
+            ...shift,
+            recurrence_parent_id: null, // This is the parent
+          })
+          .select()
+          .single();
 
-      if (error) throw error;
-      return data;
+        if (parentError) throw parentError;
+        
+        // Create child shifts for remaining occurrences
+        if (recurringDates.length > 1) {
+          const childShifts = recurringDates.slice(1).map(date => {
+            const childStartTime = new Date(date);
+            const childEndTime = new Date(date);
+            childEndTime.setHours(childEndTime.getHours() + shiftDuration);
+            
+            return {
+              restaurant_id: shift.restaurant_id,
+              employee_id: shift.employee_id,
+              start_time: childStartTime.toISOString(),
+              end_time: childEndTime.toISOString(),
+              break_duration: shift.break_duration,
+              position: shift.position,
+              status: shift.status,
+              notes: shift.notes,
+              recurrence_pattern: shift.recurrence_pattern,
+              recurrence_parent_id: parentShift.id,
+              is_recurring: true,
+            };
+          });
+          
+          const { error: childError } = await supabase
+            .from('shifts')
+            .insert(childShifts);
+            
+          if (childError) throw childError;
+        }
+        
+        return parentShift;
+      } else {
+        // Single shift creation
+        const { data, error } = await supabase
+          .from('shifts')
+          .insert(shift)
+          .select()
+          .single();
+
+        if (error) throw error;
+        return data;
+      }
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurant_id] });
+      
+      const message = variables.is_recurring 
+        ? 'Recurring shifts created successfully'
+        : 'Shift created';
+      
       toast({
-        title: 'Shift created',
-        description: 'The shift has been added to the schedule.',
+        title: message,
+        description: variables.is_recurring 
+          ? 'Multiple shifts have been added to the schedule.'
+          : 'The shift has been added to the schedule.',
       });
     },
     onError: (error: Error) => {

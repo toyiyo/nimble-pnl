@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
+import { useShift4Integration } from '@/hooks/useShift4Integration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -15,6 +16,7 @@ const Integrations = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
   const { isConnected: squareConnected } = useSquareIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: cloverConnected } = useCloverIntegration(selectedRestaurant?.restaurant_id || null);
+  const { isConnected: shift4Connected } = useShift4Integration(selectedRestaurant?.restaurant_id || null);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -47,6 +49,15 @@ const Integrations = () => {
       logo: '🍀',
       connected: cloverConnected,
       features: ['Orders', 'Payments', 'Menu Items', 'Multi-region Support']
+    },
+    {
+      id: 'shift4-pos',
+      name: 'Shift4',
+      description: 'Sync payment charges and refunds from Shift4',
+      category: 'Point of Sale',
+      logo: '💳',
+      connected: shift4Connected,
+      features: ['Payment Charges', 'Refunds', 'Real-time Webhooks', 'API Key Auth']
     },
     {
       id: '7shifts',

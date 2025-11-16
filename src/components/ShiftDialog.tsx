@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { useCreateShift, useUpdateShift } from '@/hooks/useShifts';
 import { useEmployees } from '@/hooks/useEmployees';
 import { format, getDay } from 'date-fns';
 import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
-import { RECURRENCE_PRESETS, getRecurrenceDescription } from '@/utils/recurrenceUtils';
+import { getRecurrencePresetsForDate, getRecurrenceDescription } from '@/utils/recurrenceUtils';
 
 interface ShiftDialogProps {
   open: boolean;
@@ -146,29 +146,21 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
   };
 
   const handleRecurrenceChange = (value: string) => {
-    if (value === 'none') {
+    if (value === 'Does not repeat') {
       setRecurrenceType('none');
       setRecurrencePattern(null);
-    } else if (value === 'custom') {
+    } else if (value === 'Custom...') {
       setRecurrenceType('custom');
       setCustomRecurrenceOpen(true);
     } else {
-      // Find preset pattern
-      const preset = RECURRENCE_PRESETS.find(p => p.label === value);
+      // Find preset pattern from current date's presets
+      const currentDate = startDate ? new Date(startDate) : new Date();
+      const presets = getRecurrencePresetsForDate(currentDate);
+      const preset = presets.find(p => p.label === value);
+      
       if (preset && preset.pattern) {
-        const currentDate = startDate ? new Date(startDate) : new Date();
-        const dayOfWeek = getDay(currentDate);
-        
-        // Adjust pattern based on current date
-        let pattern = { ...preset.pattern } as RecurrencePattern;
-        
-        // For weekly patterns, use the day of the shift
-        if (pattern.type === 'weekly' && pattern.daysOfWeek) {
-          pattern.daysOfWeek = [dayOfWeek];
-        }
-        
         setRecurrenceType(preset.value as RecurrenceType);
-        setRecurrencePattern(pattern);
+        setRecurrencePattern(preset.pattern as RecurrencePattern);
       }
     }
   };
@@ -177,6 +169,12 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
     setRecurrencePattern(pattern);
     setRecurrenceType(pattern.type);
   };
+
+  // Generate recurrence presets based on selected date
+  const recurrencePresets = useMemo(() => {
+    const currentDate = startDate ? new Date(startDate) : new Date();
+    return getRecurrencePresetsForDate(currentDate);
+  }, [startDate]);
 
   const activeEmployees = employees.filter((emp) => emp.status === 'active');
 
@@ -326,7 +324,7 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {RECURRENCE_PRESETS.map((preset) => (
+                    {recurrencePresets.map((preset) => (
                       <SelectItem key={preset.label} value={preset.label}>
                         {preset.label}
                       </SelectItem>

@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Shift } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
 import { generateRecurringDates } from '@/utils/recurrenceUtils';
-import { differenceInHours, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
 
 export const useShifts = (restaurantId: string | null, startDate?: Date, endDate?: Date) => {
   const { toast } = useToast();
@@ -53,7 +53,14 @@ export const useCreateShift = () => {
       if (shift.recurrence_pattern && shift.is_recurring) {
         const startDate = parseISO(shift.start_time);
         const endDate = parseISO(shift.end_time);
-        const shiftDuration = differenceInHours(endDate, startDate);
+        
+        // Calculate time difference in milliseconds for accurate preservation
+        const timeDiff = endDate.getTime() - startDate.getTime();
+        
+        // Get time components from original shift
+        const startHours = startDate.getHours();
+        const startMinutes = startDate.getMinutes();
+        const startSeconds = startDate.getSeconds();
         
         // Generate recurring dates
         const recurringDates = generateRecurringDates(startDate, shift.recurrence_pattern);
@@ -73,9 +80,12 @@ export const useCreateShift = () => {
         // Create child shifts for remaining occurrences
         if (recurringDates.length > 1) {
           const childShifts = recurringDates.slice(1).map(date => {
+            // Set the time to match the original shift time
             const childStartTime = new Date(date);
-            const childEndTime = new Date(date);
-            childEndTime.setHours(childEndTime.getHours() + shiftDuration);
+            childStartTime.setHours(startHours, startMinutes, startSeconds);
+            
+            // Add the duration to get end time
+            const childEndTime = new Date(childStartTime.getTime() + timeDiff);
             
             return {
               restaurant_id: shift.restaurant_id,

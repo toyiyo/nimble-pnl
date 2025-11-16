@@ -235,7 +235,30 @@ export function getRecurrenceDescription(pattern: RecurrencePattern): string {
 
 /**
  * Get preset recurrence options for quick selection
+ * These match Google Calendar's familiar patterns
  */
+export function getRecurrencePresetsForDate(date: Date): Array<{ label: string; value: RecurrenceType | 'none'; pattern?: Partial<RecurrencePattern> }> {
+  const dayOfWeek = date.getDay();
+  const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek];
+  const monthName = format(date, 'MMMM');
+  const dayOfMonth = date.getDate();
+  
+  // Calculate which week of the month this is (1st, 2nd, 3rd, etc.)
+  const weekOfMonth = Math.ceil(dayOfMonth / 7);
+  const ordinal = ['first', 'second', 'third', 'fourth', 'fifth'][weekOfMonth - 1];
+  
+  return [
+    { label: 'Does not repeat', value: 'none' },
+    { label: 'Daily', value: 'daily', pattern: { type: 'daily', interval: 1, endType: 'never' } },
+    { label: `Weekly on ${dayName}`, value: 'weekly', pattern: { type: 'weekly', daysOfWeek: [dayOfWeek], interval: 1, endType: 'never' } },
+    { label: `Monthly on the ${ordinal} ${dayName}`, value: 'monthly', pattern: { type: 'monthly', daysOfWeek: [dayOfWeek], weekOfMonth, interval: 1, endType: 'never' } },
+    { label: `Annually on ${monthName} ${dayOfMonth}`, value: 'yearly', pattern: { type: 'yearly', interval: 1, endType: 'never' } },
+    { label: 'Every weekday (Monday to Friday)', value: 'weekday', pattern: { type: 'weekday', endType: 'never' } },
+    { label: 'Custom...', value: 'custom', pattern: { type: 'custom', interval: 1, endType: 'never' } },
+  ];
+}
+
+// Legacy constant for backwards compatibility
 export const RECURRENCE_PRESETS: Array<{ label: string; value: RecurrenceType | 'none'; pattern?: Partial<RecurrencePattern> }> = [
   { label: 'Does not repeat', value: 'none' },
   { label: 'Daily', value: 'daily', pattern: { type: 'daily', interval: 1, endType: 'never' } },

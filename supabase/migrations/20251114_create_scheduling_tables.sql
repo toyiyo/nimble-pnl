@@ -38,9 +38,9 @@ CREATE TABLE IF NOT EXISTS shift_templates (
   day_of_week INTEGER NOT NULL, -- 0 = Sunday, 6 = Saturday
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
-  break_duration INTEGER DEFAULT 0,
+  break_duration INTEGER NOT NULL DEFAULT 0,
   position TEXT NOT NULL,
-  is_active BOOLEAN DEFAULT true,
+  is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   CONSTRAINT valid_day_of_week CHECK (day_of_week >= 0 AND day_of_week <= 6)

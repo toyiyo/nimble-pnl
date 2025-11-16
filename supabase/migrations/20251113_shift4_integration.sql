@@ -111,40 +111,230 @@ ALTER TABLE public.shift4_charges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shift4_refunds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shift4_webhook_events ENABLE ROW LEVEL SECURITY;
 
--- Policy: Users can only access their own restaurant's Shift4 data
-CREATE POLICY shift4_connections_policy ON public.shift4_connections
-  FOR ALL
+-- =====================================================
+-- RLS Policies for shift4_connections
+-- =====================================================
+
+CREATE POLICY "Users can view shift4_connections for their restaurants"
+  ON public.shift4_connections
+  FOR SELECT
   USING (
-    restaurant_id IN (
-      SELECT restaurant_id FROM public.user_restaurants
-      WHERE user_id = auth.uid()
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_connections.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
     )
   );
 
-CREATE POLICY shift4_charges_policy ON public.shift4_charges
-  FOR ALL
-  USING (
-    restaurant_id IN (
-      SELECT restaurant_id FROM public.user_restaurants
-      WHERE user_id = auth.uid()
+CREATE POLICY "Users can insert shift4_connections for their restaurants"
+  ON public.shift4_connections
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_connections.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+        AND user_restaurants.role IN ('owner', 'manager')
     )
   );
 
-CREATE POLICY shift4_refunds_policy ON public.shift4_refunds
-  FOR ALL
+CREATE POLICY "Users can update shift4_connections for their restaurants"
+  ON public.shift4_connections
+  FOR UPDATE
   USING (
-    restaurant_id IN (
-      SELECT restaurant_id FROM public.user_restaurants
-      WHERE user_id = auth.uid()
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_connections.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+        AND user_restaurants.role IN ('owner', 'manager')
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_connections.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+        AND user_restaurants.role IN ('owner', 'manager')
     )
   );
 
-CREATE POLICY shift4_webhook_events_policy ON public.shift4_webhook_events
-  FOR ALL
+CREATE POLICY "Users can delete shift4_connections for their restaurants"
+  ON public.shift4_connections
+  FOR DELETE
   USING (
-    restaurant_id IN (
-      SELECT restaurant_id FROM public.user_restaurants
-      WHERE user_id = auth.uid()
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_connections.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+        AND user_restaurants.role IN ('owner', 'manager')
+    )
+  );
+
+-- =====================================================
+-- RLS Policies for shift4_charges
+-- =====================================================
+
+CREATE POLICY "Users can view shift4_charges for their restaurants"
+  ON public.shift4_charges
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_charges.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert shift4_charges for their restaurants"
+  ON public.shift4_charges
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_charges.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update shift4_charges for their restaurants"
+  ON public.shift4_charges
+  FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_charges.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_charges.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can delete shift4_charges for their restaurants"
+  ON public.shift4_charges
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_charges.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+        AND user_restaurants.role IN ('owner', 'manager')
+    )
+  );
+
+-- =====================================================
+-- RLS Policies for shift4_refunds
+-- =====================================================
+
+CREATE POLICY "Users can view shift4_refunds for their restaurants"
+  ON public.shift4_refunds
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_refunds.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert shift4_refunds for their restaurants"
+  ON public.shift4_refunds
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_refunds.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update shift4_refunds for their restaurants"
+  ON public.shift4_refunds
+  FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_refunds.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_refunds.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can delete shift4_refunds for their restaurants"
+  ON public.shift4_refunds
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_refunds.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+        AND user_restaurants.role IN ('owner', 'manager')
+    )
+  );
+
+-- =====================================================
+-- RLS Policies for shift4_webhook_events
+-- =====================================================
+
+CREATE POLICY "Users can view shift4_webhook_events for their restaurants"
+  ON public.shift4_webhook_events
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_webhook_events.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert shift4_webhook_events for their restaurants"
+  ON public.shift4_webhook_events
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_webhook_events.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update shift4_webhook_events for their restaurants"
+  ON public.shift4_webhook_events
+  FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_webhook_events.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_webhook_events.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can delete shift4_webhook_events for their restaurants"
+  ON public.shift4_webhook_events
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants
+      WHERE user_restaurants.restaurant_id = shift4_webhook_events.restaurant_id
+        AND user_restaurants.user_id = auth.uid()
+        AND user_restaurants.role IN ('owner', 'manager')
     )
   );
 

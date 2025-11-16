@@ -37,13 +37,20 @@ const EmployeeClock = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Cleanup camera stream when component unmounts or dialog closes
+  // Cleanup camera stream when dialog closes or component unmounts
   useEffect(() => {
-    if (!showCameraDialog && cameraStream) {
+    if (cameraStream && !showCameraDialog) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
     }
-  }, [showCameraDialog, cameraStream]);
+
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null);
+      }
+    };
+  }, [cameraStream, showCameraDialog]);
 
   const startCamera = async () => {
     try {
@@ -393,7 +400,7 @@ const EmployeeClock = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {punch.photo && <Camera className="h-4 w-4 text-green-600" title="Photo verified" />}
+                    {punch.photo_path && <Camera className="h-4 w-4 text-green-600" title="Photo verified" />}
                     {punch.location && <MapPin className="h-4 w-4 text-blue-600" title="Location verified" />}
                   </div>
                 </div>
@@ -505,7 +512,9 @@ const EmployeeClock = () => {
                     className="w-full sm:w-auto"
                   >
                     <CheckCircle className="mr-2 h-4 w-4" />
-                    Confirm & Clock In
+                    {pendingPunchType === 'clock_out' ? 'Confirm & Clock Out' : 
+                     pendingPunchType === 'break_start' ? 'Confirm & Start Break' :
+                     pendingPunchType === 'break_end' ? 'Confirm & End Break' : 'Confirm & Clock In'}
                   </Button>
                 </>
               )}

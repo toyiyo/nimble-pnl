@@ -73,20 +73,32 @@ CREATE POLICY "Managers can delete time punches"
     )
   );
 
--- Create employee_tips table (if not exists)
-CREATE TABLE IF NOT EXISTS public.employee_tips (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  restaurant_id UUID NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
-  employee_id UUID NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
-  shift_id UUID REFERENCES public.shifts(id) ON DELETE SET NULL,
-  tip_amount INTEGER NOT NULL DEFAULT 0, -- In cents
-  tip_source TEXT NOT NULL CHECK (tip_source IN ('cash', 'credit', 'pool', 'other')),
-  recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  notes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_by UUID REFERENCES auth.users(id)
-);
+-- Upgrade employee_tips table to add stricter constraints
+-- Add NOT NULL constraints to created_at and updated_at if they're missing
+DO $$ 
+BEGIN
+  -- Set NOT NULL on created_at
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'employee_tips' 
+    AND column_name = 'created_at'
+    AND is_nullable = 'YES'
+  ) THEN
+    ALTER TABLE public.employee_tips ALTER COLUMN created_at SET NOT NULL;
+  END IF;
+
+  -- Set NOT NULL on updated_at
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'employee_tips' 
+    AND column_name = 'updated_at'
+    AND is_nullable = 'YES'
+  ) THEN
+    ALTER TABLE public.employee_tips ALTER COLUMN updated_at SET NOT NULL;
+  END IF;
+END $$;
 
 -- Create indexes for employee_tips
 CREATE INDEX IF NOT EXISTS idx_employee_tips_restaurant ON public.employee_tips(restaurant_id);

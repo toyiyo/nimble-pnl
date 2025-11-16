@@ -59,7 +59,8 @@ const Scheduling = () => {
     const start = new Date(shift.start_time);
     const end = new Date(shift.end_time);
     const totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-    return (totalMinutes - shift.break_duration) / 60;
+    const netMinutes = Math.max(totalMinutes - shift.break_duration, 0);
+    return netMinutes / 60;
   };
 
   const totalScheduledHours = shifts.reduce((sum, shift) => sum + calculateShiftHours(shift), 0);

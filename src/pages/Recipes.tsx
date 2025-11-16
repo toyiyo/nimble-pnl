@@ -431,7 +431,11 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
 
     // Filter by warnings if enabled
     if (showOnlyWarnings) {
-      result = result.filter((recipe) => recipeValidationsById.get(recipe.id)?.hasIssues);
+      result = result.filter((recipe) => {
+        const hasConversionIssues = recipeValidationsById.get(recipe.id)?.hasIssues;
+        const hasNoIngredients = !recipe.ingredients || recipe.ingredients.length === 0;
+        return hasConversionIssues || hasNoIngredients;
+      });
     }
 
     // Sort recipes
@@ -489,7 +493,7 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
                 <div>
                   <h3 className="text-xl font-semibold mb-2">No recipes with warnings</h3>
                   <p className="text-muted-foreground max-w-md mx-auto">
-                    All recipes have valid conversions. Your recipe setup is looking great!
+                    All recipes have ingredients and valid conversions. Your recipe setup is looking great!
                   </p>
                 </div>
               </>

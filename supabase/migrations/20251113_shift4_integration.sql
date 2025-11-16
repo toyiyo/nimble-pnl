@@ -112,8 +112,10 @@ ALTER TABLE public.shift4_refunds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shift4_webhook_events ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Users can only access their own restaurant's Shift4 data
-CREATE POLICY shift4_connections_policy ON public.shift4_connections
-  FOR ALL
+
+-- shift4_connections policies
+CREATE POLICY shift4_connections_select ON public.shift4_connections
+  FOR SELECT
   USING (
     restaurant_id IN (
       SELECT restaurant_id FROM public.user_restaurants
@@ -121,8 +123,32 @@ CREATE POLICY shift4_connections_policy ON public.shift4_connections
     )
   );
 
-CREATE POLICY shift4_charges_policy ON public.shift4_charges
-  FOR ALL
+CREATE POLICY shift4_connections_insert ON public.shift4_connections
+  FOR INSERT
+  WITH CHECK (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY shift4_connections_update ON public.shift4_connections
+  FOR UPDATE
+  USING (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY shift4_connections_delete ON public.shift4_connections
+  FOR DELETE
   USING (
     restaurant_id IN (
       SELECT restaurant_id FROM public.user_restaurants
@@ -130,8 +156,9 @@ CREATE POLICY shift4_charges_policy ON public.shift4_charges
     )
   );
 
-CREATE POLICY shift4_refunds_policy ON public.shift4_refunds
-  FOR ALL
+-- shift4_charges policies
+CREATE POLICY shift4_charges_select ON public.shift4_charges
+  FOR SELECT
   USING (
     restaurant_id IN (
       SELECT restaurant_id FROM public.user_restaurants
@@ -139,8 +166,118 @@ CREATE POLICY shift4_refunds_policy ON public.shift4_refunds
     )
   );
 
-CREATE POLICY shift4_webhook_events_policy ON public.shift4_webhook_events
-  FOR ALL
+CREATE POLICY shift4_charges_insert ON public.shift4_charges
+  FOR INSERT
+  WITH CHECK (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY shift4_charges_update ON public.shift4_charges
+  FOR UPDATE
+  USING (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY shift4_charges_delete ON public.shift4_charges
+  FOR DELETE
+  USING (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+-- shift4_refunds policies
+CREATE POLICY shift4_refunds_select ON public.shift4_refunds
+  FOR SELECT
+  USING (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY shift4_refunds_insert ON public.shift4_refunds
+  FOR INSERT
+  WITH CHECK (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY shift4_refunds_update ON public.shift4_refunds
+  FOR UPDATE
+  USING (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY shift4_refunds_delete ON public.shift4_refunds
+  FOR DELETE
+  USING (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+-- shift4_webhook_events policies
+CREATE POLICY shift4_webhook_events_select ON public.shift4_webhook_events
+  FOR SELECT
+  USING (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY shift4_webhook_events_insert ON public.shift4_webhook_events
+  FOR INSERT
+  WITH CHECK (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY shift4_webhook_events_update ON public.shift4_webhook_events
+  FOR UPDATE
+  USING (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.user_restaurants
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY shift4_webhook_events_delete ON public.shift4_webhook_events
+  FOR DELETE
   USING (
     restaurant_id IN (
       SELECT restaurant_id FROM public.user_restaurants

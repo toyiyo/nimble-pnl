@@ -203,11 +203,19 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
   RETURN QUERY
-  WITH latest_punch AS (
-    SELECT punch_type, punch_time
-    FROM public.time_punches
-    WHERE employee_id = p_employee_id
-    ORDER BY punch_time DESC
+  WITH allowed_employee AS (
+    SELECT e.id
+    FROM public.employees e
+    JOIN public.user_restaurants ur
+      ON ur.restaurant_id = e.restaurant_id
+    WHERE e.id = p_employee_id
+      AND ur.user_id = auth.uid()
+  ),
+  latest_punch AS (
+    SELECT tp.punch_type, tp.punch_time
+    FROM public.time_punches tp
+    JOIN allowed_employee ae ON tp.employee_id = ae.id
+    ORDER BY tp.punch_time DESC
     LIMIT 1
   )
   SELECT
@@ -238,16 +246,24 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
   RETURN QUERY
-  WITH punch_pairs AS (
+  WITH allowed_employee AS (
+    SELECT e.id
+    FROM public.employees e
+    JOIN public.user_restaurants ur
+      ON ur.restaurant_id = e.restaurant_id
+    WHERE e.id = p_employee_id
+      AND ur.user_id = auth.uid()
+  ),
+  punch_pairs AS (
     SELECT
-      punch_time AS start_time,
-      punch_type,
-      LEAD(punch_time) OVER (ORDER BY punch_time) AS end_time,
-      LEAD(punch_type) OVER (ORDER BY punch_time) AS next_type
-    FROM public.time_punches
-    WHERE employee_id = p_employee_id
-      AND punch_time BETWEEN p_start_date AND p_end_date
-    ORDER BY punch_time
+      tp.punch_time AS start_time,
+      tp.punch_type,
+      LEAD(tp.punch_time) OVER (ORDER BY tp.punch_time) AS end_time,
+      LEAD(tp.punch_type) OVER (ORDER BY tp.punch_time) AS next_type
+    FROM public.time_punches tp
+    JOIN allowed_employee ae ON tp.employee_id = ae.id
+    WHERE tp.punch_time BETWEEN p_start_date AND p_end_date
+    ORDER BY tp.punch_time
   ),
   work_periods AS (
     SELECT

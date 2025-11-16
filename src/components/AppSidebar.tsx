@@ -29,6 +29,8 @@ import {
   LogOut,
   TrendingUp,
   Sparkles,
+  Clock,
+  ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -45,6 +47,14 @@ const navigationGroups = [
       { path: '/ai-assistant', label: 'AI Assistant', icon: Sparkles },
       { path: '/integrations', label: 'Integrations', icon: Plug },
       { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
+      { path: '/employee/clock', label: 'Time Clock', icon: Clock },
+      { path: '/time-punches', label: 'Time Punches', icon: ClipboardList },
     ],
   },
   {
@@ -81,6 +91,27 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { selectedRestaurant } = useRestaurantContext();
+
+  // Check if user is staff
+  const isStaff = selectedRestaurant?.role === 'staff';
+
+  // Filter navigation groups for staff users
+  const filteredNavigationGroups = isStaff
+    ? [
+        {
+          label: 'Employee',
+          items: [
+            { path: '/employee/clock', label: 'Time Clock', icon: Clock },
+          ],
+        },
+        {
+          label: 'Settings',
+          items: [
+            { path: '/settings', label: 'Settings', icon: Settings },
+          ],
+        },
+      ]
+    : navigationGroups;
 
   const isActivePath = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -123,7 +154,7 @@ export function AppSidebar() {
         {collapsed ? (
           // Collapsed view: Show all items as flat icon list
           <SidebarMenu className="px-2">
-            {navigationGroups.map((group, groupIndex) => (
+            {filteredNavigationGroups.map((group, groupIndex) => (
               <div key={group.label}>
                 {groupIndex > 0 && <div className="h-px bg-border/50 my-2" />}
                 {group.items.map((item) => {
@@ -152,7 +183,7 @@ export function AppSidebar() {
         ) : (
           // Expanded view: Show collapsible groups
           <>
-            {navigationGroups.map((group) => {
+            {filteredNavigationGroups.map((group) => {
               const groupIsActive = isGroupActive(group.items);
               
               return (

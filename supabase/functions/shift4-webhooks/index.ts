@@ -116,7 +116,7 @@ async function processRefundEvent(
 ) {
   // The event data should contain the refund object
   const refund = eventData.refund || eventData;
-  const chargeId = eventData.chargeId || refund.chargeId;
+  const chargeId = eventData.charge || refund.charge;
 
   if (!refund.id || !chargeId) {
     throw new Error('Missing refund ID or charge ID in event data');

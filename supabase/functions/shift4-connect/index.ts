@@ -9,7 +9,7 @@ const corsHeaders = {
 interface Shift4ConnectRequest {
   restaurantId: string;
   secretKey: string;
-  merchantId: string; // Required - Shift4 API doesn't provide a merchant info endpoint
+  merchantId?: string; // Optional - can be provided for tracking purposes
   environment?: 'production' | 'sandbox';
 }
 
@@ -74,8 +74,8 @@ Deno.serve(async (req) => {
     const body: Shift4ConnectRequest = await req.json();
     const { restaurantId, secretKey, merchantId, environment = 'production' } = body;
 
-    if (!restaurantId || !secretKey || !merchantId) {
-      throw new Error('Restaurant ID, Secret Key, and Merchant ID are required');
+    if (!restaurantId || !secretKey) {
+      throw new Error('Restaurant ID and Secret Key are required');
     }
 
     console.log('Shift4 connection request:', { restaurantId, environment, hasMerchantId: !!merchantId });
@@ -100,14 +100,12 @@ Deno.serve(async (req) => {
     console.log('Validating Shift4 API key...');
     await validateShift4Key(secretKey, environment);
     
-    // Merchant ID must be provided by the user since Shift4 API
-    // doesn't have a merchant info endpoint
-    if (!merchantId) {
-      throw new Error('Merchant ID is required. Please provide your Shift4 Merchant ID.');
-    }
+    // Use provided merchantId or generate one from the secret key for tracking
+    // The API key itself identifies the merchant account
+    const actualMerchantId = merchantId || `shift4_${secretKey.substring(0, 12)}`;
 
     console.log('Shift4 API key validated successfully:', { 
-      merchantId: merchantId,
+      merchantId: actualMerchantId,
     });
 
     // Encrypt the secret key before storing
@@ -119,7 +117,7 @@ Deno.serve(async (req) => {
       .from('shift4_connections')
       .upsert({
         restaurant_id: restaurantId,
-        merchant_id: merchantId,
+        merchant_id: actualMerchantId,
         secret_key: encryptedSecretKey,
         environment,
         connected_at: new Date().toISOString(),
@@ -137,7 +135,7 @@ Deno.serve(async (req) => {
 
     // Log security event
     await logSecurityEvent(supabase, 'SHIFT4_CONNECTION_CREATED', user.id, restaurantId, {
-      merchantId: merchantId,
+      merchantId: actualMerchantId,
       environment,
     });
 
@@ -147,7 +145,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         connectionId: connection.id,
-        merchantId: merchantId,
+        merchantId: actualMerchantId,
         environment,
         message: 'Shift4 connection established successfully',
       }),

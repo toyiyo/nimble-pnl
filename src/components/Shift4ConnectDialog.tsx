@@ -10,7 +10,7 @@ import { AlertCircle, Key, ShieldCheck } from 'lucide-react';
 interface Shift4ConnectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConnect: (secretKey: string, merchantId: string, environment: 'production' | 'sandbox') => Promise<void>;
+  onConnect: (secretKey: string, merchantId: string | undefined, environment: 'production' | 'sandbox') => Promise<void>;
   isLoading: boolean;
 }
 
@@ -33,15 +33,10 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
       return;
     }
 
-    if (!merchantId.trim()) {
-      setError('Please enter your Shift4 Merchant ID');
-      return;
-    }
-
     setError('');
 
     try {
-      await onConnect(secretKey, merchantId, environment);
+      await onConnect(secretKey, merchantId.trim() || undefined, environment);
       // Reset form on success
       setSecretKey('');
       setMerchantId('');
@@ -90,17 +85,17 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="merchantId">Merchant ID</Label>
+            <Label htmlFor="merchantId">Merchant ID (Optional)</Label>
             <Input
               id="merchantId"
               type="text"
-              placeholder="Enter your Shift4 Merchant ID"
+              placeholder="Optional - for tracking purposes"
               value={merchantId}
               onChange={(e) => setMerchantId(e.target.value)}
               disabled={isLoading}
             />
             <p className="text-xs text-muted-foreground">
-              Find your Merchant ID in Shift4 Dashboard → Settings → Account Information
+              Optional: Enter a merchant identifier for easier tracking in your dashboard
             </p>
           </div>
 

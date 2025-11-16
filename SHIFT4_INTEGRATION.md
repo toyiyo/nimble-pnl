@@ -50,14 +50,14 @@ Webhooks → Event Verification → Process → Update Database
 
 1. **shift4-connect**
    - **Purpose**: Validate and store Shift4 API credentials
-   - **Input**: `{ restaurantId, secretKey, merchantId, environment }`
+   - **Input**: `{ restaurantId, secretKey, merchantId?, environment }`
    - **Process**:
      1. Validates user permissions (owner/manager only)
      2. Tests API key by calling Shift4's `/charges?limit=1` endpoint
      3. Encrypts secret key
-     4. Stores connection in database
+     4. Stores connection in database (merchantId is optional and used for tracking)
    - **Output**: `{ success, connectionId, merchantId, environment }`
-   - **Note**: Merchant ID must be provided by the user (Shift4 API doesn't have a merchant info endpoint)
+   - **Note**: The API Secret Key itself identifies your merchant account. The optional merchantId parameter is for tracking purposes only.
 
 2. **shift4-sync-data**
    - **Purpose**: Sync charges and refunds from Shift4 API
@@ -225,13 +225,12 @@ CREATE POLICY shift4_connections_policy ON shift4_connections
    - Log in to Shift4 Dashboard
    - Navigate to Developers → API Keys
    - Copy your Secret Key (starts with `sk_live_` or `sk_test_`)
-   - Note your Merchant ID (available in your Shift4 Dashboard settings)
 
 2. **Connect in EasyShiftHQ**
    - Go to Integrations page
    - Click "Connect" on Shift4 card
-   - Enter Secret Key
-   - Enter Merchant ID
+   - Enter Secret Key (required)
+   - Optionally enter a Merchant ID for tracking purposes
    - Select Environment (Production or Sandbox based on your key type)
    - Click "Connect"
 
@@ -265,10 +264,11 @@ curl -X POST https://your-project.supabase.co/functions/v1/shift4-connect \
   -d '{
     "restaurantId": "uuid-here",
     "secretKey": "sk_test_...",
-    "merchantId": "your-merchant-id",
     "environment": "sandbox"
   }'
 ```
+
+Note: `merchantId` is optional and can be omitted. If provided, it will be used for tracking purposes.
 
 **Test Sync**:
 ```bash

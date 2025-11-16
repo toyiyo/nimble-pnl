@@ -54,15 +54,11 @@ export const useShift4Integration = (restaurantId: string | null) => {
 
   const connectShift4 = useCallback(async (
     secretKey: string,
-    merchantId: string,
+    merchantId: string | undefined,
     environment: 'production' | 'sandbox' = 'production'
   ) => {
     if (!restaurantId) {
       throw new Error('No restaurant selected');
-    }
-
-    if (!merchantId) {
-      throw new Error('Merchant ID is required');
     }
 
     setLoading(true);
@@ -85,7 +81,7 @@ export const useShift4Integration = (restaurantId: string | null) => {
 
       toast({
         title: "Shift4 Connected",
-        description: `Successfully connected to Shift4 (Merchant ID: ${data.merchantId})`,
+        description: `Successfully connected to Shift4${merchantId ? ` (Merchant ID: ${data.merchantId})` : ''}`,
       });
 
       // Refresh connection status

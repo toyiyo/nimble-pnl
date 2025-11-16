@@ -6,9 +6,11 @@ import { useToast } from '@/hooks/use-toast';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { useShift4Integration } from '@/hooks/useShift4Integration';
+import { useToastIntegration } from '@/hooks/useToastIntegration';
 import { SquareSync } from '@/components/SquareSync';
 import { CloverSync } from '@/components/CloverSync';
 import { Shift4Sync } from '@/components/Shift4Sync';
+import { ToastSync } from '@/components/ToastSync';
 import { Shift4ConnectDialog } from '@/components/Shift4ConnectDialog';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { Plug, Settings, CheckCircle, Clock } from 'lucide-react';
@@ -43,17 +45,23 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   // Shift4-specific integration hook
   const shift4Integration = useShift4Integration(restaurantId);
   
-  // Check if this integration is Square, Clover, or Shift4 and if it's connected
+  // Toast-specific integration hook
+  const toastIntegration = useToastIntegration(restaurantId);
+  
+  // Check if this integration is Square, Clover, Shift4, or Toast and if it's connected
   const isSquareIntegration = integration.id === 'square-pos';
   const isCloverIntegration = integration.id === 'clover-pos';
   const isShift4Integration = integration.id === 'shift4-pos';
+  const isToastIntegration = integration.id === 'toast-pos';
   const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected : 
                             isCloverIntegration ? cloverIntegration.isConnected :
                             isShift4Integration ? shift4Integration.isConnected :
+                            isToastIntegration ? toastIntegration.isConnected :
                             integration.connected;
   const actuallyConnecting = isSquareIntegration ? squareIntegration.isConnecting : 
                              isCloverIntegration ? cloverIntegration.isConnecting :
                              isShift4Integration ? shift4Integration.loading :
+                             isToastIntegration ? toastIntegration.isConnecting :
                              isConnecting;
 
   const handleConnect = async () => {
@@ -69,6 +77,11 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     
     if (isShift4Integration) {
       setShowShift4Dialog(true);
+      return;
+    }
+    
+    if (isToastIntegration) {
+      await toastIntegration.connectToast();
       return;
     }
     
@@ -111,6 +124,11 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     
     if (isShift4Integration) {
       await shift4Integration.disconnectShift4();
+      return;
+    }
+    
+    if (isToastIntegration) {
+      await toastIntegration.disconnectToast();
       return;
     }
     
@@ -228,6 +246,8 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
                 `Connected: ${new Date(cloverIntegration.connection.connected_at).toLocaleDateString()}` :
               isShift4Integration && shift4Integration.connection ?
                 `Connected: ${new Date(shift4Integration.connection.connected_at).toLocaleDateString()}` :
+              isToastIntegration && toastIntegration.connection ?
+                `Connected: ${new Date(toastIntegration.connection.connected_at).toLocaleDateString()}` :
                 'Last sync: 2 hours ago'
               }
             </div>
@@ -235,6 +255,30 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             {/* Square Sync Component */}
             {isSquareIntegration && (
               <SquareSync 
+                restaurantId={restaurantId} 
+                isConnected={actuallyConnected} 
+              />
+            )}
+            
+            {/* Clover Sync Component */}
+            {isCloverIntegration && (
+              <CloverSync 
+                restaurantId={restaurantId} 
+                isConnected={actuallyConnected} 
+              />
+            )}
+            
+            {/* Shift4 Sync Component */}
+            {isShift4Integration && (
+              <Shift4Sync 
+                restaurantId={restaurantId} 
+                isConnected={actuallyConnected} 
+              />
+            )}
+            
+            {/* Toast Sync Component */}
+            {isToastIntegration && (
+              <ToastSync 
                 restaurantId={restaurantId} 
                 isConnected={actuallyConnected} 
               />

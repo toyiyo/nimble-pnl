@@ -84,6 +84,19 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validate employee selection
+    if (!employeeId) {
+      alert('Please select an employee');
+      return;
+    }
+
+    // Validate and parse break duration
+    const parsedBreak = parseInt(breakDuration, 10);
+    if (Number.isNaN(parsedBreak) || parsedBreak < 0) {
+      alert('Please enter a valid break duration (0 or greater)');
+      return;
+    }
+
     const startDateTime = new Date(`${startDate}T${startTime}`);
     const endDateTime = new Date(`${endDate}T${endTime}`);
 
@@ -97,7 +110,7 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
       employee_id: employeeId,
       start_time: startDateTime.toISOString(),
       end_time: endDateTime.toISOString(),
-      break_duration: parseInt(breakDuration),
+      break_duration: parsedBreak,
       position,
       status,
       notes: notes || undefined,

@@ -174,6 +174,19 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Get authenticated user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('No authorization header');
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      throw new Error('Unauthorized');
+    }
+
     const body: Shift4SyncRequest = await req.json();
     const { restaurantId, action, dateRange } = body;
 
@@ -181,7 +194,23 @@ Deno.serve(async (req) => {
       throw new Error('Restaurant ID is required');
     }
 
-    console.log('Shift4 sync started:', { restaurantId, action, dateRange });
+    console.log('Shift4 sync started:', { restaurantId, action, dateRange, userId: user.id });
+
+    // Verify user has access to this restaurant
+    const { data: userRestaurant, error: restaurantError } = await supabase
+      .from('user_restaurants')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('restaurant_id', restaurantId)
+      .single();
+
+    if (restaurantError || !userRestaurant) {
+      throw new Error('Access denied: User does not have access to this restaurant');
+    }
+
+    if (!['owner', 'manager'].includes(userRestaurant.role)) {
+      throw new Error('Access denied: Only owners and managers can sync POS data');
+    }
 
     // Get Shift4 connection
     const { data: connection, error: connError } = await supabase
@@ -208,7 +237,7 @@ Deno.serve(async (req) => {
     const secretKey = await encryption.decrypt(connection.secret_key);
 
     // Log security event
-    await logSecurityEvent(supabase, 'SHIFT4_KEY_ACCESSED', undefined, restaurantId, {
+    await logSecurityEvent(supabase, 'SHIFT4_KEY_ACCESSED', user.id, restaurantId, {
       action,
       merchantId: connection.merchant_id,
     });

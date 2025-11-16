@@ -1,20 +1,12 @@
--- Create time_punches table for employee clock in/out with selfie photos
-CREATE TABLE IF NOT EXISTS public.time_punches (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  restaurant_id UUID NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
-  employee_id UUID NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
-  shift_id UUID REFERENCES public.shifts(id) ON DELETE SET NULL,
-  punch_type TEXT NOT NULL CHECK (punch_type IN ('clock_in', 'clock_out', 'break_start', 'break_end')),
-  punch_time TIMESTAMPTZ NOT NULL DEFAULT now(),
-  location JSONB, -- {latitude: number, longitude: number}
-  device_info TEXT,
-  photo_path TEXT, -- Storage path in time-clock-photos bucket
-  notes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_by UUID REFERENCES auth.users(id),
-  modified_by UUID REFERENCES auth.users(id)
-);
+-- Upgrade time_punches table to add photo support and enforce NOT NULL constraints
+-- Add photo_path column if it doesn't exist
+ALTER TABLE public.time_punches
+  ADD COLUMN IF NOT EXISTS photo_path TEXT;
+
+-- Set NOT NULL constraints on timestamp columns (they were created with DEFAULT but nullable)
+ALTER TABLE public.time_punches
+  ALTER COLUMN created_at SET NOT NULL,
+  ALTER COLUMN updated_at SET NOT NULL;
 
 -- Create indexes for time_punches
 CREATE INDEX IF NOT EXISTS idx_time_punches_restaurant ON public.time_punches(restaurant_id);
@@ -73,20 +65,11 @@ CREATE POLICY "Managers can delete time punches"
     )
   );
 
--- Create employee_tips table (if not exists)
-CREATE TABLE IF NOT EXISTS public.employee_tips (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  restaurant_id UUID NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
-  employee_id UUID NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
-  shift_id UUID REFERENCES public.shifts(id) ON DELETE SET NULL,
-  tip_amount INTEGER NOT NULL DEFAULT 0, -- In cents
-  tip_source TEXT NOT NULL CHECK (tip_source IN ('cash', 'credit', 'pool', 'other')),
-  recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  notes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_by UUID REFERENCES auth.users(id)
-);
+-- Upgrade employee_tips table to enforce NOT NULL constraints
+-- Set NOT NULL constraints on timestamp columns (they were created with DEFAULT but nullable)
+ALTER TABLE public.employee_tips
+  ALTER COLUMN created_at SET NOT NULL,
+  ALTER COLUMN updated_at SET NOT NULL;
 
 -- Create indexes for employee_tips
 CREATE INDEX IF NOT EXISTS idx_employee_tips_restaurant ON public.employee_tips(restaurant_id);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2 } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle, ChefHat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,8 @@ import { useSplitPosSale } from "@/hooks/useSplitPosSale";
 import { SplitPosSaleDialog } from "@/components/pos-sales/SplitPosSaleDialog";
 import { SplitSaleView } from "@/components/pos-sales/SplitSaleView";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
+import { useRecipes } from "@/hooks/useRecipes";
+import { useNavigate } from "react-router-dom";
 
 export default function POSSales() {
   const {
@@ -48,12 +50,15 @@ export default function POSSales() {
     selectedRestaurant?.restaurant_id || null,
   );
   const { simulateDeduction } = useInventoryDeduction();
+  const { recipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
+  const navigate = useNavigate();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'quantity' | 'amount'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [recipeFilter, setRecipeFilter] = useState<'all' | 'with-recipe' | 'without-recipe'>('all');
   const [showSaleDialog, setShowSaleDialog] = useState(false);
   const [editingSale, setEditingSale] = useState<{
     id: string;
@@ -87,6 +92,27 @@ export default function POSSales() {
   const categoryAccounts = useMemo(() => {
     return accounts.filter(acc => acc.account_type === 'revenue' || acc.account_type === 'liability');
   }, [accounts]);
+
+  // Create a map of POS item name to recipe for quick lookup
+  const recipeByItemName = useMemo(() => {
+    const map = new Map<string, { 
+      id: string; 
+      name: string; 
+      profitMargin?: number;
+      hasIngredients: boolean;
+    }>();
+    recipes.forEach(recipe => {
+      if (recipe.pos_item_name) {
+        map.set(recipe.pos_item_name.toLowerCase(), {
+          id: recipe.id,
+          name: recipe.name,
+          profitMargin: recipe.profit_margin,
+          hasIngredients: recipe.ingredients ? recipe.ingredients.length > 0 : false
+        });
+      }
+    });
+    return map;
+  }, [recipes]);
 
   const handleMapPOSItem = (itemName: string) => {
     setSelectedPOSItemForMapping(itemName);
@@ -137,6 +163,13 @@ export default function POSSales() {
       filtered = filtered.filter((sale) => sale.saleDate <= endDate);
     }
     
+    // Apply recipe filter
+    if (recipeFilter === 'with-recipe') {
+      filtered = filtered.filter((sale) => recipeByItemName.has(sale.itemName.toLowerCase()));
+    } else if (recipeFilter === 'without-recipe') {
+      filtered = filtered.filter((sale) => !recipeByItemName.has(sale.itemName.toLowerCase()));
+    }
+    
     // Apply sorting
     filtered.sort((a, b) => {
       let comparison = 0;
@@ -163,7 +196,7 @@ export default function POSSales() {
     });
     
     return filtered;
-  }, [sales, searchTerm, startDate, endDate, sortBy, sortDirection]);
+  }, [sales, searchTerm, startDate, endDate, recipeFilter, recipeByItemName, sortBy, sortDirection]);
 
   // Get sales with AI suggestions
   const suggestedSales = useMemo(() => {
@@ -310,6 +343,7 @@ export default function POSSales() {
     searchTerm, 
     startDate, 
     endDate,
+    recipeFilter !== 'all' ? 'recipe' : '',
     sortBy !== 'date' || sortDirection !== 'desc' ? 'sort' : ''
   ].filter(Boolean).length;
 
@@ -606,6 +640,7 @@ export default function POSSales() {
                       setSearchTerm("");
                       setStartDate("");
                       setEndDate("");
+                      setRecipeFilter('all');
                       setSortBy('date');
                       setSortDirection('desc');
                     }}
@@ -656,6 +691,21 @@ export default function POSSales() {
                       />
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Recipe Filter</label>
+                  <Select value={recipeFilter} onValueChange={(value: 'all' | 'with-recipe' | 'without-recipe') => setRecipeFilter(value)}>
+                    <SelectTrigger className="border-border/50 hover:border-primary/50 transition-colors">
+                      <ChefHat className="w-4 h-4 mr-2" />
+                      <SelectValue placeholder="Filter by recipe..." />
+                    </SelectTrigger>
+                    <SelectContent className="z-50 bg-background">
+                      <SelectItem value="all">All Items</SelectItem>
+                      <SelectItem value="with-recipe">With Recipe</SelectItem>
+                      <SelectItem value="without-recipe">Without Recipe</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
@@ -802,7 +852,7 @@ export default function POSSales() {
                               <Badge variant="outline" className="text-xs">
                                 {sale.posSystem}
                               </Badge>
-                              {unmappedItems.includes(sale.itemName) && (
+                              {unmappedItems.includes(sale.itemName) ? (
                                 <Badge
                                   variant="destructive"
                                   className="text-xs cursor-pointer hover:scale-105 transition-transform animate-pulse"
@@ -810,7 +860,24 @@ export default function POSSales() {
                                 >
                                   No Recipe
                                 </Badge>
-                              )}
+                              ) : recipeByItemName.has(sale.itemName.toLowerCase()) ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
+                                  onClick={() => navigate(`/recipes?recipeId=${recipeByItemName.get(sale.itemName.toLowerCase())?.id}`)}
+                                >
+                                  {!recipeByItemName.get(sale.itemName.toLowerCase())?.hasIngredients && (
+                                    <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
+                                  )}
+                                  <ExternalLink className="h-3 w-3 mr-1" />
+                                  {recipeByItemName.get(sale.itemName.toLowerCase())?.name}
+                                  {recipeByItemName.get(sale.itemName.toLowerCase())?.profitMargin != null && (
+                                    <span className="ml-1 font-semibold">
+                                      ({recipeByItemName.get(sale.itemName.toLowerCase())!.profitMargin!.toFixed(0)}%)
+                                    </span>
+                                  )}
+                                </Badge>
+                              ) : null}
                               {sale.suggested_category_id && !sale.is_categorized && (
                                 <Badge variant="outline" className="bg-accent/10 text-accent-foreground border-accent/30">
                                   <Sparkles className="h-3 w-3 mr-1" />
@@ -1029,7 +1096,7 @@ export default function POSSales() {
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1">
                                   <h3 className="font-semibold text-base mb-1 line-clamp-2">{item.item_name}</h3>
-                                  {unmappedItems.includes(item.item_name) && (
+                                  {unmappedItems.includes(item.item_name) ? (
                                     <Badge
                                       variant="destructive"
                                       className="cursor-pointer hover:scale-105 transition-transform animate-pulse text-xs"
@@ -1037,7 +1104,24 @@ export default function POSSales() {
                                     >
                                       No Recipe
                                     </Badge>
-                                  )}
+                                  ) : recipeByItemName.has(item.item_name.toLowerCase()) ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
+                                      onClick={() => navigate(`/recipes?recipeId=${recipeByItemName.get(item.item_name.toLowerCase())?.id}`)}
+                                    >
+                                      {!recipeByItemName.get(item.item_name.toLowerCase())?.hasIngredients && (
+                                        <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
+                                      )}
+                                      <ExternalLink className="h-3 w-3 mr-1" />
+                                      {recipeByItemName.get(item.item_name.toLowerCase())?.name}
+                                      {recipeByItemName.get(item.item_name.toLowerCase())?.profitMargin != null && (
+                                        <span className="ml-1 font-semibold">
+                                          ({recipeByItemName.get(item.item_name.toLowerCase())!.profitMargin!.toFixed(0)}%)
+                                        </span>
+                                      )}
+                                    </Badge>
+                                  ) : null}
                                 </div>
                                 <Badge 
                                   variant="secondary"

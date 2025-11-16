@@ -2,11 +2,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
-import { RestaurantProvider } from "@/contexts/RestaurantContext";
+import { RestaurantProvider, useRestaurantContext } from "@/contexts/RestaurantContext";
 import { AppHeader } from "@/components/AppHeader";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -35,12 +35,16 @@ import Accounting from "./pages/Accounting";
 import Banking from "./pages/Banking";
 import FinancialIntelligence from "./pages/FinancialIntelligence";
 import AiAssistant from "./pages/AiAssistant";
+import Scheduling from "./pages/Scheduling";
+import EmployeeClock from "./pages/EmployeeClock";
+import TimePunchesManager from "./pages/TimePunchesManager";
 
 const queryClient = new QueryClient();
 
-// Protected Route Component
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+// Protected Route Component with staff restrictions
+const ProtectedRoute = ({ children, allowStaff = false }: { children: React.ReactNode; allowStaff?: boolean }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -58,19 +62,48 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <RestaurantProvider>
-      <SidebarProvider defaultOpen={true}>
-        <div className="min-h-screen flex w-full bg-background overflow-x-hidden">
-          <AppSidebar />
-          <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-            <AppHeader />
-            <main className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-hidden">
-              {children}
-            </main>
+      <StaffRoleChecker allowStaff={allowStaff} currentPath={location.pathname}>
+        <SidebarProvider defaultOpen={true}>
+          <div className="min-h-screen flex w-full bg-background overflow-x-hidden">
+            <AppSidebar />
+            <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+              <AppHeader />
+              <main className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-hidden">
+                {children}
+              </main>
+            </div>
           </div>
-        </div>
-      </SidebarProvider>
+        </SidebarProvider>
+      </StaffRoleChecker>
     </RestaurantProvider>
   );
+};
+
+// Staff Role Checker Component
+const StaffRoleChecker = ({ 
+  children, 
+  allowStaff, 
+  currentPath 
+}: { 
+  children: React.ReactNode; 
+  allowStaff: boolean;
+  currentPath: string;
+}) => {
+  const { selectedRestaurant } = useRestaurantContext();
+  
+  // Check if user is staff role
+  const isStaff = selectedRestaurant?.role === 'staff';
+  
+  // Allowed paths for staff users
+  const staffAllowedPaths = ['/employee/clock', '/employee/timecard', '/employee/pay', '/employee/schedule', '/settings'];
+  const isStaffAllowedPath = staffAllowedPaths.some(path => currentPath.startsWith(path));
+  
+  // If user is staff and trying to access restricted route
+  if (isStaff && !allowStaff && !isStaffAllowedPath) {
+    return <Navigate to="/employee/clock" replace />;
+  }
+  
+  return <>{children}</>;
 };
 
 const App = () => (
@@ -88,7 +121,7 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/settings" element={<ProtectedRoute><RestaurantSettings /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute allowStaff={true}><RestaurantSettings /></ProtectedRoute>} />
             <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
             <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
             <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
@@ -97,6 +130,9 @@ const App = () => (
             <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
             <Route path="/inventory-audit" element={<ProtectedRoute><InventoryAudit /></ProtectedRoute>} />
             <Route path="/receipt-import" element={<ProtectedRoute><ReceiptImport /></ProtectedRoute>} />
+          <Route path="/scheduling" element={<ProtectedRoute><Scheduling /></ProtectedRoute>} />
+          <Route path="/employee/clock" element={<ProtectedRoute allowStaff={true}><EmployeeClock /></ProtectedRoute>} />
+          <Route path="/time-punches" element={<ProtectedRoute><TimePunchesManager /></ProtectedRoute>} />
           <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />
           <Route path="/financial-intelligence" element={<ProtectedRoute><FinancialIntelligence /></ProtectedRoute>} />
           <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />

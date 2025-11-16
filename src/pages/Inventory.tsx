@@ -665,7 +665,7 @@ export const Inventory: React.FC = () => {
 
       const newProduct = await createProduct(productData);
       if (newProduct) {
-        // Audit log is already created by createProduct hook via logPurchase
+        // Audit log is already created by createProduct hook via logAdjustment
         // No need for duplicate logging here
       toast({
         title: "Product created",
@@ -694,16 +694,16 @@ export const Inventory: React.FC = () => {
         
         // Then create audit trail if there's a stock change
         if (difference !== 0) {
-          let transactionType: 'purchase' | 'adjustment' | 'waste';
+          // All manual inventory updates should be adjustments
+          // Only receipt uploads should create purchases
+          const transactionType: 'adjustment' | 'waste' = 'adjustment';
           let reason: string;
           
           if (difference === quantityToAdd && quantityToAdd > 0) {
-            // This is an additive purchase
-            transactionType = 'purchase';
-            reason = 'Purchase - Inventory addition';
+            // This is an additive adjustment
+            reason = 'Adjustment - Inventory addition';
           } else {
             // This is an adjustment (exact count was set)
-            transactionType = 'adjustment';
             reason = difference >= 0 
               ? 'Adjustment - Manual correction (count increase)'
               : 'Adjustment - Manual correction (count decrease)';
@@ -723,11 +723,10 @@ export const Inventory: React.FC = () => {
         
         // Show success message
         const quantityDifference = Math.round((finalStock - currentStock) * 100) / 100;
-        const isAdjustment = difference !== quantityToAdd;
         if (quantityDifference !== 0) {
           toast({
             title: "Inventory updated",
-            description: `${isAdjustment ? 'Adjustment' : 'Addition'}: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference.toFixed(2)} units. New total: ${finalStock.toFixed(2)}`,
+            description: `Adjustment: ${quantityDifference >= 0 ? '+' : ''}${quantityDifference.toFixed(2)} units. New total: ${finalStock.toFixed(2)}`,
             duration: 800,
           });
         } else {
@@ -767,18 +766,18 @@ export const Inventory: React.FC = () => {
     const costPerUnit = quickInventoryProduct.cost_per_unit || 0;
     
     let finalStock: number;
-    let transactionType: 'purchase' | 'adjustment';
+    // All quick scan updates should be adjustments
+    // Only receipt uploads should create purchases
+    const transactionType: 'adjustment' = 'adjustment';
     let reason: string;
     
     if (scanMode === 'add') {
       // Add mode: add to existing stock
       finalStock = currentStock + quantity;
-      transactionType = 'purchase';
-      reason = `Purchase - Added ${quantity} via quick scan`;
+      reason = `Adjustment - Added ${quantity} via quick scan`;
     } else {
       // Reconcile mode: set total stock to scanned quantity
       finalStock = quantity;
-      transactionType = 'adjustment';
       reason = `Inventory reconciliation - Set to ${quantity} via quick scan`;
     }
     
@@ -1759,13 +1758,13 @@ export const Inventory: React.FC = () => {
                                <div className="flex justify-between items-center">
                                  <span className="text-sm">Current Stock:</span>
                                  <div className="font-medium text-destructive text-right">
-                                   <span>{formatInventoryLevel(product.current_stock || 0, product, { showBothUnits: false })}</span>
+                                   <span>{formatInventoryLevel(product.current_stock || 0, product, { showBothUnits: false, primaryUnit: 'purchase' })}</span>
                                  </div>
                                </div>
                              <div className="flex justify-between items-center">
                                <span className="text-sm">Reorder Point:</span>
                                <span className="font-medium">
-                                 {formatInventoryLevel(product.reorder_point || 0, product, { showBothUnits: false })}
+                                 {formatInventoryLevel(product.reorder_point || 0, product, { showBothUnits: false, primaryUnit: 'purchase' })}
                                </span>
                              </div>
                             {product.cost_per_unit && (

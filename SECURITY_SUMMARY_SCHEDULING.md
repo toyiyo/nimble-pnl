@@ -25,7 +25,7 @@ All scheduling tables have RLS enabled with proper policies:
 **Role-based permissions:**
 - SELECT: All authenticated users with restaurant access
 - INSERT/UPDATE: Owner and Manager roles only
-- DELETE: Owner role only (employees); Owner and Manager (shifts)
+- DELETE: Owner role only (employees); Owner and Manager (shifts, shift_templates, time_off_requests)
 
 #### 2. Data Integrity Constraints
 - `CHECK (end_time > start_time)` - Prevents invalid shift times

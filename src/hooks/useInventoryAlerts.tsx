@@ -132,8 +132,26 @@ export const useInventoryAlerts = (restaurantId: string | null) => {
     ];
 
     const rows = lowStockItems.map(item => {
-      // Calculate reorder quantity: Par Level Max - Current Stock (in purchase units)
-      const reorderQuantity = Math.max(0, item.par_level_max - item.current_stock);
+      // Calculate reorder quantity with improved logic:
+      // 1. If par_level_max > 0, use it as the target
+      // 2. Otherwise, use reorder_point as the target
+      // 3. If neither is set, flag as "Not configured"
+      let reorderQuantity = 0;
+      let reorderQuantityDisplay = '';
+      
+      if (item.par_level_max > 0) {
+        // Use par level max if available
+        reorderQuantity = Math.max(0, item.par_level_max - item.current_stock);
+        reorderQuantityDisplay = formatInventoryLevel(reorderQuantity, item);
+      } else if (item.reorder_point > 0) {
+        // Fall back to reorder point
+        reorderQuantity = Math.max(0, item.reorder_point - item.current_stock);
+        reorderQuantityDisplay = formatInventoryLevel(reorderQuantity, item);
+      } else {
+        // Neither is configured
+        reorderQuantityDisplay = 'Not configured';
+      }
+      
       const reorderTotal = item.cost_per_unit ? reorderQuantity * item.cost_per_unit : 0;
       
       return [
@@ -143,7 +161,7 @@ export const useInventoryAlerts = (restaurantId: string | null) => {
         formatInventoryLevel(item.reorder_point, item),
         formatInventoryLevel(item.par_level_min, item),
         formatInventoryLevel(item.par_level_max, item),
-        formatInventoryLevel(reorderQuantity, item),
+        reorderQuantityDisplay,
         item.supplier_name || 'No supplier',
         item.cost_per_unit ? `$${item.cost_per_unit}` : '',
         item.cost_per_unit ? `$${(item.current_stock * item.cost_per_unit).toFixed(2)}` : '',

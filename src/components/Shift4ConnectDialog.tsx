@@ -10,12 +10,13 @@ import { AlertCircle, Key, ShieldCheck } from 'lucide-react';
 interface Shift4ConnectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConnect: (secretKey: string, environment: 'production' | 'sandbox') => Promise<void>;
+  onConnect: (secretKey: string, merchantId: string, environment: 'production' | 'sandbox') => Promise<void>;
   isLoading: boolean;
 }
 
 export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }: Shift4ConnectDialogProps) => {
   const [secretKey, setSecretKey] = useState('');
+  const [merchantId, setMerchantId] = useState('');
   const [environment, setEnvironment] = useState<'production' | 'sandbox'>('production');
   const [error, setError] = useState('');
 
@@ -32,12 +33,18 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
       return;
     }
 
+    if (!merchantId.trim()) {
+      setError('Please enter your Shift4 Merchant ID');
+      return;
+    }
+
     setError('');
 
     try {
-      await onConnect(secretKey, environment);
+      await onConnect(secretKey, merchantId, environment);
       // Reset form on success
       setSecretKey('');
+      setMerchantId('');
       setEnvironment('production');
     } catch (err: any) {
       setError(err.message || 'Failed to connect to Shift4');
@@ -46,6 +53,7 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
 
   const handleClose = () => {
     setSecretKey('');
+    setMerchantId('');
     setEnvironment('production');
     setError('');
     onOpenChange(false);
@@ -82,6 +90,21 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="merchantId">Merchant ID</Label>
+            <Input
+              id="merchantId"
+              type="text"
+              placeholder="Enter your Shift4 Merchant ID"
+              value={merchantId}
+              onChange={(e) => setMerchantId(e.target.value)}
+              disabled={isLoading}
+            />
+            <p className="text-xs text-muted-foreground">
+              Find your Merchant ID in Shift4 Dashboard → Settings → Account Information
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="environment">Environment</Label>
             <Select
               value={environment}
@@ -97,7 +120,7 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Use Sandbox for testing, Production for live transactions
+              Select based on your API key type (sk_live_ = Production, sk_test_ = Sandbox)
             </p>
           </div>
 

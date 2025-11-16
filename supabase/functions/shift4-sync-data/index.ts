@@ -17,6 +17,8 @@ interface Shift4SyncRequest {
 
 /**
  * Fetch charges from Shift4 API with pagination
+ * Note: Shift4 uses the same URL for both test and production.
+ * The difference is in the API key prefix (sk_test_ vs sk_live_).
  */
 async function fetchCharges(
   secretKey: string,
@@ -24,9 +26,8 @@ async function fetchCharges(
   startTimestamp: number,
   endTimestamp?: number
 ): Promise<any[]> {
-  const baseUrl = environment === 'sandbox' 
-    ? 'https://api.sandbox.shift4.com' 
-    : 'https://api.shift4.com';
+  // Shift4 uses the same base URL for both test and production environments
+  const baseUrl = 'https://api.shift4.com';
 
   const authHeader = 'Basic ' + btoa(secretKey + ':');
   const allCharges: any[] = [];
@@ -90,15 +91,15 @@ async function fetchCharges(
 
 /**
  * Fetch refunds for a specific charge
+ * Note: Shift4 uses the same URL for both test and production.
  */
 async function fetchRefundsForCharge(
   secretKey: string,
   environment: string,
   chargeId: string
 ): Promise<any[]> {
-  const baseUrl = environment === 'sandbox' 
-    ? 'https://api.sandbox.shift4.com' 
-    : 'https://api.shift4.com';
+  // Shift4 uses the same base URL for both test and production environments
+  const baseUrl = 'https://api.shift4.com';
 
   const authHeader = 'Basic ' + btoa(secretKey + ':');
 

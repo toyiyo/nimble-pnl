@@ -18,17 +18,27 @@ export const useShift4SalesAdapter = (restaurantId: string | null): POSAdapter =
     }
 
     const checkConnection = async () => {
-      const { data } = await supabase
-        .from('shift4_connections')
-        .select('id, connected_at, last_sync_at')
-        .eq('restaurant_id', restaurantId)
-        .maybeSingle();
+      try {
+        const result = await supabase
+          .from('shift4_connections' as any)
+          .select('id, connected_at, last_sync_at')
+          .eq('restaurant_id', restaurantId)
+          .maybeSingle();
 
-      if (data) {
-        setIsConnected(true);
-        setConnectionId(data.id);
-        setLastSyncAt(data.last_sync_at || data.connected_at);
-      } else {
+        if (result.error) throw result.error;
+
+        const data = result.data as any;
+        if (data) {
+          setIsConnected(true);
+          setConnectionId(data.id);
+          setLastSyncAt(data.last_sync_at || data.connected_at);
+        } else {
+          setIsConnected(false);
+          setConnectionId(undefined);
+          setLastSyncAt(undefined);
+        }
+      } catch (error) {
+        console.error('Error checking Shift4 connection:', error);
         setIsConnected(false);
         setConnectionId(undefined);
         setLastSyncAt(undefined);
@@ -80,8 +90,8 @@ export const useShift4SalesAdapter = (restaurantId: string | null): POSAdapter =
       rawData: item.raw_data,
       syncedAt: item.synced_at,
       createdAt: item.created_at,
-      item_type: item.item_type,
-      adjustment_type: item.adjustment_type,
+      item_type: (item.item_type || 'sale') as 'comp' | 'discount' | 'other' | 'sale' | 'service_charge' | 'tax' | 'tip',
+      adjustment_type: (item.adjustment_type || undefined) as 'discount' | 'fee' | 'service_charge' | 'tax' | 'tip' | undefined,
     }));
   }, []);
 

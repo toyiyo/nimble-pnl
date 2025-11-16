@@ -80,8 +80,8 @@ export const useShift4SalesAdapter = (restaurantId: string | null): POSAdapter =
       rawData: item.raw_data,
       syncedAt: item.synced_at,
       createdAt: item.created_at,
-      itemType: item.item_type,
-      adjustmentType: item.adjustment_type,
+      item_type: item.item_type,
+      adjustment_type: item.adjustment_type,
     }));
   }, []);
 

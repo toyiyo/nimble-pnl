@@ -25,17 +25,18 @@ export const useShift4Integration = (restaurantId: string | null) => {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('shift4_connections')
+      const result = await supabase
+        .from('shift4_connections' as any)
         .select('*')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
 
-      if (error) throw error;
+      if (result.error) throw result.error;
 
+      const data = result.data as any;
       if (data) {
         setIsConnected(true);
-        setConnection(data as Shift4Connection);
+        setConnection(data);
       } else {
         setIsConnected(false);
         setConnection(null);
@@ -141,7 +142,7 @@ export const useShift4Integration = (restaurantId: string | null) => {
 
     try {
       const { error } = await supabase
-        .from('shift4_connections')
+        .from('shift4_connections' as any)
         .delete()
         .eq('id', connection.id);
 

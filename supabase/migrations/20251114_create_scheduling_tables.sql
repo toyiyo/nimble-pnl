@@ -232,6 +232,7 @@ CREATE POLICY "Users can create time off requests for their restaurants"
       SELECT 1 FROM user_restaurants
       WHERE user_restaurants.restaurant_id = time_off_requests.restaurant_id
       AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager')
     )
   );
 
@@ -253,6 +254,7 @@ CREATE POLICY "Users can delete time off requests for their restaurants"
       SELECT 1 FROM user_restaurants
       WHERE user_restaurants.restaurant_id = time_off_requests.restaurant_id
       AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager')
     )
   );
 

@@ -4,9 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useTimePunches, useDeleteTimePunch } from '@/hooks/useTimePunches';
+import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch } from '@/hooks/useTimePunches';
 import { useEmployees } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -45,6 +47,8 @@ const TimePunchesManager = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [punchToDelete, setPunchToDelete] = useState<TimePunch | null>(null);
   const [viewingPunch, setViewingPunch] = useState<TimePunch | null>(null);
+  const [editingPunch, setEditingPunch] = useState<TimePunch | null>(null);
+  const [editFormData, setEditFormData] = useState({ punch_time: '', notes: '' });
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
@@ -76,6 +80,7 @@ const TimePunchesManager = () => {
     dateRange.end
   );
   const deletePunch = useDeleteTimePunch();
+  const updatePunch = useUpdateTimePunch();
 
   // Load photo thumbnails for punches with photos
   useEffect(() => {
@@ -142,6 +147,30 @@ const TimePunchesManager = () => {
       });
       setPunchToDelete(null);
     }
+  };
+
+  const openEditDialog = (punch: TimePunch) => {
+    setEditingPunch(punch);
+    setEditFormData({
+      punch_time: format(new Date(punch.punch_time), "yyyy-MM-dd'T'HH:mm"),
+      notes: punch.notes || '',
+    });
+  };
+
+  const closeEditDialog = () => {
+    setEditingPunch(null);
+    setEditFormData({ punch_time: '', notes: '' });
+  };
+
+  const handleEditSubmit = () => {
+    if (!editingPunch) return;
+
+    updatePunch.mutate({
+      id: editingPunch.id,
+      punch_time: new Date(editFormData.punch_time).toISOString(),
+      notes: editFormData.notes || undefined,
+    });
+    closeEditDialog();
   };
 
   const filteredPunches = punches.filter((punch) => {
@@ -520,9 +549,7 @@ const TimePunchesManager = () => {
                         <Button
                           size="icon"
                           variant="ghost"
-                          onClick={() => {
-                            // TODO: Open edit dialog
-                          }}
+                          onClick={() => openEditDialog(punch)}
                           aria-label="Edit punch"
                         >
                           <Edit className="h-4 w-4" />
@@ -636,6 +663,46 @@ const TimePunchesManager = () => {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Punch Dialog */}
+      <Dialog open={!!editingPunch} onOpenChange={closeEditDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Time Punch</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="punch_time">Punch Time</Label>
+              <Input
+                id="punch_time"
+                type="datetime-local"
+                value={editFormData.punch_time}
+                onChange={(e) => setEditFormData({ ...editFormData, punch_time: e.target.value })}
+                aria-label="Punch time"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes (Optional)</Label>
+              <Textarea
+                id="notes"
+                placeholder="Add notes about this punch..."
+                value={editFormData.notes}
+                onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                aria-label="Notes"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeEditDialog}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditSubmit}>
+              Save Changes
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -141,3 +141,18 @@ verify_jwt = true
 
 [functions.categorize-uncategorized-transactions]
 verify_jwt = true
+
+[functions.shift4-connect]
+verify_jwt = true
+
+[functions.shift4-sync-data]
+verify_jwt = true
+
+[functions.shift4-webhooks]
+verify_jwt = false
+
+[functions.ai-chat-stream]
+verify_jwt = true
+
+[functions.ai-execute-tool]
+verify_jwt = true

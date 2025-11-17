@@ -44,123 +44,6 @@ async function fetchEventFromShift4(
   return await response.json();
 }
 
-/**
- * Process a charge event (CHARGE_SUCCEEDED, CHARGE_UPDATED, etc.)
- */
-async function processChargeEvent(
-  supabase: any,
-  restaurantId: string,
-  merchantId: string,
-  charge: any,
-  restaurantTimezone: string
-) {
-  // Extract tip amount from splits (if available)
-  let tipAmount = 0;
-  if (charge.splits && Array.isArray(charge.splits)) {
-    const tipSplit = charge.splits.find((split: any) => split.type === 'tip');
-    tipAmount = tipSplit?.amount || 0;
-  }
-
-  // Convert timestamp to local date/time
-  const utcDate = new Date(charge.created * 1000);
-  const localDateStr = new Intl.DateTimeFormat('en-CA', {
-    timeZone: restaurantTimezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(utcDate);
-
-  const localTimeStr = new Intl.DateTimeFormat('en-US', {
-    timeZone: restaurantTimezone,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).format(utcDate);
-
-  // Upsert charge
-  await supabase.from('shift4_charges').upsert({
-    restaurant_id: restaurantId,
-    charge_id: charge.id,
-    merchant_id: merchantId,
-    amount: charge.amount,
-    currency: charge.currency || 'USD',
-    status: charge.status || 'unknown',
-    refunded: charge.refunded || false,
-    captured: charge.captured || false,
-    created_at_ts: charge.created,
-    created_time: new Date(charge.created * 1000).toISOString(),
-    service_date: localDateStr,
-    service_time: localTimeStr,
-    description: charge.description,
-    tip_amount: tipAmount,
-    raw_json: charge,
-    synced_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }, {
-    onConflict: 'restaurant_id,charge_id',
-  });
-
-  console.log(`Charge ${charge.id} processed successfully`);
-}
-
-/**
- * Process a refund event (CHARGE_REFUNDED)
- */
-async function processRefundEvent(
-  supabase: any,
-  restaurantId: string,
-  merchantId: string,
-  eventData: any,
-  restaurantTimezone: string
-) {
-  // The event data should contain the refund object
-  const refund = eventData.refund || eventData;
-  const chargeId = eventData.charge || refund.charge;
-
-  if (!refund.id || !chargeId) {
-    throw new Error('Missing refund ID or charge ID in event data');
-  }
-
-  // Convert timestamp to local date
-  const utcDate = new Date(refund.created * 1000);
-  const localDateStr = new Intl.DateTimeFormat('en-CA', {
-    timeZone: restaurantTimezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(utcDate);
-
-  // Upsert refund
-  await supabase.from('shift4_refunds').upsert({
-    restaurant_id: restaurantId,
-    refund_id: refund.id,
-    charge_id: chargeId,
-    merchant_id: merchantId,
-    amount: refund.amount,
-    currency: refund.currency || 'USD',
-    status: refund.status,
-    reason: refund.reason,
-    created_at_ts: refund.created,
-    created_time: new Date(refund.created * 1000).toISOString(),
-    service_date: localDateStr,
-    raw_json: refund,
-    synced_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }, {
-    onConflict: 'restaurant_id,refund_id',
-  });
-
-  // Update the charge to mark it as refunded
-  await supabase
-    .from('shift4_charges')
-    .update({ refunded: true, updated_at: new Date().toISOString() })
-    .eq('restaurant_id', restaurantId)
-    .eq('charge_id', chargeId);
-
-  console.log(`Refund ${refund.id} for charge ${chargeId} processed successfully`);
-}
-
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -240,40 +123,15 @@ Deno.serve(async (req) => {
           break;
         }
 
-        // Get restaurant timezone
-        const { data: restaurant } = await supabase
-          .from('restaurants')
-          .select('timezone')
-          .eq('id', connection.restaurant_id)
-          .single();
-
-        const restaurantTimezone = restaurant?.timezone || 'America/Chicago';
-
         // Process based on event type
-        const eventData = verifiedEvent.data || {};
+        let shouldSync = false;
 
         switch (verifiedEvent.type) {
           case 'CHARGE_SUCCEEDED':
           case 'CHARGE_UPDATED':
-            if (eventData.charge) {
-              await processChargeEvent(
-                supabase,
-                connection.restaurant_id,
-                connection.merchant_id,
-                eventData.charge,
-                restaurantTimezone
-              );
-            }
-            break;
-
           case 'CHARGE_REFUNDED':
-            await processRefundEvent(
-              supabase,
-              connection.restaurant_id,
-              connection.merchant_id,
-              eventData,
-              restaurantTimezone
-            );
+            shouldSync = true;
+            console.log(`Processing ${verifiedEvent.type} - will trigger sync`);
             break;
 
           default:
@@ -281,7 +139,7 @@ Deno.serve(async (req) => {
         }
 
         // Mark event as processed
-        await supabase.from('shift4_webhook_events').insert({
+        const { error: insertError } = await supabase.from('shift4_webhook_events').insert({
           restaurant_id: connection.restaurant_id,
           event_id: verifiedEvent.id,
           event_type: verifiedEvent.type,
@@ -289,10 +147,27 @@ Deno.serve(async (req) => {
           raw_json: verifiedEvent,
         });
 
-        // Sync to unified_sales
-        await supabase.rpc('sync_shift4_to_unified_sales', {
-          p_restaurant_id: connection.restaurant_id,
-        });
+        if (insertError) {
+          console.error('Failed to insert webhook event:', insertError);
+        }
+
+        // Trigger sync function to fetch and process the charge
+        // This is more reliable than inline processing and keeps sync logic centralized
+        if (shouldSync) {
+          console.log('Triggering shift4-sync-data for hourly sync...');
+          const syncResult = await supabase.functions.invoke('shift4-sync-data', {
+            body: {
+              restaurantId: connection.restaurant_id,
+              action: 'hourly_sync',
+            }
+          });
+
+          if (syncResult.error) {
+            console.error('Sync function error:', syncResult.error);
+          } else {
+            console.log('Sync completed:', syncResult.data);
+          }
+        }
 
         console.log(`Webhook processed successfully for restaurant ${connection.restaurant_id}`);
         processedSuccessfully = true;

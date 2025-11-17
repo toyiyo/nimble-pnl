@@ -2686,49 +2686,193 @@ export type Database = {
           },
         ]
       }
-      shift4_connections: {
+      shift4_charges: {
         Row: {
-          access_token: string
-          connected_at: string
+          amount: number
+          charge_id: string
           created_at: string
-          environment: string
-          expires_at: string | null
+          created_at_ts: number
+          currency: string
+          customer_email: string | null
+          description: string | null
           id: string
-          merchant_id: string
-          refresh_token: string | null
+          raw_json: Json | null
           restaurant_id: string
-          scopes: string[]
+          service_date: string
+          status: string
+          synced_at: string
           updated_at: string
         }
         Insert: {
-          access_token: string
-          connected_at?: string
+          amount: number
+          charge_id: string
           created_at?: string
-          environment?: string
-          expires_at?: string | null
+          created_at_ts: number
+          currency?: string
+          customer_email?: string | null
+          description?: string | null
           id?: string
-          merchant_id: string
-          refresh_token?: string | null
+          raw_json?: Json | null
           restaurant_id: string
-          scopes?: string[]
+          service_date: string
+          status: string
+          synced_at?: string
           updated_at?: string
         }
         Update: {
-          access_token?: string
+          amount?: number
+          charge_id?: string
+          created_at?: string
+          created_at_ts?: number
+          currency?: string
+          customer_email?: string | null
+          description?: string | null
+          id?: string
+          raw_json?: Json | null
+          restaurant_id?: string
+          service_date?: string
+          status?: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift4_charges_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift4_connections: {
+        Row: {
+          connected_at: string
+          created_at: string
+          environment: string
+          id: string
+          last_sync_at: string | null
+          merchant_id: string
+          restaurant_id: string
+          secret_key: string
+          updated_at: string
+        }
+        Insert: {
           connected_at?: string
           created_at?: string
           environment?: string
-          expires_at?: string | null
           id?: string
+          last_sync_at?: string | null
+          merchant_id: string
+          restaurant_id: string
+          secret_key: string
+          updated_at?: string
+        }
+        Update: {
+          connected_at?: string
+          created_at?: string
+          environment?: string
+          id?: string
+          last_sync_at?: string | null
           merchant_id?: string
-          refresh_token?: string | null
           restaurant_id?: string
-          scopes?: string[]
+          secret_key?: string
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "shift4_connections_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift4_refunds: {
+        Row: {
+          amount: number
+          charge_id: string
+          created_at: string
+          created_at_ts: number
+          currency: string
+          id: string
+          reason: string | null
+          refund_id: string
+          restaurant_id: string
+          service_date: string
+          status: string
+          synced_at: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          charge_id: string
+          created_at?: string
+          created_at_ts: number
+          currency?: string
+          id?: string
+          reason?: string | null
+          refund_id: string
+          restaurant_id: string
+          service_date: string
+          status: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          charge_id?: string
+          created_at?: string
+          created_at_ts?: number
+          currency?: string
+          id?: string
+          reason?: string | null
+          refund_id?: string
+          restaurant_id?: string
+          service_date?: string
+          status?: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift4_refunds_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift4_webhook_events: {
+        Row: {
+          created_at: string
+          event_id: string
+          event_type: string
+          id: string
+          processed_at: string
+          restaurant_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          event_type: string
+          id?: string
+          processed_at?: string
+          restaurant_id: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          event_type?: string
+          id?: string
+          processed_at?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift4_webhook_events_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"

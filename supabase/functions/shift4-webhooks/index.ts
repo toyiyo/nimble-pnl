@@ -143,6 +143,7 @@ Deno.serve(async (req) => {
           restaurant_id: connection.restaurant_id,
           event_id: verifiedEvent.id,
           event_type: verifiedEvent.type,
+          object_id: verifiedEvent.data?.id || null,
           processed_at: new Date().toISOString(),
           raw_json: verifiedEvent,
         });

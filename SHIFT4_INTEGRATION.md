@@ -8,6 +8,10 @@ The Shift4 POS integration enables restaurants to automatically sync payment cha
 
 ### Authentication
 - **Method**: API Key (Secret Key) with HTTP Basic Auth
+- **API URL**: `https://api.shift4.com` (same URL for both test and production)
+- **Environment Detection**: Based on API key prefix:
+  - Test keys: `sk_test_...` or `pr_test_...`
+  - Live keys: `sk_live_...` or `pr_live_...`
 - **Storage**: Secret keys are encrypted using the platform's encryption service before being stored in the database
 - **Rotation**: Users can update their API keys at any time through the UI
 
@@ -49,10 +53,11 @@ Webhooks → Event Verification → Process → Update Database
    - **Input**: `{ restaurantId, secretKey, merchantId?, environment }`
    - **Process**:
      1. Validates user permissions (owner/manager only)
-     2. Tests API key by calling Shift4's `/merchants/self` endpoint
+     2. Tests API key by calling Shift4's `/charges?limit=1` endpoint
      3. Encrypts secret key
-     4. Stores connection in database
-   - **Output**: `{ success, connectionId, merchantId, merchantName }`
+     4. Stores connection in database (merchantId is optional and used for tracking)
+   - **Output**: `{ success, connectionId, merchantId, environment }`
+   - **Note**: The API Secret Key itself identifies your merchant account. The optional merchantId parameter is for tracking purposes only.
 
 2. **shift4-sync-data**
    - **Purpose**: Sync charges and refunds from Shift4 API
@@ -224,8 +229,9 @@ CREATE POLICY shift4_connections_policy ON shift4_connections
 2. **Connect in EasyShiftHQ**
    - Go to Integrations page
    - Click "Connect" on Shift4 card
-   - Enter Secret Key
-   - Select Environment (Production or Sandbox)
+   - Enter Secret Key (required)
+   - Optionally enter a Merchant ID for tracking purposes
+   - Select Environment (Production or Sandbox based on your key type)
    - Click "Connect"
 
 3. **Initial Data Import**
@@ -261,6 +267,8 @@ curl -X POST https://your-project.supabase.co/functions/v1/shift4-connect \
     "environment": "sandbox"
   }'
 ```
+
+Note: `merchantId` is optional and can be omitted. If provided, it will be used for tracking purposes.
 
 **Test Sync**:
 ```bash

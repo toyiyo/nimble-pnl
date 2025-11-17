@@ -7,13 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch } from '@/hooks/useTimePunches';
 import { useEmployees } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Clock, Trash2, Edit, Download, Search, Camera, MapPin, Eye,
-  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table as TableIcon
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table as TableIcon,
+  LayoutGrid, BarChart3, List, Code
 } from 'lucide-react';
 import { 
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
@@ -34,14 +36,24 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { TimePunch } from '@/types/timeTracking';
 import { cn } from '@/lib/utils';
+import { processPunchesForPeriod } from '@/utils/timePunchProcessing';
+import {
+  TimelineGanttView,
+  EmployeeCardView,
+  BarcodeStripeView,
+  PunchStreamView,
+  ReceiptStyleView,
+} from '@/components/time-tracking';
 
 type ViewMode = 'day' | 'week' | 'month';
+type VisualizationMode = 'gantt' | 'cards' | 'barcode' | 'stream' | 'receipt';
 
 const TimePunchesManager = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
-  const [viewMode, setViewMode] = useState<ViewMode>('week');
+  const [viewMode, setViewMode] = useState<ViewMode>('day');
+  const [visualizationMode, setVisualizationMode] = useState<VisualizationMode>('gantt');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -81,6 +93,20 @@ const TimePunchesManager = () => {
   );
   const deletePunch = useDeleteTimePunch();
   const updatePunch = useUpdateTimePunch();
+
+  // Process punches using the robust calculation logic
+  const processedData = useMemo(() => {
+    return processPunchesForPeriod(filteredPunches);
+  }, [filteredPunches]);
+
+  // Filter sessions for current day (for day view visualizations)
+  const todaySessions = useMemo(() => {
+    if (viewMode !== 'day') return processedData.sessions;
+    
+    return processedData.sessions.filter(session => 
+      isSameDay(session.clock_in, currentDate)
+    );
+  }, [processedData.sessions, viewMode, currentDate]);
 
   // Load photo thumbnails for punches with photos
   useEffect(() => {
@@ -229,71 +255,7 @@ const TimePunchesManager = () => {
     }
   };
 
-  // Calculate daily hours for timeline
-  const dailyData = useMemo(() => {
-    const days = viewMode === 'day' ? [currentDate] :
-      viewMode === 'week' ? Array.from({ length: 7 }, (_, i) => addDays(dateRange.start, i)) :
-      Array.from({ length: endOfMonth(currentDate).getDate() }, (_, i) => addDays(startOfMonth(currentDate), i));
-
-    return days.map(day => {
-      const dayPunches = filteredPunches.filter(p => 
-        isSameDay(new Date(p.punch_time), day)
-      );
-
-      // Group by employee
-      const employeeHours: Record<string, { hours: number, breaks: number, employee: any }> = {};
-
-      dayPunches.forEach(punch => {
-        const empId = punch.employee_id;
-        if (!employeeHours[empId]) {
-          employeeHours[empId] = { hours: 0, breaks: 0, employee: punch.employee };
-        }
-
-        // Calculate hours based on clock in/out pairs
-        if (punch.punch_type === 'clock_in') {
-          const clockOut = dayPunches.find(p => 
-            p.employee_id === empId && 
-            p.punch_type === 'clock_out' &&
-            new Date(p.punch_time) > new Date(punch.punch_time)
-          );
-          if (clockOut) {
-            const minutes = differenceInMinutes(
-              new Date(clockOut.punch_time),
-              new Date(punch.punch_time)
-            );
-            employeeHours[empId].hours += minutes / 60;
-          }
-        }
-
-        if (punch.punch_type === 'break_start') {
-          const breakEnd = dayPunches.find(p => 
-            p.employee_id === empId && 
-            p.punch_type === 'break_end' &&
-            new Date(p.punch_time) > new Date(punch.punch_time)
-          );
-          if (breakEnd) {
-            const minutes = differenceInMinutes(
-              new Date(breakEnd.punch_time),
-              new Date(punch.punch_time)
-            );
-            employeeHours[empId].breaks += minutes / 60;
-          }
-        }
-      });
-
-      const totalHours = Object.values(employeeHours).reduce((sum, e) => sum + e.hours - e.breaks, 0);
-
-      return {
-        date: day,
-        totalHours,
-        employeeHours: Object.values(employeeHours),
-        punchCount: dayPunches.length
-      };
-    });
-  }, [filteredPunches, viewMode, currentDate, dateRange]);
-
-  const totalWeekHours = dailyData.reduce((sum, day) => sum + day.totalHours, 0);
-  const maxDayHours = Math.max(...dailyData.map(d => d.totalHours), 1);
+  const totalWeekHours = todaySessions.reduce((sum, session) => sum + session.worked_minutes / 60, 0);
 
   if (!restaurantId) {
     return (
@@ -318,6 +280,16 @@ const TimePunchesManager = () => {
               </CardTitle>
               <CardDescription>
                 {getDateRangeLabel()} • {totalWeekHours.toFixed(1)} total hours
+                {processedData.totalNoisePunches > 0 && (
+                  <span className="text-yellow-600 ml-2">
+                    • {processedData.totalNoisePunches} noise punch{processedData.totalNoisePunches !== 1 ? 'es' : ''} detected
+                  </span>
+                )}
+                {processedData.totalAnomalies > 0 && (
+                  <span className="text-yellow-600 ml-2">
+                    • {processedData.totalAnomalies} anomal{processedData.totalAnomalies !== 1 ? 'ies' : 'y'}
+                  </span>
+                )}
               </CardDescription>
             </div>
           </div>
@@ -387,73 +359,89 @@ const TimePunchesManager = () => {
         </CardContent>
       </Card>
 
-      {/* Visual Timeline */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Hours Timeline</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <Skeleton className="h-64 w-full" />
-          ) : (
-            <div className="space-y-4">
-              {/* Timeline bars */}
-              <div className="space-y-2">
-                {dailyData.map((day, index) => (
-                  <div key={index} className="space-y-1">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="w-24 text-muted-foreground">
-                        {viewMode === 'month' 
-                          ? format(day.date, 'd')
-                          : format(day.date, 'EEE, MMM d')}
-                      </span>
-                      <div className="flex-1 h-8 bg-muted rounded-lg overflow-hidden relative">
-                        {day.totalHours > 0 && (
-                          <div
-                            className={cn(
-                              "h-full bg-gradient-to-r from-primary to-accent rounded-lg transition-all",
-                              "flex items-center px-2 text-white text-xs font-medium"
-                            )}
-                            style={{ width: `${(day.totalHours / maxDayHours) * 100}%` }}
-                          >
-                            {day.totalHours.toFixed(1)}h
-                          </div>
-                        )}
-                      </div>
-                      <span className="w-16 text-sm text-muted-foreground text-right">
-                        {day.punchCount} punches
-                      </span>
-                    </div>
-
-                    {/* Employee breakdown on hover/expand */}
-                    {day.employeeHours.length > 0 && (
-                      <div className="ml-26 space-y-1">
-                        {day.employeeHours.map((emp, empIndex) => (
-                          <div key={empIndex} className="flex items-center gap-2 text-xs">
-                            <span className="w-32 text-muted-foreground truncate">
-                              {emp.employee?.name}
-                            </span>
-                            <div className="flex-1 h-4 bg-muted/50 rounded overflow-hidden">
-                              <div
-                                className="h-full bg-accent/70"
-                                style={{ width: `${((emp.hours - emp.breaks) / maxDayHours) * 100}%` }}
-                              />
-                            </div>
-                            <span className="w-20 text-muted-foreground">
-                              {(emp.hours - emp.breaks).toFixed(1)}h
-                              {emp.breaks > 0 && <span className="text-xs"> ({emp.breaks.toFixed(1)}h break)</span>}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+      {/* Visualization Tabs */}
+      <Tabs value={visualizationMode} onValueChange={(v) => setVisualizationMode(v as VisualizationMode)}>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Visualizations</CardTitle>
+              <TabsList>
+                <TabsTrigger value="gantt" className="gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Gantt</span>
+                </TabsTrigger>
+                <TabsTrigger value="cards" className="gap-2">
+                  <LayoutGrid className="h-4 w-4" />
+                  <span className="hidden sm:inline">Cards</span>
+                </TabsTrigger>
+                <TabsTrigger value="barcode" className="gap-2">
+                  <List className="h-4 w-4" />
+                  <span className="hidden sm:inline">Barcode</span>
+                </TabsTrigger>
+                <TabsTrigger value="stream" className="gap-2">
+                  <Code className="h-4 w-4" />
+                  <span className="hidden sm:inline">Stream</span>
+                </TabsTrigger>
+                <TabsTrigger value="receipt" className="gap-2">
+                  <TableIcon className="h-4 w-4" />
+                  <span className="hidden sm:inline">Receipt</span>
+                </TabsTrigger>
+              </TabsList>
             </div>
+          </CardHeader>
+        </Card>
+
+        <TabsContent value="gantt" className="mt-6">
+          <TimelineGanttView
+            sessions={todaySessions}
+            loading={loading}
+            date={currentDate}
+          />
+        </TabsContent>
+
+        <TabsContent value="cards" className="mt-6">
+          <EmployeeCardView
+            sessions={todaySessions}
+            loading={loading}
+            date={currentDate}
+          />
+        </TabsContent>
+
+        <TabsContent value="barcode" className="mt-6">
+          <BarcodeStripeView
+            sessions={todaySessions}
+            loading={loading}
+            date={currentDate}
+          />
+        </TabsContent>
+
+        <TabsContent value="stream" className="mt-6">
+          <PunchStreamView
+            processedPunches={processedData.processedPunches}
+            loading={loading}
+            employeeId={selectedEmployee !== 'all' ? selectedEmployee : undefined}
+          />
+        </TabsContent>
+
+        <TabsContent value="receipt" className="mt-6">
+          {selectedEmployee !== 'all' ? (
+            <ReceiptStyleView
+              sessions={todaySessions}
+              loading={loading}
+              employeeId={selectedEmployee}
+              employeeName={employees.find(e => e.id === selectedEmployee)?.name}
+            />
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-muted-foreground">
+                  Please select a specific employee to view receipt-style timeline
+                </p>
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Collapsible Table View */}
       <Collapsible open={tableOpen} onOpenChange={setTableOpen}>

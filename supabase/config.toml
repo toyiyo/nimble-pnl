@@ -146,7 +146,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.shift4-sync-data]
-verify_jwt = true
+verify_jwt = false
 
 [functions.shift4-webhooks]
 verify_jwt = false

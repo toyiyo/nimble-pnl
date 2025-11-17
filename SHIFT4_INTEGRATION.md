@@ -155,11 +155,25 @@ Webhooks → Event Verification → Process → Update Database
 |--------------|---------------|-------|
 | `external_order_id` | `charge.id` | Unique charge ID |
 | `external_item_id` | `charge.id + '_sale'` | Synthetic ID (no line items) |
-| `item_name` | 'Shift4 Sale' | Generic name (no item details) |
+| `item_name` | Extracted from charge data | See Product Name Extraction below |
 | `total_price` | `charge.amount - tip_amount` | Amount in dollars (converted from cents) |
 | `sale_date` | `charge.created` | Converted to restaurant's timezone |
 | `sale_time` | `charge.created` | Local time extracted |
 | `item_type` | 'sale' | Always 'sale' for base charge |
+
+#### Product Name Extraction
+
+The `item_name` field is populated using the following priority:
+
+1. **`metadata.product_name`** - If charge has `metadata.product_name` field
+2. **`metadata.item_name`** - If charge has `metadata.item_name` field
+3. **`metadata.name`** - If charge has `metadata.name` field
+4. **`metadata.product`** - If charge has `metadata.product` field
+5. **`metadata.lineItems[0].name`** - First line item name from metadata array
+6. **`description`** - Charge description field
+7. **'Shift4 Sale'** - Default fallback if no product info available
+
+This allows merchants to pass product information through Shift4's metadata or description fields, which will then be displayed in the unified sales view.
 
 ### Tip Entry (if available)
 
@@ -183,10 +197,18 @@ Webhooks → Event Verification → Process → Update Database
 ## Limitations
 
 ### Data Granularity
-- ❌ **No line-item details**: Shift4 Charges API doesn't expose individual items
+- ⚠️ **Limited line-item details**: Shift4 Charges API doesn't natively expose line items, but product information can be passed via `metadata` or `description` fields
 - ❌ **No employee data**: No labor or employee assignment information
 - ❌ **No tax breakdown**: Tax is included in total amount but not itemized
 - ⚠️ **Limited tip data**: Tips only available if using Platform Split feature
+
+**Note**: To display product names in the unified sales view, merchants should include product information in one of the following charge fields:
+- `metadata.product_name`
+- `metadata.item_name`
+- `metadata.lineItems` (array with item names)
+- `description` field
+
+Without this information, charges will be displayed as "Shift4 Sale".
 
 ### API Constraints
 - No `updated_at` filter: Can't efficiently fetch only modified charges

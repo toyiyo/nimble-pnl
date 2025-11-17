@@ -16,15 +16,15 @@ interface Shift4WebhookPayload {
 /**
  * Fetch the full event details from Shift4 API for verification
  * This is CRITICAL for security - never trust the webhook payload directly
+ * Note: Shift4 uses the same URL for both test and production.
  */
 async function fetchEventFromShift4(
   secretKey: string,
   environment: string,
   eventId: string
 ): Promise<any> {
-  const baseUrl = environment === 'sandbox' 
-    ? 'https://api.sandbox.shift4.com' 
-    : 'https://api.shift4.com';
+  // Shift4 uses the same base URL for both test and production environments
+  const baseUrl = 'https://api.shift4.com';
 
   const authHeader = 'Basic ' + btoa(secretKey + ':');
 

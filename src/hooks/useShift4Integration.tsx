@@ -54,7 +54,7 @@ export const useShift4Integration = (restaurantId: string | null) => {
 
   const connectShift4 = useCallback(async (
     secretKey: string,
-    merchantId?: string,
+    merchantId: string | undefined,
     environment: 'production' | 'sandbox' = 'production'
   ) => {
     if (!restaurantId) {
@@ -81,7 +81,7 @@ export const useShift4Integration = (restaurantId: string | null) => {
 
       toast({
         title: "Shift4 Connected",
-        description: `Successfully connected to Shift4 merchant: ${data.merchantName}`,
+        description: `Successfully connected to Shift4${merchantId ? ` (Merchant ID: ${data.merchantId})` : ''}`,
       });
 
       // Refresh connection status

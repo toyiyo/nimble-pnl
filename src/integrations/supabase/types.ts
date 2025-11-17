@@ -2686,6 +2686,200 @@ export type Database = {
           },
         ]
       }
+      shift4_charges: {
+        Row: {
+          amount: number
+          charge_id: string
+          created_at: string
+          created_at_ts: number
+          currency: string
+          customer_email: string | null
+          description: string | null
+          id: string
+          raw_json: Json | null
+          restaurant_id: string
+          service_date: string
+          status: string
+          synced_at: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          charge_id: string
+          created_at?: string
+          created_at_ts: number
+          currency?: string
+          customer_email?: string | null
+          description?: string | null
+          id?: string
+          raw_json?: Json | null
+          restaurant_id: string
+          service_date: string
+          status: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          charge_id?: string
+          created_at?: string
+          created_at_ts?: number
+          currency?: string
+          customer_email?: string | null
+          description?: string | null
+          id?: string
+          raw_json?: Json | null
+          restaurant_id?: string
+          service_date?: string
+          status?: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift4_charges_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift4_connections: {
+        Row: {
+          connected_at: string
+          created_at: string
+          environment: string
+          id: string
+          last_sync_at: string | null
+          merchant_id: string
+          restaurant_id: string
+          secret_key: string
+          updated_at: string
+        }
+        Insert: {
+          connected_at?: string
+          created_at?: string
+          environment?: string
+          id?: string
+          last_sync_at?: string | null
+          merchant_id: string
+          restaurant_id: string
+          secret_key: string
+          updated_at?: string
+        }
+        Update: {
+          connected_at?: string
+          created_at?: string
+          environment?: string
+          id?: string
+          last_sync_at?: string | null
+          merchant_id?: string
+          restaurant_id?: string
+          secret_key?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift4_connections_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift4_refunds: {
+        Row: {
+          amount: number
+          charge_id: string
+          created_at: string
+          created_at_ts: number
+          currency: string
+          id: string
+          reason: string | null
+          refund_id: string
+          restaurant_id: string
+          service_date: string
+          status: string
+          synced_at: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          charge_id: string
+          created_at?: string
+          created_at_ts: number
+          currency?: string
+          id?: string
+          reason?: string | null
+          refund_id: string
+          restaurant_id: string
+          service_date: string
+          status: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          charge_id?: string
+          created_at?: string
+          created_at_ts?: number
+          currency?: string
+          id?: string
+          reason?: string | null
+          refund_id?: string
+          restaurant_id?: string
+          service_date?: string
+          status?: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift4_refunds_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift4_webhook_events: {
+        Row: {
+          created_at: string
+          event_id: string
+          event_type: string
+          id: string
+          processed_at: string
+          restaurant_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          event_type: string
+          id?: string
+          processed_at?: string
+          restaurant_id: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          event_type?: string
+          id?: string
+          processed_at?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift4_webhook_events_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shifts: {
         Row: {
           break_duration: number | null
@@ -2693,8 +2887,11 @@ export type Database = {
           employee_id: string
           end_time: string
           id: string
+          is_recurring: boolean | null
           notes: string | null
           position: string
+          recurrence_parent_id: string | null
+          recurrence_pattern: Json | null
           restaurant_id: string
           start_time: string
           status: string
@@ -2706,8 +2903,11 @@ export type Database = {
           employee_id: string
           end_time: string
           id?: string
+          is_recurring?: boolean | null
           notes?: string | null
           position: string
+          recurrence_parent_id?: string | null
+          recurrence_pattern?: Json | null
           restaurant_id: string
           start_time: string
           status?: string
@@ -2719,8 +2919,11 @@ export type Database = {
           employee_id?: string
           end_time?: string
           id?: string
+          is_recurring?: boolean | null
           notes?: string | null
           position?: string
+          recurrence_parent_id?: string | null
+          recurrence_pattern?: Json | null
           restaurant_id?: string
           start_time?: string
           status?: string
@@ -2732,6 +2935,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_recurrence_parent_id_fkey"
+            columns: ["recurrence_parent_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
           {
@@ -4272,6 +4482,10 @@ export type Database = {
         }[]
       }
       sync_clover_to_unified_sales: {
+        Args: { p_restaurant_id: string }
+        Returns: number
+      }
+      sync_shift4_to_unified_sales: {
         Args: { p_restaurant_id: string }
         Returns: number
       }

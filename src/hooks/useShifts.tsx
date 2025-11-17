@@ -1,7 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Shift } from '@/types/scheduling';
+import { Shift, RecurrencePattern } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
+import { generateRecurringDates } from '@/utils/recurrenceUtils';
+import { parseISO } from 'date-fns';
+import { Json } from '@/integrations/supabase/types';
 
 export const useShifts = (restaurantId: string | null, startDate?: Date, endDate?: Date) => {
   const { toast } = useToast();
@@ -26,7 +29,12 @@ export const useShifts = (restaurantId: string | null, startDate?: Date, endDate
       const { data, error } = await query.order('start_time');
 
       if (error) throw error;
-      return data as Shift[];
+      
+      // Convert Json to RecurrencePattern
+      return data.map(shift => ({
+        ...shift,
+        recurrence_pattern: shift.recurrence_pattern as unknown as RecurrencePattern | null,
+      })) as Shift[];
     },
     enabled: !!restaurantId,
     staleTime: 30000, // 30 seconds
@@ -47,20 +55,101 @@ export const useCreateShift = () => {
 
   return useMutation({
     mutationFn: async (shift: Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>) => {
-      const { data, error } = await supabase
-        .from('shifts')
-        .insert(shift)
-        .select()
-        .single();
+      // If shift has recurrence pattern, generate multiple shifts
+      if (shift.recurrence_pattern && shift.is_recurring) {
+        const startDate = parseISO(shift.start_time);
+        const endDate = parseISO(shift.end_time);
+        
+        // Calculate time difference in milliseconds for accurate preservation
+        const timeDiff = endDate.getTime() - startDate.getTime();
+        
+        // Get time components from original shift
+        const startHours = startDate.getHours();
+        const startMinutes = startDate.getMinutes();
+        const startSeconds = startDate.getSeconds();
+        
+        // Generate recurring dates
+        const recurringDates = generateRecurringDates(startDate, shift.recurrence_pattern);
+        
+        // Create parent shift (first occurrence)
+        const { data: parentShift, error: parentError } = await supabase
+          .from('shifts')
+          .insert({
+            ...shift,
+            recurrence_pattern: shift.recurrence_pattern as unknown as Json,
+            recurrence_parent_id: null, // This is the parent
+          })
+          .select()
+          .single();
 
-      if (error) throw error;
-      return data;
+        if (parentError) throw parentError;
+        
+        // Create child shifts for remaining occurrences
+        if (recurringDates.length > 1) {
+          const childShifts = recurringDates.slice(1).map(date => {
+            // Set the time to match the original shift time
+            const childStartTime = new Date(date);
+            childStartTime.setHours(startHours, startMinutes, startSeconds);
+            
+            // Add the duration to get end time
+            const childEndTime = new Date(childStartTime.getTime() + timeDiff);
+            
+            return {
+              restaurant_id: shift.restaurant_id,
+              employee_id: shift.employee_id,
+              start_time: childStartTime.toISOString(),
+              end_time: childEndTime.toISOString(),
+              break_duration: shift.break_duration,
+              position: shift.position,
+              status: shift.status,
+              notes: shift.notes,
+              recurrence_pattern: shift.recurrence_pattern as unknown as Json,
+              recurrence_parent_id: parentShift.id,
+              is_recurring: true,
+            };
+          });
+          
+          const { error: childError } = await supabase
+            .from('shifts')
+            .insert(childShifts);
+            
+          if (childError) throw childError;
+        }
+        
+        return {
+          ...parentShift,
+          recurrence_pattern: parentShift.recurrence_pattern as unknown as RecurrencePattern | null,
+        } as Shift;
+      } else {
+        // Single shift creation
+        const { data, error } = await supabase
+          .from('shifts')
+          .insert({
+            ...shift,
+            recurrence_pattern: shift.recurrence_pattern as unknown as Json,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        return {
+          ...data,
+          recurrence_pattern: data.recurrence_pattern as unknown as RecurrencePattern | null,
+        } as Shift;
+      }
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurant_id] });
+      
+      const message = variables.is_recurring 
+        ? 'Recurring shifts created successfully'
+        : 'Shift created';
+      
       toast({
-        title: 'Shift created',
-        description: 'The shift has been added to the schedule.',
+        title: message,
+        description: variables.is_recurring 
+          ? 'Multiple shifts have been added to the schedule.'
+          : 'The shift has been added to the schedule.',
       });
     },
     onError: (error: Error) => {
@@ -84,13 +173,19 @@ export const useUpdateShift = () => {
       
       const { data, error } = await supabase
         .from('shifts')
-        .update(shiftUpdates)
+        .update({
+          ...shiftUpdates,
+          recurrence_pattern: shiftUpdates.recurrence_pattern as unknown as Json,
+        })
         .eq('id', id)
         .select()
         .single();
 
       if (error) throw error;
-      return data;
+      return {
+        ...data,
+        recurrence_pattern: data.recurrence_pattern as unknown as RecurrencePattern | null,
+      } as Shift;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurant_id] });

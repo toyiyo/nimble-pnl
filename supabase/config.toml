@@ -1,6 +1,6 @@
 project_id = "ncdujvdgqtaunuyigflp"
 
-# Trigger rebuild - 2025-01-16
+# Trigger rebuild - 2025-01-17
 [api]
 enabled = true
 port = 54321
@@ -140,4 +140,19 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.categorize-uncategorized-transactions]
+verify_jwt = true
+
+[functions.shift4-connect]
+verify_jwt = true
+
+[functions.shift4-sync-data]
+verify_jwt = true
+
+[functions.shift4-webhooks]
+verify_jwt = false
+
+[functions.ai-chat-stream]
+verify_jwt = true
+
+[functions.ai-execute-tool]
 verify_jwt = true

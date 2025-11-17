@@ -1026,7 +1026,7 @@ export type Database = {
       }
       employee_tips: {
         Row: {
-          created_at: string | null
+          created_at: string
           created_by: string | null
           employee_id: string
           id: string
@@ -1036,10 +1036,10 @@ export type Database = {
           shift_id: string | null
           tip_amount: number
           tip_source: string
-          updated_at: string | null
+          updated_at: string
         }
         Insert: {
-          created_at?: string | null
+          created_at?: string
           created_by?: string | null
           employee_id: string
           id?: string
@@ -1049,10 +1049,10 @@ export type Database = {
           shift_id?: string | null
           tip_amount?: number
           tip_source: string
-          updated_at?: string | null
+          updated_at?: string
         }
         Update: {
-          created_at?: string | null
+          created_at?: string
           created_by?: string | null
           employee_id?: string
           id?: string
@@ -1062,7 +1062,7 @@ export type Database = {
           shift_id?: string | null
           tip_amount?: number
           tip_source?: string
-          updated_at?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -3783,6 +3783,340 @@ export type Database = {
           },
         ]
       }
+      toast_connections: {
+        Row: {
+          access_token: string
+          connected_at: string
+          created_at: string
+          id: string
+          last_sync_at: string | null
+          refresh_token: string | null
+          restaurant_id: string
+          scopes: string[] | null
+          toast_restaurant_guid: string
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          connected_at?: string
+          created_at?: string
+          id?: string
+          last_sync_at?: string | null
+          refresh_token?: string | null
+          restaurant_id: string
+          scopes?: string[] | null
+          toast_restaurant_guid: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          connected_at?: string
+          created_at?: string
+          id?: string
+          last_sync_at?: string | null
+          refresh_token?: string | null
+          restaurant_id?: string
+          scopes?: string[] | null
+          toast_restaurant_guid?: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "toast_connections_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      toast_menu_items: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean | null
+          item_name: string
+          price: number | null
+          raw_json: Json | null
+          restaurant_id: string
+          synced_at: string
+          toast_item_guid: string
+          toast_restaurant_guid: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          item_name: string
+          price?: number | null
+          raw_json?: Json | null
+          restaurant_id: string
+          synced_at?: string
+          toast_item_guid: string
+          toast_restaurant_guid: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          item_name?: string
+          price?: number | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          synced_at?: string
+          toast_item_guid?: string
+          toast_restaurant_guid?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "toast_menu_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      toast_order_items: {
+        Row: {
+          created_at: string
+          id: string
+          item_name: string
+          menu_category: string | null
+          modifiers: Json | null
+          quantity: number
+          raw_json: Json | null
+          restaurant_id: string
+          synced_at: string
+          toast_item_guid: string
+          toast_order_guid: string
+          toast_order_id: string
+          total_price: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          item_name: string
+          menu_category?: string | null
+          modifiers?: Json | null
+          quantity?: number
+          raw_json?: Json | null
+          restaurant_id: string
+          synced_at?: string
+          toast_item_guid: string
+          toast_order_guid: string
+          toast_order_id: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          item_name?: string
+          menu_category?: string | null
+          modifiers?: Json | null
+          quantity?: number
+          raw_json?: Json | null
+          restaurant_id?: string
+          synced_at?: string
+          toast_item_guid?: string
+          toast_order_guid?: string
+          toast_order_id?: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "toast_order_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "toast_order_items_toast_order_id_fkey"
+            columns: ["toast_order_id"]
+            isOneToOne: false
+            referencedRelation: "toast_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      toast_orders: {
+        Row: {
+          created_at: string
+          dining_option: string | null
+          discount_amount: number | null
+          id: string
+          order_date: string
+          order_number: string | null
+          order_time: string | null
+          payment_status: string | null
+          raw_json: Json | null
+          restaurant_id: string
+          service_charge_amount: number | null
+          subtotal_amount: number | null
+          synced_at: string
+          tax_amount: number | null
+          tip_amount: number | null
+          toast_order_guid: string
+          toast_restaurant_guid: string
+          total_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dining_option?: string | null
+          discount_amount?: number | null
+          id?: string
+          order_date: string
+          order_number?: string | null
+          order_time?: string | null
+          payment_status?: string | null
+          raw_json?: Json | null
+          restaurant_id: string
+          service_charge_amount?: number | null
+          subtotal_amount?: number | null
+          synced_at?: string
+          tax_amount?: number | null
+          tip_amount?: number | null
+          toast_order_guid: string
+          toast_restaurant_guid: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dining_option?: string | null
+          discount_amount?: number | null
+          id?: string
+          order_date?: string
+          order_number?: string | null
+          order_time?: string | null
+          payment_status?: string | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          service_charge_amount?: number | null
+          subtotal_amount?: number | null
+          synced_at?: string
+          tax_amount?: number | null
+          tip_amount?: number | null
+          toast_order_guid?: string
+          toast_restaurant_guid?: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "toast_orders_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      toast_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          payment_date: string | null
+          payment_status: string | null
+          payment_type: string | null
+          raw_json: Json | null
+          restaurant_id: string
+          synced_at: string
+          tip_amount: number | null
+          toast_order_guid: string
+          toast_payment_guid: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          payment_date?: string | null
+          payment_status?: string | null
+          payment_type?: string | null
+          raw_json?: Json | null
+          restaurant_id: string
+          synced_at?: string
+          tip_amount?: number | null
+          toast_order_guid: string
+          toast_payment_guid: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          payment_date?: string | null
+          payment_status?: string | null
+          payment_type?: string | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          synced_at?: string
+          tip_amount?: number | null
+          toast_order_guid?: string
+          toast_payment_guid?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "toast_payments_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      toast_webhook_events: {
+        Row: {
+          event_id: string
+          event_type: string
+          id: string
+          processed_at: string
+          raw_json: Json | null
+          restaurant_id: string
+        }
+        Insert: {
+          event_id: string
+          event_type: string
+          id?: string
+          processed_at?: string
+          raw_json?: Json | null
+          restaurant_id: string
+        }
+        Update: {
+          event_id?: string
+          event_type?: string
+          id?: string
+          processed_at?: string
+          raw_json?: Json | null
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "toast_webhook_events_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transaction_categorization_rules: {
         Row: {
           apply_count: number
@@ -4523,6 +4857,10 @@ export type Database = {
         Returns: number
       }
       sync_square_to_unified_sales: {
+        Args: { p_restaurant_id: string }
+        Returns: number
+      }
+      sync_toast_to_unified_sales: {
         Args: { p_restaurant_id: string }
         Returns: number
       }

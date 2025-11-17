@@ -243,9 +243,37 @@ export function getRecurrencePresetsForDate(date: Date): Array<{ label: string; 
   const monthName = format(date, 'MMMM');
   const dayOfMonth = date.getDate();
   
-  // Calculate which week of the month this is (1st, 2nd, 3rd, etc.)
-  const weekOfMonth = Math.ceil(dayOfMonth / 7);
-  const ordinal = ['first', 'second', 'third', 'fourth', 'fifth'][weekOfMonth - 1];
+  // Calculate which occurrence of this weekday in the month (1st, 2nd, 3rd, etc.)
+  // Count how many times this weekday has occurred up to and including this date
+  let occurrenceCount = 0;
+  for (let day = 1; day <= dayOfMonth; day++) {
+    const testDate = new Date(date.getFullYear(), date.getMonth(), day);
+    if (testDate.getDay() === dayOfWeek) {
+      occurrenceCount++;
+    }
+  }
+  
+  // Calculate total occurrences of this weekday in the month
+  const lastDayOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  let totalOccurrences = 0;
+  for (let day = 1; day <= lastDayOfMonth; day++) {
+    const testDate = new Date(date.getFullYear(), date.getMonth(), day);
+    if (testDate.getDay() === dayOfWeek) {
+      totalOccurrences++;
+    }
+  }
+  
+  // Determine the ordinal string
+  let ordinal: string;
+  if (occurrenceCount === totalOccurrences && occurrenceCount > 1) {
+    ordinal = 'last';
+  } else if (occurrenceCount >= 1 && occurrenceCount <= 5) {
+    ordinal = ['first', 'second', 'third', 'fourth', 'fifth'][occurrenceCount - 1];
+  } else {
+    ordinal = 'last'; // Fallback for edge cases
+  }
+  
+  const weekOfMonth = occurrenceCount;
   
   return [
     { label: 'Does not repeat', value: 'none' },

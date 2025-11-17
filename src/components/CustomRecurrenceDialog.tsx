@@ -62,12 +62,27 @@ export const CustomRecurrenceDialog = ({
     }
   }, [initialPattern, startDate]);
 
+  // Ensure selectedDays is never empty when repeatType is 'week'
+  useEffect(() => {
+    if (repeatType === 'week' && selectedDays.length === 0) {
+      setSelectedDays([new Date(startDate).getDay()]);
+    }
+  }, [repeatType, selectedDays, startDate]);
+
   const handleDayToggle = (day: number) => {
-    setSelectedDays(prev => 
-      prev.includes(day) 
-        ? prev.filter(d => d !== day)
-        : [...prev, day].sort((a, b) => a - b)
-    );
+    setSelectedDays(prev => {
+      if (prev.includes(day)) {
+        // Don't allow removing the last day for weekly patterns
+        const newDays = prev.filter(d => d !== day);
+        // If removing this day would leave no days selected, keep at least one day
+        if (newDays.length === 0) {
+          return prev; // Don't remove the last day
+        }
+        return newDays;
+      } else {
+        return [...prev, day].sort((a, b) => a - b);
+      }
+    });
   };
 
   const handleSave = () => {
@@ -84,19 +99,23 @@ export const CustomRecurrenceDialog = ({
         };
         break;
 
-      case 'week':
+      case 'week': {
+        // Ensure we have at least one day selected for weekly patterns
+        const daysToUse = selectedDays.length > 0 ? selectedDays : [new Date(startDate).getDay()];
+        
         pattern = {
-          type: selectedDays.length === 5 && 
-                selectedDays.every(d => d >= 1 && d <= 5) 
+          type: daysToUse.length === 5 && 
+                daysToUse.every(d => d >= 1 && d <= 5) 
                 ? 'weekday' 
-                : selectedDays.length > 0 ? 'custom' : 'weekly',
+                : 'custom',
           interval,
-          daysOfWeek: selectedDays.length > 0 ? selectedDays : undefined,
+          daysOfWeek: daysToUse,
           endType,
           ...(endType === 'on' && { endDate }),
           ...(endType === 'after' && { occurrences }),
         };
         break;
+      }
 
       case 'month':
         pattern = {

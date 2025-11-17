@@ -7,6 +7,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { useShift4Integration } from '@/hooks/useShift4Integration';
+import { useToastIntegration } from '@/hooks/useToastIntegration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -17,6 +18,7 @@ const Integrations = () => {
   const { isConnected: squareConnected } = useSquareIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: cloverConnected } = useCloverIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: shift4Connected } = useShift4Integration(selectedRestaurant?.restaurant_id || null);
+  const { isConnected: toastConnected } = useToastIntegration(selectedRestaurant?.restaurant_id || null);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -29,7 +31,7 @@ const Integrations = () => {
       description: 'Automatically sync sales data, transactions, and menu items',
       category: 'Point of Sale',
       logo: '🍞',
-      connected: false,
+      connected: toastConnected,
       features: ['Sales Data', 'Transaction History', 'Menu Items', 'Customer Data']
     },
     {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSquareSalesAdapter } from './adapters/useSquareSalesAdapter';
 import { useCloverSalesAdapter } from './adapters/useCloverSalesAdapter';
+import { useToastSalesAdapter } from './adapters/useToastSalesAdapter';
 import { POSAdapter, POSIntegrationStatus, POSSystemType } from '@/types/pos';
 
 export const usePOSIntegrations = (restaurantId: string | null) => {
@@ -11,6 +12,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
   // Initialize adapters
   const squareAdapter = useSquareSalesAdapter(restaurantId);
   const cloverAdapter = useCloverSalesAdapter(restaurantId);
+  const toastAdapter = useToastSalesAdapter(restaurantId);
 
   // Use useMemo to stabilize the manual adapter object
   const manualAdapter = useCallback(() => ({
@@ -30,8 +32,8 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
     const adapterMap: Partial<Record<POSSystemType, POSAdapter>> = {
       square: squareAdapter,
       clover: cloverAdapter,
+      toast: toastAdapter,
       // Future adapters will be added here:
-      // toast: useToastSalesAdapter(restaurantId),
       // resy: useResySalesAdapter(restaurantId),
       manual: manualAdapter(),
     };
@@ -47,6 +49,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
     restaurantId,
     squareAdapter.isConnected,
     cloverAdapter.isConnected,
+    toastAdapter.isConnected,
     manualAdapter
   ]);
 

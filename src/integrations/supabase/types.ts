@@ -2686,6 +2686,56 @@ export type Database = {
           },
         ]
       }
+      shift4_connections: {
+        Row: {
+          access_token: string
+          connected_at: string
+          created_at: string
+          environment: string
+          expires_at: string | null
+          id: string
+          merchant_id: string
+          refresh_token: string | null
+          restaurant_id: string
+          scopes: string[]
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          connected_at?: string
+          created_at?: string
+          environment?: string
+          expires_at?: string | null
+          id?: string
+          merchant_id: string
+          refresh_token?: string | null
+          restaurant_id: string
+          scopes?: string[]
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          connected_at?: string
+          created_at?: string
+          environment?: string
+          expires_at?: string | null
+          id?: string
+          merchant_id?: string
+          refresh_token?: string | null
+          restaurant_id?: string
+          scopes?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift4_connections_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shifts: {
         Row: {
           break_duration: number | null

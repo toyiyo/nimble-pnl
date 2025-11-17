@@ -155,17 +155,28 @@ Deno.serve(async (req) => {
         // This is more reliable than inline processing and keeps sync logic centralized
         if (shouldSync) {
           console.log('Triggering shift4-sync-data for hourly sync...');
-          const syncResult = await supabase.functions.invoke('shift4-sync-data', {
-            body: {
-              restaurantId: connection.restaurant_id,
-              action: 'hourly_sync',
+          
+          // Call sync function without auth (internal webhook call)
+          const syncResponse = await fetch(
+            `${Deno.env.get('SUPABASE_URL')}/functions/v1/shift4-sync-data`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                restaurantId: connection.restaurant_id,
+                action: 'hourly_sync',
+              }),
             }
-          });
+          );
 
-          if (syncResult.error) {
-            console.error('Sync function error:', syncResult.error);
+          if (!syncResponse.ok) {
+            const errorText = await syncResponse.text();
+            console.error('Sync function error:', errorText);
           } else {
-            console.log('Sync completed:', syncResult.data);
+            const syncResult = await syncResponse.json();
+            console.log('Sync completed:', syncResult);
           }
         }
 

@@ -37,7 +37,7 @@ export const useToastIntegration = (restaurantId: string | null) => {
       }
 
       if (data) {
-        setConnection(data as ToastConnection);
+        setConnection(data as unknown as ToastConnection);
         setIsConnected(true);
       } else {
         setConnection(null);

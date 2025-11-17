@@ -283,22 +283,6 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
                 isConnected={actuallyConnected} 
               />
             )}
-            
-            {/* Clover Sync Component */}
-            {isCloverIntegration && (
-              <CloverSync 
-                restaurantId={restaurantId} 
-                isConnected={actuallyConnected} 
-              />
-            )}
-            
-            {/* Shift4 Sync Component */}
-            {isShift4Integration && (
-              <Shift4Sync 
-                restaurantId={restaurantId} 
-                isConnected={actuallyConnected} 
-              />
-            )}
           </div>
         )}
       </CardContent>

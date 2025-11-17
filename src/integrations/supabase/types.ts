@@ -2689,50 +2689,65 @@ export type Database = {
       shift4_charges: {
         Row: {
           amount: number
+          captured: boolean
           charge_id: string
           created_at: string
           created_at_ts: number
+          created_time: string
           currency: string
-          customer_email: string | null
           description: string | null
           id: string
+          merchant_id: string
           raw_json: Json | null
+          refunded: boolean
           restaurant_id: string
-          service_date: string
+          service_date: string | null
+          service_time: string | null
           status: string
           synced_at: string
+          tip_amount: number | null
           updated_at: string
         }
         Insert: {
           amount: number
+          captured?: boolean
           charge_id: string
           created_at?: string
           created_at_ts: number
+          created_time: string
           currency?: string
-          customer_email?: string | null
           description?: string | null
           id?: string
+          merchant_id: string
           raw_json?: Json | null
+          refunded?: boolean
           restaurant_id: string
-          service_date: string
+          service_date?: string | null
+          service_time?: string | null
           status: string
           synced_at?: string
+          tip_amount?: number | null
           updated_at?: string
         }
         Update: {
           amount?: number
+          captured?: boolean
           charge_id?: string
           created_at?: string
           created_at_ts?: number
+          created_time?: string
           currency?: string
-          customer_email?: string | null
           description?: string | null
           id?: string
+          merchant_id?: string
           raw_json?: Json | null
+          refunded?: boolean
           restaurant_id?: string
-          service_date?: string
+          service_date?: string | null
+          service_time?: string | null
           status?: string
           synced_at?: string
+          tip_amount?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -2783,7 +2798,7 @@ export type Database = {
           {
             foreignKeyName: "shift4_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2795,12 +2810,15 @@ export type Database = {
           charge_id: string
           created_at: string
           created_at_ts: number
+          created_time: string
           currency: string
           id: string
+          merchant_id: string
+          raw_json: Json | null
           reason: string | null
           refund_id: string
           restaurant_id: string
-          service_date: string
+          service_date: string | null
           status: string
           synced_at: string
           updated_at: string
@@ -2810,12 +2828,15 @@ export type Database = {
           charge_id: string
           created_at?: string
           created_at_ts: number
+          created_time: string
           currency?: string
           id?: string
+          merchant_id: string
+          raw_json?: Json | null
           reason?: string | null
           refund_id: string
           restaurant_id: string
-          service_date: string
+          service_date?: string | null
           status: string
           synced_at?: string
           updated_at?: string
@@ -2825,12 +2846,15 @@ export type Database = {
           charge_id?: string
           created_at?: string
           created_at_ts?: number
+          created_time?: string
           currency?: string
           id?: string
+          merchant_id?: string
+          raw_json?: Json | null
           reason?: string | null
           refund_id?: string
           restaurant_id?: string
-          service_date?: string
+          service_date?: string | null
           status?: string
           synced_at?: string
           updated_at?: string
@@ -2851,7 +2875,10 @@ export type Database = {
           event_id: string
           event_type: string
           id: string
-          processed_at: string
+          object_id: string
+          processed: boolean
+          processed_at: string | null
+          raw_json: Json
           restaurant_id: string
         }
         Insert: {
@@ -2859,7 +2886,10 @@ export type Database = {
           event_id: string
           event_type: string
           id?: string
-          processed_at?: string
+          object_id: string
+          processed?: boolean
+          processed_at?: string | null
+          raw_json: Json
           restaurant_id: string
         }
         Update: {
@@ -2867,7 +2897,10 @@ export type Database = {
           event_id?: string
           event_type?: string
           id?: string
-          processed_at?: string
+          object_id?: string
+          processed?: boolean
+          processed_at?: string | null
+          raw_json?: Json
           restaurant_id?: string
         }
         Relationships: [

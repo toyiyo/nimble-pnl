@@ -2783,7 +2783,7 @@ export type Database = {
           {
             foreignKeyName: "shift4_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2887,8 +2887,11 @@ export type Database = {
           employee_id: string
           end_time: string
           id: string
+          is_recurring: boolean | null
           notes: string | null
           position: string
+          recurrence_parent_id: string | null
+          recurrence_pattern: Json | null
           restaurant_id: string
           start_time: string
           status: string
@@ -2900,8 +2903,11 @@ export type Database = {
           employee_id: string
           end_time: string
           id?: string
+          is_recurring?: boolean | null
           notes?: string | null
           position: string
+          recurrence_parent_id?: string | null
+          recurrence_pattern?: Json | null
           restaurant_id: string
           start_time: string
           status?: string
@@ -2913,8 +2919,11 @@ export type Database = {
           employee_id?: string
           end_time?: string
           id?: string
+          is_recurring?: boolean | null
           notes?: string | null
           position?: string
+          recurrence_parent_id?: string | null
+          recurrence_pattern?: Json | null
           restaurant_id?: string
           start_time?: string
           status?: string
@@ -2926,6 +2935,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_recurrence_parent_id_fkey"
+            columns: ["recurrence_parent_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
           {

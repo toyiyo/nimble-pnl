@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Shift } from '@/types/scheduling';
+import { Shift, RecurrencePattern } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
 import { generateRecurringDates } from '@/utils/recurrenceUtils';
 import { parseISO } from 'date-fns';
+import { Json } from '@/integrations/supabase/types';
 
 export const useShifts = (restaurantId: string | null, startDate?: Date, endDate?: Date) => {
   const { toast } = useToast();
@@ -28,7 +29,12 @@ export const useShifts = (restaurantId: string | null, startDate?: Date, endDate
       const { data, error } = await query.order('start_time');
 
       if (error) throw error;
-      return data as Shift[];
+      
+      // Convert Json to RecurrencePattern
+      return data.map(shift => ({
+        ...shift,
+        recurrence_pattern: shift.recurrence_pattern as unknown as RecurrencePattern | null,
+      })) as Shift[];
     },
     enabled: !!restaurantId,
     staleTime: 30000, // 30 seconds
@@ -70,6 +76,7 @@ export const useCreateShift = () => {
           .from('shifts')
           .insert({
             ...shift,
+            recurrence_pattern: shift.recurrence_pattern as unknown as Json,
             recurrence_parent_id: null, // This is the parent
           })
           .select()
@@ -96,7 +103,7 @@ export const useCreateShift = () => {
               position: shift.position,
               status: shift.status,
               notes: shift.notes,
-              recurrence_pattern: shift.recurrence_pattern,
+              recurrence_pattern: shift.recurrence_pattern as unknown as Json,
               recurrence_parent_id: parentShift.id,
               is_recurring: true,
             };
@@ -109,17 +116,26 @@ export const useCreateShift = () => {
           if (childError) throw childError;
         }
         
-        return parentShift;
+        return {
+          ...parentShift,
+          recurrence_pattern: parentShift.recurrence_pattern as unknown as RecurrencePattern | null,
+        } as Shift;
       } else {
         // Single shift creation
         const { data, error } = await supabase
           .from('shifts')
-          .insert(shift)
+          .insert({
+            ...shift,
+            recurrence_pattern: shift.recurrence_pattern as unknown as Json,
+          })
           .select()
           .single();
 
         if (error) throw error;
-        return data;
+        return {
+          ...data,
+          recurrence_pattern: data.recurrence_pattern as unknown as RecurrencePattern | null,
+        } as Shift;
       }
     },
     onSuccess: (data, variables) => {
@@ -157,13 +173,19 @@ export const useUpdateShift = () => {
       
       const { data, error } = await supabase
         .from('shifts')
-        .update(shiftUpdates)
+        .update({
+          ...shiftUpdates,
+          recurrence_pattern: shiftUpdates.recurrence_pattern as unknown as Json,
+        })
         .eq('id', id)
         .select()
         .single();
 
       if (error) throw error;
-      return data;
+      return {
+        ...data,
+        recurrence_pattern: data.recurrence_pattern as unknown as RecurrencePattern | null,
+      } as Shift;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurant_id] });

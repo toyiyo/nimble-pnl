@@ -4485,6 +4485,10 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: number
       }
+      sync_shift4_to_unified_sales: {
+        Args: { p_restaurant_id: string }
+        Returns: number
+      }
       sync_square_to_unified_sales: {
         Args: { p_restaurant_id: string }
         Returns: number

@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
     const encryption = await getEncryptionService();
     const encryptedSecretKey = await encryption.encrypt(secretKey);
 
-    // Store or update the connection (one connection per restaurant)
+    // Store or update the connection (one connection per restaurant+merchant)
     const { data: connection, error: connectionError } = await supabase
       .from('shift4_connections')
       .upsert({
@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
         connected_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }, {
-        onConflict: 'restaurant_id',
+        onConflict: 'restaurant_id,merchant_id',
       })
       .select()
       .single();

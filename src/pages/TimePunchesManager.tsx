@@ -94,6 +94,15 @@ const TimePunchesManager = () => {
   const deletePunch = useDeleteTimePunch();
   const updatePunch = useUpdateTimePunch();
 
+  // Filter punches by search term
+  const filteredPunches = useMemo(() => {
+    return punches.filter((punch) => {
+      if (!searchTerm) return true;
+      const employee = punch.employee;
+      return employee?.name.toLowerCase().includes(searchTerm.toLowerCase());
+    });
+  }, [punches, searchTerm]);
+
   // Process punches using the robust calculation logic
   const processedData = useMemo(() => {
     return processPunchesForPeriod(filteredPunches);
@@ -198,12 +207,6 @@ const TimePunchesManager = () => {
     });
     closeEditDialog();
   };
-
-  const filteredPunches = punches.filter((punch) => {
-    if (!searchTerm) return true;
-    const employee = punch.employee;
-    return employee?.name.toLowerCase().includes(searchTerm.toLowerCase());
-  });
 
   const getPunchTypeColor = (type: string) => {
     switch (type) {

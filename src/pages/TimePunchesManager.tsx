@@ -94,7 +94,7 @@ const TimePunchesManager = () => {
   const deletePunch = useDeleteTimePunch();
   const updatePunch = useUpdateTimePunch();
 
-  // Filter punches by search term
+  // Filter punches by search term (memoized for performance)
   const filteredPunches = useMemo(() => {
     return punches.filter((punch) => {
       if (!searchTerm) return true;

@@ -105,7 +105,7 @@ const MODEL_TOKEN_LIMITS: Record<string, number> = {
 const DEFAULT_MAX_TOKENS = 8192;
 
 function buildRequestBody(modelId: string, systemPrompt: string, pdfUrl: string): any {
-  const requestedMax = 32000;
+  const requestedMax = 8000; // Reduced from 32000 to prevent memory issues
   const modelMaxLimit = MODEL_TOKEN_LIMITS[modelId] || DEFAULT_MAX_TOKENS;
   const clampedMaxTokens = Math.min(requestedMax, modelMaxLimit);
   
@@ -501,7 +501,7 @@ serve(async (req) => {
       });
     }
 
-    // Insert transaction lines with sequence
+    // Insert transaction lines with sequence in batches to avoid memory issues
     const transactionLines = parsedData.transactions.map((transaction: any, index: number) => ({
       statement_upload_id: statementUploadId,
       transaction_date: transaction.date,
@@ -513,16 +513,21 @@ serve(async (req) => {
       confidence_score: transaction.confidenceScore,
     }));
 
-    const { error: linesError } = await supabase
-      .from("bank_statement_lines")
-      .insert(transactionLines);
+    // Insert in batches of 100 to prevent memory overflow
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < transactionLines.length; i += BATCH_SIZE) {
+      const batch = transactionLines.slice(i, i + BATCH_SIZE);
+      const { error: linesError } = await supabase
+        .from("bank_statement_lines")
+        .insert(batch);
 
-    if (linesError) {
-      console.error("Error inserting transaction lines:", linesError);
-      return new Response(JSON.stringify({ error: "Failed to insert transaction lines" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      });
+      if (linesError) {
+        console.error(`Error inserting transaction batch ${i / BATCH_SIZE + 1}:`, linesError);
+        return new Response(JSON.stringify({ error: "Failed to insert transaction lines" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        });
+      }
     }
 
     return new Response(

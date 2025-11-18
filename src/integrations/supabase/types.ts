@@ -102,6 +102,140 @@ export type Database = {
           },
         ]
       }
+      bank_statement_lines: {
+        Row: {
+          amount: number
+          balance: number | null
+          confidence_score: number | null
+          created_at: string
+          description: string
+          id: string
+          imported_transaction_id: string | null
+          is_imported: boolean
+          line_sequence: number
+          statement_upload_id: string
+          transaction_date: string
+          transaction_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          balance?: number | null
+          confidence_score?: number | null
+          created_at?: string
+          description: string
+          id?: string
+          imported_transaction_id?: string | null
+          is_imported?: boolean
+          line_sequence: number
+          statement_upload_id: string
+          transaction_date: string
+          transaction_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          balance?: number | null
+          confidence_score?: number | null
+          created_at?: string
+          description?: string
+          id?: string
+          imported_transaction_id?: string | null
+          is_imported?: boolean
+          line_sequence?: number
+          statement_upload_id?: string
+          transaction_date?: string
+          transaction_type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_statement_lines_imported_transaction_id_fkey"
+            columns: ["imported_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_statement_lines_statement_upload_id_fkey"
+            columns: ["statement_upload_id"]
+            isOneToOne: false
+            referencedRelation: "bank_statement_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_statement_uploads: {
+        Row: {
+          bank_name: string | null
+          created_at: string
+          error_message: string | null
+          file_name: string | null
+          file_size: number | null
+          id: string
+          processed_at: string | null
+          processed_by: string | null
+          raw_file_url: string | null
+          raw_ocr_data: Json | null
+          restaurant_id: string
+          statement_period_end: string | null
+          statement_period_start: string | null
+          status: string
+          total_credits: number | null
+          total_debits: number | null
+          transaction_count: number | null
+          updated_at: string
+        }
+        Insert: {
+          bank_name?: string | null
+          created_at?: string
+          error_message?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          raw_file_url?: string | null
+          raw_ocr_data?: Json | null
+          restaurant_id: string
+          statement_period_end?: string | null
+          statement_period_start?: string | null
+          status?: string
+          total_credits?: number | null
+          total_debits?: number | null
+          transaction_count?: number | null
+          updated_at?: string
+        }
+        Update: {
+          bank_name?: string | null
+          created_at?: string
+          error_message?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          raw_file_url?: string | null
+          raw_ocr_data?: Json | null
+          restaurant_id?: string
+          statement_period_end?: string | null
+          statement_period_start?: string | null
+          status?: string
+          total_credits?: number | null
+          total_debits?: number | null
+          transaction_count?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_statement_uploads_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_transaction_splits: {
         Row: {
           amount: number
@@ -173,6 +307,8 @@ export type Database = {
           reconciled_at: string | null
           reconciled_by: string | null
           restaurant_id: string
+          source: string | null
+          statement_upload_id: string | null
           status: Database["public"]["Enums"]["transaction_status_enum"]
           stripe_transaction_id: string
           suggested_category_id: string | null
@@ -211,6 +347,8 @@ export type Database = {
           reconciled_at?: string | null
           reconciled_by?: string | null
           restaurant_id: string
+          source?: string | null
+          statement_upload_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status_enum"]
           stripe_transaction_id: string
           suggested_category_id?: string | null
@@ -249,6 +387,8 @@ export type Database = {
           reconciled_at?: string | null
           reconciled_by?: string | null
           restaurant_id?: string
+          source?: string | null
+          statement_upload_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status_enum"]
           stripe_transaction_id?: string
           suggested_category_id?: string | null
@@ -293,6 +433,13 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_statement_upload_id_fkey"
+            columns: ["statement_upload_id"]
+            isOneToOne: false
+            referencedRelation: "bank_statement_uploads"
             referencedColumns: ["id"]
           },
           {

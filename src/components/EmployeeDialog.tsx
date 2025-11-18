@@ -9,6 +9,7 @@ import { Employee } from '@/types/scheduling';
 import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { PositionCombobox } from '@/components/PositionCombobox';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -16,18 +17,6 @@ interface EmployeeDialogProps {
   employee?: Employee;
   restaurantId: string;
 }
-
-const POSITIONS = [
-  'Server',
-  'Cook',
-  'Bartender',
-  'Host',
-  'Manager',
-  'Dishwasher',
-  'Chef',
-  'Busser',
-  'Other',
-];
 
 export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: EmployeeDialogProps) => {
   const [name, setName] = useState('');
@@ -167,18 +156,12 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
               <Label htmlFor="position">
                 Position <span className="text-destructive">*</span>
               </Label>
-              <Select value={position} onValueChange={setPosition} required>
-                <SelectTrigger id="position" aria-label="Employee position">
-                  <SelectValue placeholder="Select position" />
-                </SelectTrigger>
-                <SelectContent>
-                  {POSITIONS.map((pos) => (
-                    <SelectItem key={pos} value={pos}>
-                      {pos}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PositionCombobox
+                restaurantId={restaurantId}
+                value={position}
+                onValueChange={setPosition}
+                placeholder="Select or type a position..."
+              />
             </div>
 
             <div className="space-y-2">

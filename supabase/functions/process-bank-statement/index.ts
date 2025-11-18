@@ -1,11 +1,15 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { logAICall, type AICallMetadata } from "../_shared/braintrust.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// Optional logging (graceful degradation if braintrust not available)
+const logAICall = (...args: any[]) => {
+  // Logging disabled for now
 };
 
 interface BankStatementProcessRequest {
@@ -238,7 +242,7 @@ async function callModel(
 
       const requestBody = buildRequestBody(modelConfig.id, modelConfig.systemPrompt, pdfUrl);
 
-      const metadata: AICallMetadata = {
+      const metadata = {
         model: modelConfig.id,
         provider: "openrouter",
         restaurant_id: restaurantId,
@@ -263,65 +267,20 @@ async function callModel(
 
       if (response.ok) {
         console.log(`✅ ${modelConfig.name} succeeded`);
-        
-        logAICall(
-          'process-bank-statement:success',
-          { model: modelConfig.id },
-          { status: 'success' },
-          { ...metadata, success: true, status_code: 200 },
-          null
-        );
-        
         return response;
       }
 
       if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
         console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
-        
-        logAICall(
-          'process-bank-statement:rate_limit',
-          { model: modelConfig.id },
-          null,
-          { ...metadata, success: false, status_code: 429, error: 'Rate limited' },
-          null
-        );
-        
         await new Promise((resolve) => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
         retryCount++;
       } else {
         const errorText = await response.text();
         console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
-        
-        logAICall(
-          'process-bank-statement:error',
-          { model: modelConfig.id },
-          null,
-          { ...metadata, success: false, status_code: response.status, error: errorText },
-          null
-        );
-        
         break;
       }
     } catch (error) {
       console.error(`❌ ${modelConfig.name} error:`, error);
-      
-      logAICall(
-        'process-bank-statement:error',
-        { model: modelConfig.id },
-        null,
-        { 
-          model: modelConfig.id,
-          provider: "openrouter",
-          restaurant_id: restaurantId,
-          edge_function: 'process-bank-statement',
-          stream: false,
-          attempt: retryCount + 1,
-          success: false,
-          error: error instanceof Error ? error.message : String(error)
-        },
-        null
-      );
-      
       retryCount++;
       if (retryCount < modelConfig.maxRetries) {
         await new Promise((resolve) => setTimeout(resolve, Math.pow(2, retryCount) * 1000));

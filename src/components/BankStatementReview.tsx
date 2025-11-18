@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { useBankStatementImport, type BankStatementLine } from '@/hooks/useBankStatementImport';
+import { useBankStatementImport, type BankStatementLine, type BankStatementUpload } from '@/hooks/useBankStatementImport';
 import { FileText, Check, Edit, Trash2, DollarSign, Calendar, Building2 } from 'lucide-react';
 import { format } from 'date-fns';
 import {
@@ -27,7 +27,7 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
   onImportComplete,
 }) => {
   const [lines, setLines] = useState<BankStatementLine[]>([]);
-  const [statement, setStatement] = useState<any>(null);
+  const [statement, setStatement] = useState<BankStatementUpload | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{
@@ -43,10 +43,6 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
     importStatementLines,
   } = useBankStatementImport();
 
-  useEffect(() => {
-    loadStatementData();
-  }, [statementUploadId]);
-
   const loadStatementData = async () => {
     setLoading(true);
     const [statementData, linesData] = await Promise.all([
@@ -57,6 +53,11 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
     setLines(linesData);
     setLoading(false);
   };
+
+  useEffect(() => {
+    loadStatementData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statementUploadId]);
 
   const handleEdit = (line: BankStatementLine) => {
     setEditingLineId(line.id);

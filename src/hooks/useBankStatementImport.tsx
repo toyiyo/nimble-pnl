@@ -14,7 +14,7 @@ export interface BankStatementUpload {
   file_size: number | null;
   processed_at: string | null;
   status: string;
-  raw_ocr_data: any;
+  raw_ocr_data: Record<string, unknown>;
   transaction_count: number | null;
   total_debits: number | null;
   total_credits: number | null;
@@ -163,7 +163,7 @@ export const useBankStatementImport = () => {
             statementUploadId,
             pdfUrl: signedUrlData.signedUrl,
           },
-          // @ts-ignore - signal option is supported but not in types yet
+          // @ts-expect-error - signal option is supported but not in types yet
           signal: controller.signal
         });
 
@@ -181,12 +181,12 @@ export const useBankStatementImport = () => {
         });
 
         return data;
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (timeoutId !== undefined) {
           clearTimeout(timeoutId);
         }
 
-        if (error.name === 'AbortError' || controller.signal.aborted) {
+        if (error instanceof Error && (error.name === 'AbortError' || controller.signal.aborted)) {
           throw new Error('Bank statement processing timed out after 60 seconds');
         }
 

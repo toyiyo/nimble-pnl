@@ -105,7 +105,7 @@ const MODEL_TOKEN_LIMITS: Record<string, number> = {
 const DEFAULT_MAX_TOKENS = 8192;
 
 function buildRequestBody(modelId: string, systemPrompt: string, pdfUrl: string): any {
-  const requestedMax = 8000; // Reduced from 32000 to prevent memory issues
+  const requestedMax = 4000; // Reduced to 4000 to prevent memory issues
   const modelMaxLimit = MODEL_TOKEN_LIMITS[modelId] || DEFAULT_MAX_TOKENS;
   const clampedMaxTokens = Math.min(requestedMax, modelMaxLimit);
   
@@ -159,6 +159,7 @@ async function processStreamedResponse(response: Response): Promise<string> {
   let buffer = '';
   let completeContent = '';
   let isComplete = false;
+  const MAX_CONTENT_SIZE = 150000; // 150KB limit to prevent memory overflow
 
   try {
     while (true) {
@@ -195,6 +196,12 @@ async function processStreamedResponse(response: Response): Promise<string> {
 
             const content = parsed.choices?.[0]?.delta?.content;
             if (content) {
+              // Safety check: prevent memory overflow
+              if (completeContent.length + content.length > MAX_CONTENT_SIZE) {
+                console.warn('⚠️ Content size limit reached, truncating response');
+                await reader.cancel();
+                break;
+              }
               completeContent += content;
             }
 

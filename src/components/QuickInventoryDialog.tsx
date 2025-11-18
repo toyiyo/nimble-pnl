@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { Package, Check } from 'lucide-react';
+import { Package, Check, Plus, Minus, X, Divide } from 'lucide-react';
 import { Product } from '@/hooks/useProducts';
 import { LocationCombobox } from '@/components/LocationCombobox';
+import { evaluateExpression, formatCalculatorResult } from '@/utils/calculator';
 
 interface QuickInventoryDialogProps {
   open: boolean;
@@ -30,16 +31,29 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
   const [location, setLocation] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
+  // Calculate the result of the expression
+  const calculatedValue = useMemo(() => {
+    if (!quantity) return null;
+    return evaluateExpression(quantity);
+  }, [quantity]);
+
+  // Check if the current input is a valid expression
+  const isValidExpression = calculatedValue !== null && calculatedValue > 0;
+
   const quickButtons = [6, 10, 20, 24];
   const numpadButtons = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const operatorButtons = [
+    { label: '+', value: '+', icon: Plus },
+    { label: '-', value: '-', icon: Minus },
+    { label: '×', value: '*', icon: X },
+    { label: '÷', value: '/', icon: Divide },
+  ];
 
   const handleQuickSelect = (value: number) => {
     setQuantity(value.toString());
   };
 
   const handleNumpadClick = (value: string) => {
-    // Prevent multiple decimal points
-    if (value === '.' && quantity.includes('.')) return;
     setQuantity(prev => prev + value);
   };
 
@@ -52,12 +66,11 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
   };
 
   const handleSave = async () => {
-    const numValue = parseFloat(quantity);
-    if (!quantity || isNaN(numValue) || numValue <= 0) return;
+    if (!isValidExpression || !calculatedValue) return;
     
     setSaving(true);
     try {
-      await onSave(numValue, location || undefined);
+      await onSave(calculatedValue, location || undefined);
       setQuantity('');
       setLocation('');
       onOpenChange(false);
@@ -67,6 +80,7 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
   };
 
   const displayValue = quantity || '0';
+  const displayResult = calculatedValue !== null ? formatCalculatorResult(calculatedValue) : displayValue;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -116,13 +130,24 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
               <div className="text-sm text-muted-foreground mb-1">
                 {mode === 'add' ? 'Quantity to Add' : 'Total Quantity'}
               </div>
-              <div className="text-4xl font-bold text-primary">
-                {displayValue}
-              </div>
-              {mode === 'add' && currentTotal !== undefined && quantity && (
+              {quantity && quantity !== displayResult ? (
+                <>
+                  <div className="text-lg text-muted-foreground font-mono mb-1">
+                    {displayValue}
+                  </div>
+                  <div className="text-4xl font-bold text-primary">
+                    = {displayResult}
+                  </div>
+                </>
+              ) : (
+                <div className="text-4xl font-bold text-primary">
+                  {displayValue}
+                </div>
+              )}
+              {mode === 'add' && currentTotal !== undefined && calculatedValue !== null && (
                 <div className="text-sm text-muted-foreground mt-2">
                   New total: <span className="font-semibold text-foreground">
-                    {(currentTotal + parseFloat(quantity || '0')).toFixed(2)}
+                    {formatCalculatorResult(currentTotal + calculatedValue)}
                   </span> {product.uom_purchase || 'units'}
                 </div>
               )}
@@ -161,42 +186,61 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
           {/* Number Pad */}
           <div className="space-y-2">
             <div className="text-sm font-medium">Custom Amount</div>
-            <div className="grid grid-cols-3 gap-2">
-              {numpadButtons.map((digit) => (
+            <div className="grid grid-cols-4 gap-2">
+              {/* Numpad digits - 3 columns */}
+              <div className="col-span-3 grid grid-cols-3 gap-2">
+                {numpadButtons.map((digit) => (
+                  <Button
+                    key={digit}
+                    variant="secondary"
+                    size="lg"
+                    onClick={() => handleNumpadClick(digit.toString())}
+                    className="text-xl font-semibold h-16"
+                  >
+                    {digit}
+                  </Button>
+                ))}
                 <Button
-                  key={digit}
                   variant="secondary"
                   size="lg"
-                  onClick={() => handleNumpadClick(digit.toString())}
+                  onClick={() => handleNumpadClick('.')}
                   className="text-xl font-semibold h-16"
                 >
-                  {digit}
+                  .
                 </Button>
-              ))}
-              <Button
-                variant="secondary"
-                size="lg"
-                onClick={() => handleNumpadClick('.')}
-                className="text-xl font-semibold h-16"
-              >
-                .
-              </Button>
-              <Button
-                variant="secondary"
-                size="lg"
-                onClick={() => handleNumpadClick('0')}
-                className="text-xl font-semibold h-16"
-              >
-                0
-              </Button>
-              <Button
-                variant="secondary"
-                size="lg"
-                onClick={handleBackspace}
-                className="text-base h-16"
-              >
-                ⌫
-              </Button>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => handleNumpadClick('0')}
+                  className="text-xl font-semibold h-16"
+                >
+                  0
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={handleBackspace}
+                  className="text-base h-16"
+                >
+                  ⌫
+                </Button>
+              </div>
+              
+              {/* Operator buttons - 1 column */}
+              <div className="col-span-1 grid grid-cols-1 gap-2">
+                {operatorButtons.map((op) => (
+                  <Button
+                    key={op.value}
+                    variant="outline"
+                    size="lg"
+                    onClick={() => handleNumpadClick(op.value)}
+                    className="text-xl font-semibold h-16"
+                    title={`${op.label} (${op.value === '*' ? 'multiply' : op.value === '/' ? 'divide' : op.value})`}
+                  >
+                    <op.icon className="h-5 w-5" />
+                  </Button>
+                ))}
+              </div>
             </div>
             <Button
               variant="secondary"
@@ -222,17 +266,17 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
             <Button
               size="lg"
               onClick={handleSave}
-              disabled={!quantity || isNaN(parseFloat(quantity)) || parseFloat(quantity) <= 0 || saving}
+              disabled={!isValidExpression || saving}
               className="h-14 text-lg font-semibold"
             >
               <Check className="h-5 w-5 mr-2" />
-              {saving ? 'Saving...' : mode === 'add' ? `Add ${displayValue}` : `Set to ${displayValue}`}
+              {saving ? 'Saving...' : mode === 'add' ? `Add ${displayResult}` : `Set to ${displayResult}`}
             </Button>
           </div>
 
           {mode === 'reconcile' && (
             <p className="text-xs text-center text-muted-foreground">
-              This will set the total inventory to {displayValue} {product.uom_purchase || 'units'}
+              This will set the total inventory to {displayResult} {product.uom_purchase || 'units'}
             </p>
           )}
         </div>

@@ -341,6 +341,26 @@ export const useBankStatementImport = () => {
 
       if (existingBank) {
         connectedBankId = existingBank.id;
+
+        // Check if bank account balance exists, create if missing
+        const { data: existingBalance } = await supabase
+          .from('bank_account_balances')
+          .select('id')
+          .eq('connected_bank_id', connectedBankId)
+          .maybeSingle();
+
+        if (!existingBalance) {
+          await supabase
+            .from('bank_account_balances')
+            .insert({
+              connected_bank_id: connectedBankId,
+              account_name: statement.bank_name || 'Manual Upload Account',
+              current_balance: 0,
+              currency: 'USD',
+              as_of_date: new Date().toISOString(),
+              is_active: true,
+            });
+        }
       } else {
         // Create a virtual bank for manual uploads
         const { data: newBank, error: bankError } = await supabase
@@ -360,6 +380,18 @@ export const useBankStatementImport = () => {
         }
 
         connectedBankId = newBank.id;
+
+        // Create a default bank account balance entry for the manual upload
+        await supabase
+          .from('bank_account_balances')
+          .insert({
+            connected_bank_id: connectedBankId,
+            account_name: statement.bank_name || 'Manual Upload Account',
+            current_balance: 0, // Will be updated after transactions are imported
+            currency: 'USD',
+            as_of_date: new Date().toISOString(),
+            is_active: true,
+          });
       }
 
       let importedCount = 0;
@@ -401,6 +433,23 @@ export const useBankStatementImport = () => {
         importedCount++;
       }
 
+      // Calculate total balance from all imported transactions for this bank
+      const { data: allTransactions } = await supabase
+        .from('bank_transactions')
+        .select('amount')
+        .eq('connected_bank_id', connectedBankId);
+
+      const totalBalance = allTransactions?.reduce((sum, t) => sum + t.amount, 0) || 0;
+
+      // Update the bank account balance
+      await supabase
+        .from('bank_account_balances')
+        .update({
+          current_balance: totalBalance,
+          as_of_date: new Date().toISOString(),
+        })
+        .eq('connected_bank_id', connectedBankId);
+
       // Mark statement as imported
       await supabase
         .from('bank_statement_uploads')
@@ -409,7 +458,7 @@ export const useBankStatementImport = () => {
 
       toast({
         title: "Success",
-        description: `Successfully imported ${importedCount} transactions`,
+        description: `Successfully imported ${importedCount} transactions. Balance updated to ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalBalance)}`,
       });
 
       return true;

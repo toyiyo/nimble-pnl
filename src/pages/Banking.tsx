@@ -23,13 +23,16 @@ import { formatDateInTimezone } from "@/lib/timezone";
 import { usePendingOutflows } from "@/hooks/usePendingOutflows";
 import { PendingOutflowsList } from "@/components/pending-outflows/PendingOutflowsList";
 import { AddPendingOutflowDialog } from "@/components/pending-outflows/AddPendingOutflowDialog";
-import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2, Plus, Wallet, TrendingUp, Search, ArrowUpDown, Filter, Brain, ArrowRight } from "lucide-react";
+import { BankStatementUpload } from "@/components/BankStatementUpload";
+import { BankStatementReview } from "@/components/BankStatementReview";
+import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2, Plus, Wallet, TrendingUp, Search, ArrowUpDown, Filter, Brain, ArrowRight, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { loadStripe } from "@stripe/stripe-js";
 
 export default function Banking() {
-  const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation' | 'pending_outflows'>('for_review');
+  const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation' | 'pending_outflows' | 'upload_statement'>('for_review');
+  const [activeStatementId, setActiveStatementId] = useState<string | null>(null);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
   const [showAddPendingOutflowDialog, setShowAddPendingOutflowDialog] = useState(false);
@@ -444,7 +447,7 @@ export default function Banking() {
           </Card>
 
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 mb-6 h-auto">
+            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 mb-6 h-auto">
             <TabsTrigger value="for_review" className="relative py-2.5">
               <span className="hidden sm:inline">For Review</span>
               <span className="sm:hidden">Review</span>
@@ -483,6 +486,11 @@ export default function Banking() {
             <TabsTrigger value="reconciliation" className="py-2.5">
               <FileText className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">Reconciliation</span>
+            </TabsTrigger>
+            <TabsTrigger value="upload_statement" className="py-2.5">
+              <Upload className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Upload Statement</span>
+              <span className="sm:hidden">Upload</span>
             </TabsTrigger>
           </TabsList>
 
@@ -573,6 +581,33 @@ export default function Banking() {
 
           <TabsContent value="reconciliation">
             <ReconciliationReport />
+          </TabsContent>
+
+          <TabsContent value="upload_statement">
+            {!activeStatementId ? (
+              <BankStatementUpload
+                onStatementProcessed={(statementId) => setActiveStatementId(statementId)}
+              />
+            ) : (
+              <div className="space-y-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setActiveStatementId(null)}
+                  className="flex items-center gap-2"
+                >
+                  <ArrowRight className="w-4 h-4 rotate-180" />
+                  Back to Upload
+                </Button>
+                <BankStatementReview
+                  statementUploadId={activeStatementId}
+                  onImportComplete={() => {
+                    setActiveStatementId(null);
+                    setActiveTab('for_review');
+                    toast.success('Transactions imported successfully');
+                  }}
+                />
+              </div>
+            )}
           </TabsContent>
           </Tabs>
         </div>

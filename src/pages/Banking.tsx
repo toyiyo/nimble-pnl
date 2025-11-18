@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,10 +25,12 @@ import { PendingOutflowsList } from "@/components/pending-outflows/PendingOutflo
 import { AddPendingOutflowDialog } from "@/components/pending-outflows/AddPendingOutflowDialog";
 import { BankStatementUpload } from "@/components/BankStatementUpload";
 import { BankStatementReview } from "@/components/BankStatementReview";
+import { useBankStatementImport } from "@/hooks/useBankStatementImport";
 import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2, Plus, Wallet, TrendingUp, Search, ArrowUpDown, Filter, Brain, ArrowRight, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { loadStripe } from "@stripe/stripe-js";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Banking() {
   const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation' | 'pending_outflows' | 'upload_statement'>('for_review');
@@ -61,6 +63,43 @@ export default function Banking() {
     disconnectBank,
     verifyConnectionSession,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
+
+  const { recalculateBankBalance } = useBankStatementImport();
+
+  // Auto-recalculate balances for Manual Upload banks with $0 balance
+  useEffect(() => {
+    const checkAndRecalculateBalances = async () => {
+      if (!connectedBanks || connectedBanks.length === 0) return;
+
+      for (const bank of connectedBanks) {
+        // Check if it's a Manual Upload bank with $0 balance
+        if (bank.institution_name === 'Manual Upload') {
+          const balance = bank.balances?.[0];
+          if (balance && balance.current_balance === 0) {
+            // Check if there are transactions for this bank
+            const { data: transactions } = await supabase
+              .from('bank_transactions')
+              .select('id')
+              .eq('connected_bank_id', bank.id)
+              .limit(1);
+
+            if (transactions && transactions.length > 0) {
+              console.log('Recalculating balance for Manual Upload bank:', bank.id);
+              try {
+                await recalculateBankBalance(bank.id);
+                // Refresh the banks list to show updated balance
+                window.location.reload();
+              } catch (error) {
+                console.error('Error recalculating balance:', error);
+              }
+            }
+          }
+        }
+      }
+    };
+
+    checkAndRecalculateBalances();
+  }, [connectedBanks, recalculateBankBalance]);
   
   const handleCategorizeAll = () => {
     if (selectedRestaurant?.restaurant_id) {

@@ -337,7 +337,7 @@ export const useBankStatementImport = () => {
         .select('id')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('institution_name', 'Manual Upload')
-        .single();
+        .maybeSingle();
 
       if (existingBank) {
         connectedBankId = existingBank.id;
@@ -473,6 +473,54 @@ export const useBankStatementImport = () => {
     }
   };
 
+  const recalculateBankBalance = async (connectedBankId: string) => {
+    try {
+      // Get all transactions for this bank
+      const { data: allTransactions, error: transError } = await supabase
+        .from('bank_transactions')
+        .select('amount')
+        .eq('connected_bank_id', connectedBankId);
+
+      if (transError) throw transError;
+
+      const totalBalance = allTransactions?.reduce((sum, t) => sum + t.amount, 0) || 0;
+
+      // Update or create the bank account balance
+      const { data: existingBalance } = await supabase
+        .from('bank_account_balances')
+        .select('id')
+        .eq('connected_bank_id', connectedBankId)
+        .maybeSingle();
+
+      if (existingBalance) {
+        await supabase
+          .from('bank_account_balances')
+          .update({
+            current_balance: totalBalance,
+            as_of_date: new Date().toISOString(),
+          })
+          .eq('connected_bank_id', connectedBankId);
+      } else {
+        // Create balance entry if missing
+        await supabase
+          .from('bank_account_balances')
+          .insert({
+            connected_bank_id: connectedBankId,
+            account_name: 'Manual Upload Account',
+            current_balance: totalBalance,
+            currency: 'USD',
+            as_of_date: new Date().toISOString(),
+            is_active: true,
+          });
+      }
+
+      return totalBalance;
+    } catch (error) {
+      console.error('Error recalculating bank balance:', error);
+      throw error;
+    }
+  };
+
   return {
     uploadBankStatement,
     processBankStatement,
@@ -481,6 +529,7 @@ export const useBankStatementImport = () => {
     getBankStatementLines,
     updateStatementLine,
     importStatementLines,
+    recalculateBankBalance,
     isUploading,
     isProcessing
   };

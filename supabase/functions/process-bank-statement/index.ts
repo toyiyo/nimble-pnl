@@ -1,7 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { logAICall, type AICallMetadata } from "../_shared/braintrust.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -97,19 +96,19 @@ const MODELS = [
 ];
 
 const MODEL_TOKEN_LIMITS: Record<string, number> = {
-  "google/gemini-2.5-flash": 32768,
-  "meta-llama/llama-4-maverick:free": 8192,
-  "google/gemma-3-27b-it:free": 16384,
+  "google/gemini-2.5-flash": 8192,
+  "meta-llama/llama-4-maverick:free": 4096,
+  "google/gemma-3-27b-it:free": 4096,
 };
 
-const DEFAULT_MAX_TOKENS = 8192;
+const DEFAULT_MAX_TOKENS = 4096;
 
 // File size limits to prevent resource exhaustion
 const MAX_FILE_SIZE_MB = 5; // 5MB limit for PDFs
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 function buildRequestBody(modelId: string, systemPrompt: string, pdfUrl: string): any {
-  const requestedMax = 3000; // Further reduced to 3000 to prevent memory issues with large files
+  const requestedMax = 2500; // Reduced to 2500 to ensure valid JSON completion
   const modelMaxLimit = MODEL_TOKEN_LIMITS[modelId] || DEFAULT_MAX_TOKENS;
   const clampedMaxTokens = Math.min(requestedMax, modelMaxLimit);
   
@@ -286,50 +285,15 @@ async function callModel(
 
       if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
         console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
-        
-        logAICall(
-          'process-bank-statement:rate_limit',
-          { model: modelConfig.id },
-          null,
-          { ...metadata, success: false, status_code: 429, error: 'Rate limited' },
-          null
-        );
-        
         await new Promise((resolve) => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
         retryCount++;
       } else {
         const errorText = await response.text();
         console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
-        
-        logAICall(
-          'process-bank-statement:error',
-          { model: modelConfig.id },
-          null,
-          { ...metadata, success: false, status_code: response.status, error: errorText },
-          null
-        );
-        
         break;
       }
     } catch (error) {
       console.error(`❌ ${modelConfig.name} error:`, error);
-      
-      logAICall(
-        'process-bank-statement:error',
-        { model: modelConfig.id },
-        null,
-        { 
-          model: modelConfig.id,
-          provider: "openrouter",
-          restaurant_id: restaurantId,
-          edge_function: 'process-bank-statement',
-          stream: false,
-          attempt: retryCount + 1,
-          success: false,
-          error: error instanceof Error ? error.message : String(error)
-        },
-        null
-      );
       
       retryCount++;
       if (retryCount < modelConfig.maxRetries) {
@@ -477,8 +441,35 @@ serve(async (req) => {
       jsonContent = jsonContent.substring(firstBrace, lastBrace + 1);
 
       // Fix common JSON issues
-      jsonContent = jsonContent.replace(/,(\s*[}\]])/g, "$1");
-      jsonContent = jsonContent.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3');
+      jsonContent = jsonContent.replace(/,(\s*[}\]])/g, "$1"); // Remove trailing commas
+      jsonContent = jsonContent.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3'); // Quote unquoted keys
+      
+      // Fix incomplete transaction arrays by finding last complete transaction
+      const transactionsMatch = jsonContent.match(/"transactions"\s*:\s*\[/);
+      if (transactionsMatch) {
+        const transactionsStartIndex = transactionsMatch.index! + transactionsMatch[0].length;
+        const afterTransactions = jsonContent.substring(transactionsStartIndex);
+        
+        // Find the last complete transaction object
+        let lastCompleteIndex = -1;
+        let braceCount = 0;
+        for (let i = 0; i < afterTransactions.length; i++) {
+          if (afterTransactions[i] === '{') braceCount++;
+          if (afterTransactions[i] === '}') {
+            braceCount--;
+            if (braceCount === 0) {
+              lastCompleteIndex = i;
+            }
+          }
+        }
+        
+        if (lastCompleteIndex > -1) {
+          // Truncate at last complete transaction
+          const beforeTransactions = jsonContent.substring(0, transactionsStartIndex);
+          const transactions = afterTransactions.substring(0, lastCompleteIndex + 1);
+          jsonContent = beforeTransactions + transactions + ']}';
+        }
+      }
 
       parsedData = JSON.parse(jsonContent);
 
@@ -500,38 +491,7 @@ serve(async (req) => {
         .reduce((sum: number, t: any) => sum + t.amount, 0);
 
       console.log(`✅ Successfully parsed ${parsedData.transactions.length} transactions`);
-
-      // Log successful AI call to Braintrust with full details
-      const requestBody = buildRequestBody(usedModelConfig.id, usedModelConfig.systemPrompt, pdfUrl);
-      logAICall(
-        `process-bank-statement:${usedModelConfig.name}`,
-        {
-          prompt: BANK_STATEMENT_ANALYSIS_PROMPT,
-          pdfUrl: pdfUrl.substring(0, 100) + '...', // Truncate URL for readability
-          model: usedModelConfig.id,
-        },
-        {
-          bankName: parsedData.bankName,
-          statementPeriod: `${parsedData.statementPeriodStart} to ${parsedData.statementPeriodEnd}`,
-          transactionCount: parsedData.transactions.length,
-          totalDebits,
-          totalCredits,
-          sampleTransactions: parsedData.transactions.slice(0, 3), // First 3 for preview
-        },
-        {
-          model: usedModelConfig.id,
-          provider: 'openrouter',
-          restaurant_id: restaurantId,
-          edge_function: 'process-bank-statement',
-          temperature: requestBody.temperature,
-          max_tokens: requestBody.max_tokens,
-          stream: true,
-          attempt: 1,
-          success: true,
-          status_code: 200,
-        },
-        null // Token usage not available from streaming response
-      );
+      console.log(`📊 Bank: ${parsedData.bankName}, Period: ${parsedData.statementPeriodStart} to ${parsedData.statementPeriodEnd}`);
     } catch (parseError) {
       console.error("Failed to parse JSON from AI response:", parseError);
       console.error("Content that failed to parse:", content.substring(0, 1000) + "...");

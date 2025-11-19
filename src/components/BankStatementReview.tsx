@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useBankStatementImport, type BankStatementLine, type BankStatementUpload } from '@/hooks/useBankStatementImport';
+import { useBankStatementImport, isLineImportable, type BankStatementLine, type BankStatementUpload } from '@/hooks/useBankStatementImport';
 import { FileText, Check, Edit, Trash2, DollarSign, Calendar, Building2, Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import {
@@ -140,8 +140,9 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
   }
 
   const unimportedLines = lines.filter((line) => !line.is_imported);
-  const validLines = unimportedLines.filter((line) => !line.has_validation_error);
-  const invalidLines = unimportedLines.filter((line) => line.has_validation_error);
+  // Use the shared isLineImportable predicate to ensure UI count matches actual import behavior
+  const validLines = lines.filter((line) => isLineImportable(line));
+  const invalidLines = unimportedLines.filter((line) => !isLineImportable(line));
 
   return (
     <div className="space-y-6">

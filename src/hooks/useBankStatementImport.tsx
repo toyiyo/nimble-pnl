@@ -41,6 +41,25 @@ export interface BankStatementLine {
   updated_at: string;
 }
 
+/**
+ * Helper function to determine if a bank statement line is importable.
+ * This predicate must match the import logic in importStatementLines.
+ * 
+ * A line is importable if:
+ * 1. It hasn't been imported yet
+ * 2. It has no validation errors
+ * 3. All required fields are present (transaction_date, description, amount)
+ */
+export const isLineImportable = (line: BankStatementLine): boolean => {
+  return (
+    !line.is_imported &&
+    !line.has_validation_error &&
+    line.transaction_date !== null &&
+    line.description !== '' &&
+    line.amount !== null
+  );
+};
+
 export const useBankStatementImport = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -441,17 +460,15 @@ export const useBankStatementImport = () => {
       let skippedCount = 0;
 
       for (const line of lines) {
-        // Skip transactions with validation errors - user needs to fix them first
-        if (line.has_validation_error) {
+        // Use the shared predicate to determine if line can be imported
+        // This ensures UI count matches what will actually be imported
+        if (!isLineImportable(line)) {
           skippedCount++;
-          console.log(`Skipping line ${line.id} due to validation errors:`, line.validation_errors);
-          continue;
-        }
-
-        // Also validate that required fields are present (defensive check)
-        if (!line.transaction_date || !line.description || line.amount === null) {
-          skippedCount++;
-          console.log(`Skipping line ${line.id} - missing required fields`);
+          if (line.has_validation_error) {
+            console.log(`Skipping line ${line.id} due to validation errors:`, line.validation_errors);
+          } else {
+            console.log(`Skipping line ${line.id} - missing required fields or already imported`);
+          }
           continue;
         }
 

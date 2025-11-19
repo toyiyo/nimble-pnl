@@ -20,9 +20,6 @@ import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnect
 import { TransactionFiltersSheet, type TransactionFilters } from "@/components/TransactionFilters";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { formatDateInTimezone } from "@/lib/timezone";
-import { usePendingOutflows } from "@/hooks/usePendingOutflows";
-import { PendingOutflowsList } from "@/components/pending-outflows/PendingOutflowsList";
-import { AddPendingOutflowDialog } from "@/components/pending-outflows/AddPendingOutflowDialog";
 import { BankStatementUpload } from "@/components/BankStatementUpload";
 import { BankStatementReview } from "@/components/BankStatementReview";
 import { useBankStatementImport } from "@/hooks/useBankStatementImport";
@@ -33,19 +30,16 @@ import { loadStripe } from "@stripe/stripe-js";
 import { supabase } from "@/integrations/supabase/client";
 
 export default function Banking() {
-  const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation' | 'pending_outflows' | 'upload_statement'>('for_review');
+  const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation' | 'upload_statement'>('for_review');
   const [activeStatementId, setActiveStatementId] = useState<string | null>(null);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
-  const [showAddPendingOutflowDialog, setShowAddPendingOutflowDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [sortBy, setSortBy] = useState<'date' | 'payee' | 'amount' | 'category'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const { selectedRestaurant } = useRestaurantContext();
   const { formatTransactionDate, timezone } = useDateFormat();
-  
-  const { data: pendingOutflows } = usePendingOutflows();
   
   const { data: forReviewTransactions, isLoading: isLoadingReview } = useBankTransactions('for_review');
   const { data: categorizedTransactions, isLoading: isLoadingCategorized } = useBankTransactions('categorized');
@@ -142,12 +136,6 @@ export default function Banking() {
   const totalBalance = connectedBanks
     .flatMap((bank) => bank.balances || [])
     .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
-
-  const totalPendingOutflows = (pendingOutflows || [])
-    .filter(outflow => ['pending', 'stale_30', 'stale_60', 'stale_90'].includes(outflow.status))
-    .reduce((sum, outflow) => sum + outflow.amount, 0);
-
-  const bookBalance = totalBalance - totalPendingOutflows;
 
   // Apply filters and sorting
   const applyFiltersAndSort = (transactions: typeof forReviewTransactions) => {
@@ -276,7 +264,7 @@ export default function Banking() {
       <div className="container mx-auto px-4 py-8">
         <div className="space-y-6">
           {/* Stats Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card className="hover:shadow-lg transition-all duration-200">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
@@ -286,37 +274,6 @@ export default function Banking() {
                       ${totalBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                     <div className="text-sm text-muted-foreground">Bank Balance</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="hover:shadow-lg transition-all duration-200 border-amber-500/20">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-4">
-                  <MetricIcon icon={TrendingUp} variant="amber" />
-                  <div>
-                    <div className="text-3xl font-bold text-destructive">
-                      ${totalPendingOutflows.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Pending Outflows</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="hover:shadow-lg transition-all duration-200 border-green-500/20 bg-gradient-to-br from-green-50/50 to-transparent">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-4">
-                  <MetricIcon icon={CheckCircle2} variant="emerald" />
-                  <div>
-                    <div className="text-3xl font-bold text-green-600">
-                      ${bookBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Book Balance
-                      <span className="block text-xs">After pending clears</span>
-                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -486,22 +443,13 @@ export default function Banking() {
           </Card>
 
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 mb-6 h-auto">
+            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 mb-6 h-auto">
             <TabsTrigger value="for_review" className="relative py-2.5">
               <span className="hidden sm:inline">For Review</span>
               <span className="sm:hidden">Review</span>
               {reviewCount > 0 && (
                 <span className="ml-1 sm:ml-2 bg-primary text-primary-foreground rounded-full px-1.5 sm:px-2 py-0.5 text-xs">
                   {reviewCount}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="pending_outflows" className="relative py-2.5">
-              <span className="hidden sm:inline">Pending Outflows</span>
-              <span className="sm:hidden">Pending</span>
-              {totalPendingOutflows > 0 && (
-                <span className="ml-1 sm:ml-2 bg-orange-500 text-white rounded-full px-1.5 sm:px-2 py-0.5 text-xs">
-                  ${(totalPendingOutflows / 1000).toFixed(1)}k
                 </span>
               )}
             </TabsTrigger>
@@ -557,13 +505,6 @@ export default function Banking() {
                 )}
               </div>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="pending_outflows">
-            <PendingOutflowsList 
-              onAddClick={() => setShowAddPendingOutflowDialog(true)}
-              statusFilter="all"
-            />
           </TabsContent>
 
           <TabsContent value="categorized">
@@ -663,11 +604,6 @@ export default function Banking() {
           <EnhancedReconciliationDialog
             isOpen={showReconciliationDialog}
             onClose={() => setShowReconciliationDialog(false)}
-          />
-
-          <AddPendingOutflowDialog
-            open={showAddPendingOutflowDialog}
-            onOpenChange={setShowAddPendingOutflowDialog}
           />
         </>
       )}

@@ -193,8 +193,8 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
           value={formatCurrency(metrics.bookBalance)}
           icon={Wallet}
           variant={metrics.bookBalance > 10000 ? 'success' : metrics.bookBalance < 2000 ? 'danger' : 'warning'}
-          subtitle={metrics.pendingOutflows > 0 ? `After ${formatCurrency(metrics.pendingOutflows)} pending` : 'No pending outflows'}
-          periodLabel="After Pending Clears"
+          subtitle={metrics.pendingOutflows > 0 ? `After ${formatCurrency(metrics.pendingOutflows)} uncommitted` : 'No uncommitted expenses'}
+          periodLabel="After Expenses Clear"
         />
 
         <DashboardMetricCard

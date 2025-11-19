@@ -103,7 +103,7 @@ export const BankStatementUpload: React.FC<BankStatementUploadProps> = ({ onStat
             className="cursor-pointer"
           />
           <p className="text-sm text-muted-foreground">
-            Supports PDF files only, up to 10MB
+            Supports PDF files only, up to 5MB. For larger files, please split into multiple statements.
           </p>
         </div>
 
@@ -118,7 +118,7 @@ export const BankStatementUpload: React.FC<BankStatementUploadProps> = ({ onStat
               </span>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              This may take up to 60 seconds
+              This may take up to 90 seconds for larger files
             </p>
           </div>
         )}

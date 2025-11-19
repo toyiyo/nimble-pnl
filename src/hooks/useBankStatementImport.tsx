@@ -65,6 +65,19 @@ export const useBankStatementImport = () => {
       return null;
     }
 
+    // Validate file size (5MB limit for processing)
+    const MAX_FILE_SIZE_MB = 5;
+    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      toast({
+        title: "File Too Large",
+        description: `Your file is ${fileSizeMB}MB. Maximum size is ${MAX_FILE_SIZE_MB}MB. Please split your statement into smaller PDFs.`,
+        variant: "destructive",
+      });
+      return null;
+    }
+
     setIsUploading(true);
     try {
       // Sanitize filename
@@ -155,7 +168,7 @@ export const useBankStatementImport = () => {
       try {
         timeoutId = setTimeout(() => {
           controller.abort();
-        }, 60000) as unknown as number;
+        }, 90000) as unknown as number; // Increased to 90 seconds for larger files
 
         // Call the edge function
         const { data, error } = await supabase.functions.invoke('process-bank-statement', {
@@ -172,6 +185,10 @@ export const useBankStatementImport = () => {
         }
 
         if (error) {
+          // Handle specific error cases
+          if (error.message?.includes('too large') || error.message?.includes('413')) {
+            throw new Error('Bank statement file is too large. Please split it into smaller PDFs (max 5MB).');
+          }
           throw error;
         }
 
@@ -187,16 +204,17 @@ export const useBankStatementImport = () => {
         }
 
         if (error instanceof Error && (error.name === 'AbortError' || controller.signal.aborted)) {
-          throw new Error('Bank statement processing timed out after 60 seconds');
+          throw new Error('Bank statement processing timed out. Your file may be too large - please try splitting it into smaller PDFs.');
         }
 
         throw error;
       }
     } catch (error) {
       console.error('Error processing bank statement:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to process bank statement';
       toast({
         title: "Error",
-        description: "Failed to process bank statement",
+        description: errorMessage,
         variant: "destructive",
       });
       return null;

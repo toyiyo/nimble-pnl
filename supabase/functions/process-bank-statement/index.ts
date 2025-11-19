@@ -481,15 +481,6 @@ serve(async (req) => {
         throw new Error("No transactions found in bank statement");
       }
 
-      // Calculate totals for logging
-      const totalDebits = parsedData.transactions
-        .filter((t: any) => t.amount < 0)
-        .reduce((sum: number, t: any) => sum + Math.abs(t.amount), 0);
-      
-      const totalCredits = parsedData.transactions
-        .filter((t: any) => t.amount > 0)
-        .reduce((sum: number, t: any) => sum + t.amount, 0);
-
       // Calculate totals for logging and database update
       const totalDebits = parsedData.transactions
         .filter((t: any) => t.amount < 0)

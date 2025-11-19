@@ -490,6 +490,15 @@ serve(async (req) => {
         .filter((t: any) => t.amount > 0)
         .reduce((sum: number, t: any) => sum + t.amount, 0);
 
+      // Calculate totals for logging and database update
+      const totalDebits = parsedData.transactions
+        .filter((t: any) => t.amount < 0)
+        .reduce((sum: number, t: any) => sum + Math.abs(t.amount), 0);
+      
+      const totalCredits = parsedData.transactions
+        .filter((t: any) => t.amount > 0)
+        .reduce((sum: number, t: any) => sum + t.amount, 0);
+
       console.log(`✅ Successfully parsed ${parsedData.transactions.length} transactions`);
       console.log(`📊 Bank: ${parsedData.bankName}, Period: ${parsedData.statementPeriodStart} to ${parsedData.statementPeriodEnd}`);
     } catch (parseError) {

@@ -56,7 +56,7 @@ export function PendingOutflowsList({ onAddClick, statusFilter = 'all' }: Pendin
       <Card className="border-destructive">
         <CardContent className="py-8 text-center">
           <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Failed to load pending outflows</h3>
+          <h3 className="text-lg font-semibold mb-2">Failed to load expenses</h3>
           <p className="text-muted-foreground">{error instanceof Error ? error.message : 'Unknown error'}</p>
         </CardContent>
       </Card>

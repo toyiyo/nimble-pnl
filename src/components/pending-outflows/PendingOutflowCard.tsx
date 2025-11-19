@@ -89,7 +89,7 @@ export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
   };
 
   const handleDelete = () => {
-    if (confirm('Are you sure you want to delete this pending outflow? This action cannot be undone.')) {
+    if (confirm('Are you sure you want to delete this expense? This action cannot be undone.')) {
       deletePendingOutflow.mutate(outflow.id);
     }
   };
@@ -187,7 +187,7 @@ export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
                     size="sm"
                     variant="ghost"
                     onClick={() => setShowVoidDialog(true)}
-                    aria-label="Void pending payment"
+                    aria-label="Void expense"
                   >
                     <XCircle className="w-3 h-3" />
                   </Button>
@@ -195,7 +195,7 @@ export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
                     size="sm"
                     variant="ghost"
                     onClick={handleDelete}
-                    aria-label="Delete pending payment"
+                    aria-label="Delete expense"
                   >
                     <Trash2 className="w-3 h-3" />
                   </Button>
@@ -226,9 +226,9 @@ export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
       <AlertDialog open={showVoidDialog} onOpenChange={setShowVoidDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Void Pending Payment</AlertDialogTitle>
+            <AlertDialogTitle>Void Expense</AlertDialogTitle>
             <AlertDialogDescription>
-              Mark this payment as voided (e.g., check was cancelled or lost).
+              Mark this expense as voided (e.g., check was cancelled or lost).
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -248,7 +248,7 @@ export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
               onClick={handleVoid}
               disabled={!voidReason.trim()}
             >
-              Void Payment
+              Void Expense
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -475,7 +475,7 @@ export const useBankStatementImport = () => {
         .eq('id', statementUploadId);
 
       toast({
-        title: "Success",
+        title: "Import Complete",
         description: `Successfully imported ${importedCount} transactions. Balance updated to ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalBalance)}`,
       });
 

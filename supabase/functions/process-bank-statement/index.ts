@@ -104,22 +104,23 @@ function validateTransactions(transactions: any[]): ValidationResult {
 const BANK_STATEMENT_ANALYSIS_PROMPT = `ANALYSIS TARGET: This is a bank statement PDF containing transaction history.
 
 CRITICAL REQUIREMENTS:
-1. Extract EVERY SINGLE TRANSACTION from the statement
+1. Extract EVERY SINGLE TRANSACTION from the statement - even if some fields are missing or unclear
 2. Capture transaction dates, descriptions, amounts (debits/credits), and running balance if available
 3. Identify the bank name and statement period
-4. **AMOUNT IS MANDATORY** - NEVER return a transaction without an amount. If you cannot determine the amount, skip that transaction entirely rather than setting amount to null.
+4. **EXTRACT ALL TRANSACTIONS** - Include transactions even if the amount is unclear. Use null for missing amounts so the user can review and correct them.
 
 EXTRACTION METHODOLOGY:
 1. **Scan the ENTIRE document** - Read all pages from start to finish
-2. **Extract ALL transactions** - Every debit and credit transaction
-3. **Identify key components**:
-   - Transaction date (in format YYYY-MM-DD)
-   - Description/Payee
-   - Amount (with sign: negative for debits, positive for credits) - **REQUIRED**
+2. **Extract ALL transactions** - Every debit and credit transaction, even partial ones
+3. **Identify key components** (use null if field cannot be determined):
+   - Transaction date (in format YYYY-MM-DD, or null if unclear)
+   - Description/Payee (always try to capture this, even if other fields are missing)
+   - Amount (with sign: negative for debits, positive for credits, or null if cannot determine)
    - Transaction type (debit, credit, or unknown)
-   - Running balance (if shown)
-4. **Handle various formats**: Different banks use different layouts
+   - Running balance (if shown, otherwise null)
+4. **Handle various formats**: Different banks use different layouts - be flexible
 5. **Preserve order**: Transactions should be in chronological order
+6. **When in doubt, include it**: Better to extract a transaction with some null fields than to skip it entirely
 
 AMOUNT EXTRACTION EXAMPLES:
 - Format 1: "09/19 DEPOSIT $1,234.56" → amount: 1234.56, type: credit
@@ -128,6 +129,8 @@ AMOUNT EXTRACTION EXAMPLES:
 - Format 4: "Interest Earned 15.23 CR" → amount: 15.23, type: credit
 - Format 5: "CHECK #1234    $75.00-" → amount: -75.00, type: debit
 - Format 6: "Wire Transfer    1,500.00+" → amount: 1500.00, type: credit
+- Format 7: "08/06 ACH Deposit EPSG 1,154.63" → amount: 1154.63, type: credit
+- Format 8: "08/31 OD Interest Charge" → amount: null (missing), description: "OD Interest Charge"
 
 CONFIDENCE SCORING:
 - 0.90-0.95: Crystal clear, all fields present
@@ -135,6 +138,7 @@ CONFIDENCE SCORING:
 - 0.65-0.79: Partially clear, some interpretation
 - 0.40-0.64: Challenging to read
 - 0.20-0.39: Very unclear
+- 0.10-0.19: Missing critical fields (e.g., amount is null)
 
 RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
 {
@@ -146,11 +150,11 @@ RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
   "closingBalance": numeric_amount,
   "transactions": [
     {
-      "date": "YYYY-MM-DD",
+      "date": "YYYY-MM-DD" or null,
       "description": "Transaction description/payee",
-      "amount": numeric_amount (negative for debits, positive for credits),
+      "amount": numeric_amount (negative for debits, positive for credits) or null if cannot determine,
       "transactionType": "debit" | "credit" | "unknown",
-      "balance": numeric_running_balance,
+      "balance": numeric_running_balance or null,
       "confidenceScore": 0.0-1.0
     }
   ]
@@ -160,7 +164,8 @@ IMPORTANT:
 - Return ONLY valid, complete JSON
 - Include ALL transactions from ALL pages
 - Negative amounts = money out (debits), Positive amounts = money in (credits)
-- **SKIP any transaction where the amount cannot be determined - DO NOT include it with null amount**`;
+- **USE NULL for missing/unclear fields** - DO NOT skip transactions just because amount is missing
+- The user will review all transactions and can fix/skip problematic ones`;
 
 // Model configurations (same as receipt processing)
 const MODELS = [

@@ -37,6 +37,7 @@ export interface BankStatementLine {
   imported_transaction_id: string | null;
   has_validation_error: boolean;
   validation_errors: Record<string, string> | null;
+  user_excluded: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -47,12 +48,14 @@ export interface BankStatementLine {
  * 
  * A line is importable if:
  * 1. It hasn't been imported yet
- * 2. It has no validation errors
- * 3. All required fields are present (transaction_date, description, amount)
+ * 2. It hasn't been excluded by the user
+ * 3. It has no validation errors
+ * 4. All required fields are present (transaction_date, description, amount)
  */
 export const isLineImportable = (line: BankStatementLine): boolean => {
   return (
     !line.is_imported &&
+    !line.user_excluded &&
     !line.has_validation_error &&
     line.transaction_date !== null &&
     line.description !== '' &&
@@ -345,6 +348,32 @@ export const useBankStatementImport = () => {
     return true;
   };
 
+  const toggleLineExclusion = async (lineId: string, excluded: boolean) => {
+    const { error } = await supabase
+      .from('bank_statement_lines')
+      .update({ user_excluded: excluded })
+      .eq('id', lineId);
+
+    if (error) {
+      console.error('Error toggling line exclusion:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update transaction",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    toast({
+      title: excluded ? "Transaction excluded" : "Transaction included",
+      description: excluded 
+        ? "This transaction will be skipped during import"
+        : "This transaction will be included in the import",
+    });
+
+    return true;
+  };
+
   const importStatementLines = async (statementUploadId: string) => {
     if (!selectedRestaurant?.restaurant_id) {
       toast({
@@ -607,6 +636,7 @@ export const useBankStatementImport = () => {
     getBankStatementDetails,
     getBankStatementLines,
     updateStatementLine,
+    toggleLineExclusion,
     importStatementLines,
     recalculateBankBalance,
     isUploading,

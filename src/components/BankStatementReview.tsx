@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useBankStatementImport, isLineImportable, type BankStatementLine, type BankStatementUpload } from '@/hooks/useBankStatementImport';
-import { FileText, Check, Edit, Trash2, DollarSign, Calendar, Building2, Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
+import { FileText, Check, Edit, Trash2, DollarSign, Calendar, Building2, Loader2, AlertCircle, AlertTriangle, X, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   Table,
@@ -43,6 +43,7 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
     getBankStatementDetails,
     getBankStatementLines,
     updateStatementLine,
+    toggleLineExclusion,
     importStatementLines,
   } = useBankStatementImport();
 
@@ -90,6 +91,13 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
   const handleCancelEdit = () => {
     setEditingLineId(null);
     setEditForm(null);
+  };
+
+  const handleToggleExclusion = async (lineId: string, currentlyExcluded: boolean) => {
+    const success = await toggleLineExclusion(lineId, !currentlyExcluded);
+    if (success) {
+      loadStatementData();
+    }
   };
 
   const handleImport = async () => {
@@ -140,22 +148,32 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
   }
 
   const unimportedLines = lines.filter((line) => !line.is_imported);
+  const excludedLines = unimportedLines.filter((line) => line.user_excluded);
   // Use the shared isLineImportable predicate to ensure UI count matches actual import behavior
   const validLines = lines.filter((line) => isLineImportable(line));
-  const invalidLines = unimportedLines.filter((line) => !isLineImportable(line));
+  const invalidLines = unimportedLines.filter((line) => !isLineImportable(line) && !line.user_excluded);
 
   return (
     <div className="space-y-6">
       {/* Validation Warning Alert */}
-      {invalidLines.length > 0 && (
-        <Alert variant="destructive">
+      {(invalidLines.length > 0 || excludedLines.length > 0) && (
+        <Alert variant={invalidLines.length > 0 ? "destructive" : "default"}>
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            <strong>{invalidLines.length} transaction{invalidLines.length !== 1 ? 's have' : ' has'} validation errors</strong>
-            <p className="mt-2 text-sm">
-              These transactions are highlighted in red below. You must edit them to fix the errors before they can be imported. 
-              Common issues include missing amounts, invalid dates, or missing descriptions.
-            </p>
+            {invalidLines.length > 0 && (
+              <>
+                <strong>{invalidLines.length} transaction{invalidLines.length !== 1 ? 's have' : ' has'} validation errors</strong>
+                <p className="mt-2 text-sm">
+                  These transactions are highlighted in red below. You must edit them to fix the errors before they can be imported. 
+                  Common issues include missing amounts, invalid dates, or missing descriptions.
+                </p>
+              </>
+            )}
+            {excludedLines.length > 0 && (
+              <p className={invalidLines.length > 0 ? "mt-3 text-sm" : "text-sm"}>
+                <strong>{excludedLines.length} transaction{excludedLines.length !== 1 ? 's are' : ' is'} excluded</strong> and will be skipped during import.
+              </p>
+            )}
           </AlertDescription>
         </Alert>
       )}
@@ -210,6 +228,7 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
               <CardDescription>
                 {validLines.length} ready to import
                 {invalidLines.length > 0 && ` • ${invalidLines.length} need correction`}
+                {excludedLines.length > 0 && ` • ${excludedLines.length} excluded`}
               </CardDescription>
             </div>
             <Button
@@ -365,6 +384,11 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
                               <Check className="w-3 h-3 mr-1" />
                               Imported
                             </Badge>
+                          ) : line.user_excluded ? (
+                            <Badge variant="outline" className="bg-gray-100 text-gray-600">
+                              <X className="w-3 h-3 mr-1" />
+                              Excluded
+                            </Badge>
                           ) : hasError ? (
                             <Badge variant="destructive" className="gap-1">
                               <AlertCircle className="w-3 h-3" />
@@ -395,13 +419,28 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
                                   </Button>
                                 </>
                               ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleEdit(line)}
-                                >
-                                  <Edit className="h-3 w-3" />
-                                </Button>
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleEdit(line)}
+                                    title="Edit transaction"
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant={line.user_excluded ? "default" : "ghost"}
+                                    onClick={() => handleToggleExclusion(line.id, line.user_excluded)}
+                                    title={line.user_excluded ? "Include in import" : "Exclude from import"}
+                                  >
+                                    {line.user_excluded ? (
+                                      <Plus className="h-3 w-3" />
+                                    ) : (
+                                      <X className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                </>
                               )}
                             </div>
                           )}

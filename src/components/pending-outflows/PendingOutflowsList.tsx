@@ -71,22 +71,22 @@ export function PendingOutflowsList({ onAddClick, statusFilter = 'all' }: Pendin
             <Wallet className="h-6 w-6 text-primary" />
             <div>
               <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                Pending Outflows
+                Uncommitted Expenses
               </CardTitle>
               <CardDescription>
-                Checks and payments committed but not yet cleared
+                Checks and payments issued but not yet cleared in the bank
               </CardDescription>
             </div>
           </div>
           <Button onClick={onAddClick} size="sm">
             <Plus className="h-4 w-4 mr-2" />
-            Add Payment
+            Add Expense
           </Button>
         </div>
         
         {totalPending > 0 && (
           <div className="flex items-center gap-2 pt-2">
-            <span className="text-sm text-muted-foreground">Total Pending:</span>
+            <span className="text-sm text-muted-foreground">Total Uncommitted:</span>
             <Badge className="bg-gradient-to-r from-orange-500 to-red-600 text-lg px-3 py-1">
               {formatCurrency(totalPending)}
             </Badge>
@@ -99,15 +99,15 @@ export function PendingOutflowsList({ onAddClick, statusFilter = 'all' }: Pendin
           <Card className="bg-gradient-to-br from-muted/50 to-transparent">
             <CardContent className="py-12 text-center">
               <Wallet className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No pending outflows</h3>
+              <h3 className="text-lg font-semibold mb-2">No uncommitted expenses</h3>
               <p className="text-muted-foreground mb-4">
                 {statusFilter === 'all' 
-                  ? 'No pending payments recorded yet. Add one to track checks or ACH payments that haven\'t cleared.'
-                  : `No ${statusFilter} payments found.`}
+                  ? 'No uncommitted expenses recorded yet. Add one to track checks or ACH payments that haven\'t cleared.'
+                  : `No ${statusFilter} expenses found.`}
               </p>
               <Button onClick={onAddClick}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Pending Payment
+                Add Expense
               </Button>
             </CardContent>
           </Card>

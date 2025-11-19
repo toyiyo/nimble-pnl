@@ -89,10 +89,10 @@ export function AddPendingOutflowDialog({ open, onOpenChange }: AddPendingOutflo
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Add Pending Payment
+            Add Uncommitted Expense
           </DialogTitle>
           <DialogDescription>
-            Log a check or payment you've initiated but hasn't cleared the bank yet.
+            Log a check or payment you've issued but hasn't cleared the bank yet.
           </DialogDescription>
         </DialogHeader>
 

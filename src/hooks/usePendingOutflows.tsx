@@ -78,10 +78,10 @@ export function usePendingOutflowMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
-      toast.success('Pending payment added successfully');
+      toast.success('Expense added successfully');
     },
     onError: (error) => {
-      toast.error(`Failed to add pending payment: ${error.message}`);
+      toast.error(`Failed to add expense: ${error.message}`);
     },
   });
 
@@ -99,10 +99,10 @@ export function usePendingOutflowMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
-      toast.success('Pending payment updated successfully');
+      toast.success('Expense updated successfully');
     },
     onError: (error) => {
-      toast.error(`Failed to update pending payment: ${error.message}`);
+      toast.error(`Failed to update expense: ${error.message}`);
     },
   });
 
@@ -124,10 +124,10 @@ export function usePendingOutflowMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
-      toast.success('Pending payment voided');
+      toast.success('Expense voided');
     },
     onError: (error) => {
-      toast.error(`Failed to void pending payment: ${error.message}`);
+      toast.error(`Failed to void expense: ${error.message}`);
     },
   });
 
@@ -168,7 +168,7 @@ export function usePendingOutflowMutations() {
       queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['pending-outflow-matches'] });
-      toast.success('Payment matched and cleared');
+      toast.success('Expense matched and cleared');
     },
     onError: (error) => {
       toast.error(`Failed to confirm match: ${error.message}`);
@@ -186,10 +186,10 @@ export function usePendingOutflowMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
-      toast.success('Pending payment deleted');
+      toast.success('Expense deleted');
     },
     onError: (error) => {
-      toast.error(`Failed to delete pending payment: ${error.message}`);
+      toast.error(`Failed to delete expense: ${error.message}`);
     },
   });
 

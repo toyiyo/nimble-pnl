@@ -31,6 +31,7 @@ import {
   Sparkles,
   Clock,
   ClipboardList,
+  DollarSign,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -71,6 +72,7 @@ const navigationGroups = [
     label: 'Accounting',
     items: [
       { path: '/banking', label: 'Banks', icon: Wallet },
+      { path: '/expenses', label: 'Expenses', icon: DollarSign },
       { path: '/financial-intelligence', label: 'Financial Intelligence', icon: TrendingUp },
       { path: '/transactions', label: 'Transactions', icon: Receipt },
       { path: '/chart-of-accounts', label: 'Chart of Accounts', icon: FileText },

@@ -55,6 +55,7 @@ const navigationGroups = [
       { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
       { path: '/employee/clock', label: 'Time Clock', icon: Clock },
       { path: '/time-punches', label: 'Time Punches', icon: ClipboardList },
+      { path: '/payroll', label: 'Payroll', icon: Wallet },
     ],
   },
   {

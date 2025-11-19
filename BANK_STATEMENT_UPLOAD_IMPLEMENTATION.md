@@ -264,7 +264,7 @@ All new tables have RLS enabled with policies ensuring:
 
 ### Data Validation
 - File type validation (PDF only)
-- File size limits (10MB)
+- File size limits (5MB) - enforced both client-side and server-side
 - Transaction data validation before import
 - Confidence scores tracked for quality assurance
 
@@ -273,18 +273,21 @@ All new tables have RLS enabled with policies ensuring:
 ### Upload Errors
 - Invalid file type → User-friendly error message
 - Upload failure → Toast notification with retry option
-- File too large → Clear size limit message
+- File too large (>5MB) → Clear size limit message with suggestion to split file
 
 ### Processing Errors
-- AI timeout (60s) → Graceful abort with message
+- AI timeout (90s) → Graceful abort with message
+- Resource exhaustion (WORKER_LIMIT) → Prevented by file size validation
 - AI parsing failure → Fallback error state
 - No transactions found → User notification
 - Invalid JSON → Error logged, user notified
+- Memory overflow → Prevented by streaming buffer limits (100KB)
 
 ### Import Errors
 - Database constraint violations → Transaction rollback
 - Missing required fields → Skip line with warning
 - Network errors → Retry mechanism
+- Batch insertion failure → Status updated with partial progress
 
 ## Testing Recommendations
 
@@ -333,16 +336,27 @@ test('Upload bank statement and import transactions', async () => {
 ## Performance Considerations
 
 ### Optimizations
-- Streaming enabled for AI responses (handles 100+ transactions)
-- Token limits configured per model
-- Batch operations for importing multiple transactions
+- Streaming enabled for AI responses with memory-efficient buffer management (100KB limit)
+- Token limits optimized per model (3000 max to prevent resource exhaustion)
+- Batch operations for importing multiple transactions (50 per batch)
+- File size validation before processing (5MB limit)
 - Indexes on frequently queried columns
+- Incremental transaction insertion to avoid memory spikes
 
 ### Scalability
-- Handles statements with 100+ transactions
-- Processes in under 60 seconds for most statements
+- Handles statements with up to 150 transactions efficiently
+- File size limited to 5MB to prevent Edge function resource exhaustion
+- Processes in under 90 seconds for most statements
 - Storage costs minimal (PDFs compressed)
 - Database queries optimized with proper indexes
+- Memory usage carefully managed to prevent WORKER_LIMIT errors
+
+### Resource Management
+- Pre-processing file size validation
+- Streaming response buffer capped at 100KB
+- Batch inserts limited to 50 transactions at a time
+- Automatic error recovery and status updates
+- Graceful degradation on resource constraints
 
 ## Future Enhancements
 
@@ -422,10 +436,22 @@ test('Upload bank statement and import transactions', async () => {
 
 ### Common Issues
 
+**"File too large" error**
+- Maximum file size is 5MB
+- Split large statements into multiple PDFs (by month/quarter)
+- Consider uploading statements in smaller time periods
+- Contact support if you need help with large historical imports
+
 **"Processing timed out"**
-- Statement may be too long (>100 pages)
-- Try splitting into smaller PDFs
-- Contact support if persists
+- Timeout is 90 seconds for processing
+- Files over 5MB are automatically rejected
+- Very complex layouts may take longer
+- Try a cleaner/simpler statement format if available
+
+**"Resource limit exceeded" (WORKER_LIMIT)**
+- This error should now be prevented by file size limits
+- If you still see it, the file may have extremely dense content
+- Contact support with the file details
 
 **"No transactions found"**
 - PDF may be image-based (scanned)

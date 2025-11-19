@@ -104,8 +104,12 @@ const MODEL_TOKEN_LIMITS: Record<string, number> = {
 
 const DEFAULT_MAX_TOKENS = 8192;
 
+// File size limits to prevent resource exhaustion
+const MAX_FILE_SIZE_MB = 5; // 5MB limit for PDFs
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
 function buildRequestBody(modelId: string, systemPrompt: string, pdfUrl: string): any {
-  const requestedMax = 4000; // Reduced to 4000 to prevent memory issues
+  const requestedMax = 3000; // Further reduced to 3000 to prevent memory issues with large files
   const modelMaxLimit = MODEL_TOKEN_LIMITS[modelId] || DEFAULT_MAX_TOKENS;
   const clampedMaxTokens = Math.min(requestedMax, modelMaxLimit);
   
@@ -159,7 +163,9 @@ async function processStreamedResponse(response: Response): Promise<string> {
   let buffer = '';
   let completeContent = '';
   let isComplete = false;
-  const MAX_CONTENT_SIZE = 150000; // 150KB limit to prevent memory overflow
+  const MAX_CONTENT_SIZE = 100000; // Reduced to 100KB limit to prevent memory overflow
+  const CHUNK_PROCESS_INTERVAL = 50; // Process chunks more frequently
+  let chunkCount = 0;
 
   try {
     while (true) {
@@ -167,6 +173,12 @@ async function processStreamedResponse(response: Response): Promise<string> {
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
+      chunkCount++;
+
+      // Process buffer more frequently to avoid accumulation
+      if (chunkCount % CHUNK_PROCESS_INTERVAL === 0 && buffer.length > 10000) {
+        console.log(`⚙️ Processing large buffer (${buffer.length} bytes) at chunk ${chunkCount}`);
+      }
 
       while (true) {
         const lineEnd = buffer.indexOf('\n');
@@ -199,6 +211,7 @@ async function processStreamedResponse(response: Response): Promise<string> {
               // Safety check: prevent memory overflow
               if (completeContent.length + content.length > MAX_CONTENT_SIZE) {
                 console.warn('⚠️ Content size limit reached, truncating response');
+                console.warn(`⚠️ Accumulated ${completeContent.length} bytes before truncation`);
                 await reader.cancel();
                 break;
               }
@@ -218,16 +231,26 @@ async function processStreamedResponse(response: Response): Promise<string> {
       }
 
       if (isComplete) break;
+      
+      // Periodically clear buffer if it's getting too large but we haven't processed everything
+      if (buffer.length > 50000) {
+        console.warn(`⚠️ Buffer size exceeded 50KB, clearing to prevent memory issues`);
+        buffer = '';
+      }
     }
 
-    console.log(`✅ Stream completed. Total content length: ${completeContent.length}`);
+    console.log(`✅ Stream completed. Total content length: ${completeContent.length} bytes from ${chunkCount} chunks`);
     return completeContent;
     
   } catch (error) {
     console.error('❌ Error processing stream:', error);
     throw error;
   } finally {
-    reader.cancel();
+    try {
+      await reader.cancel();
+    } catch (e) {
+      // Ignore cancel errors
+    }
   }
 }
 
@@ -337,10 +360,10 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get statement info to find restaurant_id
+    // Get statement info to find restaurant_id and file_size
     const { data: statementInfo, error: statementInfoError } = await supabase
       .from("bank_statement_uploads")
-      .select("restaurant_id")
+      .select("restaurant_id, file_size")
       .eq("id", statementUploadId)
       .single();
 
@@ -353,6 +376,34 @@ serve(async (req) => {
     }
 
     const restaurantId = statementInfo.restaurant_id;
+    
+    // Validate file size to prevent resource exhaustion
+    if (statementInfo.file_size && statementInfo.file_size > MAX_FILE_SIZE_BYTES) {
+      const fileSizeMB = (statementInfo.file_size / (1024 * 1024)).toFixed(2);
+      console.error(`❌ File too large: ${fileSizeMB}MB exceeds ${MAX_FILE_SIZE_MB}MB limit`);
+      
+      // Update statement with error
+      await supabase
+        .from("bank_statement_uploads")
+        .update({
+          status: "error",
+          error_message: `File is too large (${fileSizeMB}MB). Maximum file size is ${MAX_FILE_SIZE_MB}MB. Please split your statement into smaller PDFs or contact support.`
+        })
+        .eq("id", statementUploadId);
+      
+      return new Response(
+        JSON.stringify({
+          error: `File is too large (${fileSizeMB}MB). Maximum file size is ${MAX_FILE_SIZE_MB}MB.`,
+          suggestion: "Please split your statement into smaller PDFs or contact support for assistance."
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 413, // Payload Too Large
+        }
+      );
+    }
+
+    console.log(`📄 Processing file: ${(statementInfo.file_size / (1024 * 1024)).toFixed(2)}MB`);
 
     const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
     if (!openRouterApiKey) {
@@ -522,33 +573,57 @@ serve(async (req) => {
     }
 
     // Insert transaction lines with sequence in batches to avoid memory issues
-    const transactionLines = parsedData.transactions.map((transaction: any, index: number) => ({
-      statement_upload_id: statementUploadId,
-      transaction_date: transaction.date,
-      description: transaction.description,
-      amount: transaction.amount,
-      transaction_type: transaction.transactionType || 'unknown',
-      balance: transaction.balance,
-      line_sequence: index + 1,
-      confidence_score: transaction.confidenceScore,
-    }));
-
-    // Insert in batches of 100 to prevent memory overflow
-    const BATCH_SIZE = 100;
-    for (let i = 0; i < transactionLines.length; i += BATCH_SIZE) {
-      const batch = transactionLines.slice(i, i + BATCH_SIZE);
+    // Process in smaller batches and don't hold entire array in memory
+    const BATCH_SIZE = 50; // Reduced from 100 to 50 for better memory management
+    const totalTransactions = parsedData.transactions.length;
+    console.log(`💾 Inserting ${totalTransactions} transactions in batches of ${BATCH_SIZE}...`);
+    
+    let insertedCount = 0;
+    for (let i = 0; i < totalTransactions; i += BATCH_SIZE) {
+      const endIndex = Math.min(i + BATCH_SIZE, totalTransactions);
+      const batchTransactions = parsedData.transactions.slice(i, endIndex);
+      
+      // Map to database schema just for this batch
+      const batch = batchTransactions.map((transaction: any, batchIndex: number) => ({
+        statement_upload_id: statementUploadId,
+        transaction_date: transaction.date,
+        description: transaction.description,
+        amount: transaction.amount,
+        transaction_type: transaction.transactionType || 'unknown',
+        balance: transaction.balance,
+        line_sequence: i + batchIndex + 1,
+        confidence_score: transaction.confidenceScore,
+      }));
+      
       const { error: linesError } = await supabase
         .from("bank_statement_lines")
         .insert(batch);
 
       if (linesError) {
-        console.error(`Error inserting transaction batch ${i / BATCH_SIZE + 1}:`, linesError);
+        console.error(`Error inserting transaction batch ${Math.floor(i / BATCH_SIZE) + 1}:`, linesError);
+        
+        // Update statement with error status
+        await supabase
+          .from("bank_statement_uploads")
+          .update({
+            status: "error",
+            error_message: `Failed to insert transactions after processing ${insertedCount} of ${totalTransactions}`
+          })
+          .eq("id", statementUploadId);
+        
         return new Response(JSON.stringify({ error: "Failed to insert transaction lines" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 500,
         });
       }
+      
+      insertedCount += batch.length;
+      if (insertedCount % 100 === 0 || insertedCount === totalTransactions) {
+        console.log(`✅ Inserted ${insertedCount}/${totalTransactions} transactions`);
+      }
     }
+
+    console.log(`✅ Successfully inserted all ${totalTransactions} transactions`);
 
     return new Response(
       JSON.stringify({

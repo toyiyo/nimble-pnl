@@ -26,18 +26,42 @@ export interface BankStatementUpload {
 export interface BankStatementLine {
   id: string;
   statement_upload_id: string;
-  transaction_date: string;
+  transaction_date: string | null;
   description: string;
-  amount: number;
+  amount: number | null;
   transaction_type: string;
   balance: number | null;
   line_sequence: number;
   confidence_score: number | null;
   is_imported: boolean;
   imported_transaction_id: string | null;
+  has_validation_error: boolean;
+  validation_errors: Record<string, string> | null;
+  user_excluded: boolean;
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * Helper function to determine if a bank statement line is importable.
+ * This predicate must match the import logic in importStatementLines.
+ * 
+ * A line is importable if:
+ * 1. It hasn't been imported yet
+ * 2. It hasn't been excluded by the user
+ * 3. It has no validation errors
+ * 4. All required fields are present (transaction_date, description, amount)
+ */
+export const isLineImportable = (line: BankStatementLine): boolean => {
+  return (
+    !line.is_imported &&
+    !line.user_excluded &&
+    !line.has_validation_error &&
+    line.transaction_date !== null &&
+    line.description !== '' &&
+    line.amount !== null
+  );
+};
 
 export const useBankStatementImport = () => {
   const [isUploading, setIsUploading] = useState(false);
@@ -192,9 +216,14 @@ export const useBankStatementImport = () => {
           throw error;
         }
 
+        const message = data.invalidTransactionCount > 0
+          ? `Bank statement processed! Found ${data.transactionCount} transactions from ${data.bankName}. ${data.invalidTransactionCount} transaction(s) have validation errors that need your attention.`
+          : `Bank statement processed! Found ${data.transactionCount} transactions from ${data.bankName}`;
+
         toast({
           title: "Success",
-          description: `Bank statement processed! Found ${data.transactionCount} transactions from ${data.bankName}`,
+          description: message,
+          variant: data.invalidTransactionCount > 0 ? "default" : "default",
         });
 
         return data;
@@ -277,15 +306,26 @@ export const useBankStatementImport = () => {
   const updateStatementLine = async (
     lineId: string,
     updates: {
-      transaction_date?: string;
+      transaction_date?: string | null;
       description?: string;
-      amount?: number;
+      amount?: number | null;
       transaction_type?: string;
     }
   ) => {
+    // Validate the updates to clear validation errors if all required fields are present
+    const hasAllRequiredFields = updates.transaction_date && updates.description && updates.amount !== null && updates.amount !== undefined;
+    
+    const updateData: any = { ...updates };
+    
+    // If all required fields are present and valid, clear validation errors
+    if (hasAllRequiredFields) {
+      updateData.has_validation_error = false;
+      updateData.validation_errors = null;
+    }
+
     const { error } = await supabase
       .from('bank_statement_lines')
-      .update(updates)
+      .update(updateData)
       .eq('id', lineId);
 
     if (error) {
@@ -297,6 +337,39 @@ export const useBankStatementImport = () => {
       });
       return false;
     }
+
+    toast({
+      title: "Success",
+      description: hasAllRequiredFields 
+        ? "Transaction updated and validation errors cleared"
+        : "Transaction updated",
+    });
+
+    return true;
+  };
+
+  const toggleLineExclusion = async (lineId: string, excluded: boolean) => {
+    const { error } = await supabase
+      .from('bank_statement_lines')
+      .update({ user_excluded: excluded })
+      .eq('id', lineId);
+
+    if (error) {
+      console.error('Error toggling line exclusion:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update transaction",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    toast({
+      title: excluded ? "Transaction excluded" : "Transaction included",
+      description: excluded 
+        ? "This transaction will be skipped during import"
+        : "This transaction will be included in the import",
+    });
 
     return true;
   };
@@ -413,8 +486,21 @@ export const useBankStatementImport = () => {
       }
 
       let importedCount = 0;
+      let skippedCount = 0;
 
       for (const line of lines) {
+        // Use the shared predicate to determine if line can be imported
+        // This ensures UI count matches what will actually be imported
+        if (!isLineImportable(line)) {
+          skippedCount++;
+          if (line.has_validation_error) {
+            console.log(`Skipping line ${line.id} due to validation errors:`, line.validation_errors);
+          } else {
+            console.log(`Skipping line ${line.id} - missing required fields or already imported`);
+          }
+          continue;
+        }
+
         // Create bank transaction
         const { data: newTransaction, error: transactionError } = await supabase
           .from('bank_transactions')
@@ -474,9 +560,13 @@ export const useBankStatementImport = () => {
         .update({ status: 'imported' })
         .eq('id', statementUploadId);
 
+      const message = skippedCount > 0 
+        ? `Successfully imported ${importedCount} transactions. ${skippedCount} transactions with validation errors were skipped. Balance updated to ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalBalance)}`
+        : `Successfully imported ${importedCount} transactions. Balance updated to ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalBalance)}`;
+
       toast({
         title: "Import Complete",
-        description: `Successfully imported ${importedCount} transactions. Balance updated to ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalBalance)}`,
+        description: message,
       });
 
       return true;
@@ -546,6 +636,7 @@ export const useBankStatementImport = () => {
     getBankStatementDetails,
     getBankStatementLines,
     updateStatementLine,
+    toggleLineExclusion,
     importStatementLines,
     recalculateBankBalance,
     isUploading,

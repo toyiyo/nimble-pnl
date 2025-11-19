@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { useBankStatementImport, type BankStatementLine, type BankStatementUpload } from '@/hooks/useBankStatementImport';
-import { FileText, Check, Edit, Trash2, DollarSign, Calendar, Building2, Loader2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useBankStatementImport, isLineImportable, type BankStatementLine, type BankStatementUpload } from '@/hooks/useBankStatementImport';
+import { FileText, Check, Edit, Trash2, DollarSign, Calendar, Building2, Loader2, AlertCircle, AlertTriangle, X, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   Table,
@@ -16,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from '@/lib/utils';
 
 interface BankStatementReviewProps {
   statementUploadId: string;
@@ -32,15 +34,16 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
   const [importing, setImporting] = useState(false);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{
-    transaction_date: string;
+    transaction_date: string | null;
     description: string;
-    amount: number;
+    amount: number | null;
   } | null>(null);
 
   const {
     getBankStatementDetails,
     getBankStatementLines,
     updateStatementLine,
+    toggleLineExclusion,
     importStatementLines,
   } = useBankStatementImport();
 
@@ -72,6 +75,11 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
   const handleSaveEdit = async () => {
     if (!editingLineId || !editForm) return;
 
+    // Validate required fields before saving
+    if (!editForm.transaction_date || !editForm.description || editForm.amount === null) {
+      return; // Don't save if validation fails - keep in edit mode
+    }
+
     const success = await updateStatementLine(editingLineId, editForm);
     if (success) {
       setEditingLineId(null);
@@ -83,6 +91,13 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
   const handleCancelEdit = () => {
     setEditingLineId(null);
     setEditForm(null);
+  };
+
+  const handleToggleExclusion = async (lineId: string, currentlyExcluded: boolean) => {
+    const success = await toggleLineExclusion(lineId, !currentlyExcluded);
+    if (success) {
+      loadStatementData();
+    }
   };
 
   const handleImport = async () => {
@@ -133,9 +148,36 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
   }
 
   const unimportedLines = lines.filter((line) => !line.is_imported);
+  const excludedLines = unimportedLines.filter((line) => line.user_excluded);
+  // Use the shared isLineImportable predicate to ensure UI count matches actual import behavior
+  const validLines = lines.filter((line) => isLineImportable(line));
+  const invalidLines = unimportedLines.filter((line) => !isLineImportable(line) && !line.user_excluded);
 
   return (
     <div className="space-y-6">
+      {/* Validation Warning Alert */}
+      {(invalidLines.length > 0 || excludedLines.length > 0) && (
+        <Alert variant={invalidLines.length > 0 ? "destructive" : "default"}>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            {invalidLines.length > 0 && (
+              <>
+                <strong>{invalidLines.length} transaction{invalidLines.length !== 1 ? 's have' : ' has'} validation errors</strong>
+                <p className="mt-2 text-sm">
+                  These transactions are highlighted in red below. You must edit them to fix the errors before they can be imported. 
+                  Common issues include missing amounts, invalid dates, or missing descriptions.
+                </p>
+              </>
+            )}
+            {excludedLines.length > 0 && (
+              <p className={invalidLines.length > 0 ? "mt-3 text-sm" : "text-sm"}>
+                <strong>{excludedLines.length} transaction{excludedLines.length !== 1 ? 's are' : ' is'} excluded</strong> and will be skipped during import.
+              </p>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Statement Summary */}
       <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
         <CardHeader>
@@ -184,12 +226,14 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
             <div>
               <CardTitle>Review Transactions</CardTitle>
               <CardDescription>
-                Review and edit the extracted transactions before importing
+                {validLines.length} ready to import
+                {invalidLines.length > 0 && ` • ${invalidLines.length} need correction`}
+                {excludedLines.length > 0 && ` • ${excludedLines.length} excluded`}
               </CardDescription>
             </div>
             <Button
               onClick={handleImport}
-              disabled={unimportedLines.length === 0 || importing}
+              disabled={validLines.length === 0 || importing}
               className="gap-2"
             >
               {importing ? (
@@ -200,7 +244,7 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
               ) : (
                 <>
                   <Check className="h-4 w-4" />
-                  Import {unimportedLines.length} Transaction{unimportedLines.length !== 1 ? 's' : ''}
+                  Import {validLines.length} Valid Transaction{validLines.length !== 1 ? 's' : ''}
                 </>
               )}
             </Button>
@@ -226,107 +270,184 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lines.map((line) => (
-                    <TableRow key={line.id}>
-                      <TableCell>
-                        {editingLineId === line.id ? (
-                          <Input
-                            type="date"
-                            value={editForm?.transaction_date || ''}
-                            onChange={(e) =>
-                              setEditForm({ ...editForm!, transaction_date: e.target.value })
-                            }
-                            className="w-40"
-                          />
-                        ) : (
-                          format(new Date(line.transaction_date), 'MMM d, yyyy')
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {editingLineId === line.id ? (
-                          <Input
-                            value={editForm?.description || ''}
-                            onChange={(e) =>
-                              setEditForm({ ...editForm!, description: e.target.value })
-                            }
-                            className="min-w-[200px]"
-                          />
-                        ) : (
-                          <span className="line-clamp-2">{line.description}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {editingLineId === line.id ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={editForm?.amount || 0}
-                            onChange={(e) =>
-                              setEditForm({ ...editForm!, amount: parseFloat(e.target.value) })
-                            }
-                            className="w-32 text-right"
-                          />
-                        ) : (
-                          <span
-                            className={
-                              line.amount < 0
-                                ? 'text-red-600 font-medium'
-                                : 'text-green-600 font-medium'
-                            }
-                          >
-                            {formatCurrency(line.amount)}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={line.transaction_type === 'debit' ? 'destructive' : 'default'}>
-                          {line.transaction_type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {line.is_imported ? (
-                          <Badge variant="outline" className="bg-green-100 text-green-800">
-                            <Check className="w-3 h-3 mr-1" />
-                            Imported
+                  {lines.map((line) => {
+                    const hasError = line.has_validation_error;
+                    const validationErrors = line.validation_errors || {};
+                    
+                    return (
+                      <TableRow 
+                        key={line.id}
+                        className={cn(hasError && "bg-red-50 border-l-4 border-l-red-500")}
+                      >
+                        <TableCell>
+                          {editingLineId === line.id ? (
+                            <div className="space-y-1">
+                              <Input
+                                type="date"
+                                value={editForm?.transaction_date || ''}
+                                onChange={(e) =>
+                                  setEditForm({ ...editForm!, transaction_date: e.target.value })
+                                }
+                                className={cn("w-40", validationErrors.date && "border-red-500")}
+                              />
+                              {validationErrors.date && (
+                                <p className="text-xs text-red-600">{validationErrors.date}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              {line.transaction_date ? (
+                                <span>{format(new Date(line.transaction_date), 'MMM d, yyyy')}</span>
+                              ) : (
+                                <span className="text-red-600 text-sm flex items-center gap-1">
+                                  <AlertCircle className="h-3 w-3" />
+                                  Missing
+                                </span>
+                              )}
+                              {hasError && validationErrors.date && (
+                                <p className="text-xs text-red-600">{validationErrors.date}</p>
+                              )}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingLineId === line.id ? (
+                            <div className="space-y-1">
+                              <Input
+                                value={editForm?.description || ''}
+                                onChange={(e) =>
+                                  setEditForm({ ...editForm!, description: e.target.value })
+                                }
+                                className={cn("min-w-[200px]", validationErrors.description && "border-red-500")}
+                              />
+                              {validationErrors.description && (
+                                <p className="text-xs text-red-600">{validationErrors.description}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <span className="line-clamp-2">{line.description || 'Unknown'}</span>
+                              {hasError && validationErrors.description && (
+                                <p className="text-xs text-red-600">{validationErrors.description}</p>
+                              )}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {editingLineId === line.id ? (
+                            <div className="space-y-1">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={editForm?.amount !== null ? editForm?.amount : ''}
+                                onChange={(e) =>
+                                  setEditForm({ ...editForm!, amount: e.target.value ? parseFloat(e.target.value) : null })
+                                }
+                                className={cn("w-32 text-right", validationErrors.amount && "border-red-500")}
+                              />
+                              {validationErrors.amount && (
+                                <p className="text-xs text-red-600">{validationErrors.amount}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              {line.amount !== null ? (
+                                <span
+                                  className={
+                                    line.amount < 0
+                                      ? 'text-red-600 font-medium'
+                                      : 'text-green-600 font-medium'
+                                  }
+                                >
+                                  {formatCurrency(line.amount)}
+                                </span>
+                              ) : (
+                                <span className="text-red-600 text-sm flex items-center gap-1 justify-end">
+                                  <AlertCircle className="h-3 w-3" />
+                                  Missing
+                                </span>
+                              )}
+                              {hasError && validationErrors.amount && (
+                                <p className="text-xs text-red-600">{validationErrors.amount}</p>
+                              )}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={line.transaction_type === 'debit' ? 'destructive' : 'default'}>
+                            {line.transaction_type}
                           </Badge>
-                        ) : (
-                          <Badge variant="secondary">Pending</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {!line.is_imported && (
-                          <div className="flex justify-end gap-2">
-                            {editingLineId === line.id ? (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  onClick={handleSaveEdit}
-                                >
-                                  Save
+                        </TableCell>
+                        <TableCell>
+                          {line.is_imported ? (
+                            <Badge variant="outline" className="bg-green-100 text-green-800">
+                              <Check className="w-3 h-3 mr-1" />
+                              Imported
+                            </Badge>
+                          ) : line.user_excluded ? (
+                            <Badge variant="outline" className="bg-gray-100 text-gray-600">
+                              <X className="w-3 h-3 mr-1" />
+                              Excluded
+                            </Badge>
+                          ) : hasError ? (
+                            <Badge variant="destructive" className="gap-1">
+                              <AlertCircle className="w-3 h-3" />
+                              Has Errors
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">Pending</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {!line.is_imported && (
+                            <div className="flex justify-end gap-2">
+                              {editingLineId === line.id ? (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    onClick={handleSaveEdit}
+                                  >
+                                    Save
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={handleCancelEdit}
-                                >
-                                  Cancel
-                                </Button>
-                              </>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleEdit(line)}
-                              >
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleCancelEdit}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </>
+                              ) : (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleEdit(line)}
+                                    title="Edit transaction"
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant={line.user_excluded ? "default" : "ghost"}
+                                    onClick={() => handleToggleExclusion(line.id, line.user_excluded)}
+                                    title={line.user_excluded ? "Include in import" : "Exclude from import"}
+                                  >
+                                    {line.user_excluded ? (
+                                      <Plus className="h-3 w-3" />
+                                    ) : (
+                                      <X className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

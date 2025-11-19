@@ -22,6 +22,69 @@ interface ParsedTransaction {
   confidenceScore: number;
 }
 
+interface ValidationResult {
+  valid: any[];
+  invalid: any[];
+  warnings: string[];
+}
+
+/**
+ * Validates and cleans transactions extracted from bank statements
+ * Filters out transactions with missing or invalid data
+ * Returns valid transactions, invalid transactions, and warning messages
+ */
+function validateAndCleanTransactions(transactions: any[]): ValidationResult {
+  const valid: any[] = [];
+  const invalid: any[] = [];
+  const warnings: string[] = [];
+
+  for (let i = 0; i < transactions.length; i++) {
+    const tx = transactions[i];
+    const txIndex = i + 1;
+
+    // Check for null/missing amount
+    if (tx.amount === null || tx.amount === undefined) {
+      invalid.push({ ...tx, reason: 'Missing amount', originalIndex: txIndex });
+      warnings.push(`Skipped transaction #${txIndex} "${tx.description}" on ${tx.date} - no amount found`);
+      continue;
+    }
+
+    // Check for invalid amount (not a number or NaN)
+    if (typeof tx.amount !== 'number' || isNaN(tx.amount)) {
+      invalid.push({ ...tx, reason: 'Invalid amount format', originalIndex: txIndex });
+      warnings.push(`Skipped transaction #${txIndex} "${tx.description}" - invalid amount: ${tx.amount}`);
+      continue;
+    }
+
+    // Check for required fields
+    if (!tx.date || !tx.description) {
+      invalid.push({ ...tx, reason: 'Missing required fields', originalIndex: txIndex });
+      warnings.push(`Skipped transaction #${txIndex} - missing date or description`);
+      continue;
+    }
+
+    // Validate date format (basic check)
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    if (!datePattern.test(tx.date)) {
+      invalid.push({ ...tx, reason: 'Invalid date format', originalIndex: txIndex });
+      warnings.push(`Skipped transaction #${txIndex} "${tx.description}" - invalid date format: ${tx.date}`);
+      continue;
+    }
+
+    // Check confidence score format (must be 0-0.99 for NUMERIC(3,2))
+    // Cap at 0.99 if >= 1.0 to satisfy database constraint
+    if (tx.confidenceScore !== null && tx.confidenceScore !== undefined) {
+      if (typeof tx.confidenceScore === 'number' && tx.confidenceScore >= 1.0) {
+        tx.confidenceScore = 0.99; // Cap at 0.99 for database constraint
+      }
+    }
+
+    valid.push(tx);
+  }
+
+  return { valid, invalid, warnings };
+}
+
 // Bank statement analysis prompt
 const BANK_STATEMENT_ANALYSIS_PROMPT = `ANALYSIS TARGET: This is a bank statement PDF containing transaction history.
 
@@ -29,6 +92,7 @@ CRITICAL REQUIREMENTS:
 1. Extract EVERY SINGLE TRANSACTION from the statement
 2. Capture transaction dates, descriptions, amounts (debits/credits), and running balance if available
 3. Identify the bank name and statement period
+4. **AMOUNT IS MANDATORY** - NEVER return a transaction without an amount. If you cannot determine the amount, skip that transaction entirely rather than setting amount to null.
 
 EXTRACTION METHODOLOGY:
 1. **Scan the ENTIRE document** - Read all pages from start to finish
@@ -36,11 +100,19 @@ EXTRACTION METHODOLOGY:
 3. **Identify key components**:
    - Transaction date (in format YYYY-MM-DD)
    - Description/Payee
-   - Amount (with sign: negative for debits, positive for credits)
+   - Amount (with sign: negative for debits, positive for credits) - **REQUIRED**
    - Transaction type (debit, credit, or unknown)
    - Running balance (if shown)
 4. **Handle various formats**: Different banks use different layouts
 5. **Preserve order**: Transactions should be in chronological order
+
+AMOUNT EXTRACTION EXAMPLES:
+- Format 1: "09/19 DEPOSIT $1,234.56" → amount: 1234.56, type: credit
+- Format 2: "Payment to VENDOR -$500.00" → amount: -500.00, type: debit
+- Format 3: "ACH TRANSFER 250.00 DR" → amount: -250.00, type: debit
+- Format 4: "Interest Earned 15.23 CR" → amount: 15.23, type: credit
+- Format 5: "CHECK #1234    $75.00-" → amount: -75.00, type: debit
+- Format 6: "Wire Transfer    1,500.00+" → amount: 1500.00, type: credit
 
 CONFIDENCE SCORING:
 - 0.90-0.95: Crystal clear, all fields present
@@ -72,7 +144,8 @@ RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
 IMPORTANT: 
 - Return ONLY valid, complete JSON
 - Include ALL transactions from ALL pages
-- Negative amounts = money out (debits), Positive amounts = money in (credits)`;
+- Negative amounts = money out (debits), Positive amounts = money in (credits)
+- **SKIP any transaction where the amount cannot be determined - DO NOT include it with null amount**`;
 
 // Model configurations (same as receipt processing)
 const MODELS = [
@@ -563,6 +636,7 @@ serve(async (req) => {
     let parsedData;
     let totalDebits = 0;
     let totalCredits = 0;
+    let validationResult: ValidationResult | null = null;
     
     try {
       let jsonContent = content.trim();
@@ -635,6 +709,17 @@ serve(async (req) => {
       console.log(`📊 Bank: ${parsedData.bankName}, Period: ${parsedData.statementPeriodStart} to ${parsedData.statementPeriodEnd}`);
       console.log(`💰 Totals - Debits: $${totalDebits.toFixed(2)}, Credits: $${totalCredits.toFixed(2)}`);
       
+      // Validate and clean transactions BEFORE insertion
+      console.log("🔍 Validating transactions...");
+      validationResult = validateAndCleanTransactions(parsedData.transactions);
+      
+      console.log(`✅ Validation complete: ${validationResult.valid.length} valid, ${validationResult.invalid.length} invalid`);
+      
+      if (validationResult.warnings.length > 0) {
+        console.log("⚠️ Validation warnings:");
+        validationResult.warnings.forEach(warning => console.log(`  - ${warning}`));
+      }
+      
       // Log successful parsing to Braintrust
       logAICall(
         'process-bank-statement:parse_success',
@@ -647,6 +732,8 @@ serve(async (req) => {
         {
           bankName: parsedData.bankName,
           transactionCount: parsedData.transactions.length,
+          validTransactionCount: validationResult.valid.length,
+          invalidTransactionCount: validationResult.invalid.length,
           periodStart: parsedData.statementPeriodStart,
           periodEnd: parsedData.statementPeriodEnd,
           totalDebits: totalDebits,
@@ -656,6 +743,7 @@ serve(async (req) => {
             description: t.description?.substring(0, 30),
             amount: t.amount,
           })),
+          validationWarnings: validationResult.warnings.slice(0, 5), // Log first 5 warnings
         },
         {
           model: usedModelConfig.id,
@@ -715,7 +803,31 @@ serve(async (req) => {
       );
     }
 
-    // Update statement upload with parsed data
+    // Ensure validationResult is available (should always be set if we reach here without early return)
+    if (!validationResult) {
+      console.error("Validation result is null - this should not happen");
+      return new Response(
+        JSON.stringify({
+          error: "Internal error: validation result not available",
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        },
+      );
+    }
+
+    // Update statement upload with parsed data and validation results
+    const finalStatus = validationResult.invalid.length > 0 && validationResult.valid.length > 0 
+      ? 'partial_success' 
+      : validationResult.valid.length > 0 
+        ? 'processed' 
+        : 'error';
+    
+    const errorMessage = validationResult.invalid.length > 0
+      ? `${validationResult.invalid.length} transaction(s) were skipped due to validation errors. Please review invalid_transactions field.`
+      : null;
+
     const { error: updateError } = await supabase
       .from("bank_statement_uploads")
       .update({
@@ -723,11 +835,15 @@ serve(async (req) => {
         statement_period_start: parsedData.statementPeriodStart,
         statement_period_end: parsedData.statementPeriodEnd,
         raw_ocr_data: parsedData,
-        status: "processed",
+        status: finalStatus,
         processed_at: new Date().toISOString(),
         transaction_count: parsedData.transactions.length,
+        successful_transaction_count: validationResult.valid.length,
+        failed_transaction_count: validationResult.invalid.length,
+        invalid_transactions: validationResult.invalid.length > 0 ? validationResult.invalid : null,
         total_debits: totalDebits,
         total_credits: totalCredits,
+        error_message: errorMessage,
       })
       .eq("id", statementUploadId);
 
@@ -741,14 +857,38 @@ serve(async (req) => {
 
     // Insert transaction lines with sequence in batches to avoid memory issues
     // Process in smaller batches and don't hold entire array in memory
+    // Use ONLY validated transactions
     const BATCH_SIZE = 50; // Reduced from 100 to 50 for better memory management
-    const totalTransactions = parsedData.transactions.length;
-    console.log(`💾 Inserting ${totalTransactions} transactions in batches of ${BATCH_SIZE}...`);
+    const totalValidTransactions = validationResult.valid.length;
+    
+    if (totalValidTransactions === 0) {
+      console.log("⚠️ No valid transactions to insert. All transactions failed validation.");
+      
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "All transactions failed validation",
+          bankName: parsedData.bankName,
+          transactionCount: parsedData.transactions.length,
+          validTransactionCount: 0,
+          invalidTransactionCount: validationResult.invalid.length,
+          warnings: validationResult.warnings,
+          totalDebits,
+          totalCredits,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 422,
+        },
+      );
+    }
+    
+    console.log(`💾 Inserting ${totalValidTransactions} valid transactions in batches of ${BATCH_SIZE}...`);
     
     let insertedCount = 0;
-    for (let i = 0; i < totalTransactions; i += BATCH_SIZE) {
-      const endIndex = Math.min(i + BATCH_SIZE, totalTransactions);
-      const batchTransactions = parsedData.transactions.slice(i, endIndex);
+    for (let i = 0; i < totalValidTransactions; i += BATCH_SIZE) {
+      const endIndex = Math.min(i + BATCH_SIZE, totalValidTransactions);
+      const batchTransactions = validationResult.valid.slice(i, endIndex);
       
       // Map to database schema just for this batch
       const batch = batchTransactions.map((transaction: any, batchIndex: number) => ({
@@ -774,29 +914,42 @@ serve(async (req) => {
           .from("bank_statement_uploads")
           .update({
             status: "error",
-            error_message: `Failed to insert transactions after processing ${insertedCount} of ${totalTransactions}`
+            error_message: `Failed to insert transactions after processing ${insertedCount} of ${totalValidTransactions}. ${validationResult.invalid.length} additional transaction(s) failed validation.`
           })
           .eq("id", statementUploadId);
         
-        return new Response(JSON.stringify({ error: "Failed to insert transaction lines" }), {
+        return new Response(JSON.stringify({ 
+          error: "Failed to insert transaction lines",
+          details: linesError,
+          insertedCount,
+          totalValid: totalValidTransactions,
+          invalidCount: validationResult.invalid.length,
+        }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 500,
         });
       }
       
       insertedCount += batch.length;
-      if (insertedCount % 100 === 0 || insertedCount === totalTransactions) {
-        console.log(`✅ Inserted ${insertedCount}/${totalTransactions} transactions`);
+      if (insertedCount % 100 === 0 || insertedCount === totalValidTransactions) {
+        console.log(`✅ Inserted ${insertedCount}/${totalValidTransactions} transactions`);
       }
     }
 
-    console.log(`✅ Successfully inserted all ${totalTransactions} transactions`);
+    console.log(`✅ Successfully inserted all ${totalValidTransactions} valid transactions`);
+    
+    if (validationResult.invalid.length > 0) {
+      console.log(`⚠️ ${validationResult.invalid.length} transaction(s) were skipped and stored for manual review`);
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
         bankName: parsedData.bankName,
         transactionCount: parsedData.transactions.length,
+        validTransactionCount: totalValidTransactions,
+        invalidTransactionCount: validationResult.invalid.length,
+        warnings: validationResult.warnings,
         totalDebits,
         totalCredits,
       }),

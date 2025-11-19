@@ -33,12 +33,12 @@ export function usePredictableExpenses(lookAheadDays: number = 30) {
       const lookbackDays = 120; // Look back 4 months for pattern detection
       const lookbackStart = addDays(today, -lookbackDays);
 
-      // Fetch historical outflow transactions
+      // Fetch historical outflow transactions (including pending)
       const { data: transactions, error } = await supabase
         .from('bank_transactions')
         .select('transaction_date, amount, merchant_name, normalized_payee, description')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('status', 'posted')
+        .in('status', ['posted', 'pending'])
         .lt('amount', 0) // Only outflows
         .gte('transaction_date', format(lookbackStart, 'yyyy-MM-dd'))
         .lte('transaction_date', format(today, 'yyyy-MM-dd'))

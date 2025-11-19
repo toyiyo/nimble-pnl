@@ -2,8 +2,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOutflowByCategory } from '@/hooks/useOutflowByCategory';
-import { DollarSign, TrendingUp, ArrowRight, AlertCircle } from 'lucide-react';
+import { DollarSign, TrendingUp, ArrowRight, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 
@@ -134,18 +135,57 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
             )}
           </div>
         </div>
-        <div className="flex gap-2 mt-2">
+        <div className="flex flex-wrap gap-2 mt-2">
+          {/* Posted transactions badge */}
+          <TooltipProvider>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 cursor-help">
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                  ${data.clearedOutflows.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Posted
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="font-semibold mb-1">Posted Transactions</p>
+                <p className="text-xs">Confirmed and cleared by your bank</p>
+              </TooltipContent>
+            </UITooltip>
+          </TooltipProvider>
+
+          {/* Pending transactions badge */}
           {data.pendingOutflows > 0 && (
-            <Badge className="bg-gradient-to-r from-orange-500 to-amber-600">
-              <TrendingUp className="w-3 h-3 mr-1" />
-              ${data.pendingOutflows.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Pending Checks/ACH
-            </Badge>
+            <TooltipProvider>
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <Badge className="bg-gradient-to-r from-orange-500 to-amber-600 cursor-help">
+                    <Clock className="w-3 h-3 mr-1" />
+                    ${data.pendingOutflows.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Pending
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="font-semibold mb-1">Pending Transactions</p>
+                  <p className="text-xs">Awaiting bank confirmation or uncleared checks</p>
+                </TooltipContent>
+              </UITooltip>
+            </TooltipProvider>
           )}
+
+          {/* Uncategorized badge */}
           {data.uncategorizedPercentage > 5 && (
-            <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
-              <AlertCircle className="w-3 h-3 mr-1" />
-              {data.uncategorizedPercentage.toFixed(0)}% Uncategorized
-            </Badge>
+            <TooltipProvider>
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20 cursor-help">
+                    <AlertCircle className="w-3 h-3 mr-1" />
+                    {data.uncategorizedPercentage.toFixed(0)}% Uncategorized
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="font-semibold mb-1">Uncategorized Transactions</p>
+                  <p className="text-xs">Categorize these to improve expense tracking accuracy</p>
+                </TooltipContent>
+              </UITooltip>
+            </TooltipProvider>
           )}
         </div>
       </CardHeader>
@@ -234,6 +274,43 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
             )}
           </div>
         </div>
+
+        {/* Categorization CTA */}
+        {data.uncategorizedPercentage > 5 && (
+          <div className="mt-6 p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 rounded-lg">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <h4 className="font-semibold text-amber-900 mb-1">
+                  Improve Your Expense Tracking
+                </h4>
+                <p className="text-sm text-amber-700 mb-3">
+                  You have {data.uncategorizedPercentage.toFixed(0)}% uncategorized transactions (${data.uncategorizedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}). 
+                  Categorizing them will give you better insights into your spending.
+                </p>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    onClick={() => navigate('/banking', { state: { filterUncategorized: true } })}
+                    className="bg-amber-600 hover:bg-amber-700"
+                  >
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    Categorize Manually
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => navigate('/banking', { state: { filterUncategorized: true, showAI: true } })}
+                    className="border-amber-500/20"
+                  >
+                    <TrendingUp className="h-4 w-4 mr-2" />
+                    Categorize with AI
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <p className="text-xs text-muted-foreground mt-4">
           Transfers between your accounts are excluded.

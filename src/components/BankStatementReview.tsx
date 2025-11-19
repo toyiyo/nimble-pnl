@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { useBankStatementImport, type BankStatementLine, type BankStatementUpload } from '@/hooks/useBankStatementImport';
-import { FileText, Check, Edit, Trash2, DollarSign, Calendar, Building2 } from 'lucide-react';
+import { FileText, Check, Edit, Trash2, DollarSign, Calendar, Building2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   Table,
@@ -29,6 +29,7 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
   const [lines, setLines] = useState<BankStatementLine[]>([]);
   const [statement, setStatement] = useState<BankStatementUpload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{
     transaction_date: string;
@@ -85,9 +86,14 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
   };
 
   const handleImport = async () => {
-    const success = await importStatementLines(statementUploadId);
-    if (success) {
-      onImportComplete();
+    setImporting(true);
+    try {
+      const success = await importStatementLines(statementUploadId);
+      if (success) {
+        onImportComplete();
+      }
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -183,11 +189,20 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
             </div>
             <Button
               onClick={handleImport}
-              disabled={unimportedLines.length === 0}
+              disabled={unimportedLines.length === 0 || importing}
               className="gap-2"
             >
-              <Check className="h-4 w-4" />
-              Import {unimportedLines.length} Transaction{unimportedLines.length !== 1 ? 's' : ''}
+              {importing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Import {unimportedLines.length} Transaction{unimportedLines.length !== 1 ? 's' : ''}
+                </>
+              )}
             </Button>
           </div>
         </CardHeader>

@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -107,8 +108,8 @@ const DEFAULT_MAX_TOKENS = 4096;
 const MAX_FILE_SIZE_MB = 5; // 5MB limit for PDFs
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
-function buildRequestBody(modelId: string, systemPrompt: string, pdfUrl: string): any {
-  const requestedMax = 2500; // Reduced to 2500 to ensure valid JSON completion
+function buildRequestBody(modelId: string, systemPrompt: string, pdfData: string, isBase64: boolean = false): any {
+  const requestedMax = 8000; // Increased from 2500 to 8000 for large statements
   const modelMaxLimit = MODEL_TOKEN_LIMITS[modelId] || DEFAULT_MAX_TOKENS;
   const clampedMaxTokens = Math.min(requestedMax, modelMaxLimit);
   
@@ -131,7 +132,7 @@ function buildRequestBody(modelId: string, systemPrompt: string, pdfUrl: string)
           {
             type: "file",
             file: {
-              file_data: pdfUrl,
+              file_data: pdfData,
               filename: "bank_statement.pdf",
             },
           },
@@ -162,7 +163,7 @@ async function processStreamedResponse(response: Response): Promise<string> {
   let buffer = '';
   let completeContent = '';
   let isComplete = false;
-  const MAX_CONTENT_SIZE = 100000; // Reduced to 100KB limit to prevent memory overflow
+  const MAX_CONTENT_SIZE = 500000; // Increased to 500KB for large bank statements
   const CHUNK_PROCESS_INTERVAL = 50; // Process chunks more frequently
   let chunkCount = 0;
 
@@ -232,8 +233,8 @@ async function processStreamedResponse(response: Response): Promise<string> {
       if (isComplete) break;
       
       // Periodically clear buffer if it's getting too large but we haven't processed everything
-      if (buffer.length > 50000) {
-        console.warn(`⚠️ Buffer size exceeded 50KB, clearing to prevent memory issues`);
+      if (buffer.length > 100000) {
+        console.warn(`⚠️ Buffer size exceeded 100KB, clearing to prevent memory issues`);
         buffer = '';
       }
     }
@@ -255,9 +256,10 @@ async function processStreamedResponse(response: Response): Promise<string> {
 
 async function callModel(
   modelConfig: (typeof MODELS)[0],
-  pdfUrl: string,
+  pdfData: string,
   openRouterApiKey: string,
   restaurantId?: string,
+  isBase64: boolean = false,
 ): Promise<{ response: Response; modelConfig: typeof MODELS[0] } | null> {
   let retryCount = 0;
 
@@ -265,7 +267,19 @@ async function callModel(
     try {
       console.log(`🔄 ${modelConfig.name} attempt ${retryCount + 1}/${modelConfig.maxRetries}...`);
 
-      const requestBody = buildRequestBody(modelConfig.id, modelConfig.systemPrompt, pdfUrl);
+      const requestBody = buildRequestBody(modelConfig.id, modelConfig.systemPrompt, pdfData, isBase64);
+
+      const metadata: AICallMetadata = {
+        model: modelConfig.id,
+        provider: 'openrouter',
+        restaurant_id: restaurantId,
+        edge_function: 'process-bank-statement',
+        temperature: requestBody.temperature,
+        max_tokens: requestBody.max_tokens,
+        stream: requestBody.stream || false,
+        attempt: retryCount + 1,
+        success: false,
+      };
 
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -280,20 +294,69 @@ async function callModel(
 
       if (response.ok) {
         console.log(`✅ ${modelConfig.name} succeeded`);
+        
+        // Log successful bank statement processing
+        logAICall(
+          'process-bank-statement:success',
+          { 
+            model: modelConfig.id, 
+            pdfSource: isBase64 ? 'base64' : 'url',
+            pdfSizeApprox: Math.round(pdfData.length / 1024) + 'KB'
+          },
+          { status: 'success' },
+          { ...metadata, success: true, status_code: 200 },
+          null // Token usage will be tracked via streaming
+        );
+        
         return { response, modelConfig };
       }
 
       if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
         console.log(`🔄 ${modelConfig.name} rate limited, waiting before retry...`);
+        
+        logAICall(
+          'process-bank-statement:rate_limit',
+          { model: modelConfig.id },
+          null,
+          { ...metadata, success: false, status_code: 429, error: 'Rate limited' },
+          null
+        );
+        
         await new Promise((resolve) => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
         retryCount++;
       } else {
         const errorText = await response.text();
         console.error(`❌ ${modelConfig.name} failed:`, response.status, errorText);
+        
+        logAICall(
+          'process-bank-statement:error',
+          { model: modelConfig.id },
+          null,
+          { ...metadata, success: false, status_code: response.status, error: errorText },
+          null
+        );
+        
         break;
       }
     } catch (error) {
       console.error(`❌ ${modelConfig.name} error:`, error);
+      
+      logAICall(
+        'process-bank-statement:exception',
+        { model: modelConfig.id },
+        null,
+        { 
+          model: modelConfig.id,
+          provider: 'openrouter',
+          restaurant_id: restaurantId,
+          edge_function: 'process-bank-statement',
+          stream: false,
+          attempt: retryCount + 1,
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        },
+        null
+      );
       
       retryCount++;
       if (retryCount < modelConfig.maxRetries) {
@@ -368,6 +431,7 @@ serve(async (req) => {
     }
 
     console.log(`📄 Processing file: ${(statementInfo.file_size / (1024 * 1024)).toFixed(2)}MB`);
+    console.log("🔄 Starting PDF download and conversion to base64...");
 
     const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
     if (!openRouterApiKey) {
@@ -375,6 +439,71 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,
       });
+    }
+
+    // Download PDF from signed URL and convert to base64
+    // This ensures OpenRouter can access the file regardless of URL expiry
+    let pdfBase64Data: string;
+    try {
+      const startTime = Date.now();
+      console.log("📥 Fetching PDF from signed URL...");
+      
+      // Set up abort controller with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      const pdfResponse = await fetch(pdfUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!pdfResponse.ok) {
+        throw new Error(`Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
+      }
+
+      const pdfBlob = await pdfResponse.arrayBuffer();
+      const downloadTime = Date.now() - startTime;
+      console.log(`✅ PDF downloaded: ${(pdfBlob.byteLength / (1024 * 1024)).toFixed(2)}MB in ${downloadTime}ms`);
+
+      // Convert to base64 in chunks to avoid stack overflow on large files
+      console.log("🔄 Converting PDF to base64...");
+      const conversionStartTime = Date.now();
+      const uint8Array = new Uint8Array(pdfBlob);
+      const chunkSize = 32768; // 32KB chunks
+
+      // Step 1: Convert all bytes to binary string (chunked to avoid stack overflow)
+      let binaryString = "";
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+        binaryString += String.fromCharCode(...chunk);
+      }
+
+      // Step 2: Encode the complete binary string to base64
+      const base64 = btoa(binaryString);
+      pdfBase64Data = `data:application/pdf;base64,${base64}`;
+      
+      const conversionTime = Date.now() - conversionStartTime;
+      console.log(`✅ PDF converted to base64: ${(base64.length / 1024).toFixed(2)}KB in ${conversionTime}ms`);
+    } catch (fetchError) {
+      console.error("❌ Failed to fetch and convert PDF:", fetchError);
+      
+      // Update statement with error
+      await supabase
+        .from("bank_statement_uploads")
+        .update({
+          status: "error",
+          error_message: `Failed to download PDF: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`
+        })
+        .eq("id", statementUploadId);
+      
+      return new Response(
+        JSON.stringify({
+          error: "Failed to fetch PDF for processing",
+          details: fetchError instanceof Error ? fetchError.message : String(fetchError),
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        },
+      );
     }
 
     console.log("🏦 Processing bank statement with multi-model fallback...");
@@ -385,7 +514,7 @@ serve(async (req) => {
     for (const modelConfig of MODELS) {
       console.log(`🚀 Trying ${modelConfig.name}...`);
 
-      const result = await callModel(modelConfig, pdfUrl, openRouterApiKey, restaurantId);
+      const result = await callModel(modelConfig, pdfBase64Data, openRouterApiKey, restaurantId, true);
 
       if (result) {
         finalResponse = result.response;
@@ -398,6 +527,15 @@ serve(async (req) => {
 
     if (!finalResponse || !finalResponse.ok || !usedModelConfig) {
       console.error("❌ All models failed");
+      
+      // Update statement with error
+      await supabase
+        .from("bank_statement_uploads")
+        .update({
+          status: "error",
+          error_message: "All AI models failed to process the bank statement. Please try again later or contact support."
+        })
+        .eq("id", statementUploadId);
 
       return new Response(
         JSON.stringify({
@@ -423,6 +561,9 @@ serve(async (req) => {
     console.log("✅ AI parsing completed. Response length:", content.length);
 
     let parsedData;
+    let totalDebits = 0;
+    let totalCredits = 0;
+    
     try {
       let jsonContent = content.trim();
 
@@ -482,19 +623,85 @@ serve(async (req) => {
       }
 
       // Calculate totals for logging and database update
-      const totalDebits = parsedData.transactions
+      totalDebits = parsedData.transactions
         .filter((t: any) => t.amount < 0)
         .reduce((sum: number, t: any) => sum + Math.abs(t.amount), 0);
       
-      const totalCredits = parsedData.transactions
+      totalCredits = parsedData.transactions
         .filter((t: any) => t.amount > 0)
         .reduce((sum: number, t: any) => sum + t.amount, 0);
 
       console.log(`✅ Successfully parsed ${parsedData.transactions.length} transactions`);
       console.log(`📊 Bank: ${parsedData.bankName}, Period: ${parsedData.statementPeriodStart} to ${parsedData.statementPeriodEnd}`);
+      console.log(`💰 Totals - Debits: $${totalDebits.toFixed(2)}, Credits: $${totalCredits.toFixed(2)}`);
+      
+      // Log successful parsing to Braintrust
+      logAICall(
+        'process-bank-statement:parse_success',
+        {
+          model: usedModelConfig.id,
+          promptSummary: 'Bank statement OCR extraction',
+          pdfSizeKB: Math.round(pdfBase64Data.length / 1024),
+          responseSizeBytes: content.length,
+        },
+        {
+          bankName: parsedData.bankName,
+          transactionCount: parsedData.transactions.length,
+          periodStart: parsedData.statementPeriodStart,
+          periodEnd: parsedData.statementPeriodEnd,
+          totalDebits: totalDebits,
+          totalCredits: totalCredits,
+          sampleTransactions: parsedData.transactions.slice(0, 3).map((t: any) => ({
+            date: t.date,
+            description: t.description?.substring(0, 30),
+            amount: t.amount,
+          })),
+        },
+        {
+          model: usedModelConfig.id,
+          provider: 'openrouter',
+          restaurant_id: restaurantId,
+          edge_function: 'process-bank-statement',
+          stream: true,
+          attempt: 1,
+          success: true,
+        },
+        null // Token usage not available in streaming
+      );
     } catch (parseError) {
       console.error("Failed to parse JSON from AI response:", parseError);
       console.error("Content that failed to parse:", content.substring(0, 1000) + "...");
+      
+      // Log parsing failure to Braintrust
+      logAICall(
+        'process-bank-statement:parse_error',
+        {
+          model: usedModelConfig?.id || 'unknown',
+          responseSizeBytes: content.length,
+          contentPreview: content.substring(0, 500),
+        },
+        null,
+        {
+          model: usedModelConfig?.id || 'unknown',
+          provider: 'openrouter',
+          restaurant_id: restaurantId,
+          edge_function: 'process-bank-statement',
+          stream: true,
+          attempt: 1,
+          success: false,
+          error: parseError instanceof Error ? parseError.message : String(parseError),
+        },
+        null
+      );
+      
+      // Update statement with error
+      await supabase
+        .from("bank_statement_uploads")
+        .update({
+          status: "error",
+          error_message: `Failed to parse AI response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`
+        })
+        .eq("id", statementUploadId);
 
       return new Response(
         JSON.stringify({
@@ -599,6 +806,28 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("Error in process-bank-statement function:", error);
+    console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
+    
+    // Log unexpected error to Braintrust
+    logAICall(
+      'process-bank-statement:unexpected_error',
+      { 
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      },
+      null,
+      {
+        model: 'unknown',
+        provider: 'openrouter',
+        edge_function: 'process-bank-statement',
+        stream: false,
+        attempt: 1,
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      null
+    );
+    
     return new Response(
       JSON.stringify({
         error: "An unexpected error occurred while processing the bank statement",

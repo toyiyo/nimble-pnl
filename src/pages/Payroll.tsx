@@ -444,7 +444,7 @@ const Payroll = () => {
             <div className="space-y-1 text-sm">
               <p className="font-medium">Payroll Calculation Notes:</p>
               <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                <li>Overtime is calculated at 1.5× regular rate for hours over 40 per pay period</li>
+                <li>Overtime is calculated at 1.5× regular rate for hours over 40 per calendar week</li>
                 <li>Only completed time punches (clock in/out pairs) are included</li>
                 <li>Break time is excluded from worked hours</li>
                 <li>Tips are aggregated from the employee_tips table</li>

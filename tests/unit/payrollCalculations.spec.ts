@@ -373,6 +373,165 @@ describe('Payroll Calculations', () => {
       expect(payroll.grossPay).toBe(12000); // wages only
       expect(payroll.totalPay).toBe(17000); // wages + tips
     });
+
+    test('should calculate overtime per calendar week for multi-week periods', () => {
+      const punches: TimePunch[] = [];
+      
+      // Week 1 (Jan 1-7, 2024): 45 hours (5 OT hours)
+      // Monday Jan 1
+      punches.push({
+        id: '1',
+        restaurant_id: 'rest1',
+        employee_id: 'emp1',
+        punch_type: 'clock_in',
+        punch_time: '2024-01-01T09:00:00Z',
+        created_at: '2024-01-01T09:00:00Z',
+        updated_at: '2024-01-01T09:00:00Z',
+      });
+      punches.push({
+        id: '2',
+        restaurant_id: 'rest1',
+        employee_id: 'emp1',
+        punch_type: 'clock_out',
+        punch_time: '2024-01-01T18:00:00Z',
+        created_at: '2024-01-01T18:00:00Z',
+        updated_at: '2024-01-01T18:00:00Z',
+      });
+      
+      // Tuesday-Friday of Week 1: 9 hours each day
+      for (let day = 2; day <= 5; day++) {
+        punches.push({
+          id: `${day * 2 + 1}`,
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: `2024-01-0${day}T09:00:00Z`,
+          created_at: `2024-01-0${day}T09:00:00Z`,
+          updated_at: `2024-01-0${day}T09:00:00Z`,
+        });
+        punches.push({
+          id: `${day * 2 + 2}`,
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: `2024-01-0${day}T18:00:00Z`,
+          created_at: `2024-01-0${day}T18:00:00Z`,
+          updated_at: `2024-01-0${day}T18:00:00Z`,
+        });
+      }
+      
+      // Week 2 (Jan 8-14, 2024): 35 hours (0 OT hours)
+      // Monday-Thursday of Week 2: 8 hours, Friday 3 hours
+      for (let day = 8; day <= 11; day++) {
+        punches.push({
+          id: `${day * 2 + 1}`,
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: `2024-01-${day}T09:00:00Z`,
+          created_at: `2024-01-${day}T09:00:00Z`,
+          updated_at: `2024-01-${day}T09:00:00Z`,
+        });
+        punches.push({
+          id: `${day * 2 + 2}`,
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: `2024-01-${day}T17:00:00Z`,
+          created_at: `2024-01-${day}T17:00:00Z`,
+          updated_at: `2024-01-${day}T17:00:00Z`,
+        });
+      }
+      // Friday partial day
+      punches.push({
+        id: '25',
+        restaurant_id: 'rest1',
+        employee_id: 'emp1',
+        punch_type: 'clock_in',
+        punch_time: '2024-01-12T09:00:00Z',
+        created_at: '2024-01-12T09:00:00Z',
+        updated_at: '2024-01-12T09:00:00Z',
+      });
+      punches.push({
+        id: '26',
+        restaurant_id: 'rest1',
+        employee_id: 'emp1',
+        punch_type: 'clock_out',
+        punch_time: '2024-01-12T12:00:00Z',
+        created_at: '2024-01-12T12:00:00Z',
+        updated_at: '2024-01-12T12:00:00Z',
+      });
+
+      const payroll = calculateEmployeePay(employee, punches, 0);
+      
+      // Week 1: 45 hours = 40 regular + 5 OT
+      // Week 2: 35 hours = 35 regular + 0 OT
+      // Total: 75 regular + 5 OT
+      expect(payroll.regularHours).toBe(75);
+      expect(payroll.overtimeHours).toBe(5);
+      expect(payroll.regularPay).toBe(112500); // 75 hours * $15/hr = $1,125
+      expect(payroll.overtimePay).toBe(11250); // 5 hours * $15/hr * 1.5 = $112.50
+      expect(payroll.grossPay).toBe(123750); // $1,237.50
+    });
+
+    test('should calculate overtime separately for each week even if total is under 40', () => {
+      const punches: TimePunch[] = [];
+      
+      // Week 1 (Jan 1-7, 2024): 50 hours (10 OT hours)
+      for (let day = 1; day <= 5; day++) {
+        punches.push({
+          id: `${day * 2 - 1}`,
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: `2024-01-0${day}T08:00:00Z`,
+          created_at: `2024-01-0${day}T08:00:00Z`,
+          updated_at: `2024-01-0${day}T08:00:00Z`,
+        });
+        punches.push({
+          id: `${day * 2}`,
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: `2024-01-0${day}T18:00:00Z`,
+          created_at: `2024-01-0${day}T18:00:00Z`,
+          updated_at: `2024-01-0${day}T18:00:00Z`,
+        });
+      }
+      
+      // Week 2 (Jan 8-14, 2024): 20 hours (0 OT hours)
+      for (let day = 8; day <= 9; day++) {
+        punches.push({
+          id: `${day * 2 - 1}`,
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: `2024-01-${day}T09:00:00Z`,
+          created_at: `2024-01-${day}T09:00:00Z`,
+          updated_at: `2024-01-${day}T09:00:00Z`,
+        });
+        punches.push({
+          id: `${day * 2}`,
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: `2024-01-${day}T19:00:00Z`,
+          created_at: `2024-01-${day}T19:00:00Z`,
+          updated_at: `2024-01-${day}T19:00:00Z`,
+        });
+      }
+
+      const payroll = calculateEmployeePay(employee, punches, 0);
+      
+      // Week 1: 50 hours = 40 regular + 10 OT
+      // Week 2: 20 hours = 20 regular + 0 OT
+      // Total: 60 regular + 10 OT (not 70 regular + 0 OT)
+      expect(payroll.regularHours).toBe(60);
+      expect(payroll.overtimeHours).toBe(10);
+      expect(payroll.regularPay).toBe(90000); // 60 hours * $15/hr = $900
+      expect(payroll.overtimePay).toBe(22500); // 10 hours * $15/hr * 1.5 = $225
+      expect(payroll.grossPay).toBe(112500); // $1,125
+    });
   });
 
   describe('formatCurrency', () => {

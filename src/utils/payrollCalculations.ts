@@ -1,5 +1,6 @@
 import { TimePunch } from '@/types/timeTracking';
 import { Employee } from '@/types/scheduling';
+import { startOfWeek, endOfWeek } from 'date-fns';
 
 export interface WorkPeriod {
   startTime: Date;
@@ -145,8 +146,28 @@ export function calculateWorkedHours(punches: TimePunch[]): number {
 }
 
 /**
- * Calculate regular and overtime hours
- * Overtime is hours worked beyond 40 in a week at 1.5x rate
+ * Group punches by calendar week (Sunday to Saturday)
+ */
+function groupPunchesByWeek(punches: TimePunch[]): Map<string, TimePunch[]> {
+  const weekMap = new Map<string, TimePunch[]>();
+  
+  punches.forEach(punch => {
+    const punchDate = new Date(punch.punch_time);
+    const weekStart = startOfWeek(punchDate, { weekStartsOn: 0 });
+    const weekKey = weekStart.toISOString();
+    
+    if (!weekMap.has(weekKey)) {
+      weekMap.set(weekKey, []);
+    }
+    weekMap.get(weekKey)!.push(punch);
+  });
+  
+  return weekMap;
+}
+
+/**
+ * Calculate regular and overtime hours per week
+ * Overtime is hours worked beyond 40 in a calendar week at 1.5x rate
  */
 export function calculateRegularAndOvertimeHours(totalHours: number): {
   regularHours: number;
@@ -169,17 +190,30 @@ export function calculateRegularAndOvertimeHours(totalHours: number): {
 
 /**
  * Calculate pay for an employee
+ * Partitions punches by calendar week and computes overtime per week
  */
 export function calculateEmployeePay(
   employee: Employee,
   punches: TimePunch[],
   tips: number // In cents
 ): EmployeePayroll {
-  const totalWorkedHours = calculateWorkedHours(punches);
-  const { regularHours, overtimeHours } = calculateRegularAndOvertimeHours(totalWorkedHours);
+  // Group punches by calendar week (Sunday to Saturday)
+  const punchesByWeek = groupPunchesByWeek(punches);
+  
+  let totalRegularHours = 0;
+  let totalOvertimeHours = 0;
+  
+  // Calculate regular and OT hours for each week
+  punchesByWeek.forEach((weekPunches) => {
+    const weekWorkedHours = calculateWorkedHours(weekPunches);
+    const { regularHours, overtimeHours } = calculateRegularAndOvertimeHours(weekWorkedHours);
+    
+    totalRegularHours += regularHours;
+    totalOvertimeHours += overtimeHours;
+  });
 
-  const regularPay = Math.round(regularHours * employee.hourly_rate);
-  const overtimePay = Math.round(overtimeHours * employee.hourly_rate * 1.5);
+  const regularPay = Math.round(totalRegularHours * employee.hourly_rate);
+  const overtimePay = Math.round(totalOvertimeHours * employee.hourly_rate * 1.5);
   const grossPay = regularPay + overtimePay;
   const totalPay = grossPay + tips;
 
@@ -188,8 +222,8 @@ export function calculateEmployeePay(
     employeeName: employee.name,
     position: employee.position,
     hourlyRate: employee.hourly_rate,
-    regularHours: Math.round(regularHours * 100) / 100, // Round to 2 decimals
-    overtimeHours: Math.round(overtimeHours * 100) / 100,
+    regularHours: Math.round(totalRegularHours * 100) / 100, // Round to 2 decimals
+    overtimeHours: Math.round(totalOvertimeHours * 100) / 100,
     regularPay,
     overtimePay,
     grossPay,

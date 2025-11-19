@@ -32,12 +32,12 @@ export function useTopVendors(startDate: Date, endDate: Date, bankAccountId: str
       const periodDays = differenceInDays(endDate, startDate) + 1;
       const previousPeriodStart = subDays(startDate, periodDays);
 
-      // Fetch current and previous period transactions
+      // Fetch current and previous period transactions (including pending)
       let query = supabase
         .from('bank_transactions')
         .select('transaction_date, amount, status, merchant_name, normalized_payee, description')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('status', 'posted')
+        .in('status', ['posted', 'pending'])
         .lt('amount', 0) // Only outflows
         .gte('transaction_date', format(previousPeriodStart, 'yyyy-MM-dd'))
         .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));

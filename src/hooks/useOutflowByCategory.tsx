@@ -91,12 +91,12 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
         throw new Error("No restaurant selected");
       }
 
-      // Fetch cleared transactions (outflows only)
+      // Fetch cleared and pending transactions (outflows only)
       let query = supabase
         .from('bank_transactions')
         .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, chart_of_accounts!category_id(account_name, account_subtype)')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('status', 'posted')
+        .in('status', ['posted', 'pending'])
         .lt('amount', 0) // Only outflows
         .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
         .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
@@ -110,9 +110,15 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       if (error) throw error;
 
       const txns = transactions || [];
-      const clearedOutflows = Math.abs(txns.reduce((sum, t) => sum + t.amount, 0));
+      
+      // Separate posted from pending bank transactions
+      const postedTxns = txns.filter(t => t.status === 'posted');
+      const pendingTxns = txns.filter(t => t.status === 'pending');
+      
+      const clearedOutflows = Math.abs(postedTxns.reduce((sum, t) => sum + t.amount, 0));
+      const pendingBankOutflows = Math.abs(pendingTxns.reduce((sum, t) => sum + t.amount, 0));
 
-      // Fetch pending outflows for the same period
+      // Fetch pending outflows (checks) for the same period
       const { data: pendingOutflows, error: pendingError } = await supabase
         .from('pending_outflows')
         .select('amount, category_id, issue_date, status, chart_account:chart_of_accounts!category_id(account_name, account_subtype)')
@@ -123,13 +129,17 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
 
       if (pendingError) throw pendingError;
 
-      const pendingTxns = pendingOutflows || [];
-      const totalPendingOutflows = pendingTxns.reduce((sum, t) => sum + t.amount, 0);
+      const pendingCheckTxns = pendingOutflows || [];
+      const totalPendingCheckOutflows = pendingCheckTxns.reduce((sum, t) => sum + t.amount, 0);
+      
+      // Total pending = pending bank transactions + pending checks
+      const totalPendingOutflows = pendingBankOutflows + totalPendingCheckOutflows;
 
-      // Group cleared transactions by category
+      // Group posted and pending bank transactions by category
       const categoryMap = new Map<string, { amount: number; pendingAmount: number; count: number; categoryId: string | null }>();
 
-      txns.forEach(t => {
+      // Process posted bank transactions
+      postedTxns.forEach(t => {
         let category = 'Other/Uncategorized';
         let categoryId: string | null = null;
 
@@ -148,8 +158,27 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
         entry.count += 1;
       });
 
-      // Add pending outflows to category map
+      // Add pending bank transactions to category map
       pendingTxns.forEach(t => {
+        let category = 'Other/Uncategorized';
+        let categoryId: string | null = null;
+
+        if (t.category_id && t.chart_of_accounts) {
+          categoryId = t.category_id;
+          const accountSubtype = t.chart_of_accounts.account_subtype;
+          const accountName = t.chart_of_accounts.account_name || '';
+          category = mapToStandardCategory(accountSubtype, accountName);
+        }
+
+        if (!categoryMap.has(category)) {
+          categoryMap.set(category, { amount: 0, pendingAmount: 0, count: 0, categoryId });
+        }
+        const entry = categoryMap.get(category)!;
+        entry.pendingAmount += Math.abs(t.amount);
+      });
+
+      // Add pending check outflows to category map
+      pendingCheckTxns.forEach(t => {
         let category = 'Other/Uncategorized';
         let categoryId: string | null = null;
 

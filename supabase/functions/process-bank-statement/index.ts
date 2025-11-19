@@ -636,6 +636,7 @@ serve(async (req) => {
     let parsedData;
     let totalDebits = 0;
     let totalCredits = 0;
+    let validationResult: ValidationResult | null = null;
     
     try {
       let jsonContent = content.trim();
@@ -710,7 +711,7 @@ serve(async (req) => {
       
       // Validate and clean transactions BEFORE insertion
       console.log("🔍 Validating transactions...");
-      const validationResult = validateAndCleanTransactions(parsedData.transactions);
+      validationResult = validateAndCleanTransactions(parsedData.transactions);
       
       console.log(`✅ Validation complete: ${validationResult.valid.length} valid, ${validationResult.invalid.length} invalid`);
       
@@ -798,6 +799,20 @@ serve(async (req) => {
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 422,
+        },
+      );
+    }
+
+    // Ensure validationResult is available (should always be set if we reach here without early return)
+    if (!validationResult) {
+      console.error("Validation result is null - this should not happen");
+      return new Response(
+        JSON.stringify({
+          error: "Internal error: validation result not available",
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
         },
       );
     }

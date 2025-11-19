@@ -23,52 +23,54 @@ interface ParsedTransaction {
 }
 
 interface ValidationResult {
-  valid: any[];
-  invalid: any[];
+  transactions: any[];
+  validCount: number;
+  invalidCount: number;
   warnings: string[];
 }
 
 /**
- * Validates and cleans transactions extracted from bank statements
- * Filters out transactions with missing or invalid data
- * Returns valid transactions, invalid transactions, and warning messages
+ * Validates transactions extracted from bank statements
+ * Adds validation error details to each transaction instead of filtering them out
+ * Returns all transactions with validation_errors field populated where needed
  */
-function validateAndCleanTransactions(transactions: any[]): ValidationResult {
-  const valid: any[] = [];
-  const invalid: any[] = [];
+function validateTransactions(transactions: any[]): ValidationResult {
+  const allTransactions: any[] = [];
   const warnings: string[] = [];
+  let validCount = 0;
+  let invalidCount = 0;
 
   for (let i = 0; i < transactions.length; i++) {
     const tx = transactions[i];
     const txIndex = i + 1;
-
+    const validationErrors: Record<string, string> = {};
+    
     // Check for null/missing amount
     if (tx.amount === null || tx.amount === undefined) {
-      invalid.push({ ...tx, reason: 'Missing amount', originalIndex: txIndex });
-      warnings.push(`Skipped transaction #${txIndex} "${tx.description}" on ${tx.date} - no amount found`);
-      continue;
-    }
-
-    // Check for invalid amount (not a number or NaN)
-    if (typeof tx.amount !== 'number' || isNaN(tx.amount)) {
-      invalid.push({ ...tx, reason: 'Invalid amount format', originalIndex: txIndex });
-      warnings.push(`Skipped transaction #${txIndex} "${tx.description}" - invalid amount: ${tx.amount}`);
-      continue;
+      validationErrors.amount = 'Missing or null amount';
+      warnings.push(`Transaction #${txIndex} "${tx.description || 'Unknown'}" on ${tx.date || 'unknown date'} - no amount found`);
+    } else if (typeof tx.amount !== 'number' || isNaN(tx.amount)) {
+      // Check for invalid amount (not a number or NaN)
+      validationErrors.amount = `Invalid amount format: ${tx.amount}`;
+      warnings.push(`Transaction #${txIndex} "${tx.description || 'Unknown'}" - invalid amount: ${tx.amount}`);
     }
 
     // Check for required fields
-    if (!tx.date || !tx.description) {
-      invalid.push({ ...tx, reason: 'Missing required fields', originalIndex: txIndex });
-      warnings.push(`Skipped transaction #${txIndex} - missing date or description`);
-      continue;
+    if (!tx.date) {
+      validationErrors.date = 'Missing date';
+      warnings.push(`Transaction #${txIndex} - missing date`);
+    } else {
+      // Validate date format (basic check)
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+      if (!datePattern.test(tx.date)) {
+        validationErrors.date = `Invalid date format: ${tx.date} (expected YYYY-MM-DD)`;
+        warnings.push(`Transaction #${txIndex} "${tx.description || 'Unknown'}" - invalid date format: ${tx.date}`);
+      }
     }
-
-    // Validate date format (basic check)
-    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-    if (!datePattern.test(tx.date)) {
-      invalid.push({ ...tx, reason: 'Invalid date format', originalIndex: txIndex });
-      warnings.push(`Skipped transaction #${txIndex} "${tx.description}" - invalid date format: ${tx.date}`);
-      continue;
+    
+    if (!tx.description) {
+      validationErrors.description = 'Missing description';
+      warnings.push(`Transaction #${txIndex} - missing description`);
     }
 
     // Check confidence score format (must be 0-0.99 for NUMERIC(3,2))
@@ -79,10 +81,23 @@ function validateAndCleanTransactions(transactions: any[]): ValidationResult {
       }
     }
 
-    valid.push(tx);
+    // Add transaction with validation info
+    const hasErrors = Object.keys(validationErrors).length > 0;
+    allTransactions.push({
+      ...tx,
+      has_validation_error: hasErrors,
+      validation_errors: hasErrors ? validationErrors : null,
+      originalIndex: txIndex,
+    });
+    
+    if (hasErrors) {
+      invalidCount++;
+    } else {
+      validCount++;
+    }
   }
 
-  return { valid, invalid, warnings };
+  return { transactions: allTransactions, validCount, invalidCount, warnings };
 }
 
 // Bank statement analysis prompt
@@ -696,24 +711,24 @@ serve(async (req) => {
         throw new Error("No transactions found in bank statement");
       }
 
-      // Calculate totals for logging and database update
-      totalDebits = parsedData.transactions
-        .filter((t: any) => t.amount < 0)
+      // Validate transactions and add error details
+      console.log("🔍 Validating transactions...");
+      validationResult = validateTransactions(parsedData.transactions);
+      
+      // Calculate totals for logging and database update (only from valid transactions with amounts)
+      totalDebits = validationResult.transactions
+        .filter((t: any) => !t.has_validation_error && typeof t.amount === 'number' && t.amount < 0)
         .reduce((sum: number, t: any) => sum + Math.abs(t.amount), 0);
       
-      totalCredits = parsedData.transactions
-        .filter((t: any) => t.amount > 0)
+      totalCredits = validationResult.transactions
+        .filter((t: any) => !t.has_validation_error && typeof t.amount === 'number' && t.amount > 0)
         .reduce((sum: number, t: any) => sum + t.amount, 0);
 
       console.log(`✅ Successfully parsed ${parsedData.transactions.length} transactions`);
       console.log(`📊 Bank: ${parsedData.bankName}, Period: ${parsedData.statementPeriodStart} to ${parsedData.statementPeriodEnd}`);
       console.log(`💰 Totals - Debits: $${totalDebits.toFixed(2)}, Credits: $${totalCredits.toFixed(2)}`);
       
-      // Validate and clean transactions BEFORE insertion
-      console.log("🔍 Validating transactions...");
-      validationResult = validateAndCleanTransactions(parsedData.transactions);
-      
-      console.log(`✅ Validation complete: ${validationResult.valid.length} valid, ${validationResult.invalid.length} invalid`);
+      console.log(`✅ Validation complete: ${validationResult.validCount} valid, ${validationResult.invalidCount} invalid`);
       
       if (validationResult.warnings.length > 0) {
         console.log("⚠️ Validation warnings:");
@@ -732,16 +747,17 @@ serve(async (req) => {
         {
           bankName: parsedData.bankName,
           transactionCount: parsedData.transactions.length,
-          validTransactionCount: validationResult.valid.length,
-          invalidTransactionCount: validationResult.invalid.length,
+          validTransactionCount: validationResult.validCount,
+          invalidTransactionCount: validationResult.invalidCount,
           periodStart: parsedData.statementPeriodStart,
           periodEnd: parsedData.statementPeriodEnd,
           totalDebits: totalDebits,
           totalCredits: totalCredits,
-          sampleTransactions: parsedData.transactions.slice(0, 3).map((t: any) => ({
+          sampleTransactions: validationResult.transactions.slice(0, 3).map((t: any) => ({
             date: t.date,
             description: t.description?.substring(0, 30),
             amount: t.amount,
+            hasError: t.has_validation_error,
           })),
           validationWarnings: validationResult.warnings.slice(0, 5), // Log first 5 warnings
         },
@@ -818,14 +834,14 @@ serve(async (req) => {
     }
 
     // Update statement upload with parsed data and validation results
-    const finalStatus = validationResult.invalid.length > 0 && validationResult.valid.length > 0 
+    const finalStatus = validationResult.invalidCount > 0 && validationResult.validCount > 0 
       ? 'partial_success' 
-      : validationResult.valid.length > 0 
+      : validationResult.validCount > 0 
         ? 'processed' 
         : 'error';
     
-    const errorMessage = validationResult.invalid.length > 0
-      ? `${validationResult.invalid.length} transaction(s) were skipped due to validation errors. Please review invalid_transactions field.`
+    const errorMessage = validationResult.invalidCount > 0
+      ? `${validationResult.invalidCount} transaction(s) have validation errors that need user review and correction.`
       : null;
 
     const { error: updateError } = await supabase
@@ -837,10 +853,9 @@ serve(async (req) => {
         raw_ocr_data: parsedData,
         status: finalStatus,
         processed_at: new Date().toISOString(),
-        transaction_count: parsedData.transactions.length,
-        successful_transaction_count: validationResult.valid.length,
-        failed_transaction_count: validationResult.invalid.length,
-        invalid_transactions: validationResult.invalid.length > 0 ? validationResult.invalid : null,
+        transaction_count: validationResult.transactions.length,
+        successful_transaction_count: validationResult.validCount,
+        failed_transaction_count: validationResult.invalidCount,
         total_debits: totalDebits,
         total_credits: totalCredits,
         error_message: errorMessage,
@@ -855,51 +870,30 @@ serve(async (req) => {
       });
     }
 
-    // Insert transaction lines with sequence in batches to avoid memory issues
-    // Process in smaller batches and don't hold entire array in memory
-    // Use ONLY validated transactions
-    const BATCH_SIZE = 50; // Reduced from 100 to 50 for better memory management
-    const totalValidTransactions = validationResult.valid.length;
+    // Insert ALL transaction lines (valid and invalid) with sequence in batches
+    // This allows users to review and fix invalid transactions in the UI
+    const BATCH_SIZE = 50;
+    const totalTransactions = validationResult.transactions.length;
     
-    if (totalValidTransactions === 0) {
-      console.log("⚠️ No valid transactions to insert. All transactions failed validation.");
-      
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "All transactions failed validation",
-          bankName: parsedData.bankName,
-          transactionCount: parsedData.transactions.length,
-          validTransactionCount: 0,
-          invalidTransactionCount: validationResult.invalid.length,
-          warnings: validationResult.warnings,
-          totalDebits,
-          totalCredits,
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 422,
-        },
-      );
-    }
-    
-    console.log(`💾 Inserting ${totalValidTransactions} valid transactions in batches of ${BATCH_SIZE}...`);
+    console.log(`💾 Inserting ${totalTransactions} transactions (${validationResult.validCount} valid, ${validationResult.invalidCount} with errors) in batches of ${BATCH_SIZE}...`);
     
     let insertedCount = 0;
-    for (let i = 0; i < totalValidTransactions; i += BATCH_SIZE) {
-      const endIndex = Math.min(i + BATCH_SIZE, totalValidTransactions);
-      const batchTransactions = validationResult.valid.slice(i, endIndex);
+    for (let i = 0; i < totalTransactions; i += BATCH_SIZE) {
+      const endIndex = Math.min(i + BATCH_SIZE, totalTransactions);
+      const batchTransactions = validationResult.transactions.slice(i, endIndex);
       
       // Map to database schema just for this batch
       const batch = batchTransactions.map((transaction: any, batchIndex: number) => ({
         statement_upload_id: statementUploadId,
-        transaction_date: transaction.date,
-        description: transaction.description,
-        amount: transaction.amount,
+        transaction_date: transaction.date || null,
+        description: transaction.description || 'Unknown',
+        amount: (typeof transaction.amount === 'number' && !isNaN(transaction.amount)) ? transaction.amount : null,
         transaction_type: transaction.transactionType || 'unknown',
         balance: transaction.balance,
         line_sequence: i + batchIndex + 1,
         confidence_score: transaction.confidenceScore,
+        has_validation_error: transaction.has_validation_error || false,
+        validation_errors: transaction.validation_errors || null,
       }));
       
       const { error: linesError } = await supabase
@@ -914,7 +908,7 @@ serve(async (req) => {
           .from("bank_statement_uploads")
           .update({
             status: "error",
-            error_message: `Failed to insert transactions after processing ${insertedCount} of ${totalValidTransactions}. ${validationResult.invalid.length} additional transaction(s) failed validation.`
+            error_message: `Failed to insert transactions after processing ${insertedCount} of ${totalTransactions}.`
           })
           .eq("id", statementUploadId);
         
@@ -922,8 +916,8 @@ serve(async (req) => {
           error: "Failed to insert transaction lines",
           details: linesError,
           insertedCount,
-          totalValid: totalValidTransactions,
-          invalidCount: validationResult.invalid.length,
+          totalTransactions,
+          invalidCount: validationResult.invalidCount,
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 500,
@@ -931,24 +925,24 @@ serve(async (req) => {
       }
       
       insertedCount += batch.length;
-      if (insertedCount % 100 === 0 || insertedCount === totalValidTransactions) {
-        console.log(`✅ Inserted ${insertedCount}/${totalValidTransactions} transactions`);
+      if (insertedCount % 100 === 0 || insertedCount === totalTransactions) {
+        console.log(`✅ Inserted ${insertedCount}/${totalTransactions} transactions`);
       }
     }
 
-    console.log(`✅ Successfully inserted all ${totalValidTransactions} valid transactions`);
+    console.log(`✅ Successfully inserted all ${totalTransactions} transactions`);
     
-    if (validationResult.invalid.length > 0) {
-      console.log(`⚠️ ${validationResult.invalid.length} transaction(s) were skipped and stored for manual review`);
+    if (validationResult.invalidCount > 0) {
+      console.log(`⚠️ ${validationResult.invalidCount} transaction(s) have validation errors and need user review`);
     }
 
     return new Response(
       JSON.stringify({
         success: true,
         bankName: parsedData.bankName,
-        transactionCount: parsedData.transactions.length,
-        validTransactionCount: totalValidTransactions,
-        invalidTransactionCount: validationResult.invalid.length,
+        transactionCount: validationResult.transactions.length,
+        validTransactionCount: validationResult.validCount,
+        invalidTransactionCount: validationResult.invalidCount,
         warnings: validationResult.warnings,
         totalDebits,
         totalCredits,

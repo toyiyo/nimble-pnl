@@ -26,15 +26,17 @@ export interface BankStatementUpload {
 export interface BankStatementLine {
   id: string;
   statement_upload_id: string;
-  transaction_date: string;
+  transaction_date: string | null;
   description: string;
-  amount: number;
+  amount: number | null;
   transaction_type: string;
   balance: number | null;
   line_sequence: number;
   confidence_score: number | null;
   is_imported: boolean;
   imported_transaction_id: string | null;
+  has_validation_error: boolean;
+  validation_errors: Record<string, string> | null;
   created_at: string;
   updated_at: string;
 }
@@ -413,8 +415,23 @@ export const useBankStatementImport = () => {
       }
 
       let importedCount = 0;
+      let skippedCount = 0;
 
       for (const line of lines) {
+        // Skip transactions with validation errors - user needs to fix them first
+        if (line.has_validation_error) {
+          skippedCount++;
+          console.log(`Skipping line ${line.id} due to validation errors:`, line.validation_errors);
+          continue;
+        }
+
+        // Also validate that required fields are present (defensive check)
+        if (!line.transaction_date || !line.description || line.amount === null) {
+          skippedCount++;
+          console.log(`Skipping line ${line.id} - missing required fields`);
+          continue;
+        }
+
         // Create bank transaction
         const { data: newTransaction, error: transactionError } = await supabase
           .from('bank_transactions')
@@ -474,9 +491,13 @@ export const useBankStatementImport = () => {
         .update({ status: 'imported' })
         .eq('id', statementUploadId);
 
+      const message = skippedCount > 0 
+        ? `Successfully imported ${importedCount} transactions. ${skippedCount} transactions with validation errors were skipped. Balance updated to ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalBalance)}`
+        : `Successfully imported ${importedCount} transactions. Balance updated to ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalBalance)}`;
+
       toast({
         title: "Import Complete",
-        description: `Successfully imported ${importedCount} transactions. Balance updated to ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalBalance)}`,
+        description: message,
       });
 
       return true;

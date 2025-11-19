@@ -41,12 +41,12 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
         throw new Error("No restaurant selected");
       }
 
-      // Fetch transactions for the period
+      // Fetch transactions for the period (including both posted and pending)
       let txQuery = supabase
         .from('bank_transactions')
         .select('transaction_date, amount, status, description, merchant_name, category_id, chart_of_accounts!category_id(account_name, account_subtype)')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('status', 'posted')
+        .in('status', ['posted', 'pending'])
         .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
         .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
 
@@ -103,11 +103,23 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
           .reduce((sum, t) => sum + t.amount, 0)
       );
 
-      // Calculate uncategorized spend
+      // Calculate uncategorized spend (including transactions with no category_id 
+      // OR categorized as "Uncategorized Income/Expense")
       const outflows = txns.filter(t => t.amount < 0);
       const totalOutflows = Math.abs(outflows.reduce((sum, t) => sum + t.amount, 0));
       const uncategorizedSpend = Math.abs(
-        outflows.filter(t => !t.category_id).reduce((sum, t) => sum + t.amount, 0)
+        outflows.filter(t => {
+          // No category assigned
+          if (!t.category_id) return true;
+          
+          // Categorized as "Uncategorized Expense" or "Uncategorized Income"
+          if (t.chart_of_accounts) {
+            const accountName = t.chart_of_accounts.account_name?.toLowerCase() || '';
+            return accountName.includes('uncategorized');
+          }
+          
+          return false;
+        }).reduce((sum, t) => sum + t.amount, 0)
       );
 
       // Calculate percentages

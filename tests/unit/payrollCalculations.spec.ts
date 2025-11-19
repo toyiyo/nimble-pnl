@@ -1,0 +1,331 @@
+import { describe, test, expect } from '@playwright/test';
+import {
+  parseWorkPeriods,
+  calculateWorkedHours,
+  calculateRegularAndOvertimeHours,
+  calculateEmployeePay,
+  formatCurrency,
+  formatHours,
+} from '../../src/utils/payrollCalculations';
+import { TimePunch } from '../../src/types/timeTracking';
+import { Employee } from '../../src/types/scheduling';
+
+describe('Payroll Calculations', () => {
+  describe('parseWorkPeriods', () => {
+    test('should parse a simple clock in/out pair', () => {
+      const punches: TimePunch[] = [
+        {
+          id: '1',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: '2024-01-01T09:00:00Z',
+          created_at: '2024-01-01T09:00:00Z',
+          updated_at: '2024-01-01T09:00:00Z',
+        },
+        {
+          id: '2',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: '2024-01-01T17:00:00Z',
+          created_at: '2024-01-01T17:00:00Z',
+          updated_at: '2024-01-01T17:00:00Z',
+        },
+      ];
+
+      const periods = parseWorkPeriods(punches);
+      expect(periods).toHaveLength(1);
+      expect(periods[0].hours).toBe(8);
+      expect(periods[0].isBreak).toBe(false);
+    });
+
+    test('should handle break periods', () => {
+      const punches: TimePunch[] = [
+        {
+          id: '1',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: '2024-01-01T09:00:00Z',
+          created_at: '2024-01-01T09:00:00Z',
+          updated_at: '2024-01-01T09:00:00Z',
+        },
+        {
+          id: '2',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'break_start',
+          punch_time: '2024-01-01T12:00:00Z',
+          created_at: '2024-01-01T12:00:00Z',
+          updated_at: '2024-01-01T12:00:00Z',
+        },
+        {
+          id: '3',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'break_end',
+          punch_time: '2024-01-01T12:30:00Z',
+          created_at: '2024-01-01T12:30:00Z',
+          updated_at: '2024-01-01T12:30:00Z',
+        },
+        {
+          id: '4',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: '2024-01-01T17:00:00Z',
+          created_at: '2024-01-01T17:00:00Z',
+          updated_at: '2024-01-01T17:00:00Z',
+        },
+      ];
+
+      const periods = parseWorkPeriods(punches);
+      expect(periods).toHaveLength(3);
+      
+      // First work period: 9am-12pm (3 hours)
+      expect(periods[0].hours).toBe(3);
+      expect(periods[0].isBreak).toBe(false);
+      
+      // Break period: 12pm-12:30pm (0.5 hours)
+      expect(periods[1].hours).toBe(0.5);
+      expect(periods[1].isBreak).toBe(true);
+      
+      // Second work period: 12:30pm-5pm (4.5 hours)
+      expect(periods[2].hours).toBe(4.5);
+      expect(periods[2].isBreak).toBe(false);
+    });
+
+    test('should handle out-of-order punches', () => {
+      const punches: TimePunch[] = [
+        {
+          id: '2',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: '2024-01-01T17:00:00Z',
+          created_at: '2024-01-01T17:00:00Z',
+          updated_at: '2024-01-01T17:00:00Z',
+        },
+        {
+          id: '1',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: '2024-01-01T09:00:00Z',
+          created_at: '2024-01-01T09:00:00Z',
+          updated_at: '2024-01-01T09:00:00Z',
+        },
+      ];
+
+      const periods = parseWorkPeriods(punches);
+      expect(periods).toHaveLength(1);
+      expect(periods[0].hours).toBe(8);
+    });
+  });
+
+  describe('calculateWorkedHours', () => {
+    test('should calculate total worked hours excluding breaks', () => {
+      const punches: TimePunch[] = [
+        {
+          id: '1',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: '2024-01-01T09:00:00Z',
+          created_at: '2024-01-01T09:00:00Z',
+          updated_at: '2024-01-01T09:00:00Z',
+        },
+        {
+          id: '2',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'break_start',
+          punch_time: '2024-01-01T12:00:00Z',
+          created_at: '2024-01-01T12:00:00Z',
+          updated_at: '2024-01-01T12:00:00Z',
+        },
+        {
+          id: '3',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'break_end',
+          punch_time: '2024-01-01T13:00:00Z',
+          created_at: '2024-01-01T13:00:00Z',
+          updated_at: '2024-01-01T13:00:00Z',
+        },
+        {
+          id: '4',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: '2024-01-01T17:00:00Z',
+          created_at: '2024-01-01T17:00:00Z',
+          updated_at: '2024-01-01T17:00:00Z',
+        },
+      ];
+
+      const hours = calculateWorkedHours(punches);
+      // 9am-12pm (3h) + 1pm-5pm (4h) = 7 hours (excluding 1 hour break)
+      expect(hours).toBe(7);
+    });
+
+    test('should return 0 for empty punches', () => {
+      const hours = calculateWorkedHours([]);
+      expect(hours).toBe(0);
+    });
+  });
+
+  describe('calculateRegularAndOvertimeHours', () => {
+    test('should calculate only regular hours when under 40', () => {
+      const result = calculateRegularAndOvertimeHours(35);
+      expect(result.regularHours).toBe(35);
+      expect(result.overtimeHours).toBe(0);
+    });
+
+    test('should calculate exactly 40 regular hours with no overtime', () => {
+      const result = calculateRegularAndOvertimeHours(40);
+      expect(result.regularHours).toBe(40);
+      expect(result.overtimeHours).toBe(0);
+    });
+
+    test('should calculate regular and overtime hours when over 40', () => {
+      const result = calculateRegularAndOvertimeHours(45);
+      expect(result.regularHours).toBe(40);
+      expect(result.overtimeHours).toBe(5);
+    });
+
+    test('should handle large overtime hours', () => {
+      const result = calculateRegularAndOvertimeHours(60);
+      expect(result.regularHours).toBe(40);
+      expect(result.overtimeHours).toBe(20);
+    });
+  });
+
+  describe('calculateEmployeePay', () => {
+    const employee: Employee = {
+      id: 'emp1',
+      restaurant_id: 'rest1',
+      name: 'John Doe',
+      position: 'Server',
+      hourly_rate: 1500, // $15.00 in cents
+      status: 'active',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    };
+
+    test('should calculate pay for regular hours only', () => {
+      const punches: TimePunch[] = [
+        {
+          id: '1',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: '2024-01-01T09:00:00Z',
+          created_at: '2024-01-01T09:00:00Z',
+          updated_at: '2024-01-01T09:00:00Z',
+        },
+        {
+          id: '2',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: '2024-01-01T17:00:00Z',
+          created_at: '2024-01-01T17:00:00Z',
+          updated_at: '2024-01-01T17:00:00Z',
+        },
+      ];
+
+      const payroll = calculateEmployeePay(employee, punches, 0);
+      expect(payroll.regularHours).toBe(8);
+      expect(payroll.overtimeHours).toBe(0);
+      expect(payroll.regularPay).toBe(12000); // 8 hours * $15/hr = $120
+      expect(payroll.overtimePay).toBe(0);
+      expect(payroll.grossPay).toBe(12000);
+      expect(payroll.totalTips).toBe(0);
+      expect(payroll.totalPay).toBe(12000);
+    });
+
+    test('should calculate pay with overtime', () => {
+      const punches: TimePunch[] = [];
+      // Create 45 hours of work (5 days * 9 hours)
+      for (let day = 0; day < 5; day++) {
+        punches.push({
+          id: `${day * 2 + 1}`,
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: `2024-01-0${day + 1}T09:00:00Z`,
+          created_at: `2024-01-0${day + 1}T09:00:00Z`,
+          updated_at: `2024-01-0${day + 1}T09:00:00Z`,
+        });
+        punches.push({
+          id: `${day * 2 + 2}`,
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: `2024-01-0${day + 1}T18:00:00Z`,
+          created_at: `2024-01-0${day + 1}T18:00:00Z`,
+          updated_at: `2024-01-0${day + 1}T18:00:00Z`,
+        });
+      }
+
+      const payroll = calculateEmployeePay(employee, punches, 0);
+      expect(payroll.regularHours).toBe(40);
+      expect(payroll.overtimeHours).toBe(5);
+      expect(payroll.regularPay).toBe(60000); // 40 hours * $15/hr = $600
+      expect(payroll.overtimePay).toBe(11250); // 5 hours * $15/hr * 1.5 = $112.50
+      expect(payroll.grossPay).toBe(71250); // $712.50
+    });
+
+    test('should include tips in total pay', () => {
+      const punches: TimePunch[] = [
+        {
+          id: '1',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: '2024-01-01T09:00:00Z',
+          created_at: '2024-01-01T09:00:00Z',
+          updated_at: '2024-01-01T09:00:00Z',
+        },
+        {
+          id: '2',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: '2024-01-01T17:00:00Z',
+          created_at: '2024-01-01T17:00:00Z',
+          updated_at: '2024-01-01T17:00:00Z',
+        },
+      ];
+
+      const tips = 5000; // $50.00 in tips
+      const payroll = calculateEmployeePay(employee, punches, tips);
+      expect(payroll.totalTips).toBe(5000);
+      expect(payroll.grossPay).toBe(12000); // wages only
+      expect(payroll.totalPay).toBe(17000); // wages + tips
+    });
+  });
+
+  describe('formatCurrency', () => {
+    test('should format cents to USD currency', () => {
+      expect(formatCurrency(1500)).toBe('$15.00');
+      expect(formatCurrency(10000)).toBe('$100.00');
+      expect(formatCurrency(12345)).toBe('$123.45');
+      expect(formatCurrency(0)).toBe('$0.00');
+    });
+
+    test('should handle negative amounts', () => {
+      expect(formatCurrency(-1500)).toBe('-$15.00');
+    });
+  });
+
+  describe('formatHours', () => {
+    test('should format hours to 2 decimal places', () => {
+      expect(formatHours(8)).toBe('8.00');
+      expect(formatHours(7.5)).toBe('7.50');
+      expect(formatHours(40.123456)).toBe('40.12');
+    });
+  });
+});

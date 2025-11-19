@@ -236,7 +236,7 @@ async function callModel(
   pdfUrl: string,
   openRouterApiKey: string,
   restaurantId?: string,
-): Promise<Response | null> {
+): Promise<{ response: Response; modelConfig: typeof MODELS[0] } | null> {
   let retryCount = 0;
 
   while (retryCount < modelConfig.maxRetries) {
@@ -244,18 +244,6 @@ async function callModel(
       console.log(`🔄 ${modelConfig.name} attempt ${retryCount + 1}/${modelConfig.maxRetries}...`);
 
       const requestBody = buildRequestBody(modelConfig.id, modelConfig.systemPrompt, pdfUrl);
-
-      const metadata: AICallMetadata = {
-        model: modelConfig.id,
-        provider: "openrouter",
-        restaurant_id: restaurantId,
-        edge_function: 'process-bank-statement',
-        temperature: requestBody.temperature,
-        max_tokens: requestBody.max_tokens,
-        stream: requestBody.stream || false,
-        attempt: retryCount + 1,
-        success: false,
-      };
 
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -270,16 +258,7 @@ async function callModel(
 
       if (response.ok) {
         console.log(`✅ ${modelConfig.name} succeeded`);
-        
-        logAICall(
-          'process-bank-statement:success',
-          { model: modelConfig.id },
-          { status: 'success' },
-          { ...metadata, success: true, status_code: 200 },
-          null
-        );
-        
-        return response;
+        return { response, modelConfig };
       }
 
       if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
@@ -386,21 +365,23 @@ serve(async (req) => {
     console.log("🏦 Processing bank statement with multi-model fallback...");
 
     let finalResponse: Response | undefined;
+    let usedModelConfig: typeof MODELS[0] | undefined;
 
     for (const modelConfig of MODELS) {
       console.log(`🚀 Trying ${modelConfig.name}...`);
 
-      const response = await callModel(modelConfig, pdfUrl, openRouterApiKey, restaurantId);
+      const result = await callModel(modelConfig, pdfUrl, openRouterApiKey, restaurantId);
 
-      if (response) {
-        finalResponse = response;
+      if (result) {
+        finalResponse = result.response;
+        usedModelConfig = result.modelConfig;
         break;
       }
 
       console.log(`⚠️ ${modelConfig.name} failed, trying next model...`);
     }
 
-    if (!finalResponse || !finalResponse.ok) {
+    if (!finalResponse || !finalResponse.ok || !usedModelConfig) {
       console.error("❌ All models failed");
 
       return new Response(
@@ -458,7 +439,48 @@ serve(async (req) => {
         throw new Error("No transactions found in bank statement");
       }
 
+      // Calculate totals for logging
+      const totalDebits = parsedData.transactions
+        .filter((t: any) => t.amount < 0)
+        .reduce((sum: number, t: any) => sum + Math.abs(t.amount), 0);
+      
+      const totalCredits = parsedData.transactions
+        .filter((t: any) => t.amount > 0)
+        .reduce((sum: number, t: any) => sum + t.amount, 0);
+
       console.log(`✅ Successfully parsed ${parsedData.transactions.length} transactions`);
+
+      // Log successful AI call to Braintrust with full details
+      const requestBody = buildRequestBody(usedModelConfig.id, usedModelConfig.systemPrompt, pdfUrl);
+      logAICall(
+        `process-bank-statement:${usedModelConfig.name}`,
+        {
+          prompt: BANK_STATEMENT_ANALYSIS_PROMPT,
+          pdfUrl: pdfUrl.substring(0, 100) + '...', // Truncate URL for readability
+          model: usedModelConfig.id,
+        },
+        {
+          bankName: parsedData.bankName,
+          statementPeriod: `${parsedData.statementPeriodStart} to ${parsedData.statementPeriodEnd}`,
+          transactionCount: parsedData.transactions.length,
+          totalDebits,
+          totalCredits,
+          sampleTransactions: parsedData.transactions.slice(0, 3), // First 3 for preview
+        },
+        {
+          model: usedModelConfig.id,
+          provider: 'openrouter',
+          restaurant_id: restaurantId,
+          edge_function: 'process-bank-statement',
+          temperature: requestBody.temperature,
+          max_tokens: requestBody.max_tokens,
+          stream: true,
+          attempt: 1,
+          success: true,
+          status_code: 200,
+        },
+        null // Token usage not available from streaming response
+      );
     } catch (parseError) {
       console.error("Failed to parse JSON from AI response:", parseError);
       console.error("Content that failed to parse:", content.substring(0, 1000) + "...");
@@ -474,15 +496,6 @@ serve(async (req) => {
         },
       );
     }
-
-    // Calculate totals
-    const totalDebits = parsedData.transactions
-      .filter((t: any) => t.amount < 0)
-      .reduce((sum: number, t: any) => sum + Math.abs(t.amount), 0);
-    
-    const totalCredits = parsedData.transactions
-      .filter((t: any) => t.amount > 0)
-      .reduce((sum: number, t: any) => sum + t.amount, 0);
 
     // Update statement upload with parsed data
     const { error: updateError } = await supabase

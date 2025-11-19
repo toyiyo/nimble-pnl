@@ -170,9 +170,11 @@ export type Database = {
           bank_name: string | null
           created_at: string
           error_message: string | null
+          failed_transaction_count: number | null
           file_name: string | null
           file_size: number | null
           id: string
+          invalid_transactions: Json | null
           processed_at: string | null
           processed_by: string | null
           raw_file_url: string | null
@@ -181,6 +183,7 @@ export type Database = {
           statement_period_end: string | null
           statement_period_start: string | null
           status: string
+          successful_transaction_count: number | null
           total_credits: number | null
           total_debits: number | null
           transaction_count: number | null
@@ -190,9 +193,11 @@ export type Database = {
           bank_name?: string | null
           created_at?: string
           error_message?: string | null
+          failed_transaction_count?: number | null
           file_name?: string | null
           file_size?: number | null
           id?: string
+          invalid_transactions?: Json | null
           processed_at?: string | null
           processed_by?: string | null
           raw_file_url?: string | null
@@ -201,6 +206,7 @@ export type Database = {
           statement_period_end?: string | null
           statement_period_start?: string | null
           status?: string
+          successful_transaction_count?: number | null
           total_credits?: number | null
           total_debits?: number | null
           transaction_count?: number | null
@@ -210,9 +216,11 @@ export type Database = {
           bank_name?: string | null
           created_at?: string
           error_message?: string | null
+          failed_transaction_count?: number | null
           file_name?: string | null
           file_size?: number | null
           id?: string
+          invalid_transactions?: Json | null
           processed_at?: string | null
           processed_by?: string | null
           raw_file_url?: string | null
@@ -221,6 +229,7 @@ export type Database = {
           statement_period_end?: string | null
           statement_period_start?: string | null
           status?: string
+          successful_transaction_count?: number | null
           total_credits?: number | null
           total_debits?: number | null
           transaction_count?: number | null

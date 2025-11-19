@@ -194,9 +194,14 @@ export const useBankStatementImport = () => {
           throw error;
         }
 
+        const message = data.invalidTransactionCount > 0
+          ? `Bank statement processed! Found ${data.transactionCount} transactions from ${data.bankName}. ${data.invalidTransactionCount} transaction(s) have validation errors that need your attention.`
+          : `Bank statement processed! Found ${data.transactionCount} transactions from ${data.bankName}`;
+
         toast({
           title: "Success",
-          description: `Bank statement processed! Found ${data.transactionCount} transactions from ${data.bankName}`,
+          description: message,
+          variant: data.invalidTransactionCount > 0 ? "default" : "default",
         });
 
         return data;
@@ -279,15 +284,26 @@ export const useBankStatementImport = () => {
   const updateStatementLine = async (
     lineId: string,
     updates: {
-      transaction_date?: string;
+      transaction_date?: string | null;
       description?: string;
-      amount?: number;
+      amount?: number | null;
       transaction_type?: string;
     }
   ) => {
+    // Validate the updates to clear validation errors if all required fields are present
+    const hasAllRequiredFields = updates.transaction_date && updates.description && updates.amount !== null && updates.amount !== undefined;
+    
+    const updateData: any = { ...updates };
+    
+    // If all required fields are present and valid, clear validation errors
+    if (hasAllRequiredFields) {
+      updateData.has_validation_error = false;
+      updateData.validation_errors = null;
+    }
+
     const { error } = await supabase
       .from('bank_statement_lines')
-      .update(updates)
+      .update(updateData)
       .eq('id', lineId);
 
     if (error) {
@@ -299,6 +315,13 @@ export const useBankStatementImport = () => {
       });
       return false;
     }
+
+    toast({
+      title: "Success",
+      description: hasAllRequiredFields 
+        ? "Transaction updated and validation errors cleared"
+        : "Transaction updated",
+    });
 
     return true;
   };

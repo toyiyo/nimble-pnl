@@ -122,6 +122,73 @@ describe('Payroll Calculations', () => {
       expect(periods).toHaveLength(1);
       expect(periods[0].hours).toBe(8);
     });
+
+    test('should skip incomplete shifts without clock_out', () => {
+      const punches: TimePunch[] = [
+        {
+          id: '1',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: '2024-01-01T09:00:00Z',
+          created_at: '2024-01-01T09:00:00Z',
+          updated_at: '2024-01-01T09:00:00Z',
+        },
+        {
+          id: '2',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'break_start',
+          punch_time: '2024-01-01T12:00:00Z',
+          created_at: '2024-01-01T12:00:00Z',
+          updated_at: '2024-01-01T12:00:00Z',
+        },
+        // No clock_out, so this should not be counted
+      ];
+
+      const periods = parseWorkPeriods(punches);
+      expect(periods).toHaveLength(0);
+    });
+
+    test('should skip incomplete shifts without break_end', () => {
+      const punches: TimePunch[] = [
+        {
+          id: '1',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_in',
+          punch_time: '2024-01-01T09:00:00Z',
+          created_at: '2024-01-01T09:00:00Z',
+          updated_at: '2024-01-01T09:00:00Z',
+        },
+        {
+          id: '2',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'break_start',
+          punch_time: '2024-01-01T12:00:00Z',
+          created_at: '2024-01-01T12:00:00Z',
+          updated_at: '2024-01-01T12:00:00Z',
+        },
+        {
+          id: '3',
+          restaurant_id: 'rest1',
+          employee_id: 'emp1',
+          punch_type: 'clock_out',
+          punch_time: '2024-01-01T17:00:00Z',
+          created_at: '2024-01-01T17:00:00Z',
+          updated_at: '2024-01-01T17:00:00Z',
+        },
+        // break_start without break_end, then clock_out
+        // Should count work before break, but not after break
+      ];
+
+      const periods = parseWorkPeriods(punches);
+      // Only the work period before break_start should be counted
+      expect(periods).toHaveLength(1);
+      expect(periods[0].hours).toBe(3); // 9am to 12pm
+      expect(periods[0].isBreak).toBe(false);
+    });
   });
 
   describe('calculateWorkedHours', () => {

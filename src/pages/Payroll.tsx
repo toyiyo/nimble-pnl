@@ -67,10 +67,10 @@ const Payroll = () => {
         };
       }
       case 'last_2_weeks': {
-        const twoWeeksAgo = subWeeks(today, 2);
+        const lastWeek = subWeeks(today, 1);
         return {
-          start: startOfWeek(twoWeeksAgo, { weekStartsOn: 0 }),
-          end: endOfWeek(today, { weekStartsOn: 0 }),
+          start: startOfWeek(subWeeks(lastWeek, 1), { weekStartsOn: 0 }),
+          end: endOfWeek(lastWeek, { weekStartsOn: 0 }),
         };
       }
       case 'custom':
@@ -444,7 +444,7 @@ const Payroll = () => {
             <div className="space-y-1 text-sm">
               <p className="font-medium">Payroll Calculation Notes:</p>
               <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                <li>Overtime is calculated at 1.5× regular rate for hours over 40/week</li>
+                <li>Overtime is calculated at 1.5× regular rate for hours over 40 per pay period</li>
                 <li>Only completed time punches (clock in/out pairs) are included</li>
                 <li>Break time is excluded from worked hours</li>
                 <li>Tips are aggregated from the employee_tips table</li>

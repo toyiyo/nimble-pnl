@@ -34,6 +34,7 @@ export interface PayrollPeriod {
 
 /**
  * Parse time punches into work periods (clock_in → clock_out pairs)
+ * Only counts completed shifts that end with an explicit clock_out
  */
 export function parseWorkPeriods(punches: TimePunch[]): WorkPeriod[] {
   const sortedPunches = [...punches].sort(
@@ -47,76 +48,85 @@ export function parseWorkPeriods(punches: TimePunch[]): WorkPeriod[] {
     const current = sortedPunches[i];
 
     if (current.punch_type === 'clock_in') {
-      // Find next clock_out or break_start
-      const nextPunchIdx = sortedPunches.findIndex(
-        (p, idx) => idx > i && (p.punch_type === 'clock_out' || p.punch_type === 'break_start')
+      // Find next clock_out (only clock_out, not break_start)
+      const clockOutIdx = sortedPunches.findIndex(
+        (p, idx) => idx > i && p.punch_type === 'clock_out'
       );
 
-      if (nextPunchIdx !== -1) {
-        const nextPunch = sortedPunches[nextPunchIdx];
-        const startTime = new Date(current.punch_time);
-        const endTime = new Date(nextPunch.punch_time);
-        const hours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+      if (clockOutIdx !== -1) {
+        // Check if there's a break between clock_in and clock_out
+        const breakStartIdx = sortedPunches.findIndex(
+          (p, idx) => idx > i && idx < clockOutIdx && p.punch_type === 'break_start'
+        );
 
-        periods.push({
-          startTime,
-          endTime,
-          hours,
-          isBreak: false,
-        });
+        if (breakStartIdx !== -1) {
+          // There's a break, so split into work periods before and after break
+          const breakStart = sortedPunches[breakStartIdx];
+          const startTime = new Date(current.punch_time);
+          const breakStartTime = new Date(breakStart.punch_time);
+          const hours = (breakStartTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
 
-        i = nextPunchIdx + 1;
+          periods.push({
+            startTime,
+            endTime: breakStartTime,
+            hours,
+            isBreak: false,
+          });
+
+          // Process the break period
+          const breakEndIdx = sortedPunches.findIndex(
+            (p, idx) => idx > breakStartIdx && idx < clockOutIdx && p.punch_type === 'break_end'
+          );
+
+          if (breakEndIdx !== -1) {
+            const breakEnd = sortedPunches[breakEndIdx];
+            const breakEndTime = new Date(breakEnd.punch_time);
+            const breakHours = (breakEndTime.getTime() - breakStartTime.getTime()) / (1000 * 60 * 60);
+
+            periods.push({
+              startTime: breakStartTime,
+              endTime: breakEndTime,
+              hours: breakHours,
+              isBreak: true,
+            });
+
+            // Work period after break to clock_out
+            const clockOut = sortedPunches[clockOutIdx];
+            const clockOutTime = new Date(clockOut.punch_time);
+            const afterBreakHours = (clockOutTime.getTime() - breakEndTime.getTime()) / (1000 * 60 * 60);
+
+            periods.push({
+              startTime: breakEndTime,
+              endTime: clockOutTime,
+              hours: afterBreakHours,
+              isBreak: false,
+            });
+          }
+          // If no break_end found, we don't count the period after break_start
+
+          i = clockOutIdx + 1;
+        } else {
+          // No break, simple clock_in to clock_out
+          const clockOut = sortedPunches[clockOutIdx];
+          const startTime = new Date(current.punch_time);
+          const endTime = new Date(clockOut.punch_time);
+          const hours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+
+          periods.push({
+            startTime,
+            endTime,
+            hours,
+            isBreak: false,
+          });
+
+          i = clockOutIdx + 1;
+        }
       } else {
-        // No matching clock_out found, skip this punch
-        i++;
-      }
-    } else if (current.punch_type === 'break_end') {
-      // Find next clock_out or break_start
-      const nextPunchIdx = sortedPunches.findIndex(
-        (p, idx) => idx > i && (p.punch_type === 'clock_out' || p.punch_type === 'break_start')
-      );
-
-      if (nextPunchIdx !== -1) {
-        const nextPunch = sortedPunches[nextPunchIdx];
-        const startTime = new Date(current.punch_time);
-        const endTime = new Date(nextPunch.punch_time);
-        const hours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-
-        periods.push({
-          startTime,
-          endTime,
-          hours,
-          isBreak: false,
-        });
-
-        i = nextPunchIdx + 1;
-      } else {
-        i++;
-      }
-    } else if (current.punch_type === 'break_start') {
-      // Find matching break_end
-      const breakEndIdx = sortedPunches.findIndex(
-        (p, idx) => idx > i && p.punch_type === 'break_end'
-      );
-
-      if (breakEndIdx !== -1) {
-        const breakEnd = sortedPunches[breakEndIdx];
-        const startTime = new Date(current.punch_time);
-        const endTime = new Date(breakEnd.punch_time);
-        const hours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-
-        periods.push({
-          startTime,
-          endTime,
-          hours,
-          isBreak: true,
-        });
-
-        i = breakEndIdx + 1;
-      } else {
+        // No matching clock_out found, skip this incomplete shift
         i++;
       }
     } else {
+      // Skip any punch that's not a clock_in (these are processed as part of clock_in logic)
       i++;
     }
   }

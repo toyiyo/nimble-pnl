@@ -38,6 +38,26 @@ export function useMonthlyMetrics(
     queryFn: async () => {
       if (!restaurantId) return [];
 
+      const normalizeToLocalDate = (rawDate: string | null | undefined, fieldName: string) => {
+        if (!rawDate) {
+          return null;
+        }
+
+        const parsed = new Date(rawDate);
+        if (!Number.isNaN(parsed.getTime())) {
+          return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+        }
+
+        const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(rawDate);
+        if (match) {
+          const [, year, month, day] = match;
+          return new Date(Number(year), Number(month) - 1, Number(day));
+        }
+
+        console.warn(`[useMonthlyMetrics] Unable to parse ${fieldName}:`, rawDate);
+        return null;
+      };
+
       // Fetch sales excluding pass-through items (adjustment_type IS NOT NULL)
       // Pass-through items include: tips, sales tax, service charges, discounts, fees
       const { data: salesData, error: salesError } = await supabase
@@ -109,10 +129,11 @@ export function useMonthlyMetrics(
           });
         }
         
-        // Parse date as local date, not UTC midnight
-        const [year, monthNum, day] = sale.sale_date.split('-').map(Number);
-        const localDate = new Date(year, monthNum - 1, day);
-        const monthKey = format(localDate, 'yyyy-MM');
+        const saleDate = normalizeToLocalDate(sale.sale_date, 'sale_date');
+        if (!saleDate) {
+          return;
+        }
+        const monthKey = format(saleDate, 'yyyy-MM');
 
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {
@@ -252,9 +273,11 @@ export function useMonthlyMetrics(
 
       // Process adjustments (Square/Clover pass-through items)
       adjustmentsData?.forEach((adjustment) => {
-        const [year, monthNum, day] = adjustment.sale_date.split('-').map(Number);
-        const localDate = new Date(year, monthNum - 1, day);
-        const monthKey = format(localDate, 'yyyy-MM');
+        const adjustmentDate = normalizeToLocalDate(adjustment.sale_date, 'adjustment.sale_date');
+        if (!adjustmentDate) {
+          return;
+        }
+        const monthKey = format(adjustmentDate, 'yyyy-MM');
 
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {
@@ -363,11 +386,13 @@ export function useMonthlyMetrics(
 
       // Aggregate COGS (Cost of Goods Used) by month
       foodCostsData?.forEach((transaction) => {
-        // Use transaction_date if available, otherwise use created_at
-        const effectiveDate = transaction.transaction_date 
-          ? new Date(transaction.transaction_date) 
-          : new Date(transaction.created_at);
-        const monthKey = format(effectiveDate, 'yyyy-MM');
+        const transactionDate = transaction.transaction_date
+          ? normalizeToLocalDate(transaction.transaction_date, 'inventory_transactions.transaction_date')
+          : normalizeToLocalDate(transaction.created_at, 'inventory_transactions.created_at');
+        if (!transactionDate) {
+          return;
+        }
+        const monthKey = format(transactionDate, 'yyyy-MM');
         
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {
@@ -394,10 +419,11 @@ export function useMonthlyMetrics(
 
       // Aggregate labor costs by month (pending - from time punches)
       laborCostsData?.forEach((day) => {
-        // Parse date as local date, not UTC midnight
-        const [year, monthNum, dayNum] = day.date.split('-').map(Number);
-        const localDate = new Date(year, monthNum - 1, dayNum);
-        const monthKey = format(localDate, 'yyyy-MM');
+        const laborDate = normalizeToLocalDate(day.date, 'daily_labor_costs.date');
+        if (!laborDate) {
+          return;
+        }
+        const monthKey = format(laborDate, 'yyyy-MM');
         
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {
@@ -426,9 +452,11 @@ export function useMonthlyMetrics(
       bankLaborCosts?.forEach((txn: any) => {
         const account = txn.chart_of_accounts as { account_subtype?: string } | null;
         if (account?.account_subtype === 'labor') {
-          const [year, monthNum, dayNum] = txn.transaction_date.split('-').map(Number);
-          const localDate = new Date(year, monthNum - 1, dayNum);
-          const monthKey = format(localDate, 'yyyy-MM');
+          const transactionDate = normalizeToLocalDate(txn.transaction_date, 'bank_transactions.transaction_date');
+          if (!transactionDate) {
+            return;
+          }
+          const monthKey = format(transactionDate, 'yyyy-MM');
           
           if (!monthlyMap.has(monthKey)) {
             monthlyMap.set(monthKey, {
@@ -456,9 +484,11 @@ export function useMonthlyMetrics(
       pendingLaborCosts?.forEach((txn: any) => {
         const account = txn.chart_account as { account_subtype?: string } | null;
         if (account?.account_subtype === 'labor') {
-          const [year, monthNum, dayNum] = txn.issue_date.split('-').map(Number);
-          const localDate = new Date(year, monthNum - 1, dayNum);
-          const monthKey = format(localDate, 'yyyy-MM');
+          const issueDate = normalizeToLocalDate(txn.issue_date, 'pending_outflows.issue_date');
+          if (!issueDate) {
+            return;
+          }
+          const monthKey = format(issueDate, 'yyyy-MM');
           
           if (!monthlyMap.has(monthKey)) {
             monthlyMap.set(monthKey, {

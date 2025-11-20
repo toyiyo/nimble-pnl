@@ -109,6 +109,7 @@ export type Database = {
           confidence_score: number | null
           created_at: string
           description: string
+          has_validation_error: boolean | null
           id: string
           imported_transaction_id: string | null
           is_imported: boolean
@@ -117,6 +118,7 @@ export type Database = {
           transaction_date: string
           transaction_type: string | null
           updated_at: string
+          validation_errors: Json | null
         }
         Insert: {
           amount: number
@@ -124,6 +126,7 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           description: string
+          has_validation_error?: boolean | null
           id?: string
           imported_transaction_id?: string | null
           is_imported?: boolean
@@ -132,6 +135,7 @@ export type Database = {
           transaction_date: string
           transaction_type?: string | null
           updated_at?: string
+          validation_errors?: Json | null
         }
         Update: {
           amount?: number
@@ -139,6 +143,7 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           description?: string
+          has_validation_error?: boolean | null
           id?: string
           imported_transaction_id?: string | null
           is_imported?: boolean
@@ -147,6 +152,7 @@ export type Database = {
           transaction_date?: string
           transaction_type?: string | null
           updated_at?: string
+          validation_errors?: Json | null
         }
         Relationships: [
           {

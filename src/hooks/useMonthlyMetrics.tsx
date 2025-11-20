@@ -14,6 +14,8 @@ export interface MonthlyMetrics {
   other_liabilities: number;
   food_cost: number;
   labor_cost: number;
+  pending_labor_cost: number;
+  actual_labor_cost: number;
   has_data: boolean;
 }
 
@@ -148,6 +150,8 @@ export function useMonthlyMetrics(
             other_liabilities: 0,
             food_cost: 0,
             labor_cost: 0,
+            pending_labor_cost: 0,
+            actual_labor_cost: 0,
             has_data: false,
           });
         }
@@ -292,6 +296,8 @@ export function useMonthlyMetrics(
             other_liabilities: 0,
             food_cost: 0,
             labor_cost: 0,
+            pending_labor_cost: 0,
+            actual_labor_cost: 0,
             has_data: false,
           });
         }
@@ -407,6 +413,8 @@ export function useMonthlyMetrics(
             other_liabilities: 0,
             food_cost: 0,
             labor_cost: 0,
+            pending_labor_cost: 0,
+            actual_labor_cost: 0,
             has_data: true,
           });
         }
@@ -438,6 +446,8 @@ export function useMonthlyMetrics(
             other_liabilities: 0,
             food_cost: 0,
             labor_cost: 0,
+            pending_labor_cost: 0,
+            actual_labor_cost: 0,
             has_data: true,
           });
         }
@@ -445,7 +455,9 @@ export function useMonthlyMetrics(
         const month = monthlyMap.get(monthKey)!;
         // Use cents to avoid floating-point precision errors
         // Use Math.abs() because costs may be stored as negative (accounting convention)
-        month.labor_cost += Math.round(Math.abs(day.total_labor_cost || 0) * 100);
+        const pendingCost = Math.round(Math.abs(day.total_labor_cost || 0) * 100);
+        month.pending_labor_cost += pendingCost;
+        month.labor_cost += pendingCost;
       });
 
       // Aggregate actual labor costs from bank transactions (actual - paid)
@@ -471,12 +483,16 @@ export function useMonthlyMetrics(
               other_liabilities: 0,
               food_cost: 0,
               labor_cost: 0,
+              pending_labor_cost: 0,
+              actual_labor_cost: 0,
               has_data: true,
             });
           }
 
           const month = monthlyMap.get(monthKey)!;
-          month.labor_cost += Math.round(Math.abs(txn.amount || 0) * 100);
+          const actualCost = Math.round(Math.abs(txn.amount || 0) * 100);
+          month.actual_labor_cost += actualCost;
+          month.labor_cost += actualCost;
         }
       });
 
@@ -503,12 +519,16 @@ export function useMonthlyMetrics(
               other_liabilities: 0,
               food_cost: 0,
               labor_cost: 0,
+              pending_labor_cost: 0,
+              actual_labor_cost: 0,
               has_data: true,
             });
           }
 
           const month = monthlyMap.get(monthKey)!;
-          month.labor_cost += Math.round(Math.abs(txn.amount || 0) * 100);
+          const actualCost = Math.round(Math.abs(txn.amount || 0) * 100);
+          month.actual_labor_cost += actualCost;
+          month.labor_cost += actualCost;
         }
       });
 
@@ -524,6 +544,8 @@ export function useMonthlyMetrics(
         other_liabilities: Math.round(month.other_liabilities) / 100,
         food_cost: Math.round(month.food_cost) / 100,
         labor_cost: Math.round(month.labor_cost) / 100,
+  pending_labor_cost: Math.round(month.pending_labor_cost) / 100,
+  actual_labor_cost: Math.round(month.actual_labor_cost) / 100,
         has_data: month.has_data,
         net_revenue: Math.round(month.gross_revenue - month.discounts - month.refunds) / 100,
         total_collected_at_pos: Math.round(month.gross_revenue + month.sales_tax + month.tips + month.other_liabilities) / 100,

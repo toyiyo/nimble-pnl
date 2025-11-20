@@ -15,11 +15,15 @@ export interface PeriodMetrics {
   // Costs from source tables (inventory_transactions + daily_labor_costs)
   foodCost: number;
   laborCost: number;
+  pendingLaborCost: number;
+  actualLaborCost: number;
   primeCost: number;
   
   // Calculated metrics
   foodCostPercentage: number;
   laborCostPercentage: number;
+  pendingLaborCostPercentage: number;
+  actualLaborCostPercentage: number;
   primeCostPercentage: number;
   grossProfit: number;
   profitMargin: number;
@@ -72,6 +76,8 @@ export function usePeriodMetrics(
   const {
     totalFoodCost,
     totalLaborCost,
+    pendingLaborCost: pendingLaborCostRaw,
+    actualLaborCost: actualLaborCostRaw,
     isLoading: costsLoading,
     refetch: refetchCosts,
     error: costsError,
@@ -83,8 +89,10 @@ export function usePeriodMetrics(
     }
     
     const netRevenue = revenueData.totals.net_revenue;
-    const foodCost = totalFoodCost;
-    const laborCost = totalLaborCost;
+  const foodCost = totalFoodCost;
+  const pendingLaborCost = pendingLaborCostRaw;
+  const actualLaborCost = actualLaborCostRaw;
+  const laborCost = totalLaborCost;
     const primeCost = foodCost + laborCost;
     
     // Calculate days in period (inclusive)
@@ -101,10 +109,14 @@ export function usePeriodMetrics(
       
       foodCost,
       laborCost,
+  pendingLaborCost,
+  actualLaborCost,
       primeCost,
       
       foodCostPercentage: netRevenue > 0 ? (foodCost / netRevenue) * 100 : 0,
       laborCostPercentage: netRevenue > 0 ? (laborCost / netRevenue) * 100 : 0,
+  pendingLaborCostPercentage: netRevenue > 0 ? (pendingLaborCost / netRevenue) * 100 : 0,
+  actualLaborCostPercentage: netRevenue > 0 ? (actualLaborCost / netRevenue) * 100 : 0,
       primeCostPercentage: netRevenue > 0 ? (primeCost / netRevenue) * 100 : 0,
       grossProfit: netRevenue - primeCost,
       profitMargin: netRevenue > 0 ? ((netRevenue - primeCost) / netRevenue) * 100 : 0,
@@ -120,7 +132,7 @@ export function usePeriodMetrics(
       hasRevenueData: revenueData.has_categorization_data || revenueData.totals.gross_revenue > 0,
       hasCostData: totalFoodCost > 0 || totalLaborCost > 0,
     };
-  }, [revenueData, totalFoodCost, totalLaborCost, dateFrom, dateTo]);
+  }, [revenueData, totalFoodCost, totalLaborCost, pendingLaborCostRaw, actualLaborCostRaw, dateFrom, dateTo]);
   
   const refetch = () => {
     refetchRevenue();

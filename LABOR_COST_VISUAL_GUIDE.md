@@ -37,7 +37,7 @@ Bank Transaction: "ADP Payroll Tax Payment" - $200
 
 ## After This Change
 
-### Solution: Complete Labor Cost Tracking
+### Solution: Pending vs Actual Labor Pattern
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -45,14 +45,16 @@ Bank Transaction: "ADP Payroll Tax Payment" - $200
 ├─────────────────────────────────────────────────┤
 │                                                 │
 │  Labor Costs: $2,000 (COMPLETE) ✅             │
-│    ├─ From Time Tracking: $1,800              │
-│    └─ From Transactions: $200                  │
+│    ├─ Pending Payroll (Scheduled): $1,800     │
+│    │   (From time punches - money you owe)     │
+│    └─ Actual Payroll (Paid): $200             │
+│        (From bank - money you paid)            │
 │                                                 │
 │  Other Expenses: $2,300                         │
 │  (Labor properly excluded)                      │
 │                                                 │
-│  Benefit: Accurate labor costs                 │
-│  Benefit: No double-counting                   │
+│  Benefit: Complete cash flow visibility        │
+│  Benefit: Matches expense tracking pattern     │
 │                                                 │
 └─────────────────────────────────────────────────┘
 ```
@@ -68,10 +70,18 @@ Bank Transaction: "ADP Payroll Tax Payment" - $200
          ↓
    Detected by useLaborCostsFromTransactions
          ↓
-   Combined in useCostsFromSource
+   Combined in useCostsFromSource as "Actual Payroll"
          ↓
-   Shows in labor cost reports ✅
+   Shows in labor cost reports as "Paid" ✅
    Excluded from "Other Expenses" ✅
+   
+Time Punches: Employee hours worked = $1,800
+         ↓
+   Calculated in daily_labor_costs
+         ↓
+   Combined in useCostsFromSource as "Pending Payroll"
+         ↓
+   Shows in labor cost reports as "Scheduled" ✅
 ```
 
 ---
@@ -81,41 +91,43 @@ Bank Transaction: "ADP Payroll Tax Payment" - $200
 ### 1. Chart of Accounts Page - New Info Alert
 
 ```
-┌────────────────────────────────────────────────────────┐
-│ ℹ️  Understanding Labor Costs in Reports               │
-├────────────────────────────────────────────────────────┤
-│                                                        │
-│ Your labor costs come from TWO sources:                │
-│                                                        │
-│  1. Time Tracking: Employee time punches               │
-│  2. Financial Transactions: Bank transactions          │
-│     categorized to Labor accounts (6000-6011)          │
-│                                                        │
-│ To avoid double-counting:                              │
-│ Only categorize payroll-related bank transactions      │
-│ to Labor accounts if they're NOT already tracked       │
-│ in time punches (e.g., payroll taxes, benefits)       │
-│                                                        │
-│ Note: Labor is automatically excluded from             │
-│ "Other Expenses" in reports                            │
-│                                                        │
-└────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│ ℹ️  Understanding Labor Costs in Reports                 │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│ Your labor costs show TWO types:                         │
+│                                                          │
+│  1. Pending Payroll (Scheduled): Time punches            │
+│     - Labor you owe based on hours worked                │
+│                                                          │
+│  2. Actual Payroll (Paid): Bank transactions             │
+│     - Money you've paid out for labor                    │
+│                                                          │
+│ This follows the same pattern as expenses:               │
+│ Just like pending outflows vs posted transactions,       │
+│ you can see both scheduled and paid labor.               │
+│                                                          │
+│ Categorize freely: You can categorize salary/payroll    │
+│ bank transactions regardless of time punches. Both       │
+│ will show separately until matched.                      │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### 2. P&L Breakdown - Expandable Labor Section
 
 ```
-┌────────────────────────────────────────────────────┐
-│  Detailed P&L Breakdown                            │
-├────────────────────────────────────────────────────┤
-│                                                    │
-│  ▼ Labor Costs                    $2,000   30%   │
-│    ├─ From Time Tracking           $1,800   27%  │
-│    │   (Employee time punches)                    │
-│    └─ From Financial Transactions    $200    3%  │
-│        (Bank txns to labor accounts)             │
-│                                                    │
-└────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────┐
+│  Detailed P&L Breakdown                               │
+├───────────────────────────────────────────────────────┤
+│                                                       │
+│  ▼ Labor Costs                     $2,000   30%     │
+│    ├─ Pending Payroll (Scheduled)  $1,800   27%    │
+│    │   (Time punches - money you owe)              │
+│    └─ Actual Payroll (Paid)          $200    3%    │
+│        (Bank txns - money you paid)                 │
+│                                                       │
+└───────────────────────────────────────────────────────┘
 ```
 
 ### 3. Expense Dashboard - Proper Categorization
@@ -258,20 +270,31 @@ function mapToStandardCategory(subtype, name) {
 
 ---
 
-## When to Use Each Method
+## Understanding Pending vs Actual Labor
 
-### Use Time Tracking For:
-✅ Hourly employee wages  
+### Pending Payroll (Scheduled)
+Shows labor you **owe** based on time tracking:
+✅ Hourly employee wages calculated from time punches  
 ✅ Regular payroll calculations  
 ✅ Overtime tracking  
-✅ Daily labor cost tracking  
+✅ Daily labor cost accrual  
+✅ Money you need to pay out  
 
-### Use Financial Transaction Categorization For:
+### Actual Payroll (Paid)
+Shows money that has **left your bank** for labor:
+✅ Regular payroll payments  
 ✅ Payroll taxes (employer portion)  
 ✅ Employee benefits (401k, insurance)  
 ✅ Payroll service fees (ADP, Gusto)  
 ✅ Worker's compensation insurance  
-❌ NOT regular wages (if in time tracking)
+✅ Contractor payments  
+✅ Bonuses and commissions  
+
+### No Restrictions
+You can categorize any payroll transaction to labor accounts. Both pending and actual will show separately until matched. This gives you complete visibility into:
+- What you owe (pending)
+- What you've paid (actual)
+- Cash flow timing differences
 
 ---
 
@@ -286,8 +309,8 @@ Input:
 
 Expected Output:
   ✅ Labor Cost: $1,800
-  ✅ From Time Tracking: $1,800
-  ✅ From Transactions: $0
+  ✅ Pending Payroll: $1,800
+  ✅ Actual Payroll: $0
 ```
 
 ### Scenario 2: Bank Transactions Only
@@ -299,8 +322,8 @@ Input:
 
 Expected Output:
   ✅ Labor Cost: $200
-  ✅ From Time Tracking: $0
-  ✅ From Transactions: $200
+  ✅ Pending Payroll: $0
+  ✅ Actual Payroll: $200
   ✅ Shown in "Labor/Payroll" expense category
   ✅ NOT in "Other Expenses"
 ```
@@ -313,25 +336,31 @@ Input:
 
 Expected Output:
   ✅ Labor Cost: $2,000
-  ✅ From Time Tracking: $1,800 (90%)
-  ✅ From Transactions: $200 (10%)
+  ✅ Pending Payroll: $1,800 (90%)
+  ✅ Actual Payroll: $200 (10%)
   ✅ Breakdown visible in P&L report
 ```
 
-### Scenario 4: Avoid Double-Count
+### Scenario 4: Overlapping Payroll (Shows Both)
 ```
 Input:
   - Time punches: $1,800
   - Bank transaction "Payroll Check" $1,800
-    (This is the SAME payroll, not additional)
+    (This is the SAME payroll payment)
 
-User Action:
-  ❌ Do NOT categorize the bank transaction to labor
-  ✅ Leave it uncategorized or mark as transfer
+Current Behavior:
+  ✅ Labor Cost: $3,600 (showing both until matched)
+  ✅ Pending Payroll: $1,800 (scheduled)
+  ✅ Actual Payroll: $1,800 (paid)
+  
+This is CORRECT behavior showing:
+- Money you calculated you owe ($1,800 pending)
+- Money that actually left your bank ($1,800 actual)
+- Total gives visibility into both sides
 
-Expected Output:
-  ✅ Labor Cost: $1,800 (correct, not $3,600)
-  ✅ No double-counting
+Future Enhancement:
+When matching is implemented, system will recognize these
+are the same and show only actual ($1,800) after matched.
 ```
 
 ---

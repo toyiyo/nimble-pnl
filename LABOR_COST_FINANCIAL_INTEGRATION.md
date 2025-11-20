@@ -1,35 +1,36 @@
 # Labor Cost Financial Integration
 
 ## Overview
-This feature integrates labor costs from financial transactions (bank transactions and pending outflows) with the existing time-tracking-based labor costs to provide a complete picture of labor expenses.
+This feature integrates labor costs from financial transactions (bank transactions and pending outflows) with the existing time-tracking-based labor costs using a **pending vs actual pattern** that mirrors how expenses are tracked.
 
 ## Problem Solved
 Previously, when users categorized bank transactions or pending outflows to labor-related chart of accounts (payroll, salaries, wages, benefits), these expenses were:
 1. NOT included in labor cost calculations for performance reports
 2. Shown as "Other/Uncategorized" expenses
-3. Could lead to double-counting if users tried to manually account for them
+3. Could lead to confusion about what labor costs were being tracked
 
 ## Solution
 The system now:
-1. **Tracks labor from two sources**:
-   - Time tracking: Employee time punches with calculated wages (via `daily_labor_costs` table)
-   - Financial transactions: Bank transactions and checks categorized to labor accounts
+1. **Tracks labor using pending vs actual pattern**:
+   - **Pending Payroll**: Employee time punches showing scheduled/accrued labor (money you owe)
+   - **Actual Payroll**: Bank transactions showing money actually paid out
    
-2. **Prevents double-counting**:
-   - Labor expenses are properly categorized in expense reports
-   - Automatically excluded from "Other Expenses" category
-   - Clear user guidance on when to use each method
+2. **Follows existing expense pattern**:
+   - Mirrors pending outflows vs posted transactions
+   - Both sources shown separately until matched
+   - Provides complete cash flow visibility
 
 3. **Shows transparent breakdown**:
-   - P&L reports show labor cost split by source
+   - P&L reports show labor cost split by pending and actual
    - Users can see exactly where labor costs come from
+   - No restrictions on categorization
 
 ## Technical Implementation
 
 ### New Hook: `useLaborCostsFromTransactions`
 **Location**: `src/hooks/useLaborCostsFromTransactions.tsx`
 
-Fetches labor costs from bank transactions and pending outflows:
+Fetches actual labor costs (paid) from bank transactions and pending outflows:
 ```typescript
 // Queries bank_transactions and pending_outflows tables
 // Filters for transactions categorized to labor accounts (account_subtype='labor')
@@ -45,22 +46,22 @@ Fetches labor costs from bank transactions and pending outflows:
 ### Updated Hook: `useCostsFromSource`
 **Location**: `src/hooks/useCostsFromSource.tsx`
 
-Now combines three data sources:
+Now combines three data sources with pending vs actual pattern:
 ```typescript
 {
   dailyCosts: [
     {
       date: '2024-01-15',
       food_cost: 1500.00,
-      labor_cost: 2000.00,                    // Total labor
-      labor_cost_from_timepunches: 1800.00,   // From time tracking
-      labor_cost_from_transactions: 200.00,   // From bank transactions
+      labor_cost: 2000.00,           // Total labor
+      pending_labor_cost: 1800.00,   // From time punches (scheduled)
+      actual_labor_cost: 200.00,     // From bank transactions (paid)
       total_cost: 3500.00
     }
   ],
-  totalLaborCost: 2000.00,                    // Combined total
-  totalLaborCostFromTimePunches: 1800.00,
-  totalLaborCostFromTransactions: 200.00
+  totalLaborCost: 2000.00,           // Combined total
+  pendingLaborCost: 1800.00,         // Scheduled/accrued
+  actualLaborCost: 200.00            // Paid
 }
 ```
 
@@ -81,25 +82,26 @@ Enhanced labor detection:
 ### Updated Component: `DetailedPnLBreakdown`
 **Location**: `src/components/DetailedPnLBreakdown.tsx`
 
-Shows labor cost breakdown:
+Shows labor cost breakdown with pending vs actual pattern:
 ```typescript
 Labor Costs
-├─ From Time Tracking       $1,800.00
-└─ From Financial Transactions  $200.00
+├─ Pending Payroll (Scheduled)  $1,800.00
+└─ Actual Payroll (Paid)          $200.00
 ```
 
 When expanded, users see:
-- Clear breakdown of sources
-- Insight text explaining each source
+- Clear breakdown showing pending and actual
+- Insight text explaining each category
 - Total labor cost calculation
 
 ### Updated Page: `ChartOfAccounts`
 **Location**: `src/pages/ChartOfAccounts.tsx`
 
 Added user guidance alert:
-- Explains two sources of labor costs
-- Warns about double-counting
-- Clarifies when to use each method
+- Explains pending vs actual pattern
+- Shows how it mirrors expense tracking
+- Encourages free categorization without restrictions
+- No double-counting warnings needed
 
 ## Chart of Accounts Labor Accounts
 
@@ -119,31 +121,41 @@ The following accounts are tracked as labor costs:
 
 ## User Guidance
 
-### When to Use Time Tracking
-Use the time clock and payroll features for:
-- ✅ Hourly employee wages
-- ✅ Regular payroll calculations
-- ✅ Overtime tracking
-- ✅ Daily labor cost tracking
+### Understanding Pending vs Actual Labor
+
+The system tracks labor costs using the same pattern as expenses:
+
+**Pending Payroll (Scheduled)**:
+- Shows labor costs you owe based on time punches
+- Calculated from employee hours worked
+- Represents money you need to pay out
+- Like pending outflows for other expenses
+
+**Actual Payroll (Paid)**:
+- Shows money that has actually left your bank account
+- From bank transactions categorized to labor accounts
+- Represents money you've already paid
+- Like posted transactions for other expenses
 
 ### When to Categorize Bank Transactions
-Categorize bank transactions/checks to labor accounts for:
+
+You can freely categorize any payroll-related bank transaction to labor accounts:
+- ✅ Regular payroll payments
 - ✅ Payroll taxes (employer portion)
 - ✅ Employee benefits (401k contributions, insurance)
 - ✅ Payroll service fees (ADP, Gusto, etc.)
 - ✅ Worker's compensation insurance
-- ❌ NOT regular wages (if already in time tracking)
+- ✅ Contractor payments
+- ✅ Bonuses and commissions
 
-### Avoiding Double-Counting
-**DO NOT** categorize regular payroll bank transactions to labor accounts if:
-- You're already tracking those employees' time punches
-- The wages are calculated from the payroll page
-- The system already shows those labor costs
+Both pending and actual will show separately in reports until matched.
 
-**DO** categorize to labor accounts if:
-- It's a labor-related expense NOT tracked in time punches
-- It's a one-time labor expense (contractor payment)
-- It's a labor overhead cost (payroll taxes, benefits)
+### Benefits of This Approach
+
+1. **Complete Cash Flow Picture**: See both scheduled and paid labor
+2. **No Restrictions**: Categorize freely without worrying about duplication
+3. **Reconciliation Ready**: Can match time punches to actual payments
+4. **Consistent Pattern**: Works like pending outflows vs posted transactions
 
 ## Data Flow
 

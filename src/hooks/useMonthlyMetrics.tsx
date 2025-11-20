@@ -354,7 +354,7 @@ export function useMonthlyMetrics(
           transaction_date,
           amount,
           status,
-          chart_of_accounts!category_id(
+          chart_account:chart_of_accounts!category_id(
             account_subtype
           )
         `)
@@ -462,7 +462,7 @@ export function useMonthlyMetrics(
 
       // Aggregate actual labor costs from bank transactions (actual - paid)
       bankLaborCosts?.forEach((txn: any) => {
-        const account = txn.chart_of_accounts as { account_subtype?: string } | null;
+        const account = txn.chart_account as { account_subtype?: string } | null;
         if (account?.account_subtype === 'labor') {
           const transactionDate = normalizeToLocalDate(txn.transaction_date, 'bank_transactions.transaction_date');
           if (!transactionDate) {

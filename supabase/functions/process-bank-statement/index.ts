@@ -875,17 +875,19 @@ serve(async (req) => {
       });
     }
 
-    // Insert ALL transaction lines (valid and invalid) with sequence in batches
-    // This allows users to review and fix invalid transactions in the UI
-    const BATCH_SIZE = 50;
-    const totalTransactions = validationResult.transactions.length;
+    // Filter out transactions with validation errors before insertion
+    // Only insert valid transactions - invalid ones are stored in error_message for user review
+    const validTransactionsForInsert = validationResult.transactions.filter((tx: any) => !tx.has_validation_error);
     
-    console.log(`💾 Inserting ${totalTransactions} transactions (${validationResult.validCount} valid, ${validationResult.invalidCount} with errors) in batches of ${BATCH_SIZE}...`);
+    const BATCH_SIZE = 50;
+    const totalValidTransactions = validTransactionsForInsert.length;
+    
+    console.log(`💾 Inserting ${totalValidTransactions} valid transactions (${validationResult.invalidCount} skipped due to validation errors) in batches of ${BATCH_SIZE}...`);
     
     let insertedCount = 0;
-    for (let i = 0; i < totalTransactions; i += BATCH_SIZE) {
-      const endIndex = Math.min(i + BATCH_SIZE, totalTransactions);
-      const batchTransactions = validationResult.transactions.slice(i, endIndex);
+    for (let i = 0; i < totalValidTransactions; i += BATCH_SIZE) {
+      const endIndex = Math.min(i + BATCH_SIZE, totalValidTransactions);
+      const batchTransactions = validTransactionsForInsert.slice(i, endIndex);
       
       // Map to database schema just for this batch
       const batch = batchTransactions.map((transaction: any, batchIndex: number) => ({
@@ -913,7 +915,7 @@ serve(async (req) => {
           .from("bank_statement_uploads")
           .update({
             status: "error",
-            error_message: `Failed to insert transactions after processing ${insertedCount} of ${totalTransactions}.`
+            error_message: `Failed to insert transactions after processing ${insertedCount} of ${totalValidTransactions}. ${validationResult.invalidCount} transactions were skipped due to validation errors.`
           })
           .eq("id", statementUploadId);
         
@@ -921,7 +923,8 @@ serve(async (req) => {
           error: "Failed to insert transaction lines",
           details: linesError,
           insertedCount,
-          totalTransactions,
+          totalValidTransactions,
+          totalTransactions: validationResult.transactions.length,
           invalidCount: validationResult.invalidCount,
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -930,15 +933,15 @@ serve(async (req) => {
       }
       
       insertedCount += batch.length;
-      if (insertedCount % 100 === 0 || insertedCount === totalTransactions) {
-        console.log(`✅ Inserted ${insertedCount}/${totalTransactions} transactions`);
+      if (insertedCount % 100 === 0 || insertedCount === totalValidTransactions) {
+        console.log(`✅ Inserted ${insertedCount}/${totalValidTransactions} valid transactions`);
       }
     }
 
-    console.log(`✅ Successfully inserted all ${totalTransactions} transactions`);
+    console.log(`✅ Successfully inserted ${totalValidTransactions} valid transactions`);
     
     if (validationResult.invalidCount > 0) {
-      console.log(`⚠️ ${validationResult.invalidCount} transaction(s) have validation errors and need user review`);
+      console.log(`⚠️ ${validationResult.invalidCount} transaction(s) were skipped due to validation errors and need manual review`);
     }
 
     return new Response(

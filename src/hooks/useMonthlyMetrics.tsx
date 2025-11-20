@@ -19,7 +19,11 @@ export interface MonthlyMetrics {
 
 /**
  * Hook to fetch monthly aggregated metrics from unified_sales (revenue + liabilities) 
- * and source tables (inventory_transactions + daily_labor_costs for costs).
+ * and source tables (inventory_transactions + daily_labor_costs + bank transactions/pending outflows for costs).
+ * 
+ * Labor costs now include:
+ * - Pending labor: from daily_labor_costs (time punches - scheduled/accrued)
+ * - Actual labor: from bank_transactions and pending_outflows (paid labor)
  * 
  * ✅ Use this hook for monthly performance tables
  * ❌ Don't use getMonthlyData() from useDailyPnL (incorrect/outdated)
@@ -304,7 +308,7 @@ export function useMonthlyMetrics(
 
       if (foodCostsError) throw foodCostsError;
 
-      // Fetch labor costs from daily_labor_costs (source of truth)
+      // Fetch labor costs from daily_labor_costs (pending - from time punches)
       const { data: laborCostsData, error: laborCostsError } = await supabase
         .from('daily_labor_costs')
         .select('date, total_labor_cost')
@@ -313,6 +317,43 @@ export function useMonthlyMetrics(
         .lte('date', format(dateTo, 'yyyy-MM-dd'));
 
       if (laborCostsError) throw laborCostsError;
+
+      // Fetch actual labor costs from bank transactions (actual - paid)
+      const { data: bankLaborCosts, error: bankLaborError } = await supabase
+        .from('bank_transactions')
+        .select(`
+          transaction_date,
+          amount,
+          status,
+          chart_of_accounts!category_id(
+            account_subtype
+          )
+        `)
+        .eq('restaurant_id', restaurantId)
+        .gte('transaction_date', format(dateFrom, 'yyyy-MM-dd'))
+        .lte('transaction_date', format(dateTo, 'yyyy-MM-dd'))
+        .in('status', ['posted', 'pending'])
+        .lt('amount', 0); // Only outflows
+
+      if (bankLaborError) throw bankLaborError;
+
+      // Fetch actual labor costs from pending outflows (actual - paid)
+      const { data: pendingLaborCosts, error: pendingLaborError } = await supabase
+        .from('pending_outflows')
+        .select(`
+          issue_date,
+          amount,
+          status,
+          chart_account:chart_of_accounts!category_id(
+            account_subtype
+          )
+        `)
+        .eq('restaurant_id', restaurantId)
+        .gte('issue_date', format(dateFrom, 'yyyy-MM-dd'))
+        .lte('issue_date', format(dateTo, 'yyyy-MM-dd'))
+        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90']);
+
+      if (pendingLaborError) throw pendingLaborError;
 
       // Aggregate COGS (Cost of Goods Used) by month
       foodCostsData?.forEach((transaction) => {
@@ -345,7 +386,7 @@ export function useMonthlyMetrics(
         month.food_cost += Math.round(Math.abs(transaction.total_cost || 0) * 100);
       });
 
-      // Aggregate labor costs by month
+      // Aggregate labor costs by month (pending - from time punches)
       laborCostsData?.forEach((day) => {
         // Parse date as local date, not UTC midnight
         const [year, monthNum, dayNum] = day.date.split('-').map(Number);
@@ -373,6 +414,66 @@ export function useMonthlyMetrics(
         // Use cents to avoid floating-point precision errors
         // Use Math.abs() because costs may be stored as negative (accounting convention)
         month.labor_cost += Math.round(Math.abs(day.total_labor_cost || 0) * 100);
+      });
+
+      // Aggregate actual labor costs from bank transactions (actual - paid)
+      bankLaborCosts?.forEach((txn: any) => {
+        const account = txn.chart_of_accounts as { account_subtype?: string } | null;
+        if (account?.account_subtype === 'labor') {
+          const [year, monthNum, dayNum] = txn.transaction_date.split('-').map(Number);
+          const localDate = new Date(year, monthNum - 1, dayNum);
+          const monthKey = format(localDate, 'yyyy-MM');
+          
+          if (!monthlyMap.has(monthKey)) {
+            monthlyMap.set(monthKey, {
+              period: monthKey,
+              gross_revenue: 0,
+              total_collected_at_pos: 0,
+              net_revenue: 0,
+              discounts: 0,
+              refunds: 0,
+              sales_tax: 0,
+              tips: 0,
+              other_liabilities: 0,
+              food_cost: 0,
+              labor_cost: 0,
+              has_data: true,
+            });
+          }
+
+          const month = monthlyMap.get(monthKey)!;
+          month.labor_cost += Math.round(Math.abs(txn.amount || 0) * 100);
+        }
+      });
+
+      // Aggregate actual labor costs from pending outflows (actual - paid)
+      pendingLaborCosts?.forEach((txn: any) => {
+        const account = txn.chart_account as { account_subtype?: string } | null;
+        if (account?.account_subtype === 'labor') {
+          const [year, monthNum, dayNum] = txn.issue_date.split('-').map(Number);
+          const localDate = new Date(year, monthNum - 1, dayNum);
+          const monthKey = format(localDate, 'yyyy-MM');
+          
+          if (!monthlyMap.has(monthKey)) {
+            monthlyMap.set(monthKey, {
+              period: monthKey,
+              gross_revenue: 0,
+              total_collected_at_pos: 0,
+              net_revenue: 0,
+              discounts: 0,
+              refunds: 0,
+              sales_tax: 0,
+              tips: 0,
+              other_liabilities: 0,
+              food_cost: 0,
+              labor_cost: 0,
+              has_data: true,
+            });
+          }
+
+          const month = monthlyMap.get(monthKey)!;
+          month.labor_cost += Math.round(Math.abs(txn.amount || 0) * 100);
+        }
       });
 
       // Calculate net_revenue and total_collected_at_pos for each month

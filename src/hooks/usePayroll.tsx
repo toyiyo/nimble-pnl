@@ -50,11 +50,11 @@ export const usePayroll = (
 
       // Group punches by employee
       const punchesPerEmployee = new Map<string, TimePunch[]>();
-      (punches || []).forEach((punch: TimePunch) => {
+      (punches || []).forEach((punch: any) => {
         if (!punchesPerEmployee.has(punch.employee_id)) {
           punchesPerEmployee.set(punch.employee_id, []);
         }
-        punchesPerEmployee.get(punch.employee_id)!.push(punch);
+        punchesPerEmployee.get(punch.employee_id)!.push(punch as TimePunch);
       });
 
       // Sum tips by employee

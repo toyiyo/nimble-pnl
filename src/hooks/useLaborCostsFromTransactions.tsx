@@ -80,7 +80,7 @@ export function useLaborCostsFromTransactions(
 
       // Process bank transactions - filter for labor accounts
       (bankTxns || []).forEach((txn) => {
-        const account = txn.chart_of_accounts as any;
+        const account = txn.chart_of_accounts as { account_subtype?: string } | null;
         if (account?.account_subtype === 'labor') {
           const date = txn.transaction_date;
           const cost = Math.abs(txn.amount);
@@ -97,7 +97,7 @@ export function useLaborCostsFromTransactions(
 
       // Process pending outflows - filter for labor accounts
       (pendingTxns || []).forEach((txn) => {
-        const account = txn.chart_account as any;
+        const account = txn.chart_account as { account_subtype?: string } | null;
         if (account?.account_subtype === 'labor') {
           const date = txn.issue_date;
           const cost = Math.abs(txn.amount);

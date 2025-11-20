@@ -250,27 +250,27 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         // Add breakdown children to show where labor costs come from
         children: current.labor_cost > 0 ? [
           {
-            id: 'labor-timepunches',
-            label: 'From Time Tracking',
-            value: dailyCosts.reduce((sum, d) => sum + d.labor_cost_from_timepunches, 0),
+            id: 'labor-pending',
+            label: 'Pending Payroll (Scheduled)',
+            value: dailyCosts.reduce((sum, d) => sum + d.pending_labor_cost, 0),
             percentage: current.labor_cost > 0 
-              ? (dailyCosts.reduce((sum, d) => sum + d.labor_cost_from_timepunches, 0) / current.labor_cost) * 100 
+              ? (dailyCosts.reduce((sum, d) => sum + d.pending_labor_cost, 0) / current.labor_cost) * 100 
               : 0,
             type: 'line-item' as const,
             level: 1,
-            insight: 'Labor costs calculated from employee time punches',
+            insight: 'Labor costs calculated from employee time punches (scheduled/accrued labor that will be paid)',
             status: 'neutral' as const,
           },
           {
-            id: 'labor-transactions',
-            label: 'From Financial Transactions',
-            value: dailyCosts.reduce((sum, d) => sum + d.labor_cost_from_transactions, 0),
+            id: 'labor-actual',
+            label: 'Actual Payroll (Paid)',
+            value: dailyCosts.reduce((sum, d) => sum + d.actual_labor_cost, 0),
             percentage: current.labor_cost > 0 
-              ? (dailyCosts.reduce((sum, d) => sum + d.labor_cost_from_transactions, 0) / current.labor_cost) * 100 
+              ? (dailyCosts.reduce((sum, d) => sum + d.actual_labor_cost, 0) / current.labor_cost) * 100 
               : 0,
             type: 'line-item' as const,
             level: 1,
-            insight: 'Labor expenses from bank transactions and checks categorized to payroll/labor accounts',
+            insight: 'Labor expenses from bank transactions and checks categorized to payroll/labor accounts (money actually paid out)',
             status: 'neutral' as const,
           },
         ] : undefined,

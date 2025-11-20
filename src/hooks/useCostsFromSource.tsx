@@ -7,8 +7,8 @@ export interface DailyCostData {
   date: string;
   food_cost: number;
   labor_cost: number;
-  labor_cost_from_timepunches: number;
-  labor_cost_from_transactions: number;
+  pending_labor_cost: number; // From time punches (scheduled/accrued)
+  actual_labor_cost: number;  // From bank transactions (paid)
   total_cost: number;
 }
 
@@ -16,8 +16,8 @@ export interface CostsFromSourceResult {
   dailyCosts: DailyCostData[];
   totalFoodCost: number;
   totalLaborCost: number;
-  totalLaborCostFromTimePunches: number;
-  totalLaborCostFromTransactions: number;
+  pendingLaborCost: number;  // From time punches (scheduled/accrued)
+  actualLaborCost: number;   // From bank transactions (paid)
   totalCost: number;
   isLoading: boolean;
   error: Error | null;
@@ -26,11 +26,16 @@ export interface CostsFromSourceResult {
 
 /**
  * Combined hook that queries food costs from inventory_transactions, 
- * labor costs from daily_labor_costs (time punches), and labor costs
- * from bank transactions/pending outflows (financial accounts).
+ * pending labor costs from daily_labor_costs (time punches - scheduled/accrued), 
+ * and actual labor costs from bank transactions/pending outflows (paid labor).
  * 
- * This provides the complete picture of labor costs from both operational
- * (time tracking) and financial (bank transactions) sources.
+ * This follows the same pattern as pending outflows vs actual expenses:
+ * - Pending Labor: Time punches showing scheduled/accrued labor costs
+ * - Actual Labor: Bank transactions showing money actually paid out
+ * 
+ * Both sources are shown separately to give owners visibility into:
+ * - What labor costs are scheduled/owed (pending)
+ * - What labor costs have actually been paid (actual)
  * 
  * @param restaurantId - Restaurant ID to filter costs
  * @param dateFrom - Start date for the period
@@ -59,45 +64,45 @@ export function useCostsFromSource(
         date: day.date,
         food_cost: day.total_cost,
         labor_cost: 0,
-        labor_cost_from_timepunches: 0,
-        labor_cost_from_transactions: 0,
+        pending_labor_cost: 0,
+        actual_labor_cost: 0,
         total_cost: day.total_cost,
       });
     });
 
-    // Add labor costs from time punches
+    // Add pending labor costs from time punches (scheduled/accrued labor)
     laborCosts.dailyCosts.forEach((day) => {
       const existing = dateMap.get(day.date);
       if (existing) {
-        existing.labor_cost_from_timepunches = day.total_labor_cost;
-        existing.labor_cost = existing.labor_cost_from_timepunches + existing.labor_cost_from_transactions;
+        existing.pending_labor_cost = day.total_labor_cost;
+        existing.labor_cost = existing.pending_labor_cost + existing.actual_labor_cost;
         existing.total_cost = existing.food_cost + existing.labor_cost;
       } else {
         dateMap.set(day.date, {
           date: day.date,
           food_cost: 0,
           labor_cost: day.total_labor_cost,
-          labor_cost_from_timepunches: day.total_labor_cost,
-          labor_cost_from_transactions: 0,
+          pending_labor_cost: day.total_labor_cost,
+          actual_labor_cost: 0,
           total_cost: day.total_labor_cost,
         });
       }
     });
 
-    // Add labor costs from bank transactions and pending outflows
+    // Add actual labor costs from bank transactions and pending outflows (paid labor)
     transactionLaborCosts.dailyCosts.forEach((day) => {
       const existing = dateMap.get(day.date);
       if (existing) {
-        existing.labor_cost_from_transactions = day.labor_cost;
-        existing.labor_cost = existing.labor_cost_from_timepunches + existing.labor_cost_from_transactions;
+        existing.actual_labor_cost = day.labor_cost;
+        existing.labor_cost = existing.pending_labor_cost + existing.actual_labor_cost;
         existing.total_cost = existing.food_cost + existing.labor_cost;
       } else {
         dateMap.set(day.date, {
           date: day.date,
           food_cost: 0,
           labor_cost: day.labor_cost,
-          labor_cost_from_timepunches: 0,
-          labor_cost_from_transactions: day.labor_cost,
+          pending_labor_cost: 0,
+          actual_labor_cost: day.labor_cost,
           total_cost: day.labor_cost,
         });
       }
@@ -121,8 +126,8 @@ export function useCostsFromSource(
     dailyCosts,
     totalFoodCost: foodCosts.totalCost,
     totalLaborCost,
-    totalLaborCostFromTimePunches: laborCosts.totalCost,
-    totalLaborCostFromTransactions: transactionLaborCosts.totalCost,
+    pendingLaborCost: laborCosts.totalCost,
+    actualLaborCost: transactionLaborCosts.totalCost,
     totalCost: foodCosts.totalCost + totalLaborCost,
     isLoading,
     error,

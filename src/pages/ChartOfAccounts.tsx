@@ -124,18 +124,23 @@ export default function ChartOfAccounts() {
         </AlertTitle>
         <AlertDescription className="text-blue-800 dark:text-blue-200 space-y-2">
           <p>
-            Your labor costs in performance reports come from <strong>two sources</strong>:
+            Your labor costs in performance reports show <strong>two types</strong>:
           </p>
           <ol className="list-decimal list-inside space-y-1 ml-2">
-            <li><strong>Time Tracking</strong>: Employee time punches and calculated wages</li>
-            <li><strong>Financial Transactions</strong>: Bank transactions and checks categorized to Labor accounts (6000-6011)</li>
+            <li><strong>Pending Payroll (Scheduled)</strong>: Employee time punches showing labor you owe</li>
+            <li><strong>Actual Payroll (Paid)</strong>: Bank transactions and checks showing money you've paid out</li>
           </ol>
           <p className="pt-2">
-            <strong>To avoid double-counting:</strong> Only categorize payroll-related bank transactions to Labor accounts if they're NOT already tracked in your time punches 
-            (e.g., payroll taxes, benefits, external payroll service fees).
+            <strong>This follows the same pattern as expenses:</strong> Just like pending outflows vs. posted transactions, 
+            you can see both what you've scheduled to pay and what you've actually paid. This helps you track cash flow 
+            and ensure payroll is processed correctly.
           </p>
           <p className="pt-1">
-            <strong>Note:</strong> Labor expenses are automatically excluded from "Other Expenses" in your reports to prevent duplication.
+            <strong>Categorize freely:</strong> You can categorize salary/payroll bank transactions to Labor accounts (6000-6011) 
+            regardless of whether you have time punches. Both sources will show separately in reports until they're matched.
+          </p>
+          <p className="pt-1">
+            <strong>Note:</strong> Labor expenses are automatically excluded from "Other Expenses" in your reports.
           </p>
         </AlertDescription>
       </Alert>

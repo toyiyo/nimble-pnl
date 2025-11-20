@@ -118,6 +118,7 @@ export type Database = {
           transaction_date: string
           transaction_type: string | null
           updated_at: string
+          user_excluded: boolean | null
           validation_errors: Json | null
         }
         Insert: {
@@ -135,6 +136,7 @@ export type Database = {
           transaction_date: string
           transaction_type?: string | null
           updated_at?: string
+          user_excluded?: boolean | null
           validation_errors?: Json | null
         }
         Update: {
@@ -152,6 +154,7 @@ export type Database = {
           transaction_date?: string
           transaction_type?: string | null
           updated_at?: string
+          user_excluded?: boolean | null
           validation_errors?: Json | null
         }
         Relationships: [

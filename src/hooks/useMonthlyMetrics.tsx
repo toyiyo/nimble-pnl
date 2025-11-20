@@ -337,24 +337,15 @@ export function useMonthlyMetrics(
 
       if (foodCostsError) throw foodCostsError;
 
-      // Fetch labor costs from daily_labor_costs (pending - from time punches)
-      const { data: laborCostsData, error: laborCostsError } = await supabase
-        .from('daily_labor_costs')
-        .select('date, total_labor_cost')
-        .eq('restaurant_id', restaurantId)
-        .gte('date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('date', format(dateTo, 'yyyy-MM-dd'));
-
-      if (laborCostsError) throw laborCostsError;
-
-      // Fetch actual labor costs from bank transactions (actual - paid)
-      const { data: bankLaborCosts, error: bankLaborError } = await supabase
+      // Fetch actual labor costs from bank transactions + pending outflows
+      // Use same pattern as useLaborCostsFromTransactions (no alias)
+      const { data: bankLabor, error: bankLaborError } = await supabase
         .from('bank_transactions')
         .select(`
           transaction_date,
           amount,
           status,
-          chart_account:chart_of_accounts!category_id(
+          chart_of_accounts!category_id(
             account_subtype
           )
         `)
@@ -362,16 +353,13 @@ export function useMonthlyMetrics(
         .gte('transaction_date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('transaction_date', format(dateTo, 'yyyy-MM-dd'))
         .in('status', ['posted', 'pending'])
-        .lt('amount', 0) // Only outflows
-        .not('category_id', 'is', null); // Only categorized transactions
+        .lt('amount', 0); // Only outflows
 
-      // Don't throw - just log and continue without bank labor costs if query fails
       if (bankLaborError) {
         console.warn('Failed to fetch bank labor costs:', bankLaborError);
       }
 
-      // Fetch actual labor costs from pending outflows (actual - paid)
-      const { data: pendingLaborCosts, error: pendingLaborError } = await supabase
+      const { data: pendingLabor, error: pendingLaborError } = await supabase
         .from('pending_outflows')
         .select(`
           issue_date,
@@ -386,10 +374,19 @@ export function useMonthlyMetrics(
         .lte('issue_date', format(dateTo, 'yyyy-MM-dd'))
         .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90']);
 
-      // Don't throw - just log and continue without pending labor costs if query fails
       if (pendingLaborError) {
         console.warn('Failed to fetch pending labor costs:', pendingLaborError);
       }
+
+      // Fetch labor costs from daily_labor_costs (pending - from time punches)
+      const { data: laborCostsData, error: laborCostsError } = await supabase
+        .from('daily_labor_costs')
+        .select('date, total_labor_cost')
+        .eq('restaurant_id', restaurantId)
+        .gte('date', format(dateFrom, 'yyyy-MM-dd'))
+        .lte('date', format(dateTo, 'yyyy-MM-dd'));
+
+      if (laborCostsError) throw laborCostsError;
 
       // Aggregate COGS (Cost of Goods Used) by month
       foodCostsData?.forEach((transaction) => {
@@ -461,14 +458,13 @@ export function useMonthlyMetrics(
         month.labor_cost += pendingCost;
       });
 
-      // Aggregate actual labor costs from bank transactions (actual - paid)
-      bankLaborCosts?.forEach((txn: any) => {
-        const account = txn.chart_account as { account_subtype?: string } | null;
+      // Aggregate actual labor costs from bank transactions
+      bankLabor?.forEach((txn: any) => {
+        const account = txn.chart_of_accounts as { account_subtype?: string } | null;
         if (account?.account_subtype === 'labor') {
           const transactionDate = normalizeToLocalDate(txn.transaction_date, 'bank_transactions.transaction_date');
-          if (!transactionDate) {
-            return;
-          }
+          if (!transactionDate) return;
+          
           const monthKey = format(transactionDate, 'yyyy-MM');
           
           if (!monthlyMap.has(monthKey)) {
@@ -497,14 +493,13 @@ export function useMonthlyMetrics(
         }
       });
 
-      // Aggregate actual labor costs from pending outflows (actual - paid)
-      pendingLaborCosts?.forEach((txn: any) => {
+      // Aggregate actual labor costs from pending outflows
+      pendingLabor?.forEach((txn: any) => {
         const account = txn.chart_account as { account_subtype?: string } | null;
         if (account?.account_subtype === 'labor') {
           const issueDate = normalizeToLocalDate(txn.issue_date, 'pending_outflows.issue_date');
-          if (!issueDate) {
-            return;
-          }
+          if (!issueDate) return;
+          
           const monthKey = format(issueDate, 'yyyy-MM');
           
           if (!monthlyMap.has(monthKey)) {

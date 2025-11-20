@@ -35,7 +35,7 @@ import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
 import { PredictableExpensesCard } from '@/components/dashboard/PredictableExpensesCard';
 import { ExpenseHealthChips } from '@/components/dashboard/ExpenseHealthChips';
 import { ExpenseAlertsWidget } from '@/components/dashboard/ExpenseAlertsWidget';
-import { format, startOfDay, endOfDay, differenceInDays } from 'date-fns';
+import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import {
   DollarSign, 
   TrendingUp, 
@@ -82,6 +82,9 @@ const Index = () => {
     label: 'Today',
   });
 
+  const monthlyRangeEnd = endOfMonth(selectedPeriod.to);
+  const monthlyRangeStart = startOfMonth(subMonths(monthlyRangeEnd, 11));
+
   // Use new unified metrics hook for revenue + costs
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
@@ -101,8 +104,8 @@ const Index = () => {
   // Fetch monthly metrics from unified_sales + daily_pnl
   const { data: monthlyMetrics, isLoading: monthlyLoading } = useMonthlyMetrics(
     selectedRestaurant?.restaurant_id || null,
-    selectedPeriod.from,
-    selectedPeriod.to
+    monthlyRangeStart,
+    monthlyRangeEnd
   );
 
   // Revenue breakdown is used by periodMetrics internally but we also need it for detailed display

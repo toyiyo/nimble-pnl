@@ -3,9 +3,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useChartOfAccounts } from '@/hooks/useChartOfAccounts';
-import { Plus, Wallet, TrendingDown, TrendingUp, DollarSign, ShoppingCart, Users, FolderPlus } from 'lucide-react';
+import { Plus, Wallet, TrendingDown, TrendingUp, DollarSign, ShoppingCart, Users, FolderPlus, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AccountDialog } from '@/components/AccountDialog';
 
@@ -114,6 +115,35 @@ export default function ChartOfAccounts() {
           Add Account
         </Button>
       </div>
+
+      {/* Labor Cost Categorization Info */}
+      <Alert className="mb-6 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-blue-500/20">
+        <Info className="h-5 w-5 text-blue-600" />
+        <AlertTitle className="text-blue-900 dark:text-blue-100 font-semibold">
+          Understanding Labor Costs in Reports
+        </AlertTitle>
+        <AlertDescription className="text-blue-800 dark:text-blue-200 space-y-2">
+          <p>
+            Your labor costs in performance reports show <strong>two types</strong>:
+          </p>
+          <ol className="list-decimal list-inside space-y-1 ml-2">
+            <li><strong>Pending Payroll (Scheduled)</strong>: Employee time punches showing labor you owe</li>
+            <li><strong>Actual Payroll (Paid)</strong>: Bank transactions and checks showing money you've paid out</li>
+          </ol>
+          <p className="pt-2">
+            <strong>This follows the same pattern as expenses:</strong> Just like pending outflows vs. posted transactions, 
+            you can see both what you've scheduled to pay and what you've actually paid. This helps you track cash flow 
+            and ensure payroll is processed correctly.
+          </p>
+          <p className="pt-1">
+            <strong>Categorize freely:</strong> You can categorize salary/payroll bank transactions to Labor accounts (6000-6011) 
+            regardless of whether you have time punches. Both sources will show separately in reports until they're matched.
+          </p>
+          <p className="pt-1">
+            <strong>Note:</strong> Labor expenses are automatically excluded from "Other Expenses" in your reports.
+          </p>
+        </AlertDescription>
+      </Alert>
 
       <div className="mt-8 space-y-6">
         {Object.entries(groupedAccounts).map(([type, typeAccounts]) => {

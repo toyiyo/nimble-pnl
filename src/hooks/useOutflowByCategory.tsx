@@ -7,12 +7,16 @@ import { format, parseISO } from "date-fns";
 function mapToStandardCategory(accountSubtype: string, accountName: string): string {
   const nameLower = accountName.toLowerCase();
   
-  // Map based on account subtype first
+  // Map labor/payroll accounts FIRST (highest priority)
+  if (accountSubtype === 'labor' || accountSubtype === 'payroll' || 
+      nameLower.includes('payroll') || nameLower.includes('salary') || 
+      nameLower.includes('wage') || nameLower.includes('labor')) {
+    return 'Labor/Payroll';
+  }
+  
+  // Map based on account subtype
   if (accountSubtype === 'cost_of_goods_sold' || nameLower.includes('food') || nameLower.includes('inventory')) {
     return 'Inventory/Food Purchases';
-  }
-  if (accountSubtype === 'payroll' || nameLower.includes('payroll') || nameLower.includes('labor')) {
-    return 'Labor/Payroll';
   }
   
   // Map based on account name keywords

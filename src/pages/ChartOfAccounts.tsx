@@ -3,9 +3,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useChartOfAccounts } from '@/hooks/useChartOfAccounts';
-import { Plus, Wallet, TrendingDown, TrendingUp, DollarSign, ShoppingCart, Users, FolderPlus } from 'lucide-react';
+import { Plus, Wallet, TrendingDown, TrendingUp, DollarSign, ShoppingCart, Users, FolderPlus, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AccountDialog } from '@/components/AccountDialog';
 
@@ -114,6 +115,30 @@ export default function ChartOfAccounts() {
           Add Account
         </Button>
       </div>
+
+      {/* Labor Cost Categorization Info */}
+      <Alert className="mb-6 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-blue-500/20">
+        <Info className="h-5 w-5 text-blue-600" />
+        <AlertTitle className="text-blue-900 dark:text-blue-100 font-semibold">
+          Understanding Labor Costs in Reports
+        </AlertTitle>
+        <AlertDescription className="text-blue-800 dark:text-blue-200 space-y-2">
+          <p>
+            Your labor costs in performance reports come from <strong>two sources</strong>:
+          </p>
+          <ol className="list-decimal list-inside space-y-1 ml-2">
+            <li><strong>Time Tracking</strong>: Employee time punches and calculated wages</li>
+            <li><strong>Financial Transactions</strong>: Bank transactions and checks categorized to Labor accounts (6000-6011)</li>
+          </ol>
+          <p className="pt-2">
+            <strong>To avoid double-counting:</strong> Only categorize payroll-related bank transactions to Labor accounts if they're NOT already tracked in your time punches 
+            (e.g., payroll taxes, benefits, external payroll service fees).
+          </p>
+          <p className="pt-1">
+            <strong>Note:</strong> Labor expenses are automatically excluded from "Other Expenses" in your reports to prevent duplication.
+          </p>
+        </AlertDescription>
+      </Alert>
 
       <div className="mt-8 space-y-6">
         {Object.entries(groupedAccounts).map(([type, typeAccounts]) => {

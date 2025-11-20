@@ -247,6 +247,33 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
               'Labor cost'
             ),
         status: current.labor_cost === 0 ? 'warning' : getStatus(current.avg_labor_cost_pct, benchmarks.industry_avg_labor_cost),
+        // Add breakdown children to show where labor costs come from
+        children: current.labor_cost > 0 ? [
+          {
+            id: 'labor-timepunches',
+            label: 'From Time Tracking',
+            value: dailyCosts.reduce((sum, d) => sum + d.labor_cost_from_timepunches, 0),
+            percentage: current.labor_cost > 0 
+              ? (dailyCosts.reduce((sum, d) => sum + d.labor_cost_from_timepunches, 0) / current.labor_cost) * 100 
+              : 0,
+            type: 'line-item' as const,
+            level: 1,
+            insight: 'Labor costs calculated from employee time punches',
+            status: 'neutral' as const,
+          },
+          {
+            id: 'labor-transactions',
+            label: 'From Financial Transactions',
+            value: dailyCosts.reduce((sum, d) => sum + d.labor_cost_from_transactions, 0),
+            percentage: current.labor_cost > 0 
+              ? (dailyCosts.reduce((sum, d) => sum + d.labor_cost_from_transactions, 0) / current.labor_cost) * 100 
+              : 0,
+            type: 'line-item' as const,
+            level: 1,
+            insight: 'Labor expenses from bank transactions and checks categorized to payroll/labor accounts',
+            status: 'neutral' as const,
+          },
+        ] : undefined,
       },
 
       // PRIME COST

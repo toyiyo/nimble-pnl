@@ -55,6 +55,12 @@ import {
   ChevronUp,
 } from 'lucide-react';
 
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+});
+
 const Index = () => {
   const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
@@ -135,8 +141,12 @@ const Index = () => {
       net_revenue: periodMetrics.netRevenue,
       food_cost: periodMetrics.foodCost,
       labor_cost: periodMetrics.laborCost,
+      pending_labor_cost: periodMetrics.pendingLaborCost,
+      actual_labor_cost: periodMetrics.actualLaborCost,
       food_cost_percentage: periodMetrics.foodCostPercentage,
       labor_cost_percentage: periodMetrics.laborCostPercentage,
+      pending_labor_cost_percentage: periodMetrics.pendingLaborCostPercentage,
+      actual_labor_cost_percentage: periodMetrics.actualLaborCostPercentage,
       prime_cost_percentage: periodMetrics.primeCostPercentage,
     };
   }, [periodMetrics]);
@@ -629,7 +639,9 @@ const Index = () => {
                     } : undefined}
                     icon={Clock}
                     variant={periodData && periodData.labor_cost_percentage > 35 ? 'warning' : 'default'}
-                    subtitle={periodData ? `${periodData.labor_cost_percentage.toFixed(1)}% of revenue | Target: 25-30%` : undefined}
+                    subtitle={periodData
+                      ? `${periodData.labor_cost_percentage.toFixed(1)}% of revenue | Pending ${currencyFormatter.format(periodData.pending_labor_cost)} • Actual ${currencyFormatter.format(periodData.actual_labor_cost)}`
+                      : undefined}
                     sparklineData={undefined}
                     periodLabel={selectedPeriod.label}
                   />
@@ -679,6 +691,26 @@ const Index = () => {
                           : ' — needs attention.'}
                       </p>
                     )}
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border border-border/40 bg-background/40 p-3">
+                        <p className="text-xs text-muted-foreground">Pending Payroll (Scheduled)</p>
+                        <p className="text-base font-semibold text-foreground">
+                          {currencyFormatter.format(periodData.pending_labor_cost)}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {periodData.pending_labor_cost_percentage.toFixed(1)}% of revenue
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border/40 bg-background/40 p-3">
+                        <p className="text-xs text-muted-foreground">Actual Payroll (Paid)</p>
+                        <p className="text-base font-semibold text-foreground">
+                          {currencyFormatter.format(periodData.actual_labor_cost)}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {periodData.actual_labor_cost_percentage.toFixed(1)}% of revenue
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
                   </CollapsibleContent>

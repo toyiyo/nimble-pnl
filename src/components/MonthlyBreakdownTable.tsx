@@ -22,6 +22,8 @@ interface MonthlyData {
   other_liabilities: number;
   food_cost: number;
   labor_cost: number;
+  pending_labor_cost: number;
+  actual_labor_cost: number;
   has_data: boolean;
 }
 
@@ -209,19 +211,25 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   const monthDate = parse(month.period, 'yyyy-MM', new Date());
                   const expenseMonth = getExpenseDataForMonth(month.period);
                   
-                  // Use expense data from bank transactions (preferred source)
-                  // Food/labor costs now come from source tables via useMonthlyMetrics
-                  const foodCost = expenseMonth?.foodCost || month.food_cost;
-                  const laborCost = expenseMonth?.laborCost || month.labor_cost;
-                  const totalExpenses = expenseMonth?.totalExpenses || (month.food_cost + month.labor_cost);
-                  const otherExpenses = totalExpenses - foodCost - laborCost;
+                  const foodCost = expenseMonth?.foodCost ?? month.food_cost;
+                  const pendingLaborCost = month.pending_labor_cost;
+                  const actualLaborCost = expenseMonth?.laborCost ?? month.actual_labor_cost;
+                  const laborCost = pendingLaborCost + actualLaborCost;
+                  const totalExpenses = expenseMonth
+                    ? expenseMonth.totalExpenses + pendingLaborCost
+                    : month.food_cost + laborCost;
+                  const otherExpenses = Math.max(0, totalExpenses - foodCost - laborCost);
                   
                   const foodCostPercent = month.net_revenue > 0 
                     ? (foodCost / month.net_revenue) * 100 
                     : 0;
-                  const laborCostPercent = month.net_revenue > 0 
-                    ? (laborCost / month.net_revenue) * 100 
+                  const pendingLaborPercent = month.net_revenue > 0 
+                    ? (pendingLaborCost / month.net_revenue) * 100 
                     : 0;
+                  const actualLaborPercent = month.net_revenue > 0 
+                    ? (actualLaborCost / month.net_revenue) * 100 
+                    : 0;
+                  const laborCostPercent = pendingLaborPercent + actualLaborPercent;
                   
                   return (
                     <Fragment key={month.period}>
@@ -280,8 +288,11 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <div className="flex flex-col items-end gap-0.5 sm:gap-1">
                             <span className="font-semibold text-xs sm:text-sm">{formatCurrency(laborCost)}</span>
-                            <span className="text-[10px] sm:text-xs text-muted-foreground">
-                              {laborCostPercent.toFixed(1)}%
+                            <span className="text-[10px] sm:text-xs text-amber-600">
+                              Pending: {formatCurrency(pendingLaborCost)} ({pendingLaborPercent.toFixed(1)}%)
+                            </span>
+                            <span className="text-[10px] sm:text-xs text-blue-600">
+                              Actual: {formatCurrency(actualLaborCost)} ({actualLaborPercent.toFixed(1)}%)
                             </span>
                           </div>
                         </td>

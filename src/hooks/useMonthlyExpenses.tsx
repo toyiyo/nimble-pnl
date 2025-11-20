@@ -10,7 +10,9 @@ function mapToStandardCategory(accountSubtype: string, accountName: string): str
   if (accountSubtype === 'cost_of_goods_sold' || nameLower.includes('food') || nameLower.includes('inventory')) {
     return 'Inventory/Food Purchases';
   }
-  if (accountSubtype === 'payroll' || nameLower.includes('payroll') || nameLower.includes('labor')) {
+  if (accountSubtype === 'labor' || accountSubtype === 'payroll' || 
+      nameLower.includes('payroll') || nameLower.includes('labor') || 
+      nameLower.includes('wages') || nameLower.includes('salary')) {
     return 'Labor/Payroll';
   }
   

@@ -81,7 +81,7 @@ export function useMonthlyExpenses(
         .from('bank_transactions')
         .select('transaction_date, amount, status, category_id, is_transfer, chart_of_accounts!category_id(account_name, account_subtype)')
         .eq('restaurant_id', restaurantId)
-        .eq('status', 'posted')
+        .in('status', ['posted', 'pending'])
         .lt('amount', 0) // Only outflows
         .gte('transaction_date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('transaction_date', format(dateTo, 'yyyy-MM-dd'));

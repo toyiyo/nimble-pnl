@@ -335,7 +335,10 @@ export function useMonthlyMetrics(
         .in('status', ['posted', 'pending'])
         .lt('amount', 0); // Only outflows
 
-      if (bankLaborError) throw bankLaborError;
+      // Don't throw - just log and continue without bank labor costs if query fails
+      if (bankLaborError) {
+        console.warn('Failed to fetch bank labor costs:', bankLaborError);
+      }
 
       // Fetch actual labor costs from pending outflows (actual - paid)
       const { data: pendingLaborCosts, error: pendingLaborError } = await supabase
@@ -353,7 +356,10 @@ export function useMonthlyMetrics(
         .lte('issue_date', format(dateTo, 'yyyy-MM-dd'))
         .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90']);
 
-      if (pendingLaborError) throw pendingLaborError;
+      // Don't throw - just log and continue without pending labor costs if query fails
+      if (pendingLaborError) {
+        console.warn('Failed to fetch pending labor costs:', pendingLaborError);
+      }
 
       // Aggregate COGS (Cost of Goods Used) by month
       foodCostsData?.forEach((transaction) => {

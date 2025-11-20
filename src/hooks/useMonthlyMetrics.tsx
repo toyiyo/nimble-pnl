@@ -362,18 +362,13 @@ export function useMonthlyMetrics(
         .gte('transaction_date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('transaction_date', format(dateTo, 'yyyy-MM-dd'))
         .in('status', ['posted', 'pending'])
-        .lt('amount', 0); // Only outflows
+        .lt('amount', 0) // Only outflows
+        .not('category_id', 'is', null); // Only categorized transactions
 
       // Don't throw - just log and continue without bank labor costs if query fails
       if (bankLaborError) {
         console.warn('Failed to fetch bank labor costs:', bankLaborError);
       }
-
-      console.log('🔍 Bank Labor Costs Query Result:', {
-        count: bankLaborCosts?.length || 0,
-        data: bankLaborCosts,
-        dateRange: `${format(dateFrom, 'yyyy-MM-dd')} to ${format(dateTo, 'yyyy-MM-dd')}`,
-      });
 
       // Fetch actual labor costs from pending outflows (actual - paid)
       const { data: pendingLaborCosts, error: pendingLaborError } = await supabase
@@ -467,15 +462,8 @@ export function useMonthlyMetrics(
       });
 
       // Aggregate actual labor costs from bank transactions (actual - paid)
-      console.log('🔍 Processing bank labor costs:', bankLaborCosts?.length || 0, 'transactions');
       bankLaborCosts?.forEach((txn: any) => {
         const account = txn.chart_account as { account_subtype?: string } | null;
-        console.log('🔍 Bank transaction:', {
-          date: txn.transaction_date,
-          amount: txn.amount,
-          account_subtype: account?.account_subtype,
-          has_chart_account: !!txn.chart_account,
-        });
         if (account?.account_subtype === 'labor') {
           const transactionDate = normalizeToLocalDate(txn.transaction_date, 'bank_transactions.transaction_date');
           if (!transactionDate) {

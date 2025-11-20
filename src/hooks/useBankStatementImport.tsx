@@ -36,7 +36,7 @@ export interface BankStatementLine {
   is_imported: boolean;
   imported_transaction_id: string | null;
   has_validation_error: boolean;
-  validation_errors: Record<string, string> | null;
+  validation_errors: any | null;
   user_excluded: boolean;
   created_at: string;
   updated_at: string;

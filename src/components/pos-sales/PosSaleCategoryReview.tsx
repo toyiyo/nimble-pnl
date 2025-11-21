@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useCategorizePosSale } from "@/hooks/useCategorizePosSale";
-import { Check, X, Sparkles, Split } from "lucide-react";
+import { Check, X, Sparkles, Split, Settings2 } from "lucide-react";
 import { SplitPosSaleDialog } from "./SplitPosSaleDialog";
+import { EnhancedCategoryRulesDialog } from "@/components/banking/EnhancedCategoryRulesDialog";
 
 import { UnifiedSaleItem } from "@/types/pos";
 
@@ -18,6 +19,8 @@ interface PosSaleCategoryReviewProps {
 export function PosSaleCategoryReview({ sales, restaurantId, onRefresh }: PosSaleCategoryReviewProps) {
   const { mutate: categorizeSale } = useCategorizePosSale(restaurantId);
   const [splitDialogSale, setSplitDialogSale] = useState<UnifiedSaleItem | null>(null);
+  const [showRulesDialog, setShowRulesDialog] = useState(false);
+  const [ruleFromSale, setRuleFromSale] = useState<UnifiedSaleItem | null>(null);
 
   const handleApprove = (sale: UnifiedSaleItem) => {
     if (!sale.suggested_category_id) return;
@@ -46,6 +49,31 @@ export function PosSaleCategoryReview({ sales, restaurantId, onRefresh }: PosSal
     };
     
     return variants[confidence as keyof typeof variants] || variants.low;
+  };
+
+  const handleSuggestRule = (sale: UnifiedSaleItem) => {
+    if (!sale.suggested_category_id) return;
+    setRuleFromSale(sale);
+    setShowRulesDialog(true);
+  };
+
+  const getPrefilledRuleData = () => {
+    if (!ruleFromSale || !ruleFromSale.suggested_category_id) return undefined;
+
+    const itemName = ruleFromSale.itemName || '';
+    
+    return {
+      ruleName: itemName 
+        ? `Auto-categorize ${itemName.substring(0, 30)}${itemName.length > 30 ? '...' : ''}`
+        : 'POS sale categorization rule',
+      appliesTo: 'pos_sales' as const,
+      itemNamePattern: itemName || '',
+      itemNameMatchType: 'contains' as const,
+      posCategory: ruleFromSale.posCategory || '',
+      categoryId: ruleFromSale.suggested_category_id,
+      priority: '5',
+      autoApply: true,
+    };
   };
 
   if (sales.length === 0) {
@@ -123,6 +151,15 @@ export function PosSaleCategoryReview({ sales, restaurantId, onRefresh }: PosSal
                 <Button
                   size="sm"
                   variant="outline"
+                  onClick={() => handleSuggestRule(sale)}
+                  title="Create a rule based on this sale"
+                >
+                  <Settings2 className="h-4 w-4 mr-1" />
+                  Rule
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => handleReject(sale)}
                 >
                   <X className="h-4 w-4 mr-1" />
@@ -142,6 +179,13 @@ export function PosSaleCategoryReview({ sales, restaurantId, onRefresh }: PosSal
           restaurantId={restaurantId}
         />
       )}
+
+      <EnhancedCategoryRulesDialog
+        open={showRulesDialog}
+        onOpenChange={setShowRulesDialog}
+        defaultTab="pos"
+        prefilledRule={getPrefilledRuleData()}
+      />
     </>
   );
 }

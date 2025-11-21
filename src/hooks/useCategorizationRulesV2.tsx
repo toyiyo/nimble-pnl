@@ -199,19 +199,66 @@ export function useUpdateRuleV2() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categorization-rules-v2'] });
-      toast({
-        title: "Rule updated",
-        description: "Categorization rule has been updated successfully.",
-      });
+    onMutate: async (params) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['categorization-rules-v2'] });
+
+      // Snapshot previous value
+      const previousRules = queryClient.getQueriesData({ queryKey: ['categorization-rules-v2'] });
+
+      // Optimistically update all matching queries
+      queryClient.setQueriesData<CategorizationRule[]>(
+        { queryKey: ['categorization-rules-v2'] },
+        (old) => {
+          if (!old) return old;
+          return old.map((rule) => {
+            if (rule.id !== params.ruleId) return rule;
+            return {
+              ...rule,
+              ...(params.ruleName !== undefined && { rule_name: params.ruleName }),
+              ...(params.descriptionPattern !== undefined && { description_pattern: params.descriptionPattern }),
+              ...(params.descriptionMatchType !== undefined && { description_match_type: params.descriptionMatchType }),
+              ...(params.amountMin !== undefined && { amount_min: params.amountMin }),
+              ...(params.amountMax !== undefined && { amount_max: params.amountMax }),
+              ...(params.supplierId !== undefined && { supplier_id: params.supplierId }),
+              ...(params.transactionType !== undefined && { transaction_type: params.transactionType }),
+              ...(params.posCategory !== undefined && { pos_category: params.posCategory }),
+              ...(params.itemNamePattern !== undefined && { item_name_pattern: params.itemNamePattern }),
+              ...(params.itemNameMatchType !== undefined && { item_name_match_type: params.itemNameMatchType }),
+              ...(params.categoryId !== undefined && { category_id: params.categoryId }),
+              ...(params.priority !== undefined && { priority: params.priority }),
+              ...(params.isActive !== undefined && { is_active: params.isActive }),
+              ...(params.autoApply !== undefined && { auto_apply: params.autoApply }),
+              updated_at: new Date().toISOString(),
+            };
+          });
+        }
+      );
+
+      return { previousRules };
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _, context) => {
+      // Rollback on error
+      if (context?.previousRules) {
+        context.previousRules.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
       toast({
         title: "Error updating rule",
         description: error.message,
         variant: "destructive",
       });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Rule updated",
+        description: "Categorization rule has been updated successfully.",
+      });
+    },
+    onSettled: () => {
+      // Always refetch to ensure correctness
+      queryClient.invalidateQueries({ queryKey: ['categorization-rules-v2'] });
     },
   });
 }

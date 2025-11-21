@@ -357,6 +357,7 @@ export const EnhancedCategoryRulesDialog = ({
                                 id={`active-${rule.id}`}
                                 checked={rule.is_active}
                                 onCheckedChange={() => handleToggleActive(rule.id, rule.is_active)}
+                                disabled={updateRule.isPending}
                               />
                             </div>
                             <div className="flex items-center gap-2">
@@ -367,6 +368,7 @@ export const EnhancedCategoryRulesDialog = ({
                                 id={`auto-${rule.id}`}
                                 checked={rule.auto_apply}
                                 onCheckedChange={() => handleToggleAutoApply(rule.id, rule.auto_apply)}
+                                disabled={updateRule.isPending}
                               />
                             </div>
                           </div>

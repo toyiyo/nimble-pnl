@@ -130,8 +130,8 @@ export const PurchaseOrderEditor: React.FC = () => {
         const term = searchTerm.toLowerCase();
         return (
           p.name.toLowerCase().includes(term) ||
-          p.sku.toLowerCase().includes(term) ||
-          p.category?.toLowerCase().includes(term)
+          (p.sku?.toLowerCase() ?? '').includes(term) ||
+          (p.category?.toLowerCase() ?? '').includes(term)
         );
       }
 

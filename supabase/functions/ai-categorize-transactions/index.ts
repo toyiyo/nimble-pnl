@@ -258,7 +258,7 @@ serve(async (req) => {
 
     // Fetch example categorizations (recent categorized transactions)
     // Get up to 10 examples to help AI learn the restaurant's categorization patterns
-    const { data: exampleTransactions, error: examplesError } = await supabaseClient
+    let exampleQuery = supabaseClient
       .from('bank_transactions')
       .select(`
         id, 
@@ -276,8 +276,14 @@ serve(async (req) => {
       `)
       .eq('restaurant_id', restaurantId)
       .eq('is_categorized', true)
-      .not('category_id', 'is', null)
-      .not('category_id', 'in', `(${uncategorizedIds.join(',')})`) // Exclude uncategorized accounts
+      .not('category_id', 'is', null);
+
+    // Only exclude uncategorized accounts if they exist
+    if (uncategorizedIds.length > 0) {
+      exampleQuery = exampleQuery.not('category_id', 'in', `(${uncategorizedIds.join(',')})`);
+    }
+
+    const { data: exampleTransactions, error: examplesError } = await exampleQuery
       .order('transaction_date', { ascending: false })
       .limit(10);
 

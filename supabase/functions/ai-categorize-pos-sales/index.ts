@@ -298,6 +298,7 @@ serve(async (req) => {
         total_price,
         item_type,
         category_id,
+        sale_date,
         chart_of_accounts!inner(
           account_code,
           account_name,

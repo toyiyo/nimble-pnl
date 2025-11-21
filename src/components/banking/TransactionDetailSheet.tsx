@@ -16,7 +16,7 @@ import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { SearchableAccountSelector } from "./SearchableAccountSelector";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeftRight, Building2, Calendar, DollarSign, FileText, Sparkles, Split } from "lucide-react";
+import { ArrowLeftRight, Building2, Calendar, DollarSign, FileText, Sparkles, Split, Settings2 } from "lucide-react";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
@@ -24,6 +24,7 @@ import { SupplierSuggestion } from "./SupplierSuggestion";
 import { SearchableSupplierSelector } from "@/components/SearchableSupplierSelector";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import { toast } from "sonner";
+import { EnhancedCategoryRulesDialog } from "./EnhancedCategoryRulesDialog";
 
 interface TransactionDetailSheetProps {
   transaction: BankTransaction;
@@ -36,6 +37,8 @@ export function TransactionDetailSheet({
   isOpen,
   onClose,
 }: TransactionDetailSheetProps) {
+  const RULE_NAME_MAX_LENGTH = 30;
+  
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
     transaction.category_id || transaction.suggested_category_id || ''
   );
@@ -46,6 +49,7 @@ export function TransactionDetailSheet({
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | undefined>(
     transaction.supplier_id
   );
+  const [showRulesDialog, setShowRulesDialog] = useState(false);
 
   // Reset state when transaction changes
   useEffect(() => {
@@ -144,7 +148,46 @@ export function TransactionDetailSheet({
     onClose();
   };
 
+  const handleSuggestRule = () => {
+    if (!selectedCategoryId) {
+      toast.error("Please select a category first");
+      return;
+    }
+
+    // Extract merchant name from description or use payee
+    const merchantName = transaction.merchant_name || payee || transaction.description;
+    
+    // Create a suggested rule name
+    const ruleName = merchantName 
+      ? `Auto-categorize ${merchantName.substring(0, 30)}${merchantName.length > 30 ? '...' : ''}`
+      : 'Transaction categorization rule';
+
+    setShowRulesDialog(true);
+  };
+
+  const getPrefilledRuleData = () => {
+    if (!selectedCategoryId) return undefined;
+
+    const merchantName = transaction.merchant_name || payee || '';
+    const isExpense = transaction.amount < 0;
+    
+    return {
+      ruleName: merchantName 
+        ? `Auto-categorize ${merchantName.substring(0, RULE_NAME_MAX_LENGTH)}${merchantName.length > RULE_NAME_MAX_LENGTH ? '...' : ''}`
+        : 'Transaction categorization rule',
+      appliesTo: 'bank_transactions' as const,
+      descriptionPattern: merchantName || '',
+      descriptionMatchType: 'contains' as const,
+      supplierId: selectedSupplierId || '',
+      transactionType: (isExpense ? 'debit' : 'credit') as const,
+      categoryId: selectedCategoryId,
+      priority: '5',
+      autoApply: true,
+    };
+  };
+
   return (
+    <>
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
         <SheetHeader>
@@ -346,17 +389,29 @@ export function TransactionDetailSheet({
 
           {/* Actions */}
           {!transaction.is_split ? (
-            <div className="flex gap-3">
-              <Button
-                onClick={handleSave}
-                disabled={!selectedCategoryId || categorize.isPending}
-                className="flex-1"
-              >
-                Save & Categorize
-              </Button>
-              <Button variant="outline" onClick={onClose} className="flex-1">
-                Cancel
-              </Button>
+            <div className="space-y-3">
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleSave}
+                  disabled={!selectedCategoryId || categorize.isPending}
+                  className="flex-1"
+                >
+                  Save & Categorize
+                </Button>
+                <Button variant="outline" onClick={onClose} className="flex-1">
+                  Cancel
+                </Button>
+              </div>
+              {selectedCategoryId && (
+                <Button
+                  variant="outline"
+                  onClick={handleSuggestRule}
+                  className="w-full"
+                >
+                  <Settings2 className="h-4 w-4 mr-2" />
+                  Suggest Rule from This Transaction
+                </Button>
+              )}
             </div>
           ) : (
             <div className="flex gap-3">
@@ -368,5 +423,13 @@ export function TransactionDetailSheet({
         </div>
       </SheetContent>
     </Sheet>
+
+    <EnhancedCategoryRulesDialog
+      open={showRulesDialog}
+      onOpenChange={setShowRulesDialog}
+      defaultTab="bank"
+      prefilledRule={getPrefilledRuleData()}
+    />
+    </>
   );
 }

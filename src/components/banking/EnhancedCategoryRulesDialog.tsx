@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -32,6 +32,7 @@ interface EnhancedCategoryRulesDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultTab?: 'bank' | 'pos';
+  prefilledRule?: Partial<RuleFormData>;
 }
 
 interface RuleFormData {
@@ -71,7 +72,8 @@ const emptyFormData: RuleFormData = {
 export const EnhancedCategoryRulesDialog = ({ 
   open, 
   onOpenChange,
-  defaultTab = 'bank'
+  defaultTab = 'bank',
+  prefilledRule
 }: EnhancedCategoryRulesDialogProps) => {
   const { selectedRestaurant } = useRestaurantContext();
   const [activeTab, setActiveTab] = useState<'bank' | 'pos'>(defaultTab);
@@ -91,6 +93,30 @@ export const EnhancedCategoryRulesDialog = ({
   const deleteRule = useDeleteRuleV2();
   const applyRules = useApplyRulesV2();
   const aiSuggestRules = useAISuggestRules();
+
+  // Constants
+  const RULE_NAME_MAX_LENGTH = 30;
+  const FORM_SCROLL_DELAY_MS = 100;
+
+  // Handle prefilled rule data
+  useEffect(() => {
+    if (open && prefilledRule) {
+      // Set the tab based on the prefilled data
+      if (prefilledRule.appliesTo) {
+        setActiveTab(prefilledRule.appliesTo === 'pos_sales' ? 'pos' : 'bank');
+      }
+      // Merge prefilled data with empty form data
+      setFormData({ ...emptyFormData, ...prefilledRule });
+      setShowNewRule(true);
+      // Scroll to form after a delay
+      setTimeout(() => {
+        const formElement = document.getElementById('rule-form');
+        if (formElement) {
+          formElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }, FORM_SCROLL_DELAY_MS);
+    }
+  }, [open, prefilledRule]);
 
   const handleSupplierChange = async (value: string, isNew: boolean) => {
     if (isNew) {
@@ -171,7 +197,7 @@ export const EnhancedCategoryRulesDialog = ({
       if (formElement) {
         formElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
-    }, 100);
+    }, FORM_SCROLL_DELAY_MS);
   };
 
   const handleSaveEdit = async () => {

@@ -32,6 +32,7 @@ import {
   Clock,
   ClipboardList,
   DollarSign,
+  ShoppingBag,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -65,7 +66,7 @@ const navigationGroups = [
       { path: '/recipes', label: 'Recipes', icon: ChefHat },
       { path: '/inventory', label: 'Inventory', icon: Package },
       { path: '/inventory-audit', label: 'Audit', icon: ClipboardCheck },
-      { path: '/purchase-orders', label: 'Purchase Orders', icon: FileText },
+      { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingBag },
       { path: '/reports', label: 'Reports', icon: FileText },
     ],
   },

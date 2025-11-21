@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, Send, Plus, Trash2, Search, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, Send, Plus, Trash2, Search, AlertCircle, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,7 +39,6 @@ import { useToast } from '@/hooks/use-toast';
 import { usePurchaseOrders } from '@/hooks/usePurchaseOrders';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useProducts, Product } from '@/hooks/useProducts';
-import { useProductSuppliers } from '@/hooks/useProductSuppliers';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import {
   PurchaseOrderViewModel,
@@ -75,7 +74,6 @@ export const PurchaseOrderEditor: React.FC = () => {
   const [lines, setLines] = useState<PurchaseOrderLine[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [editingLine, setEditingLine] = useState<string | null>(null);
   const [changeSupplierDialog, setChangeSupplierDialog] = useState(false);
   const [pendingSupplierId, setPendingSupplierId] = useState<string>('');
 

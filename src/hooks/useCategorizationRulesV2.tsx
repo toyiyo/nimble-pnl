@@ -7,6 +7,13 @@ export type MatchType = 'exact' | 'contains' | 'starts_with' | 'ends_with' | 're
 export type TransactionType = 'debit' | 'credit' | 'any';
 export type AppliesTo = 'bank_transactions' | 'pos_sales' | 'both';
 
+export interface SplitConfigEntry {
+  category_id: string;
+  percentage?: number;  // 0-100, mutually exclusive with amount
+  amount?: number;      // Fixed amount, mutually exclusive with percentage
+  description?: string;
+}
+
 export interface CategorizationRule {
   id: string;
   restaurant_id: string;
@@ -24,8 +31,12 @@ export interface CategorizationRule {
   item_name_pattern?: string;
   item_name_match_type?: MatchType;
   
-  // Target category
-  category_id: string;
+  // Target category (for non-split rules)
+  category_id?: string;
+  
+  // Split configuration
+  is_split_rule: boolean;
+  split_config?: SplitConfigEntry[];
   
   // Settings
   priority: number;
@@ -63,7 +74,9 @@ export interface CreateRuleParams {
   posCategory?: string;
   itemNamePattern?: string;
   itemNameMatchType?: MatchType;
-  categoryId: string;
+  categoryId?: string;           // Optional for split rules
+  isSplitRule?: boolean;
+  splitConfig?: SplitConfigEntry[];
   priority?: number;
   isActive?: boolean;
   autoApply?: boolean;
@@ -82,6 +95,8 @@ export interface UpdateRuleParams {
   itemNamePattern?: string;
   itemNameMatchType?: MatchType;
   categoryId?: string;
+  isSplitRule?: boolean;
+  splitConfig?: SplitConfigEntry[];
   priority?: number;
   isActive?: boolean;
   autoApply?: boolean;
@@ -139,7 +154,9 @@ export function useCreateRuleV2() {
           pos_category: params.posCategory,
           item_name_pattern: params.itemNamePattern,
           item_name_match_type: params.itemNameMatchType,
-          category_id: params.categoryId,
+          category_id: params.isSplitRule ? null : params.categoryId,
+          is_split_rule: params.isSplitRule ?? false,
+          split_config: params.isSplitRule ? params.splitConfig : null,
           priority: params.priority ?? 0,
           is_active: params.isActive ?? true,
           auto_apply: params.autoApply ?? false,
@@ -186,6 +203,14 @@ export function useUpdateRuleV2() {
       if (params.itemNamePattern !== undefined) updates.item_name_pattern = params.itemNamePattern;
       if (params.itemNameMatchType !== undefined) updates.item_name_match_type = params.itemNameMatchType;
       if (params.categoryId !== undefined) updates.category_id = params.categoryId;
+      if (params.isSplitRule !== undefined) {
+        updates.is_split_rule = params.isSplitRule;
+        // If changing to split rule, clear category_id
+        if (params.isSplitRule) {
+          updates.category_id = null;
+        }
+      }
+      if (params.splitConfig !== undefined) updates.split_config = params.splitConfig;
       if (params.priority !== undefined) updates.priority = params.priority;
       if (params.isActive !== undefined) updates.is_active = params.isActive;
       if (params.autoApply !== undefined) updates.auto_apply = params.autoApply;
@@ -227,6 +252,8 @@ export function useUpdateRuleV2() {
               ...(params.itemNamePattern !== undefined && { item_name_pattern: params.itemNamePattern }),
               ...(params.itemNameMatchType !== undefined && { item_name_match_type: params.itemNameMatchType }),
               ...(params.categoryId !== undefined && { category_id: params.categoryId }),
+              ...(params.isSplitRule !== undefined && { is_split_rule: params.isSplitRule }),
+              ...(params.splitConfig !== undefined && { split_config: params.splitConfig }),
               ...(params.priority !== undefined && { priority: params.priority }),
               ...(params.isActive !== undefined && { is_active: params.isActive }),
               ...(params.autoApply !== undefined && { auto_apply: params.autoApply }),

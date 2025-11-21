@@ -41,6 +41,8 @@ import EmployeeClock from "./pages/EmployeeClock";
 import TimePunchesManager from "./pages/TimePunchesManager";
 import Payroll from "./pages/Payroll";
 import Expenses from "./pages/Expenses";
+import PurchaseOrders from "./pages/PurchaseOrders";
+import PurchaseOrderEditor from "./pages/PurchaseOrderEditor";
 
 const queryClient = new QueryClient();
 
@@ -133,6 +135,8 @@ const App = () => (
             <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
             <Route path="/inventory-audit" element={<ProtectedRoute><InventoryAudit /></ProtectedRoute>} />
             <Route path="/receipt-import" element={<ProtectedRoute><ReceiptImport /></ProtectedRoute>} />
+            <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
+            <Route path="/purchase-orders/:id" element={<ProtectedRoute><PurchaseOrderEditor /></ProtectedRoute>} />
           <Route path="/scheduling" element={<ProtectedRoute><Scheduling /></ProtectedRoute>} />
           <Route path="/employee/clock" element={<ProtectedRoute allowStaff={true}><EmployeeClock /></ProtectedRoute>} />
           <Route path="/time-punches" element={<ProtectedRoute><TimePunchesManager /></ProtectedRoute>} />

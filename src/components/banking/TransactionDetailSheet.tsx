@@ -37,6 +37,8 @@ export function TransactionDetailSheet({
   isOpen,
   onClose,
 }: TransactionDetailSheetProps) {
+  const RULE_NAME_MAX_LENGTH = 30;
+  
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
     transaction.category_id || transaction.suggested_category_id || ''
   );
@@ -171,7 +173,7 @@ export function TransactionDetailSheet({
     
     return {
       ruleName: merchantName 
-        ? `Auto-categorize ${merchantName.substring(0, 30)}${merchantName.length > 30 ? '...' : ''}`
+        ? `Auto-categorize ${merchantName.substring(0, RULE_NAME_MAX_LENGTH)}${merchantName.length > RULE_NAME_MAX_LENGTH ? '...' : ''}`
         : 'Transaction categorization rule',
       appliesTo: 'bank_transactions' as const,
       descriptionPattern: merchantName || '',

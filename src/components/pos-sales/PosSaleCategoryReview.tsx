@@ -17,6 +17,8 @@ interface PosSaleCategoryReviewProps {
 }
 
 export function PosSaleCategoryReview({ sales, restaurantId, onRefresh }: PosSaleCategoryReviewProps) {
+  const RULE_NAME_MAX_LENGTH = 30;
+  
   const { mutate: categorizeSale } = useCategorizePosSale(restaurantId);
   const [splitDialogSale, setSplitDialogSale] = useState<UnifiedSaleItem | null>(null);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
@@ -64,7 +66,7 @@ export function PosSaleCategoryReview({ sales, restaurantId, onRefresh }: PosSal
     
     return {
       ruleName: itemName 
-        ? `Auto-categorize ${itemName.substring(0, 30)}${itemName.length > 30 ? '...' : ''}`
+        ? `Auto-categorize ${itemName.substring(0, RULE_NAME_MAX_LENGTH)}${itemName.length > RULE_NAME_MAX_LENGTH ? '...' : ''}`
         : 'POS sale categorization rule',
       appliesTo: 'pos_sales' as const,
       itemNamePattern: itemName || '',

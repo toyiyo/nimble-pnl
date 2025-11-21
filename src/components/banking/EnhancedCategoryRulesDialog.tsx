@@ -94,6 +94,10 @@ export const EnhancedCategoryRulesDialog = ({
   const applyRules = useApplyRulesV2();
   const aiSuggestRules = useAISuggestRules();
 
+  // Constants
+  const RULE_NAME_MAX_LENGTH = 30;
+  const FORM_SCROLL_DELAY_MS = 100;
+
   // Handle prefilled rule data
   useEffect(() => {
     if (open && prefilledRule) {
@@ -110,7 +114,7 @@ export const EnhancedCategoryRulesDialog = ({
         if (formElement) {
           formElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
-      }, 100);
+      }, FORM_SCROLL_DELAY_MS);
     }
   }, [open, prefilledRule]);
 
@@ -193,7 +197,7 @@ export const EnhancedCategoryRulesDialog = ({
       if (formElement) {
         formElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
-    }, 100);
+    }, FORM_SCROLL_DELAY_MS);
   };
 
   const handleSaveEdit = async () => {

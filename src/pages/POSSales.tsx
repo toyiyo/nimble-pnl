@@ -296,6 +296,8 @@ export default function POSSales() {
     setShowRulesDialog(true);
   };
 
+  const RULE_NAME_MAX_LENGTH = 30;
+
   const getPrefilledPOSRuleData = () => {
     if (!saleForRuleSuggestion || !saleForRuleSuggestion.category_id) return undefined;
 
@@ -303,7 +305,7 @@ export default function POSSales() {
     
     return {
       ruleName: itemName 
-        ? `Auto-categorize ${itemName.substring(0, 30)}${itemName.length > 30 ? '...' : ''}`
+        ? `Auto-categorize ${itemName.substring(0, RULE_NAME_MAX_LENGTH)}${itemName.length > RULE_NAME_MAX_LENGTH ? '...' : ''}`
         : 'POS sale categorization rule',
       appliesTo: 'pos_sales' as const,
       itemNamePattern: itemName || '',

@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Plus, Settings2, Edit2, Save, X, Sparkles, Check } from "lucide-react";
+import { Trash2, Plus, Settings2, Edit2, Save, X, Sparkles, Check, Split } from "lucide-react";
 import { toast } from "sonner";
 import {
   useCategorizationRulesV2,
@@ -17,12 +17,14 @@ import {
   type TransactionType,
   type AppliesTo,
   type CategorizationRule,
+  type SplitCategory,
 } from "@/hooks/useCategorizationRulesV2";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { SearchableSupplierSelector } from "@/components/SearchableSupplierSelector";
 import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
+import { SplitCategoryInput } from "@/components/banking/SplitCategoryInput";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -48,6 +50,9 @@ interface RuleFormData {
   itemNamePattern: string;
   itemNameMatchType: MatchType;
   categoryId: string;
+  isSplitRule: boolean;
+  splitCategories: SplitCategory[];
+  splitType: 'percentage' | 'amount';
   priority: string;
   autoApply: boolean;
 }
@@ -65,6 +70,9 @@ const emptyFormData: RuleFormData = {
   itemNamePattern: '',
   itemNameMatchType: 'contains',
   categoryId: '',
+  isSplitRule: false,
+  splitCategories: [],
+  splitType: 'percentage',
   priority: '0',
   autoApply: false,
 };
@@ -131,9 +139,38 @@ export const EnhancedCategoryRulesDialog = ({
   };
 
   const handleCreateRule = async () => {
-    if (!selectedRestaurant?.restaurant_id || !formData.categoryId) {
-      toast.error("Please select a category");
+    if (!selectedRestaurant?.restaurant_id) {
+      toast.error("No restaurant selected");
       return;
+    }
+
+    // Validate split rule or regular rule
+    if (formData.isSplitRule) {
+      if (formData.splitCategories.length < 2) {
+        toast.error("Split rules must have at least 2 categories");
+        return;
+      }
+      
+      // Validate all splits have category_id
+      if (formData.splitCategories.some(s => !s.category_id)) {
+        toast.error("All splits must have a category selected");
+        return;
+      }
+
+      // Validate percentages sum to 100 if using percentage
+      if (formData.splitType === 'percentage') {
+        const total = formData.splitCategories.reduce((sum, s) => sum + (s.percentage || 0), 0);
+        if (Math.abs(total - 100) > 0.01) {
+          toast.error(`Split percentages must sum to 100% (currently ${total.toFixed(2)}%)`);
+          return;
+        }
+      }
+    } else {
+      // Regular rule validation
+      if (!formData.categoryId) {
+        toast.error("Please select a category");
+        return;
+      }
     }
 
     // Validate that at least one pattern is set
@@ -157,12 +194,14 @@ export const EnhancedCategoryRulesDialog = ({
       descriptionMatchType: formData.descriptionPattern ? formData.descriptionMatchType : undefined,
       amountMin: formData.amountMin ? parseFloat(formData.amountMin) : undefined,
       amountMax: formData.amountMax ? parseFloat(formData.amountMax) : undefined,
-      supplierId: formData.supplierId || undefined, // Empty string becomes undefined
+      supplierId: formData.supplierId || undefined,
       transactionType: formData.transactionType !== 'any' ? formData.transactionType : undefined,
       posCategory: formData.posCategory || undefined,
       itemNamePattern: formData.itemNamePattern || undefined,
       itemNameMatchType: formData.itemNamePattern ? formData.itemNameMatchType : undefined,
-      categoryId: formData.categoryId,
+      categoryId: formData.isSplitRule ? '' : formData.categoryId, // Empty for split rules
+      isSplitRule: formData.isSplitRule,
+      splitCategories: formData.isSplitRule ? formData.splitCategories : undefined,
       priority: parseInt(formData.priority) || 0,
       autoApply: formData.autoApply,
     });
@@ -173,6 +212,13 @@ export const EnhancedCategoryRulesDialog = ({
 
   const handleEditRule = (rule: CategorizationRule) => {
     setEditingRuleId(rule.id);
+    
+    // Determine split type from split categories
+    let splitType: 'percentage' | 'amount' = 'percentage';
+    if (rule.split_categories && rule.split_categories.length > 0) {
+      splitType = rule.split_categories[0].percentage !== undefined ? 'percentage' : 'amount';
+    }
+    
     setFormData({
       ruleName: rule.rule_name,
       appliesTo: rule.applies_to,
@@ -185,7 +231,10 @@ export const EnhancedCategoryRulesDialog = ({
       posCategory: rule.pos_category || '',
       itemNamePattern: rule.item_name_pattern || '',
       itemNameMatchType: rule.item_name_match_type || 'contains',
-      categoryId: rule.category_id,
+      categoryId: rule.category_id || '',
+      isSplitRule: rule.is_split_rule,
+      splitCategories: rule.split_categories || [],
+      splitType,
       priority: rule.priority.toString(),
       autoApply: rule.auto_apply,
     });
@@ -203,6 +252,27 @@ export const EnhancedCategoryRulesDialog = ({
   const handleSaveEdit = async () => {
     if (!editingRuleId) return;
 
+    // Validate split rule or regular rule
+    if (formData.isSplitRule) {
+      if (formData.splitCategories.length < 2) {
+        toast.error("Split rules must have at least 2 categories");
+        return;
+      }
+      
+      if (formData.splitCategories.some(s => !s.category_id)) {
+        toast.error("All splits must have a category selected");
+        return;
+      }
+
+      if (formData.splitType === 'percentage') {
+        const total = formData.splitCategories.reduce((sum, s) => sum + (s.percentage || 0), 0);
+        if (Math.abs(total - 100) > 0.01) {
+          toast.error(`Split percentages must sum to 100% (currently ${total.toFixed(2)}%)`);
+          return;
+        }
+      }
+    }
+
     await updateRule.mutateAsync({
       ruleId: editingRuleId,
       ruleName: formData.ruleName,
@@ -210,12 +280,14 @@ export const EnhancedCategoryRulesDialog = ({
       descriptionMatchType: formData.descriptionPattern ? formData.descriptionMatchType : undefined,
       amountMin: formData.amountMin ? parseFloat(formData.amountMin) : undefined,
       amountMax: formData.amountMax ? parseFloat(formData.amountMax) : undefined,
-      supplierId: formData.supplierId || undefined, // Empty string becomes undefined
+      supplierId: formData.supplierId || undefined,
       transactionType: formData.transactionType !== 'any' ? formData.transactionType : undefined,
       posCategory: formData.posCategory || undefined,
       itemNamePattern: formData.itemNamePattern || undefined,
       itemNameMatchType: formData.itemNamePattern ? formData.itemNameMatchType : undefined,
-      categoryId: formData.categoryId,
+      categoryId: formData.isSplitRule ? undefined : formData.categoryId,
+      isSplitRule: formData.isSplitRule,
+      splitCategories: formData.isSplitRule ? formData.splitCategories : undefined,
       priority: parseInt(formData.priority) || 0,
       autoApply: formData.autoApply,
     });
@@ -358,6 +430,12 @@ export const EnhancedCategoryRulesDialog = ({
                         <div className="flex-1 space-y-2">
                           <div className="flex items-center gap-2">
                             <div className="font-medium">{rule.rule_name}</div>
+                            {rule.is_split_rule && (
+                              <Badge variant="default" className="text-xs bg-gradient-to-r from-primary to-accent">
+                                <Split className="h-3 w-3 mr-1" />
+                                Split Rule
+                              </Badge>
+                            )}
                             <Badge variant="outline" className="text-xs">
                               Priority: {rule.priority}
                             </Badge>
@@ -371,10 +449,16 @@ export const EnhancedCategoryRulesDialog = ({
                             {renderRuleConditions(rule)}
                           </div>
                           <div className="flex items-center gap-2">
-                            <div className="text-sm font-medium text-primary">
-                              → {rule.category?.account_code} - {rule.category?.account_name}
-                            </div>
-                            {rule.category && !rule.category.is_active && (
+                            {rule.is_split_rule && rule.split_categories && rule.split_categories.length > 0 ? (
+                              <div className="text-sm font-medium text-primary">
+                                → Split into {rule.split_categories.length} categories
+                              </div>
+                            ) : (
+                              <div className="text-sm font-medium text-primary">
+                                → {rule.category?.account_code} - {rule.category?.account_name}
+                              </div>
+                            )}
+                            {rule.category && !rule.category.is_active && !rule.is_split_rule && (
                               <Badge variant="destructive" className="text-xs">
                                 Inactive Category
                               </Badge>
@@ -713,13 +797,48 @@ export const EnhancedCategoryRulesDialog = ({
                     </div>
 
                     <div className="col-span-2">
-                      <Label>Target Category *</Label>
-                      <SearchableAccountSelector
-                        value={formData.categoryId}
-                        onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
-                        placeholder="Select category..."
-                      />
+                      <div className="flex items-center gap-2 mb-3">
+                        <Switch
+                          id="is-split-rule"
+                          checked={formData.isSplitRule}
+                          onCheckedChange={(checked) => {
+                            setFormData({ 
+                              ...formData, 
+                              isSplitRule: checked,
+                              splitCategories: checked && formData.splitCategories.length === 0 
+                                ? [
+                                    { category_id: '', percentage: 50, description: '' },
+                                    { category_id: '', percentage: 50, description: '' }
+                                  ]
+                                : formData.splitCategories
+                            });
+                          }}
+                        />
+                        <Label htmlFor="is-split-rule" className="text-sm">
+                          Split rule (categorize into multiple categories)
+                        </Label>
+                      </div>
                     </div>
+
+                    {formData.isSplitRule ? (
+                      <div className="col-span-2">
+                        <SplitCategoryInput
+                          splits={formData.splitCategories}
+                          onChange={(splits) => setFormData({ ...formData, splitCategories: splits })}
+                          splitType={formData.splitType}
+                          onSplitTypeChange={(type) => setFormData({ ...formData, splitType: type })}
+                        />
+                      </div>
+                    ) : (
+                      <div className="col-span-2">
+                        <Label>Target Category *</Label>
+                        <SearchableAccountSelector
+                          value={formData.categoryId}
+                          onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
+                          placeholder="Select category..."
+                        />
+                      </div>
+                    )}
 
                     <div>
                       <Label>Priority (higher = first)</Label>

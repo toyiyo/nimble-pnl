@@ -99,6 +99,7 @@ export const EnhancedCategoryRulesDialog = ({
         setFormData({ ...formData, supplierId: newSupplier.id });
       }
     } else {
+      // Allow empty string to clear the supplier
       setFormData({ ...formData, supplierId: value });
     }
   };
@@ -130,7 +131,7 @@ export const EnhancedCategoryRulesDialog = ({
       descriptionMatchType: formData.descriptionPattern ? formData.descriptionMatchType : undefined,
       amountMin: formData.amountMin ? parseFloat(formData.amountMin) : undefined,
       amountMax: formData.amountMax ? parseFloat(formData.amountMax) : undefined,
-      supplierId: formData.supplierId || undefined,
+      supplierId: formData.supplierId || undefined, // Empty string becomes undefined
       transactionType: formData.transactionType !== 'any' ? formData.transactionType : undefined,
       posCategory: formData.posCategory || undefined,
       itemNamePattern: formData.itemNamePattern || undefined,
@@ -183,7 +184,7 @@ export const EnhancedCategoryRulesDialog = ({
       descriptionMatchType: formData.descriptionPattern ? formData.descriptionMatchType : undefined,
       amountMin: formData.amountMin ? parseFloat(formData.amountMin) : undefined,
       amountMax: formData.amountMax ? parseFloat(formData.amountMax) : undefined,
-      supplierId: formData.supplierId || undefined,
+      supplierId: formData.supplierId || undefined, // Empty string becomes undefined
       transactionType: formData.transactionType !== 'any' ? formData.transactionType : undefined,
       posCategory: formData.posCategory || undefined,
       itemNamePattern: formData.itemNamePattern || undefined,
@@ -343,8 +344,15 @@ export const EnhancedCategoryRulesDialog = ({
                           <div className="text-sm text-muted-foreground">
                             {renderRuleConditions(rule)}
                           </div>
-                          <div className="text-sm font-medium text-primary">
-                            → {rule.category?.account_code} - {rule.category?.account_name}
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-medium text-primary">
+                              → {rule.category?.account_code} - {rule.category?.account_name}
+                            </div>
+                            {rule.category && !rule.category.is_active && (
+                              <Badge variant="destructive" className="text-xs">
+                                Inactive Category
+                              </Badge>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
@@ -357,6 +365,7 @@ export const EnhancedCategoryRulesDialog = ({
                                 id={`active-${rule.id}`}
                                 checked={rule.is_active}
                                 onCheckedChange={() => handleToggleActive(rule.id, rule.is_active)}
+                                disabled={updateRule.isPending}
                               />
                             </div>
                             <div className="flex items-center gap-2">
@@ -367,6 +376,7 @@ export const EnhancedCategoryRulesDialog = ({
                                 id={`auto-${rule.id}`}
                                 checked={rule.auto_apply}
                                 onCheckedChange={() => handleToggleAutoApply(rule.id, rule.auto_apply)}
+                                disabled={updateRule.isPending}
                               />
                             </div>
                           </div>

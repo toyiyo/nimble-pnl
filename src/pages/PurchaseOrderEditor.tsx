@@ -522,13 +522,12 @@ export const PurchaseOrderEditor: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Supplier Selector */}
             <div className="space-y-2">
-              <Label htmlFor="supplier">Supplier (optional filter)</Label>
+              <Label htmlFor="supplier">Supplier *</Label>
               <Select value={supplierId} onValueChange={handleSupplierChange} disabled={suppliersLoading}>
                 <SelectTrigger id="supplier">
-                  <SelectValue placeholder="All suppliers" />
+                  <SelectValue placeholder="Select supplier" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All suppliers</SelectItem>
                   {suppliers.map((supplier) => (
                     <SelectItem key={supplier.id} value={supplier.id}>
                       {supplier.name}

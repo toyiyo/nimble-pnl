@@ -109,6 +109,8 @@ export function TaxReportDialog({ open, onOpenChange, restaurantId, restaurantNa
     const totalTaxableAmount = results.reduce((sum, r) => sum + r.total_taxable_amount, 0);
     const totalTaxDue = results.reduce((sum, r) => sum + r.calculated_tax, 0);
 
+    // Note: autoTable extends jsPDF with lastAutoTable property, but TypeScript doesn't have these types
+    // This is a known limitation of jspdf-autotable's type definitions
     autoTable(doc, {
       startY: (doc as any).lastAutoTable.finalY + 2,
       body: [

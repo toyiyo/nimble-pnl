@@ -47,7 +47,7 @@ export default function TaxRates() {
 
   const [showTaxRateDialog, setShowTaxRateDialog] = useState(false);
   const [showTaxReportDialog, setShowTaxReportDialog] = useState(false);
-  const [editingTaxRate, setEditingTaxRate] = useState<TaxRate | null>(null);
+  const [editingTaxRate, setEditingTaxRate] = useState<TaxRateWithCategories | null>(null);
   const [deletingTaxRate, setDeletingTaxRate] = useState<TaxRate | null>(null);
 
   // Filter revenue accounts for categorization
@@ -64,7 +64,7 @@ export default function TaxRates() {
     try {
       const taxRateWithCategories = await getTaxRateWithCategories(taxRate.id);
       if (taxRateWithCategories) {
-        setEditingTaxRate(taxRateWithCategories as any);
+        setEditingTaxRate(taxRateWithCategories);
         setShowTaxRateDialog(true);
       }
     } catch (error) {

@@ -90,7 +90,7 @@ export const useTaxRates = (restaurantId: string | null) => {
   const updateTaxRate = useMutation({
     mutationFn: async ({ id, input }: { id: string; input: UpdateTaxRateInput }) => {
       // Update tax rate
-      const updateData: any = {};
+      const updateData: Partial<Pick<TaxRate, 'name' | 'rate' | 'description' | 'is_active'>> = {};
       if (input.name !== undefined) updateData.name = input.name;
       if (input.rate !== undefined) updateData.rate = input.rate;
       if (input.description !== undefined) updateData.description = input.description;

@@ -19,19 +19,19 @@ test.describe('Tax Rates Page', () => {
     await cleanupTestUser(testUserId);
   });
 
-  test('should display tax rates page with correct title and stats', async ({ page }) => {
-    // Login
+  // Helper function to login
+  const loginAndNavigate = async (page: any) => {
     await page.goto('/auth');
     await page.fill('input[type="email"]', testEmail);
     await page.fill('input[type="password"]', testPassword);
     await page.click('button[type="submit"]:has-text("Sign In")');
-    
-    // Wait for navigation to dashboard
     await page.waitForURL('/', { timeout: 10000 });
-    
-    // Navigate to tax rates page
     await page.goto('/tax-rates');
     await page.waitForLoadState('networkidle');
+  };
+
+  test('should display tax rates page with correct title and stats', async ({ page }) => {
+    await loginAndNavigate(page);
     
     // Verify page title
     await expect(page.locator('h1:has-text("Tax Rates & Categories")')).toBeVisible();
@@ -49,18 +49,7 @@ test.describe('Tax Rates Page', () => {
   });
 
   test('should open tax rate dialog when Add Tax Rate is clicked', async ({ page }) => {
-    // Login
-    await page.goto('/auth');
-    await page.fill('input[type="email"]', testEmail);
-    await page.fill('input[type="password"]', testPassword);
-    await page.click('button[type="submit"]:has-text("Sign In")');
-    
-    // Wait for navigation to dashboard
-    await page.waitForURL('/', { timeout: 10000 });
-    
-    // Navigate to tax rates page
-    await page.goto('/tax-rates');
-    await page.waitForLoadState('networkidle');
+    await loginAndNavigate(page);
     
     // Click Add Tax Rate button
     await page.click('button:has-text("Add Tax Rate")');
@@ -75,18 +64,7 @@ test.describe('Tax Rates Page', () => {
   });
 
   test('should open tax report dialog when Generate Tax Report is clicked', async ({ page }) => {
-    // Login
-    await page.goto('/auth');
-    await page.fill('input[type="email"]', testEmail);
-    await page.fill('input[type="password"]', testPassword);
-    await page.click('button[type="submit"]:has-text("Sign In")');
-    
-    // Wait for navigation to dashboard
-    await page.waitForURL('/', { timeout: 10000 });
-    
-    // Navigate to tax rates page
-    await page.goto('/tax-rates');
-    await page.waitForLoadState('networkidle');
+    await loginAndNavigate(page);
     
     // Click Generate Tax Report button
     await page.click('button:has-text("Generate Tax Report")');

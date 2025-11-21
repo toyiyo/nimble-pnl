@@ -13,13 +13,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { TaxRate, UpdateTaxRateInput } from '@/types/taxRates';
+import { TaxRate, TaxRateWithCategories, UpdateTaxRateInput } from '@/types/taxRates';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface TaxRateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  taxRate: (TaxRate & { categories?: Array<{ id: string; account_name: string }> }) | null;
+  taxRate: TaxRateWithCategories | null;
   restaurantId: string;
   onSave: (data: UpdateTaxRateInput & { category_ids?: string[] }) => void;
   accounts: Array<{ id: string; account_name: string; account_code: string }>;

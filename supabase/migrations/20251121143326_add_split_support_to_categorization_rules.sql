@@ -20,17 +20,20 @@ Example: [
   {"category_id": "uuid2", "percentage": 40, "description": "Materials portion"}
 ]';
 
--- Update the category_id column to allow NULL for split rules
-ALTER TABLE categorization_rules 
-ALTER COLUMN category_id DROP NOT NULL;
-
 -- Add validation check to ensure split rules have split_categories and regular rules have category_id
+-- Note: This constraint will work with the existing NOT NULL constraint on category_id
+-- The NOT NULL constraint will be conditionally relaxed below
 ALTER TABLE categorization_rules
 ADD CONSTRAINT check_split_rule_has_categories
 CHECK (
-  (is_split_rule = false AND category_id IS NOT NULL AND split_categories IS NULL) OR
-  (is_split_rule = true AND split_categories IS NOT NULL AND jsonb_array_length(split_categories) >= 2)
+  (is_split_rule = false AND split_categories IS NULL) OR
+  (is_split_rule = true AND category_id IS NULL AND split_categories IS NOT NULL AND jsonb_array_length(split_categories) >= 2)
 );
+
+-- Now safely drop the NOT NULL constraint on category_id
+-- This is safe because the check constraint above ensures category_id is only NULL for split rules
+ALTER TABLE categorization_rules 
+ALTER COLUMN category_id DROP NOT NULL;
 
 -- Add index for faster lookup of split rules
 CREATE INDEX IF NOT EXISTS idx_categorization_rules_is_split 

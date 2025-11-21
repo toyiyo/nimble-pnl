@@ -511,3 +511,188 @@ ALTER TABLE categorization_rules
     pos_category IS NOT NULL OR
     item_name_pattern IS NOT NULL
   );
+
+-- Update bulk apply functions to handle split rules
+CREATE OR REPLACE FUNCTION apply_rules_to_bank_transactions(
+  p_restaurant_id UUID,
+  p_batch_limit INTEGER DEFAULT 100
+)
+RETURNS TABLE (
+  applied_count INTEGER,
+  total_count INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_transaction RECORD;
+  v_rule RECORD;
+  v_applied_count INTEGER := 0;
+  v_total_count INTEGER := 0;
+  v_transaction_json JSONB;
+BEGIN
+  -- Get uncategorized bank transactions (limited batch)
+  FOR v_transaction IN
+    SELECT id, description, amount, supplier_id
+    FROM bank_transactions
+    WHERE restaurant_id = p_restaurant_id
+      AND (is_categorized = false OR (category_id IS NULL AND is_split = false))
+      AND is_split = false
+    LIMIT p_batch_limit
+  LOOP
+    v_total_count := v_total_count + 1;
+    
+    -- Build transaction JSONB for matching
+    v_transaction_json := jsonb_build_object(
+      'description', v_transaction.description,
+      'amount', v_transaction.amount,
+      'supplier_id', v_transaction.supplier_id
+    );
+    
+    -- Find matching rule (highest priority)
+    SELECT 
+      cr.id as rule_id,
+      cr.rule_name,
+      cr.category_id,
+      cr.is_split_rule,
+      cr.priority
+    INTO v_rule
+    FROM categorization_rules cr
+    WHERE cr.restaurant_id = p_restaurant_id
+      AND cr.is_active = true
+      AND cr.applies_to IN ('bank_transactions', 'both')
+      AND matches_bank_transaction_rule(cr.id, v_transaction_json)
+    ORDER BY cr.priority DESC, cr.created_at ASC
+    LIMIT 1;
+    
+    -- If rule found, apply it
+    IF v_rule.rule_id IS NOT NULL THEN
+      BEGIN
+        IF v_rule.is_split_rule THEN
+          -- Apply split rule
+          PERFORM apply_split_rule_to_bank_transaction(
+            v_transaction.id,
+            v_rule.rule_id,
+            v_transaction.amount
+          );
+        ELSE
+          -- Apply simple categorization
+          UPDATE bank_transactions
+          SET 
+            category_id = v_rule.category_id,
+            is_categorized = true
+          WHERE id = v_transaction.id;
+          
+          -- Update rule statistics
+          UPDATE categorization_rules
+          SET 
+            apply_count = apply_count + 1,
+            last_applied_at = now()
+          WHERE id = v_rule.rule_id;
+        END IF;
+        
+        v_applied_count := v_applied_count + 1;
+      EXCEPTION WHEN OTHERS THEN
+        -- Log error but continue processing
+        RAISE NOTICE 'Error applying rule to transaction %: %', v_transaction.id, SQLERRM;
+      END;
+    END IF;
+  END LOOP;
+  
+  RETURN QUERY SELECT v_applied_count, v_total_count;
+END;
+$$;
+
+-- Update bulk apply function for POS sales
+CREATE OR REPLACE FUNCTION apply_rules_to_pos_sales(
+  p_restaurant_id UUID,
+  p_batch_limit INTEGER DEFAULT 100
+)
+RETURNS TABLE (
+  applied_count INTEGER,
+  total_count INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_sale RECORD;
+  v_rule RECORD;
+  v_applied_count INTEGER := 0;
+  v_total_count INTEGER := 0;
+  v_sale_json JSONB;
+BEGIN
+  -- Get uncategorized POS sales (limited batch)
+  FOR v_sale IN
+    SELECT id, item_name, total_price, pos_category
+    FROM unified_sales
+    WHERE restaurant_id = p_restaurant_id
+      AND (is_categorized = false OR (category_id IS NULL AND is_split = false))
+      AND is_split = false
+    LIMIT p_batch_limit
+  LOOP
+    v_total_count := v_total_count + 1;
+    
+    -- Build sale JSONB for matching
+    v_sale_json := jsonb_build_object(
+      'item_name', v_sale.item_name,
+      'total_price', v_sale.total_price,
+      'pos_category', v_sale.pos_category
+    );
+    
+    -- Find matching rule (highest priority)
+    SELECT 
+      cr.id as rule_id,
+      cr.rule_name,
+      cr.category_id,
+      cr.is_split_rule,
+      cr.priority
+    INTO v_rule
+    FROM categorization_rules cr
+    WHERE cr.restaurant_id = p_restaurant_id
+      AND cr.is_active = true
+      AND cr.applies_to IN ('pos_sales', 'both')
+      AND matches_pos_sale_rule(cr.id, v_sale_json)
+    ORDER BY cr.priority DESC, cr.created_at ASC
+    LIMIT 1;
+    
+    -- If rule found, apply it
+    IF v_rule.rule_id IS NOT NULL THEN
+      BEGIN
+        IF v_rule.is_split_rule THEN
+          -- Apply split rule
+          PERFORM apply_split_rule_to_pos_sale(
+            v_sale.id,
+            v_rule.rule_id,
+            v_sale.total_price
+          );
+        ELSE
+          -- Apply simple categorization
+          UPDATE unified_sales
+          SET 
+            category_id = v_rule.category_id,
+            is_categorized = true,
+            suggested_category_id = NULL,
+            ai_confidence = NULL,
+            ai_reasoning = NULL
+          WHERE id = v_sale.id;
+          
+          -- Update rule statistics
+          UPDATE categorization_rules
+          SET 
+            apply_count = apply_count + 1,
+            last_applied_at = now()
+          WHERE id = v_rule.rule_id;
+        END IF;
+        
+        v_applied_count := v_applied_count + 1;
+      EXCEPTION WHEN OTHERS THEN
+        -- Log error but continue processing
+        RAISE NOTICE 'Error applying rule to sale %: %', v_sale.id, SQLERRM;
+      END;
+    END IF;
+  END LOOP;
+  
+  RETURN QUERY SELECT v_applied_count, v_total_count;
+END;
+$$;

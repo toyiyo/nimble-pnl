@@ -748,7 +748,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All categories</SelectItem>
-                        {categories.map((cat) => (
+                        {categories.filter(cat => cat && cat.trim() !== '').map((cat) => (
                           <SelectItem key={cat} value={cat}>
                             {cat}
                           </SelectItem>

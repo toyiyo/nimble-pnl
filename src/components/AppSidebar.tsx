@@ -32,6 +32,7 @@ import {
   Clock,
   ClipboardList,
   DollarSign,
+  Percent,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -77,6 +78,7 @@ const navigationGroups = [
       { path: '/transactions', label: 'Transactions', icon: Receipt },
       { path: '/chart-of-accounts', label: 'Chart of Accounts', icon: FileText },
       { path: '/financial-statements', label: 'Statements', icon: FileText },
+      { path: '/tax-rates', label: 'Tax Rates', icon: Percent },
     ],
   },
   {

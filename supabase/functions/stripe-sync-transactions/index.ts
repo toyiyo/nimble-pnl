@@ -207,25 +207,6 @@ serve(async (req) => {
 
     console.log(`[SYNC-TRANSACTIONS] Total transactions fetched across all accounts: ${allTransactions.length}`);
 
-    // Get default uncategorized accounts
-    const { data: uncategorizedAccounts } = await supabaseAdmin
-      .from("chart_of_accounts")
-      .select("id, account_name, account_type")
-      .eq("restaurant_id", bank.restaurant_id)
-      .in("account_name", ["Uncategorized Expense", "Uncategorized Income"]);
-
-    const uncategorizedExpenseId = uncategorizedAccounts?.find(
-      (acc) => acc.account_name === "Uncategorized Expense"
-    )?.id;
-    const uncategorizedIncomeId = uncategorizedAccounts?.find(
-      (acc) => acc.account_name === "Uncategorized Income"
-    )?.id;
-
-    console.log("[SYNC-TRANSACTIONS] Uncategorized accounts:", { 
-      expenseId: uncategorizedExpenseId, 
-      incomeId: uncategorizedIncomeId 
-    });
-
     let syncedCount = 0;
     let skippedCount = 0;
 
@@ -243,9 +224,7 @@ serve(async (req) => {
         continue;
       }
 
-      // Insert new transaction
-      const defaultCategoryId = txn.amount < 0 ? uncategorizedExpenseId : uncategorizedIncomeId;
-      
+      // Insert new transaction - NO default category set
       // Safely extract merchant_name with optional chaining and type guard
       const merchantName = typeof (txn as any).merchant_name === 'string' 
         ? (txn as any).merchant_name 
@@ -264,8 +243,8 @@ serve(async (req) => {
           description: txn.description,
           merchant_name: merchantName,
           status: txn.status,
-          category_id: defaultCategoryId,
-          is_categorized: false, // Mark as uncategorized even though we set a default
+          category_id: null, // No default category - let AI/rules handle it
+          is_categorized: false,
           raw_data: txn,
         });
 
@@ -304,32 +283,8 @@ serve(async (req) => {
         console.error("[SYNC-TRANSACTIONS] Error applying categorization rules:", error.message);
       }
       
-      // Then categorize any remaining uncategorized transactions with default categories
-      const { data: uncategorizedTxns } = await supabaseAdmin
-        .from("bank_transactions")
-        .select("id, amount")
-        .eq("connected_bank_id", bankId)
-        .eq("restaurant_id", bank.restaurant_id)
-        .is("category_id", null);
-
-      let categorizedCount = 0;
-      
-      for (const txn of uncategorizedTxns || []) {
-        const categoryId = txn.amount >= 0 ? uncategorizedIncomeId : uncategorizedExpenseId;
-        
-        try {
-          await supabaseAdmin.rpc('categorize_bank_transaction', {
-            p_transaction_id: txn.id,
-            p_category_id: categoryId,
-            p_restaurant_id: bank.restaurant_id
-          });
-          categorizedCount++;
-        } catch (error: any) {
-          console.error("[SYNC-TRANSACTIONS] Error categorizing transaction:", error.message);
-        }
-      }
-      
-      console.log("[SYNC-TRANSACTIONS] Auto-categorized", categorizedCount, "transactions with default categories");
+      // Skip default categorization - let rules and AI handle it
+      console.log("[SYNC-TRANSACTIONS] Skipping default categorization - transactions will be processed by rules/AI");
       
       // Check for reconciliation boundary violations and auto-fix
       try {

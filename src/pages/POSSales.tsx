@@ -87,6 +87,7 @@ export default function POSSales() {
   const [saleToSplit, setSaleToSplit] = useState<any>(null);
   const [editingCategoryForSale, setEditingCategoryForSale] = useState<string | null>(null);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
+  const [saleForRuleSuggestion, setSaleForRuleSuggestion] = useState<UnifiedSaleItem | null>(null);
 
   // Filter revenue and liability accounts for categorization (matching split dialog)
   const categoryAccounts = useMemo(() => {
@@ -287,6 +288,33 @@ export default function POSSales() {
     if (!open) {
       setEditingSale(null);
     }
+  };
+
+  const handleSuggestRuleFromSale = (sale: UnifiedSaleItem) => {
+    if (!sale.category_id) return;
+    setSaleForRuleSuggestion(sale);
+    setShowRulesDialog(true);
+  };
+
+  const RULE_NAME_MAX_LENGTH = 30;
+
+  const getPrefilledPOSRuleData = () => {
+    if (!saleForRuleSuggestion || !saleForRuleSuggestion.category_id) return undefined;
+
+    const itemName = saleForRuleSuggestion.itemName || '';
+    
+    return {
+      ruleName: itemName 
+        ? `Auto-categorize ${itemName.substring(0, RULE_NAME_MAX_LENGTH)}${itemName.length > RULE_NAME_MAX_LENGTH ? '...' : ''}`
+        : 'POS sale categorization rule',
+      appliesTo: 'pos_sales' as const,
+      itemNamePattern: itemName || '',
+      itemNameMatchType: 'contains' as const,
+      posCategory: saleForRuleSuggestion.posCategory || '',
+      categoryId: saleForRuleSuggestion.category_id,
+      priority: '5',
+      autoApply: true,
+    };
   };
 
   // Calculate dashboard metrics - MUST be before conditional return to follow Rules of Hooks
@@ -905,6 +933,15 @@ export default function POSSales() {
                                   >
                                     Split
                                   </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={() => handleSuggestRuleFromSale(sale)}
+                                    title="Create a rule based on this sale"
+                                  >
+                                    <Settings2 className="h-3 w-3" />
+                                  </Button>
                                 </div>
                               )}
                               {sale.ai_confidence && sale.suggested_category_id && !sale.is_categorized && (
@@ -1235,8 +1272,14 @@ export default function POSSales() {
       {/* Categorization Rules Dialog */}
       <EnhancedCategoryRulesDialog
         open={showRulesDialog}
-        onOpenChange={setShowRulesDialog}
+        onOpenChange={(open) => {
+          setShowRulesDialog(open);
+          if (!open) {
+            setSaleForRuleSuggestion(null);
+          }
+        }}
         defaultTab="pos"
+        prefilledRule={getPrefilledPOSRuleData()}
       />
     </div>
   );

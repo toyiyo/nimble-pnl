@@ -30,6 +30,18 @@ export const useUnifiedSales = (restaurantId: string | null) => {
           account_code,
           account_name,
           account_type
+        ),
+        unified_sales_splits (
+          id,
+          category_id,
+          amount,
+          description,
+          chart_of_accounts (
+            id,
+            account_code,
+            account_name,
+            account_type
+          )
         )
       `)
       .eq('restaurant_id', restaurantId)
@@ -70,12 +82,27 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       parent_sale_id: sale.parent_sale_id,
       // Use approved_chart_account if categorized, otherwise suggested_chart_account
       chart_account: sale.is_categorized ? sale.approved_chart_account : sale.suggested_chart_account,
+      // Transform unified_sales_splits to child_splits format if present
+      splits_data: sale.unified_sales_splits || [],
     }));
 
-    // Compute child_splits from the flat data
+    // Compute child_splits from either the flat data (old method) or splits_data (new method)
     const salesWithSplits = transformedSales.map(sale => {
       if (sale.is_split) {
-        // Find all child splits for this parent
+        // First check if we have splits from unified_sales_splits table (new method)
+        if (sale.splits_data && sale.splits_data.length > 0) {
+          const child_splits = sale.splits_data.map((split: any) => ({
+            id: split.id,
+            category_id: split.category_id,
+            totalPrice: split.amount,
+            chart_account: split.chart_of_accounts,
+            itemName: split.description || sale.itemName,
+            is_split_entry: true,
+          }));
+          return { ...sale, child_splits };
+        }
+        
+        // Fallback to finding child splits for this parent (old method)
         const children = transformedSales.filter(s => s.parent_sale_id === sale.id);
         return { ...sale, child_splits: children.length > 0 ? children : undefined };
       }

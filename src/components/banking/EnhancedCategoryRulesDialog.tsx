@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Plus, Settings2, Edit2, Save, X, Sparkles, Check } from "lucide-react";
+import { Trash2, Plus, Settings2, Edit2, Save, X, Sparkles, Check, SplitSquareVertical } from "lucide-react";
 import { toast } from "sonner";
 import {
   useCategorizationRulesV2,
@@ -17,6 +17,7 @@ import {
   type TransactionType,
   type AppliesTo,
   type CategorizationRule,
+  type SplitConfigEntry,
 } from "@/hooks/useCategorizationRulesV2";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
@@ -47,6 +48,8 @@ interface RuleFormData {
   itemNamePattern: string;
   itemNameMatchType: MatchType;
   categoryId: string;
+  isSplitRule: boolean;
+  splitConfig: SplitConfigEntry[];
   priority: string;
   autoApply: boolean;
 }
@@ -64,6 +67,8 @@ const emptyFormData: RuleFormData = {
   itemNamePattern: '',
   itemNameMatchType: 'contains',
   categoryId: '',
+  isSplitRule: false,
+  splitConfig: [],
   priority: '0',
   autoApply: false,
 };
@@ -105,9 +110,33 @@ export const EnhancedCategoryRulesDialog = ({
   };
 
   const handleCreateRule = async () => {
-    if (!selectedRestaurant?.restaurant_id || !formData.categoryId) {
+    if (!selectedRestaurant?.restaurant_id) {
+      toast.error("No restaurant selected");
+      return;
+    }
+
+    // Validate category or splits
+    if (!formData.isSplitRule && !formData.categoryId) {
       toast.error("Please select a category");
       return;
+    }
+
+    if (formData.isSplitRule) {
+      if (formData.splitConfig.length < 2) {
+        toast.error("Split rules require at least 2 categories");
+        return;
+      }
+      
+      // Validate split percentages sum to 100
+      const totalPercentage = formData.splitConfig.reduce((sum, split) => 
+        sum + (split.percentage || 0), 0
+      );
+      const hasPercentages = formData.splitConfig.some(s => s.percentage !== undefined);
+      
+      if (hasPercentages && Math.abs(totalPercentage - 100) > 0.01) {
+        toast.error(`Split percentages must sum to 100% (currently ${totalPercentage.toFixed(1)}%)`);
+        return;
+      }
     }
 
     // Validate that at least one pattern is set
@@ -131,12 +160,14 @@ export const EnhancedCategoryRulesDialog = ({
       descriptionMatchType: formData.descriptionPattern ? formData.descriptionMatchType : undefined,
       amountMin: formData.amountMin ? parseFloat(formData.amountMin) : undefined,
       amountMax: formData.amountMax ? parseFloat(formData.amountMax) : undefined,
-      supplierId: formData.supplierId || undefined, // Empty string becomes undefined
+      supplierId: formData.supplierId || undefined,
       transactionType: formData.transactionType !== 'any' ? formData.transactionType : undefined,
       posCategory: formData.posCategory || undefined,
       itemNamePattern: formData.itemNamePattern || undefined,
       itemNameMatchType: formData.itemNamePattern ? formData.itemNameMatchType : undefined,
-      categoryId: formData.categoryId,
+      categoryId: formData.isSplitRule ? undefined : formData.categoryId,
+      isSplitRule: formData.isSplitRule,
+      splitConfig: formData.isSplitRule ? formData.splitConfig : undefined,
       priority: parseInt(formData.priority) || 0,
       autoApply: formData.autoApply,
     });
@@ -159,7 +190,9 @@ export const EnhancedCategoryRulesDialog = ({
       posCategory: rule.pos_category || '',
       itemNamePattern: rule.item_name_pattern || '',
       itemNameMatchType: rule.item_name_match_type || 'contains',
-      categoryId: rule.category_id,
+      categoryId: rule.category_id || '',
+      isSplitRule: rule.is_split_rule,
+      splitConfig: rule.split_config || [],
       priority: rule.priority.toString(),
       autoApply: rule.auto_apply,
     });
@@ -177,6 +210,29 @@ export const EnhancedCategoryRulesDialog = ({
   const handleSaveEdit = async () => {
     if (!editingRuleId) return;
 
+    // Same validation as create
+    if (!formData.isSplitRule && !formData.categoryId) {
+      toast.error("Please select a category");
+      return;
+    }
+
+    if (formData.isSplitRule) {
+      if (formData.splitConfig.length < 2) {
+        toast.error("Split rules require at least 2 categories");
+        return;
+      }
+      
+      const totalPercentage = formData.splitConfig.reduce((sum, split) => 
+        sum + (split.percentage || 0), 0
+      );
+      const hasPercentages = formData.splitConfig.some(s => s.percentage !== undefined);
+      
+      if (hasPercentages && Math.abs(totalPercentage - 100) > 0.01) {
+        toast.error(`Split percentages must sum to 100% (currently ${totalPercentage.toFixed(1)}%)`);
+        return;
+      }
+    }
+
     await updateRule.mutateAsync({
       ruleId: editingRuleId,
       ruleName: formData.ruleName,
@@ -184,12 +240,14 @@ export const EnhancedCategoryRulesDialog = ({
       descriptionMatchType: formData.descriptionPattern ? formData.descriptionMatchType : undefined,
       amountMin: formData.amountMin ? parseFloat(formData.amountMin) : undefined,
       amountMax: formData.amountMax ? parseFloat(formData.amountMax) : undefined,
-      supplierId: formData.supplierId || undefined, // Empty string becomes undefined
+      supplierId: formData.supplierId || undefined,
       transactionType: formData.transactionType !== 'any' ? formData.transactionType : undefined,
       posCategory: formData.posCategory || undefined,
       itemNamePattern: formData.itemNamePattern || undefined,
       itemNameMatchType: formData.itemNamePattern ? formData.itemNameMatchType : undefined,
-      categoryId: formData.categoryId,
+      categoryId: formData.isSplitRule ? undefined : formData.categoryId,
+      isSplitRule: formData.isSplitRule,
+      splitConfig: formData.isSplitRule ? formData.splitConfig : undefined,
       priority: parseInt(formData.priority) || 0,
       autoApply: formData.autoApply,
     });
@@ -345,13 +403,35 @@ export const EnhancedCategoryRulesDialog = ({
                             {renderRuleConditions(rule)}
                           </div>
                           <div className="flex items-center gap-2">
-                            <div className="text-sm font-medium text-primary">
-                              → {rule.category?.account_code} - {rule.category?.account_name}
-                            </div>
-                            {rule.category && !rule.category.is_active && (
-                              <Badge variant="destructive" className="text-xs">
-                                Inactive Category
-                              </Badge>
+                            {rule.is_split_rule ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                                  <SplitSquareVertical className="h-4 w-4" />
+                                  Split Across {rule.split_config?.length || 0} Categories
+                                </div>
+                                <div className="pl-6 space-y-1">
+                                  {rule.split_config?.map((split, idx) => {
+                                    const account = accounts?.find(a => a.id === split.category_id);
+                                    return (
+                                      <div key={idx} className="text-xs text-muted-foreground">
+                                        • {split.percentage?.toFixed(1)}% → {account?.account_code} - {account?.account_name}
+                                        {split.description && ` (${split.description})`}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="text-sm font-medium text-primary">
+                                  → {rule.category?.account_code} - {rule.category?.account_name}
+                                </div>
+                                {rule.category && !rule.category.is_active && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Inactive Category
+                                  </Badge>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
@@ -687,12 +767,120 @@ export const EnhancedCategoryRulesDialog = ({
                     </div>
 
                     <div className="col-span-2">
-                      <Label>Target Category *</Label>
-                      <SearchableAccountSelector
-                        value={formData.categoryId}
-                        onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
-                        placeholder="Select category..."
-                      />
+                      <div className="flex items-center gap-2 mb-2">
+                        <Switch
+                          id="split-rule-toggle"
+                          checked={formData.isSplitRule}
+                          onCheckedChange={(checked) => {
+                            setFormData({ 
+                              ...formData, 
+                              isSplitRule: checked,
+                              splitConfig: checked ? [
+                                { category_id: '', percentage: 50 },
+                                { category_id: '', percentage: 50 }
+                              ] : [],
+                              categoryId: checked ? '' : formData.categoryId
+                            });
+                          }}
+                        />
+                        <Label htmlFor="split-rule-toggle" className="flex items-center gap-2">
+                          <SplitSquareVertical className="h-4 w-4" />
+                          Split Categorization
+                        </Label>
+                      </div>
+                      {formData.isSplitRule ? (
+                        <div className="space-y-3 p-4 border rounded-md bg-muted/30">
+                          <p className="text-sm text-muted-foreground">
+                            Split this transaction/sale across multiple categories
+                          </p>
+                          {formData.splitConfig.map((split, idx) => (
+                            <div key={idx} className="flex gap-2 items-start">
+                              <div className="flex-1">
+                                <SearchableAccountSelector
+                                  value={split.category_id}
+                                  onValueChange={(value) => {
+                                    const newSplits = [...formData.splitConfig];
+                                    newSplits[idx] = { ...newSplits[idx], category_id: value };
+                                    setFormData({ ...formData, splitConfig: newSplits });
+                                  }}
+                                  placeholder="Select category..."
+                                />
+                              </div>
+                              <div className="w-24">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="0.1"
+                                  placeholder="%"
+                                  value={split.percentage || ''}
+                                  onChange={(e) => {
+                                    const newSplits = [...formData.splitConfig];
+                                    newSplits[idx] = { 
+                                      ...newSplits[idx], 
+                                      percentage: e.target.value ? parseFloat(e.target.value) : undefined 
+                                    };
+                                    setFormData({ ...formData, splitConfig: newSplits });
+                                  }}
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <Input
+                                  placeholder="Description (optional)"
+                                  value={split.description || ''}
+                                  onChange={(e) => {
+                                    const newSplits = [...formData.splitConfig];
+                                    newSplits[idx] = { ...newSplits[idx], description: e.target.value };
+                                    setFormData({ ...formData, splitConfig: newSplits });
+                                  }}
+                                />
+                              </div>
+                              {formData.splitConfig.length > 2 && (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    const newSplits = formData.splitConfig.filter((_, i) => i !== idx);
+                                    setFormData({ ...formData, splitConfig: newSplits });
+                                  }}
+                                  aria-label="Remove split"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                          <div className="flex items-center justify-between pt-2 border-t">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setFormData({
+                                  ...formData,
+                                  splitConfig: [...formData.splitConfig, { category_id: '', percentage: 0 }]
+                                });
+                              }}
+                            >
+                              <Plus className="h-4 w-4 mr-1" />
+                              Add Category
+                            </Button>
+                            <div className="text-sm font-medium">
+                              Total: {formData.splitConfig.reduce((sum, s) => sum + (s.percentage || 0), 0).toFixed(1)}%
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <Label>Target Category *</Label>
+                          <SearchableAccountSelector
+                            value={formData.categoryId}
+                            onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
+                            placeholder="Select category..."
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div>

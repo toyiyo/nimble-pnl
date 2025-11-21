@@ -127,13 +127,13 @@ export const EnhancedCategoryRulesDialog = ({
         return;
       }
       
-      // Validate split percentages sum to 100
+      // Validate split percentages sum to 100 (use 0.02 tolerance to match backend)
       const totalPercentage = formData.splitConfig.reduce((sum, split) => 
         sum + (split.percentage || 0), 0
       );
       const hasPercentages = formData.splitConfig.some(s => s.percentage !== undefined);
       
-      if (hasPercentages && Math.abs(totalPercentage - 100) > 0.01) {
+      if (hasPercentages && Math.abs(totalPercentage - 100) > 0.02) {
         toast.error(`Split percentages must sum to 100% (currently ${totalPercentage.toFixed(1)}%)`);
         return;
       }
@@ -210,7 +210,7 @@ export const EnhancedCategoryRulesDialog = ({
   const handleSaveEdit = async () => {
     if (!editingRuleId) return;
 
-    // Same validation as create
+    // Same validation as create (use 0.02 tolerance to match backend)
     if (!formData.isSplitRule && !formData.categoryId) {
       toast.error("Please select a category");
       return;
@@ -227,7 +227,7 @@ export const EnhancedCategoryRulesDialog = ({
       );
       const hasPercentages = formData.splitConfig.some(s => s.percentage !== undefined);
       
-      if (hasPercentages && Math.abs(totalPercentage - 100) > 0.01) {
+      if (hasPercentages && Math.abs(totalPercentage - 100) > 0.02) {
         toast.error(`Split percentages must sum to 100% (currently ${totalPercentage.toFixed(1)}%)`);
         return;
       }

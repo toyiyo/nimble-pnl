@@ -97,8 +97,10 @@ DECLARE
   v_split JSONB;
   v_split_amount NUMERIC;
   v_total_allocated NUMERIC := 0;
-  v_remaining_amount NUMERIC;
+  v_base_amount NUMERIC;
   v_last_split_id UUID;
+  v_sign_multiplier NUMERIC;
+  v_rounding_tolerance CONSTANT NUMERIC := 0.02;
 BEGIN
   -- Get the rule with split config
   SELECT * INTO v_rule
@@ -117,22 +119,26 @@ BEGIN
   -- Delete any existing splits for this transaction
   DELETE FROM bank_transaction_splits WHERE transaction_id = p_transaction_id;
   
-  -- Use absolute value for calculation
-  v_remaining_amount := ABS(p_transaction_amount);
+  -- Preserve sign: work with absolute value for calculations, but apply sign to results
+  v_base_amount := ABS(p_transaction_amount);
+  v_sign_multiplier := SIGN(p_transaction_amount);
+  IF v_sign_multiplier = 0 THEN
+    v_sign_multiplier := 1; -- Default to positive for zero amounts
+  END IF;
   
   -- Create split entries
   FOR v_split IN SELECT jsonb_array_elements(v_rule.split_config)
   LOOP
     -- Calculate split amount
     IF v_split->>'percentage' IS NOT NULL THEN
-      v_split_amount := ROUND(v_remaining_amount * (v_split->>'percentage')::NUMERIC / 100, 2);
+      v_split_amount := ROUND(v_base_amount * (v_split->>'percentage')::NUMERIC / 100, 2);
     ELSE
       v_split_amount := (v_split->>'amount')::NUMERIC;
     END IF;
     
     v_total_allocated := v_total_allocated + v_split_amount;
     
-    -- Insert split
+    -- Insert split with correct sign
     INSERT INTO bank_transaction_splits (
       transaction_id,
       category_id,
@@ -142,7 +148,7 @@ BEGIN
     VALUES (
       p_transaction_id,
       (v_split->>'category_id')::UUID,
-      v_split_amount,
+      v_split_amount * v_sign_multiplier,
       v_split->>'description'
     )
     RETURNING id INTO v_last_split_id;
@@ -151,13 +157,13 @@ BEGIN
   -- Handle rounding differences for percentage-based splits
   -- Adjust the last split if there's a small difference due to rounding
   IF v_rule.split_config->0->>'percentage' IS NOT NULL THEN
-    IF ABS(v_total_allocated - v_remaining_amount) > 0 AND ABS(v_total_allocated - v_remaining_amount) <= 0.02 THEN
+    IF ABS(v_total_allocated - v_base_amount) > 0 AND ABS(v_total_allocated - v_base_amount) <= v_rounding_tolerance THEN
       UPDATE bank_transaction_splits
-      SET amount = amount + (v_remaining_amount - v_total_allocated)
+      SET amount = amount + ((v_base_amount - v_total_allocated) * v_sign_multiplier)
       WHERE id = v_last_split_id;
-    ELSIF ABS(v_total_allocated - v_remaining_amount) > 0.02 THEN
+    ELSIF ABS(v_total_allocated - v_base_amount) > v_rounding_tolerance THEN
       RAISE EXCEPTION 'Split amounts do not match transaction amount. Expected: %, Got: %', 
-        v_remaining_amount, v_total_allocated;
+        v_base_amount, v_total_allocated;
     END IF;
   END IF;
   
@@ -193,8 +199,10 @@ DECLARE
   v_split JSONB;
   v_split_amount NUMERIC;
   v_total_allocated NUMERIC := 0;
-  v_remaining_amount NUMERIC;
+  v_base_amount NUMERIC;
   v_last_split_id UUID;
+  v_sign_multiplier NUMERIC;
+  v_rounding_tolerance CONSTANT NUMERIC := 0.02;
 BEGIN
   -- Get the rule with split config
   SELECT * INTO v_rule
@@ -213,22 +221,26 @@ BEGIN
   -- Delete any existing splits for this sale
   DELETE FROM unified_sales_splits WHERE sale_id = p_sale_id;
   
-  -- Use absolute value for calculation
-  v_remaining_amount := ABS(p_sale_amount);
+  -- Preserve sign: work with absolute value for calculations, but apply sign to results
+  v_base_amount := ABS(p_sale_amount);
+  v_sign_multiplier := SIGN(p_sale_amount);
+  IF v_sign_multiplier = 0 THEN
+    v_sign_multiplier := 1; -- Default to positive for zero amounts
+  END IF;
   
   -- Create split entries
   FOR v_split IN SELECT jsonb_array_elements(v_rule.split_config)
   LOOP
     -- Calculate split amount
     IF v_split->>'percentage' IS NOT NULL THEN
-      v_split_amount := ROUND(v_remaining_amount * (v_split->>'percentage')::NUMERIC / 100, 2);
+      v_split_amount := ROUND(v_base_amount * (v_split->>'percentage')::NUMERIC / 100, 2);
     ELSE
       v_split_amount := (v_split->>'amount')::NUMERIC;
     END IF;
     
     v_total_allocated := v_total_allocated + v_split_amount;
     
-    -- Insert split
+    -- Insert split with correct sign
     INSERT INTO unified_sales_splits (
       sale_id,
       category_id,
@@ -238,7 +250,7 @@ BEGIN
     VALUES (
       p_sale_id,
       (v_split->>'category_id')::UUID,
-      v_split_amount,
+      v_split_amount * v_sign_multiplier,
       v_split->>'description'
     )
     RETURNING id INTO v_last_split_id;
@@ -247,13 +259,13 @@ BEGIN
   -- Handle rounding differences for percentage-based splits
   -- Adjust the last split if there's a small difference due to rounding
   IF v_rule.split_config->0->>'percentage' IS NOT NULL THEN
-    IF ABS(v_total_allocated - v_remaining_amount) > 0 AND ABS(v_total_allocated - v_remaining_amount) <= 0.02 THEN
+    IF ABS(v_total_allocated - v_base_amount) > 0 AND ABS(v_total_allocated - v_base_amount) <= v_rounding_tolerance THEN
       UPDATE unified_sales_splits
-      SET amount = amount + (v_remaining_amount - v_total_allocated)
+      SET amount = amount + ((v_base_amount - v_total_allocated) * v_sign_multiplier)
       WHERE id = v_last_split_id;
-    ELSIF ABS(v_total_allocated - v_remaining_amount) > 0.02 THEN
+    ELSIF ABS(v_total_allocated - v_base_amount) > v_rounding_tolerance THEN
       RAISE EXCEPTION 'Split amounts do not match sale amount. Expected: %, Got: %', 
-        v_remaining_amount, v_total_allocated;
+        v_base_amount, v_total_allocated;
     END IF;
   END IF;
   

@@ -164,8 +164,26 @@ export const PurchaseOrderEditor: React.FC = () => {
     }
   };
 
-  const confirmSupplierChange = () => {
+  const confirmSupplierChange = async () => {
     setSupplierId(pendingSupplierId);
+
+    // For existing POs, also clear persisted lines from backend
+    if (isEditing && po) {
+      const persistedLines = lines.filter((line) => !line.id.startsWith('temp-'));
+      if (persistedLines.length > 0) {
+        try {
+          await Promise.all(persistedLines.map((line) => deleteLineItem(line.id)));
+        } catch (error) {
+          console.error('Error clearing lines on supplier change:', error);
+          toast({
+            title: 'Warning',
+            description: 'Failed to clear some items. Please refresh and try again.',
+            variant: 'destructive',
+          });
+        }
+      }
+    }
+
     setLines([]);
     setChangeSupplierDialog(false);
   };

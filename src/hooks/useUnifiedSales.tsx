@@ -5,6 +5,23 @@ import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { UnifiedSaleItem, POSSystemType } from '@/types/pos';
 
+type SplitRow = {
+  id: string;
+  sale_id?: string;
+  amount: number | string;
+  description?: string | null;
+  category_id: string;
+  chart_of_accounts?: {
+    id: string;
+    account_code: string;
+    account_name: string;
+    account_type: string;
+    account_subtype?: string | null;
+  } | null;
+};
+
+type SaleWithInternalSplits = UnifiedSaleItem & { splits_data?: SplitRow[] };
+
 export const useUnifiedSales = (restaurantId: string | null) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -53,7 +70,41 @@ export const useUnifiedSales = (restaurantId: string | null) => {
 
     if (error) throw error;
 
-    const transformedSales: UnifiedSaleItem[] = (data || []).map(sale => ({
+    const baseSales = data || [];
+    const splitSaleIds = baseSales.filter(sale => sale.is_split).map(sale => sale.id);
+
+    const splitMap = new Map<string, any[]>();
+
+    if (splitSaleIds.length > 0) {
+      const { data: splitRows, error: splitsError } = await supabase
+        .from('unified_sales_splits')
+        .select(`
+          id,
+          sale_id,
+          amount,
+          description,
+          category_id,
+          chart_of_accounts (
+            id,
+            account_code,
+            account_name,
+            account_type,
+            account_subtype
+          )
+        `)
+        .in('sale_id', splitSaleIds);
+
+      if (splitsError) throw splitsError;
+
+      (splitRows || []).forEach(split => {
+        if (!splitMap.has(split.sale_id)) {
+          splitMap.set(split.sale_id, []);
+        }
+        splitMap.get(split.sale_id)!.push(split);
+      });
+    }
+
+    const transformedSales: SaleWithInternalSplits[] = baseSales.map((sale): SaleWithInternalSplits => ({
       id: sale.id,
       restaurantId: sale.restaurant_id,
       posSystem: sale.pos_system as POSSystemType,
@@ -82,23 +133,29 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       parent_sale_id: sale.parent_sale_id,
       // Use approved_chart_account if categorized, otherwise suggested_chart_account
       chart_account: sale.is_categorized ? sale.approved_chart_account : sale.suggested_chart_account,
-      // Transform unified_sales_splits to child_splits format if present
-      splits_data: sale.unified_sales_splits || [],
+      // Cache any split rows we already fetched so we can transform once below
+      splits_data: splitMap.get(sale.id) || sale.unified_sales_splits || [],
     }));
 
     // Compute child_splits from either the flat data (old method) or splits_data (new method)
-    const salesWithSplits = transformedSales.map(sale => {
+  const salesWithSplits = transformedSales.map((sale) => {
       if (sale.is_split) {
         // First check if we have splits from unified_sales_splits table (new method)
         if (sale.splits_data && sale.splits_data.length > 0) {
-          const child_splits = sale.splits_data.map((split: any) => ({
-            id: split.id,
-            category_id: split.category_id,
-            totalPrice: split.amount,
-            chart_account: split.chart_of_accounts,
-            itemName: split.description || sale.itemName,
-            is_split_entry: true,
-          }));
+          const child_splits = sale.splits_data.map((split: any) => {
+            const parsedAmount = typeof split.amount === 'number'
+              ? split.amount
+              : Number(split.amount) || 0;
+
+            return {
+              id: split.id,
+              category_id: split.category_id,
+              totalPrice: parsedAmount,
+              chart_account: split.chart_of_accounts,
+              itemName: split.description || sale.itemName,
+              is_split_entry: true,
+            };
+          });
           return { ...sale, child_splits };
         }
         
@@ -109,7 +166,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       return sale;
     });
 
-    return salesWithSplits;
+  return salesWithSplits as UnifiedSaleItem[];
   }, [restaurantId, user]);
 
   const { data: sales = [], isLoading: loading, error } = useQuery({
@@ -153,14 +210,14 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     }
     
     // Get unique item names from sales (exclude child splits)
-    const saleItemNames = new Set(
+    const saleItemNames = new Set<string>(
       sales
         .filter(sale => !sale.parent_sale_id) // Only parent sales
         .map(sale => sale.itemName)
     );
     
     // Get all mapped POS item names from recipes (case-insensitive)
-    const mappedItemNames = new Set(
+    const mappedItemNames = new Set<string>(
       recipes
         .filter(recipe => recipe.pos_item_name)
         .map(recipe => recipe.pos_item_name!.toLowerCase())

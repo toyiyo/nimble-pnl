@@ -2,6 +2,23 @@
 
 export type POSSystemType = 'square' | 'toast' | 'clover' | 'resy' | 'shift4' | 'manual' | 'manual_upload';
 
+export interface ChartAccountInfo {
+  id: string;
+  account_name: string;
+  account_code: string;
+  account_type?: string;
+  account_subtype?: string;
+}
+
+export interface SaleSplitEntry {
+  id: string;
+  category_id?: string;
+  totalPrice?: number;
+  chart_account?: ChartAccountInfo | null;
+  itemName?: string;
+  is_split_entry?: boolean;
+}
+
 export interface UnifiedSaleItem {
   id: string;
   restaurantId: string;
@@ -26,14 +43,10 @@ export interface UnifiedSaleItem {
   is_categorized?: boolean;
   is_split?: boolean;
   parent_sale_id?: string | null;
-  child_splits?: UnifiedSaleItem[];
+  child_splits?: SaleSplitEntry[];
   item_type?: 'sale' | 'tip' | 'tax' | 'discount' | 'comp' | 'service_charge' | 'other';
   adjustment_type?: 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | null;
-  chart_account?: {
-    id: string;
-    account_name: string;
-    account_code: string;
-  };
+  chart_account?: ChartAccountInfo;
 }
 
 export interface UnifiedOrder {

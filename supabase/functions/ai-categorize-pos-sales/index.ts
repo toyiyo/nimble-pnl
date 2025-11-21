@@ -21,6 +21,7 @@ CRITICAL RULES:
 
 3. Use pos_category field (if present) as PRIMARY signal for categorization
 4. Match item names to appropriate revenue categories
+5. Learn from the example categorizations provided to understand common patterns for this restaurant
 
 ITEM TYPE DETECTION:
 - item_type: "tip" → Items containing: "tip", "gratuity", "auto-grat"
@@ -54,16 +55,33 @@ CONFIDENCE LEVELS:
 
 Response format: JSON with categorizations array`;
 
-function buildUserPrompt(chartOfAccounts: any[], sales: any[]) {
+function buildUserPrompt(chartOfAccounts: any[], sales: any[], examples: any[]) {
   const relevantAccounts = chartOfAccounts.filter(
     acc => acc.account_type === 'revenue' || acc.account_type === 'liability'
   );
 
-  return `
-Chart of Accounts (Revenue & Liability accounts only):
+  let prompt = `Chart of Accounts (Revenue & Liability accounts only):
 ${relevantAccounts.map(acc => 
   `- ${acc.account_code}: ${acc.account_name} (${acc.account_type}, ${acc.account_subtype})`
 ).join('\n')}
+`;
+
+  // Include examples if available
+  if (examples && examples.length > 0) {
+    prompt += `
+
+EXAMPLE CATEGORIZATIONS (learn from these patterns):
+${examples.map((ex, idx) => `
+${idx + 1}. Item: ${ex.item_name}
+   POS Category: ${ex.pos_category || 'N/A'}
+   Total: $${ex.total_price}
+   → Categorized as: ${ex.account_code} - ${ex.account_name} (${ex.account_type})
+   Item Type: ${ex.item_type}
+`).join('')}
+`;
+  }
+
+  prompt += `
 
 Uncategorized POS Sales:
 ${sales.map((sale, i) => `
@@ -83,16 +101,19 @@ Categorize each sale with:
 4. confidence ('high', 'medium', 'low')
 5. reasoning (brief explanation)
 `;
+
+  return prompt;
 }
 
 function buildCategorizationRequestBody(
   chartOfAccounts: any[],
-  sales: any[]
+  sales: any[],
+  examples: any[]
 ): any {
   return {
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: buildUserPrompt(chartOfAccounts, sales) }
+      { role: "user", content: buildUserPrompt(chartOfAccounts, sales, examples) }
     ],
     response_format: {
       type: "json_schema",
@@ -266,7 +287,47 @@ serve(async (req) => {
       );
     }
 
-    const requestBody = buildCategorizationRequestBody(chartOfAccounts, sales);
+    // Fetch example categorizations (recent categorized sales)
+    // Get up to 10 examples to help AI learn the restaurant's categorization patterns
+    const { data: exampleSales, error: examplesError } = await supabase
+      .from('unified_sales')
+      .select(`
+        id,
+        item_name,
+        pos_category,
+        total_price,
+        item_type,
+        category_id,
+        chart_of_accounts!inner(
+          account_code,
+          account_name,
+          account_type
+        )
+      `)
+      .eq('restaurant_id', restaurantId)
+      .eq('is_categorized', true)
+      .not('category_id', 'is', null)
+      .order('sale_date', { ascending: false })
+      .limit(10);
+
+    if (examplesError) {
+      console.warn('Warning: Could not fetch example categorizations:', examplesError);
+    }
+
+    // Format examples for the prompt
+    const examples = (exampleSales || []).map(ex => ({
+      item_name: ex.item_name,
+      pos_category: ex.pos_category,
+      total_price: ex.total_price,
+      item_type: ex.item_type || 'sale',
+      account_code: ex.chart_of_accounts?.account_code,
+      account_name: ex.chart_of_accounts?.account_name,
+      account_type: ex.chart_of_accounts?.account_type
+    })).filter(ex => ex.account_code); // Only include examples with valid account info
+
+    console.log(`📚 Using ${examples.length} example categorizations to improve AI accuracy`);
+
+    const requestBody = buildCategorizationRequestBody(chartOfAccounts, sales, examples);
     console.log(`🎯 Categorizing ${sales.length} POS sales with streaming...`);
     const aiResult = await callAIWithFallbackStreaming<{ categorizations: any[] }>(
       requestBody,

@@ -144,6 +144,10 @@ CREATE INDEX idx_purchase_orders_supplier_id ON public.purchase_orders(supplier_
 CREATE INDEX idx_purchase_orders_status ON public.purchase_orders(restaurant_id, status);
 CREATE INDEX idx_purchase_orders_created_at ON public.purchase_orders(restaurant_id, created_at DESC);
 
+-- Create unique index on po_number per restaurant (safety net for concurrency)
+CREATE UNIQUE INDEX idx_purchase_orders_restaurant_po_number 
+ON public.purchase_orders(restaurant_id, po_number);
+
 CREATE INDEX idx_purchase_order_lines_po_id ON public.purchase_order_lines(purchase_order_id);
 CREATE INDEX idx_purchase_order_lines_product_id ON public.purchase_order_lines(product_id);
 
@@ -158,7 +162,31 @@ CREATE TRIGGER update_purchase_order_lines_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
 
--- Function to generate PO number
+-- Create atomic counter table for PO numbers
+CREATE TABLE public.po_number_counters (
+  restaurant_id UUID NOT NULL,
+  year INTEGER NOT NULL,
+  counter INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  PRIMARY KEY (restaurant_id, year)
+);
+
+-- Enable RLS on counter table
+ALTER TABLE public.po_number_counters ENABLE ROW LEVEL SECURITY;
+
+-- RLS policy for counter table (service role only, users don't access directly)
+CREATE POLICY "Service role can manage PO number counters"
+ON public.po_number_counters
+FOR ALL
+USING (true)
+WITH CHECK (true);
+
+-- Index for performance
+CREATE INDEX idx_po_number_counters_restaurant_year 
+ON public.po_number_counters(restaurant_id, year);
+
+-- Function to generate PO number (concurrency-safe)
 CREATE OR REPLACE FUNCTION generate_po_number(p_restaurant_id UUID)
 RETURNS TEXT
 LANGUAGE plpgsql
@@ -166,22 +194,24 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_year TEXT;
-  v_count INTEGER;
+  v_year INTEGER;
+  v_counter INTEGER;
   v_po_number TEXT;
 BEGIN
-  v_year := TO_CHAR(NOW(), 'YYYY');
+  v_year := EXTRACT(YEAR FROM NOW())::INTEGER;
   
-  -- Get count of POs for this restaurant this year
-  SELECT COUNT(*) INTO v_count
-  FROM purchase_orders
-  WHERE restaurant_id = p_restaurant_id
-    AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM NOW());
-  
-  v_count := v_count + 1;
+  -- Atomically increment counter for this restaurant + year
+  -- INSERT ... ON CONFLICT ... DO UPDATE ensures no race condition
+  INSERT INTO po_number_counters (restaurant_id, year, counter)
+  VALUES (p_restaurant_id, v_year, 1)
+  ON CONFLICT (restaurant_id, year)
+  DO UPDATE SET 
+    counter = po_number_counters.counter + 1,
+    updated_at = NOW()
+  RETURNING counter INTO v_counter;
   
   -- Format: PO-YYYY-NNNNNN
-  v_po_number := 'PO-' || v_year || '-' || LPAD(v_count::TEXT, 6, '0');
+  v_po_number := 'PO-' || v_year::TEXT || '-' || LPAD(v_counter::TEXT, 6, '0');
   
   RETURN v_po_number;
 END;

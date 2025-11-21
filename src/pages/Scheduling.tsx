@@ -271,13 +271,22 @@ const Scheduling = () => {
                 </thead>
                 <tbody>
                   {activeEmployees.map((employee) => (
-                    <tr key={employee.id} className="border-b hover:bg-muted/50">
+                    <tr key={employee.id} className="border-b hover:bg-muted/50 group">
                       <td className="p-2 sticky left-0 bg-background">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 justify-between">
                           <div>
                             <div className="font-medium">{employee.name}</div>
                             <div className="text-sm text-muted-foreground">{employee.position}</div>
                           </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditEmployee(employee)}
+                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label={`Edit ${employee.name}`}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
                         </div>
                       </td>
                       {weekDays.map((day) => {

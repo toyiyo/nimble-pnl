@@ -19,12 +19,30 @@ CRITICAL RULES:
 - Negative amounts are typically expenses
 - Use confidence: "high" for obvious matches, "medium" for likely matches, "low" for uncertain
 - Always provide brief reasoning for each categorization
+- Learn from the example categorizations provided to understand common patterns for this restaurant
 
 IMPORTANT: Double-check that every account_code you return appears in the Chart of Accounts list provided in the user prompt. Invalid codes will be rejected.`;
 
-const buildUserPrompt = (transactions: any[], accounts: any[]) => `
-CHART OF ACCOUNTS:
+const buildUserPrompt = (transactions: any[], accounts: any[], examples: any[]) => {
+  let prompt = `CHART OF ACCOUNTS:
 ${accounts.map(acc => `- ${acc.account_code}: ${acc.account_name} (${acc.account_type})`).join('\n')}
+`;
+
+  // Include examples if available
+  if (examples && examples.length > 0) {
+    prompt += `
+
+EXAMPLE CATEGORIZATIONS (learn from these patterns):
+${examples.map((ex, idx) => `
+${idx + 1}. Description: ${ex.description || 'N/A'}
+   Merchant: ${ex.merchant_name || ex.normalized_payee || 'N/A'}
+   Amount: $${ex.amount}
+   → Categorized as: ${ex.account_code} - ${ex.account_name} (${ex.account_type})
+`).join('')}
+`;
+  }
+
+  prompt += `
 
 TRANSACTIONS TO CATEGORIZE:
 ${transactions.map((txn, idx) => `
@@ -37,15 +55,19 @@ ${idx + 1}. ID: ${txn.id}
 
 Categorize each transaction with the appropriate account code, confidence level, and reasoning.`;
 
+  return prompt;
+};
+
 // Helper function to build structured output request body
 function buildCategorizationRequestBody(
   transactions: any[],
-  accounts: any[]
+  accounts: any[],
+  examples: any[]
 ): any {
   return {
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: buildUserPrompt(transactions, accounts) }
+      { role: 'user', content: buildUserPrompt(transactions, accounts, examples) }
     ],
     response_format: {
       type: 'json_schema',
@@ -234,7 +256,55 @@ serve(async (req) => {
       }
     }
 
-    const requestBody = buildCategorizationRequestBody(transactions, accounts);
+    // Fetch example categorizations (recent categorized transactions)
+    // Get up to 10 examples to help AI learn the restaurant's categorization patterns
+    let exampleQuery = supabaseClient
+      .from('bank_transactions')
+      .select(`
+        id, 
+        description, 
+        merchant_name, 
+        normalized_payee, 
+        amount, 
+        transaction_date,
+        category_id,
+        chart_of_accounts!inner(
+          account_code,
+          account_name,
+          account_type
+        )
+      `)
+      .eq('restaurant_id', restaurantId)
+      .eq('is_categorized', true)
+      .not('category_id', 'is', null);
+
+    // Only exclude uncategorized accounts if they exist
+    if (uncategorizedIds.length > 0) {
+      exampleQuery = exampleQuery.not('category_id', 'in', `(${uncategorizedIds.join(',')})`);
+    }
+
+    const { data: exampleTransactions, error: examplesError } = await exampleQuery
+      .order('transaction_date', { ascending: false })
+      .limit(10);
+
+    if (examplesError) {
+      console.warn('Warning: Could not fetch example categorizations:', examplesError);
+    }
+
+    // Format examples for the prompt
+    const examples = (exampleTransactions || []).map(ex => ({
+      description: ex.description,
+      merchant_name: ex.merchant_name,
+      normalized_payee: ex.normalized_payee,
+      amount: ex.amount,
+      account_code: ex.chart_of_accounts?.account_code,
+      account_name: ex.chart_of_accounts?.account_name,
+      account_type: ex.chart_of_accounts?.account_type
+    })).filter(ex => ex.account_code); // Only include examples with valid account info
+
+    console.log(`📚 Using ${examples.length} example categorizations to improve AI accuracy`);
+
+    const requestBody = buildCategorizationRequestBody(transactions, accounts, examples);
     console.log(`🎯 Categorizing ${transactions.length} transactions with streaming...`);
     const aiResult = await callAIWithFallbackStreaming<{ categorizations: any[] }>(
       requestBody,

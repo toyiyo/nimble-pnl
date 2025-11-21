@@ -6,6 +6,10 @@ ALTER TABLE categorization_rules
   ADD COLUMN IF NOT EXISTS is_split_rule BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS split_config JSONB;
 
+-- Make category_id nullable to support split rules (where category_id should be NULL)
+ALTER TABLE categorization_rules
+  ALTER COLUMN category_id DROP NOT NULL;
+
 -- Add constraint to ensure split_config is provided when is_split_rule is true
 ALTER TABLE categorization_rules
   ADD CONSTRAINT check_split_config CHECK (

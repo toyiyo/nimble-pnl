@@ -301,7 +301,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       const orderId = `manual_${Date.now()}`;
       
       // Check if there are any adjustments
-      const hasAdjustments = saleData.adjustments && Object.values(saleData.adjustments).some(val => val && val > 0);
+      const hasAdjustments = saleData.adjustments && Object.values(saleData.adjustments).some(val => val && val !== 0);
 
       if (!hasAdjustments) {
         // No adjustments - create a simple sale

@@ -65,56 +65,67 @@ test.describe('Manual POS Sale Entry with Adjustments', () => {
     await expect(page.locator('text=Sale recorded')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('text=/with 4 adjustment/')).toBeVisible();
     
-    // Verify in database - should have created 5 entries
+    // Verify in database - should have created 1 entry in unified_sales
     const supabase = getTestSupabaseClient();
     const { data: sales, error } = await supabase
       .from('unified_sales')
       .select('*')
       .eq('restaurant_id', testRestaurantId)
       .like('external_order_id', 'manual_%')
+      .eq('is_split', true)
       .order('created_at', { ascending: false })
-      .limit(5);
+      .limit(1);
     
     expect(error).toBeNull();
-    expect(sales).toHaveLength(5);
+    expect(sales).toHaveLength(1);
     
-    // Verify all entries share same order ID
-    const orderIds = new Set(sales.map(s => s.external_order_id));
-    expect(orderIds.size).toBe(1);
+    const sale = sales[0];
+    expect(sale.item_name).toBe('Test Margarita');
+    expect(sale.is_split).toBe(true);
     
-    // Verify revenue entry
-    const revenueEntry = sales.find(s => s.adjustment_type === null);
+    // Total should be sum of base + adjustments
+    const expectedTotal = 10.00 + 0.80 + 2.00 + 1.50 + 0.50; // 14.80
+    expect(Number(sale.total_price)).toBeCloseTo(expectedTotal, 2);
+    
+    // Verify splits in unified_sales_splits table
+    const { data: splits, error: splitsError } = await supabase
+      .from('unified_sales_splits')
+      .select('*')
+      .eq('sale_id', sale.id)
+      .order('created_at', { ascending: true });
+    
+    expect(splitsError).toBeNull();
+    expect(splits).toHaveLength(5);
+    
+    // Verify revenue split
+    const revenueEntry = splits.find(s => s.description === 'Test Margarita');
     expect(revenueEntry).toBeTruthy();
-    expect(revenueEntry.item_name).toBe('Test Margarita');
-    expect(Number(revenueEntry.total_price)).toBeCloseTo(10.00, 2);
+    expect(Number(revenueEntry.amount)).toBeCloseTo(10.00, 2);
+    expect(revenueEntry.category_id).toBeNull(); // Should be uncategorized
     
-    // Verify tax entry
-    const taxEntry = sales.find(s => s.adjustment_type === 'tax');
+    // Verify tax split
+    const taxEntry = splits.find(s => s.description === 'Sales Tax');
     expect(taxEntry).toBeTruthy();
-    expect(taxEntry.item_name).toBe('Sales Tax');
-    expect(Number(taxEntry.total_price)).toBeCloseTo(0.80, 2);
+    expect(Number(taxEntry.amount)).toBeCloseTo(0.80, 2);
     
-    // Verify tip entry
-    const tipEntry = sales.find(s => s.adjustment_type === 'tip');
+    // Verify tip split
+    const tipEntry = splits.find(s => s.description === 'Tip');
     expect(tipEntry).toBeTruthy();
-    expect(tipEntry.item_name).toBe('Tip');
-    expect(Number(tipEntry.total_price)).toBeCloseTo(2.00, 2);
+    expect(Number(tipEntry.amount)).toBeCloseTo(2.00, 2);
     
-    // Verify service charge entry
-    const serviceChargeEntry = sales.find(s => s.adjustment_type === 'service_charge');
+    // Verify service charge split
+    const serviceChargeEntry = splits.find(s => s.description === 'Service Charge');
     expect(serviceChargeEntry).toBeTruthy();
-    expect(serviceChargeEntry.item_name).toBe('Service Charge');
-    expect(Number(serviceChargeEntry.total_price)).toBeCloseTo(1.50, 2);
+    expect(Number(serviceChargeEntry.amount)).toBeCloseTo(1.50, 2);
     
-    // Verify fee entry
-    const feeEntry = sales.find(s => s.adjustment_type === 'fee');
+    // Verify fee split
+    const feeEntry = splits.find(s => s.description === 'Platform Fee');
     expect(feeEntry).toBeTruthy();
-    expect(feeEntry.item_name).toBe('Platform Fee');
-    expect(Number(feeEntry.total_price)).toBeCloseTo(0.50, 2);
+    expect(Number(feeEntry.amount)).toBeCloseTo(0.50, 2);
     
-    // Verify all entries have same date/time
-    const saleDates = new Set(sales.map(s => s.sale_date));
-    expect(saleDates.size).toBe(1);
+    // Verify all splits sum to total
+    const totalSplits = splits.reduce((sum, split) => sum + Number(split.amount), 0);
+    expect(totalSplits).toBeCloseTo(expectedTotal, 2);
   });
 
   test('should create sale without adjustments when none provided', async ({ page }) => {

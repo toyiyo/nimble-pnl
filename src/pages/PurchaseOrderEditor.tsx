@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, Send, Plus, Trash2, Search, AlertCircle, Package } from 'lucide-react';
+import { ArrowLeft, Save, Send, Plus, Trash2, Search, AlertCircle, Package, Download, FileText, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Table,
   TableBody,
@@ -46,6 +52,11 @@ import {
   CreatePurchaseOrderLineData,
 } from '@/types/purchaseOrder';
 import { cn } from '@/lib/utils';
+import {
+  exportPurchaseOrderToPDF,
+  exportPurchaseOrderToCSV,
+  exportPurchaseOrderToText,
+} from '@/utils/purchaseOrderExport';
 
 export const PurchaseOrderEditor: React.FC = () => {
   const navigate = useNavigate();
@@ -380,6 +391,57 @@ export const PurchaseOrderEditor: React.FC = () => {
     }
   };
 
+  // Export handler
+  const handleExport = (format: 'pdf' | 'csv' | 'text') => {
+    if (!po || !selectedRestaurant) {
+      toast({
+        title: 'Cannot export',
+        description: 'Please save the purchase order first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Build supplier names map
+    const supplierNames: Record<string, string> = {};
+    suppliers.forEach((supplier) => {
+      supplierNames[supplier.id] = supplier.name;
+    });
+
+    try {
+      switch (format) {
+        case 'pdf':
+          exportPurchaseOrderToPDF(po, selectedRestaurant.name, supplierNames);
+          toast({
+            title: 'Export successful',
+            description: 'Purchase order exported to PDF',
+          });
+          break;
+        case 'csv':
+          exportPurchaseOrderToCSV(po, supplierNames);
+          toast({
+            title: 'Export successful',
+            description: 'Purchase order exported to CSV',
+          });
+          break;
+        case 'text':
+          exportPurchaseOrderToText(po, selectedRestaurant.name, supplierNames);
+          toast({
+            title: 'Export successful',
+            description: 'Purchase order exported to text file',
+          });
+          break;
+      }
+    } catch (error) {
+      console.error('Error exporting:', error);
+      toast({
+        title: 'Export failed',
+        description: 'Failed to export purchase order',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (!selectedRestaurant) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -417,6 +479,30 @@ export const PurchaseOrderEditor: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {isEditing && po && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" disabled={!po || lines.length === 0}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleExport('pdf')}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Export as PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport('csv')}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Export as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport('text')}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Export as Text
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button variant="outline" onClick={() => handleSave('DRAFT')} disabled={loading}>
             <Save className="h-4 w-4 mr-2" />
             Save Draft

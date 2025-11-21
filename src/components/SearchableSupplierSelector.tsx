@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Check, ChevronsUpDown, Plus } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, X } from "lucide-react";
 import Fuse from 'fuse.js';
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -81,27 +81,28 @@ export function SearchableSupplierSelector({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="w-full justify-between"
-          disabled={disabled}
-        >
-          <span className={cn(
-            "truncate",
-            value === 'new_supplier' && "text-blue-600 font-medium"
-          )}>
-            {getDisplayValue()}
-            {showNewIndicator && value === 'new_supplier' && (
-              <span className="ml-2 text-xs text-muted-foreground">(new)</span>
-            )}
-          </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
+    <div className="relative w-full">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between"
+            disabled={disabled}
+          >
+            <span className={cn(
+              "truncate",
+              value === 'new_supplier' && "text-blue-600 font-medium"
+            )}>
+              {getDisplayValue()}
+              {showNewIndicator && value === 'new_supplier' && (
+                <span className="ml-2 text-xs text-muted-foreground">(new)</span>
+              )}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
       <PopoverContent className="w-full sm:w-[400px] p-0 bg-background border shadow-md z-50" align="start">
         <Command shouldFilter={false}>
           <CommandInput
@@ -170,5 +171,23 @@ export function SearchableSupplierSelector({
         </Command>
       </PopoverContent>
     </Popover>
+    
+    {/* Clear button - only show when a supplier is selected */}
+    {value && value !== 'new_supplier' && !disabled && (
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6 hover:bg-destructive/10"
+        onClick={(e) => {
+          e.stopPropagation();
+          onValueChange('', false);
+          setSearchValue('');
+        }}
+        aria-label="Clear supplier"
+      >
+        <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+      </Button>
+    )}
+  </div>
   );
 }

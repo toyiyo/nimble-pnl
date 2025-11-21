@@ -99,6 +99,7 @@ export const EnhancedCategoryRulesDialog = ({
         setFormData({ ...formData, supplierId: newSupplier.id });
       }
     } else {
+      // Allow empty string to clear the supplier
       setFormData({ ...formData, supplierId: value });
     }
   };
@@ -343,8 +344,15 @@ export const EnhancedCategoryRulesDialog = ({
                           <div className="text-sm text-muted-foreground">
                             {renderRuleConditions(rule)}
                           </div>
-                          <div className="text-sm font-medium text-primary">
-                            → {rule.category?.account_code} - {rule.category?.account_name}
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-medium text-primary">
+                              → {rule.category?.account_code} - {rule.category?.account_name}
+                            </div>
+                            {rule.category && !rule.category.is_active && (
+                              <Badge variant="destructive" className="text-xs">
+                                Inactive Category
+                              </Badge>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">

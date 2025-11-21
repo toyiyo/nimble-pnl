@@ -116,27 +116,30 @@ export const PurchaseOrderEditor: React.FC = () => {
   const budgetOverage = budgetValue && total > budgetValue ? total - budgetValue : null;
   const budgetProgress = budgetValue ? Math.min(100, (total / budgetValue) * 100) : 0;
 
-  // Filter products by selected supplier and search
+  // Get supplier name by ID
+  const getSupplierName = (supplierId: string) => {
+    const supplier = suppliers.find((s) => s.id === supplierId);
+    return supplier?.name || 'Unknown';
+  };
+
+  // Filter products by selected supplier (if any) and search
   const availableProducts = useMemo(() => {
-    if (!supplierId) return [];
+    let filtered = products;
 
-    let filtered = products.filter((p) => {
-      // Filter by supplier
-      const hasSupplier = p.supplier_id === supplierId;
-      if (!hasSupplier) return false;
+    // Filter by supplier if one is selected
+    if (supplierId) {
+      filtered = filtered.filter((p) => p.supplier_id === supplierId);
+    }
 
-      // Filter by search term
-      if (searchTerm) {
-        const term = searchTerm.toLowerCase();
-        return (
-          p.name.toLowerCase().includes(term) ||
-          (p.sku?.toLowerCase() ?? '').includes(term) ||
-          (p.category?.toLowerCase() ?? '').includes(term)
-        );
-      }
-
-      return true;
-    });
+    // Filter by search term
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter((p) =>
+        p.name.toLowerCase().includes(term) ||
+        (p.sku?.toLowerCase() ?? '').includes(term) ||
+        (p.category?.toLowerCase() ?? '').includes(term)
+      );
+    }
 
     // Filter by category
     if (selectedCategory && selectedCategory !== 'all') {
@@ -146,11 +149,12 @@ export const PurchaseOrderEditor: React.FC = () => {
     return filtered;
   }, [products, supplierId, searchTerm, selectedCategory]);
 
-  // Get unique categories
+  // Get unique categories (all or filtered by supplier)
   const categories = useMemo(() => {
-    const cats = new Set(
-      products.filter((p) => p.supplier_id === supplierId && p.category).map((p) => p.category!)
-    );
+    const filteredProducts = supplierId 
+      ? products.filter((p) => p.supplier_id === supplierId && p.category)
+      : products.filter((p) => p.category);
+    const cats = new Set(filteredProducts.map((p) => p.category!));
     return Array.from(cats).sort();
   }, [products, supplierId]);
 
@@ -190,7 +194,7 @@ export const PurchaseOrderEditor: React.FC = () => {
 
   // Add item to PO
   const handleAddItem = async (product: Product) => {
-    if (!supplierId || !restaurantId) return;
+    if (!restaurantId) return;
 
     // Check if item already exists
     const existingLine = lines.find((line) => line.product_id === product.id);
@@ -202,9 +206,20 @@ export const PurchaseOrderEditor: React.FC = () => {
       return;
     }
 
+    // Get supplier from the product
+    const itemSupplierId = product.supplier_id;
+    if (!itemSupplierId) {
+      toast({
+        title: 'No supplier',
+        description: 'This product does not have a supplier assigned',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const newLine: Partial<PurchaseOrderLine> = {
       product_id: product.id,
-      supplier_id: supplierId,
+      supplier_id: itemSupplierId,
       item_name: product.name,
       sku: product.sku,
       unit_label: product.uom_purchase || 'Unit',
@@ -218,7 +233,7 @@ export const PurchaseOrderEditor: React.FC = () => {
       const lineData: CreatePurchaseOrderLineData = {
         purchase_order_id: po.id,
         product_id: product.id,
-        supplier_id: supplierId,
+        supplier_id: itemSupplierId,
         item_name: product.name,
         sku: product.sku,
         unit_label: product.uom_purchase || 'Unit',
@@ -289,10 +304,10 @@ export const PurchaseOrderEditor: React.FC = () => {
 
   // Save PO
   const handleSave = async (status: 'DRAFT' | 'READY_TO_SEND') => {
-    if (!restaurantId || !supplierId) {
+    if (!restaurantId) {
       toast({
         title: 'Validation Error',
-        description: 'Please select a supplier',
+        description: 'Please select a restaurant',
         variant: 'destructive',
       });
       return;
@@ -314,18 +329,18 @@ export const PurchaseOrderEditor: React.FC = () => {
         // Create new PO
         const newPo = await createPurchaseOrder({
           restaurant_id: restaurantId,
-          supplier_id: supplierId,
+          supplier_id: supplierId || null,
           budget: budgetValue,
           notes: notes || null,
           status,
         });
 
-        // Add lines
+        // Add lines (using supplier_id from each line)
         for (const line of lines) {
           await addLineItem({
             purchase_order_id: newPo.id,
             product_id: line.product_id,
-            supplier_id: supplierId,
+            supplier_id: line.supplier_id,
             item_name: line.item_name,
             sku: line.sku,
             unit_label: line.unit_label,
@@ -342,7 +357,7 @@ export const PurchaseOrderEditor: React.FC = () => {
       } else if (po) {
         // Update existing PO
         await updatePurchaseOrder(po.id, {
-          supplier_id: supplierId,
+          supplier_id: supplierId || null,
           budget: budgetValue,
           notes: notes || null,
           status,
@@ -402,11 +417,11 @@ export const PurchaseOrderEditor: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => handleSave('DRAFT')} disabled={loading || !supplierId}>
+          <Button variant="outline" onClick={() => handleSave('DRAFT')} disabled={loading}>
             <Save className="h-4 w-4 mr-2" />
             Save Draft
           </Button>
-          <Button onClick={() => handleSave('READY_TO_SEND')} disabled={loading || !supplierId || lines.length === 0}>
+          <Button onClick={() => handleSave('READY_TO_SEND')} disabled={loading || lines.length === 0}>
             <Send className="h-4 w-4 mr-2" />
             Mark as Ready to Send
           </Button>
@@ -419,12 +434,13 @@ export const PurchaseOrderEditor: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Supplier Selector */}
             <div className="space-y-2">
-              <Label htmlFor="supplier">Supplier *</Label>
+              <Label htmlFor="supplier">Supplier (optional filter)</Label>
               <Select value={supplierId} onValueChange={handleSupplierChange} disabled={suppliersLoading}>
                 <SelectTrigger id="supplier">
-                  <SelectValue placeholder="Select supplier" />
+                  <SelectValue placeholder="All suppliers" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="">All suppliers</SelectItem>
                   {suppliers.map((supplier) => (
                     <SelectItem key={supplier.id} value={supplier.id}>
                       {supplier.name}
@@ -510,12 +526,7 @@ export const PurchaseOrderEditor: React.FC = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {!supplierId ? (
-                <div className="text-center py-12">
-                  <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">Select a supplier to start building your order</p>
-                </div>
-              ) : lines.length === 0 ? (
+              {lines.length === 0 ? (
                 <div className="text-center py-12">
                   <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <p className="text-muted-foreground">No items added yet</p>
@@ -527,6 +538,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                     <TableRow>
                       <TableHead className="w-8">#</TableHead>
                       <TableHead>Item</TableHead>
+                      <TableHead>Supplier</TableHead>
                       <TableHead>Unit</TableHead>
                       <TableHead className="w-32">Unit Cost</TableHead>
                       <TableHead className="w-32">Quantity</TableHead>
@@ -543,6 +555,11 @@ export const PurchaseOrderEditor: React.FC = () => {
                             <div className="font-medium">{line.item_name}</div>
                             {line.sku && <div className="text-sm text-muted-foreground">SKU: {line.sku}</div>}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {getSupplierName(line.supplier_id)}
+                          </Badge>
                         </TableCell>
                         <TableCell>{line.unit_label}</TableCell>
                         <TableCell>
@@ -624,55 +641,55 @@ export const PurchaseOrderEditor: React.FC = () => {
                 </TabsList>
 
                 <TabsContent value="search" className="space-y-4">
-                  {!supplierId ? (
-                    <p className="text-sm text-muted-foreground">Select a supplier first</p>
-                  ) : (
-                    <>
-                      {/* Search */}
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search items..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-9"
-                        />
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search items..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+
+                  {/* Category Filter */}
+                  {categories.length > 0 && (
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All categories" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All categories</SelectItem>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  {/* Product List */}
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                    {productsLoading ? (
+                      <div className="space-y-2">
+                        {[...Array(5)].map((_, i) => (
+                          <Skeleton key={i} className="h-20 w-full" />
+                        ))}
                       </div>
-
-                      {/* Category Filter */}
-                      {categories.length > 0 && (
-                        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="All categories" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All categories</SelectItem>
-                            {categories.map((cat) => (
-                              <SelectItem key={cat} value={cat}>
-                                {cat}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-
-                      {/* Product List */}
-                      <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                        {productsLoading ? (
-                          <div className="space-y-2">
-                            {[...Array(5)].map((_, i) => (
-                              <Skeleton key={i} className="h-20 w-full" />
-                            ))}
-                          </div>
-                        ) : availableProducts.length === 0 ? (
-                          <div className="text-center py-8">
-                            <Package className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                            <p className="text-sm text-muted-foreground">
-                              {searchTerm ? 'No products found' : 'No products available for this supplier'}
-                            </p>
-                          </div>
-                        ) : (
-                          availableProducts.map((product) => {
+                    ) : availableProducts.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Package className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          {searchTerm 
+                            ? 'No products found' 
+                            : supplierId 
+                              ? 'No products available for this supplier' 
+                              : 'No products available'}
+                        </p>
+                      </div>
+                    ) : (
+                      availableProducts.map((product) => {
                             const isAdded = lines.some((line) => line.product_id === product.id);
                             return (
                               <div
@@ -685,11 +702,18 @@ export const PurchaseOrderEditor: React.FC = () => {
                                     {product.sku && (
                                       <p className="text-xs text-muted-foreground">SKU: {product.sku}</p>
                                     )}
-                                    {product.category && (
-                                      <Badge variant="outline" className="text-xs mt-1">
-                                        {product.category}
-                                      </Badge>
-                                    )}
+                                    <div className="flex gap-1 mt-1 flex-wrap">
+                                      {product.supplier_id && (
+                                        <Badge variant="secondary" className="text-xs">
+                                          {getSupplierName(product.supplier_id)}
+                                        </Badge>
+                                      )}
+                                      {product.category && (
+                                        <Badge variant="outline" className="text-xs">
+                                          {product.category}
+                                        </Badge>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="flex items-center justify-between">
@@ -719,8 +743,6 @@ export const PurchaseOrderEditor: React.FC = () => {
                           })
                         )}
                       </div>
-                    </>
-                  )}
                 </TabsContent>
 
                 <TabsContent value="suggestions" className="space-y-4">

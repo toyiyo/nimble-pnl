@@ -23,7 +23,7 @@ export interface PurchaseOrder {
   id: string;
   restaurant_id: string;
   po_number: string | null;
-  supplier_id: string;
+  supplier_id: string | null; // Optional - allows multi-supplier POs
   location_id: string | null;
   status: PurchaseOrderStatus;
   budget: number | null;
@@ -41,7 +41,7 @@ export interface PurchaseOrder {
 
 export interface CreatePurchaseOrderData {
   restaurant_id: string;
-  supplier_id: string;
+  supplier_id?: string | null; // Optional - allows multi-supplier POs
   location_id?: string | null;
   budget?: number | null;
   notes?: string | null;
@@ -49,7 +49,7 @@ export interface CreatePurchaseOrderData {
 }
 
 export interface UpdatePurchaseOrderData {
-  supplier_id?: string;
+  supplier_id?: string | null; // Optional - allows multi-supplier POs
   location_id?: string | null;
   budget?: number | null;
   notes?: string | null;
@@ -76,7 +76,7 @@ export interface UpdatePurchaseOrderLineData {
 
 // View model for UI
 export interface PurchaseOrderViewModel extends PurchaseOrder {
-  supplier_name: string;
+  supplier_name?: string; // Optional since PO can be multi-supplier
   lines: PurchaseOrderLine[];
   budgetRemaining?: number;
   budgetOverage?: number;

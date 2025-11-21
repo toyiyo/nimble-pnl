@@ -186,7 +186,7 @@ export const PurchaseOrders: React.FC = () => {
                       onClick={() => handleRowClick(po)}
                     >
                       <TableCell className="font-medium">{po.po_number || 'N/A'}</TableCell>
-                      <TableCell>{po.supplier_name}</TableCell>
+                      <TableCell>{po.supplier_name || 'Multiple Suppliers'}</TableCell>
                       <TableCell>
                         <Badge variant={statusInfo.variant} className="gap-1">
                           <StatusIcon className="h-3 w-3" />

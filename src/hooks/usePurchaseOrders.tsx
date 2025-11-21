@@ -40,7 +40,7 @@ export const usePurchaseOrders = () => {
 
       return (data || []).map((po: any) => ({
         ...po,
-        supplier_name: po.suppliers?.name || 'Unknown Supplier',
+        supplier_name: po.suppliers?.name || undefined,
       })) as PurchaseOrder[];
     },
     enabled: !!restaurantId,
@@ -77,7 +77,7 @@ export const usePurchaseOrders = () => {
 
     const po: PurchaseOrderViewModel = {
       ...poData,
-      supplier_name: poData.suppliers?.name || 'Unknown Supplier',
+      supplier_name: poData.suppliers?.name || undefined,
       lines: linesData || [],
     };
 
@@ -118,7 +118,7 @@ export const usePurchaseOrders = () => {
 
       return {
         ...poData,
-        supplier_name: poData.suppliers?.name || 'Unknown Supplier',
+        supplier_name: poData.suppliers?.name || undefined,
       } as PurchaseOrder;
     },
     onSuccess: (data) => {
@@ -158,7 +158,7 @@ export const usePurchaseOrders = () => {
 
       return {
         ...data,
-        supplier_name: data.suppliers?.name || 'Unknown Supplier',
+        supplier_name: data.suppliers?.name || undefined,
       } as PurchaseOrder;
     },
     onSuccess: (data) => {

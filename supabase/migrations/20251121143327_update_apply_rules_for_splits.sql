@@ -19,7 +19,7 @@ DECLARE
   v_total_count INTEGER := 0;
   v_transaction_json JSONB;
   v_batch_count INTEGER := 0;
-  v_split_result JSONB;
+  v_split_result RECORD;
 BEGIN
   -- Get uncategorized bank transactions (limited to prevent timeout)
   FOR v_transaction IN
@@ -58,7 +58,7 @@ BEGIN
             v_rule.split_categories
           );
           
-          -- Check if split was successful
+          -- Check if split was successful (split_bank_transaction returns JSONB)
           IF v_split_result IS NOT NULL THEN
             v_applied_count := v_applied_count + 1;
           END IF;

@@ -199,7 +199,7 @@ export const EnhancedCategoryRulesDialog = ({
       posCategory: formData.posCategory || undefined,
       itemNamePattern: formData.itemNamePattern || undefined,
       itemNameMatchType: formData.itemNamePattern ? formData.itemNameMatchType : undefined,
-      categoryId: formData.isSplitRule ? '' : formData.categoryId, // Empty for split rules
+      categoryId: formData.isSplitRule ? undefined : formData.categoryId, // undefined for split rules
       isSplitRule: formData.isSplitRule,
       splitCategories: formData.isSplitRule ? formData.splitCategories : undefined,
       priority: parseInt(formData.priority) || 0,

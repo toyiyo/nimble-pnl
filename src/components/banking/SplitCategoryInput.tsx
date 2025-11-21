@@ -36,7 +36,7 @@ export function SplitCategoryInput({
     onChange(splits.filter((_, i) => i !== index));
   };
 
-  const handleUpdateSplit = (index: number, field: keyof SplitCategory, value: any) => {
+  const handleUpdateSplit = (index: number, field: keyof SplitCategory, value: string | number | undefined) => {
     const updatedSplits = splits.map((split, i) => {
       if (i !== index) return split;
       return { ...split, [field]: value };

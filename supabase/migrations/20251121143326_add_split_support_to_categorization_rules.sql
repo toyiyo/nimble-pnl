@@ -20,11 +20,15 @@ Example: [
   {"category_id": "uuid2", "percentage": 40, "description": "Materials portion"}
 ]';
 
--- Add validation check to ensure split rules have split_categories
+-- Update the category_id column to allow NULL for split rules
+ALTER TABLE categorization_rules 
+ALTER COLUMN category_id DROP NOT NULL;
+
+-- Add validation check to ensure split rules have split_categories and regular rules have category_id
 ALTER TABLE categorization_rules
 ADD CONSTRAINT check_split_rule_has_categories
 CHECK (
-  (is_split_rule = false AND split_categories IS NULL) OR
+  (is_split_rule = false AND category_id IS NOT NULL AND split_categories IS NULL) OR
   (is_split_rule = true AND split_categories IS NOT NULL AND jsonb_array_length(split_categories) >= 2)
 );
 

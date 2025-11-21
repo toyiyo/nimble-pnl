@@ -131,7 +131,7 @@ export const EnhancedCategoryRulesDialog = ({
       descriptionMatchType: formData.descriptionPattern ? formData.descriptionMatchType : undefined,
       amountMin: formData.amountMin ? parseFloat(formData.amountMin) : undefined,
       amountMax: formData.amountMax ? parseFloat(formData.amountMax) : undefined,
-      supplierId: formData.supplierId || undefined,
+      supplierId: formData.supplierId || undefined, // Empty string becomes undefined
       transactionType: formData.transactionType !== 'any' ? formData.transactionType : undefined,
       posCategory: formData.posCategory || undefined,
       itemNamePattern: formData.itemNamePattern || undefined,
@@ -184,7 +184,7 @@ export const EnhancedCategoryRulesDialog = ({
       descriptionMatchType: formData.descriptionPattern ? formData.descriptionMatchType : undefined,
       amountMin: formData.amountMin ? parseFloat(formData.amountMin) : undefined,
       amountMax: formData.amountMax ? parseFloat(formData.amountMax) : undefined,
-      supplierId: formData.supplierId || undefined,
+      supplierId: formData.supplierId || undefined, // Empty string becomes undefined
       transactionType: formData.transactionType !== 'any' ? formData.transactionType : undefined,
       posCategory: formData.posCategory || undefined,
       itemNamePattern: formData.itemNamePattern || undefined,

@@ -2613,6 +2613,67 @@ export type Database = {
         }
         Relationships: []
       }
+      rule_application_log: {
+        Row: {
+          applied_at: string
+          category_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          pos_sale_id: string | null
+          restaurant_id: string
+          result: string
+          rule_id: string
+          transaction_id: string | null
+        }
+        Insert: {
+          applied_at?: string
+          category_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          pos_sale_id?: string | null
+          restaurant_id: string
+          result: string
+          rule_id: string
+          transaction_id?: string | null
+        }
+        Update: {
+          applied_at?: string
+          category_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          pos_sale_id?: string | null
+          restaurant_id?: string
+          result?: string
+          rule_id?: string
+          transaction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rule_application_log_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rule_application_log_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rule_application_log_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "categorization_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scim_group_members: {
         Row: {
           created_at: string

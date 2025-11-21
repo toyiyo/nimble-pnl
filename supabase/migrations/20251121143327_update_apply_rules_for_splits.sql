@@ -1,5 +1,121 @@
 -- Update rule application functions to support split rules
 
+-- Drop existing functions first to allow signature changes
+DROP FUNCTION IF EXISTS find_matching_rules_for_bank_transaction(UUID, JSONB);
+DROP FUNCTION IF EXISTS find_matching_rules_for_pos_sale(UUID, JSONB);
+
+-- Update find_matching_rules functions to include split rule information
+CREATE OR REPLACE FUNCTION find_matching_rules_for_bank_transaction(
+  p_restaurant_id UUID,
+  p_transaction JSONB
+)
+RETURNS TABLE (
+  rule_id UUID,
+  rule_name TEXT,
+  category_id UUID,
+  priority INTEGER,
+  is_split_rule BOOLEAN,
+  split_categories JSONB
+)
+LANGUAGE plpgsql
+STABLE
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    cr.id AS rule_id,
+    cr.rule_name,
+    cr.category_id,
+    cr.priority,
+    cr.is_split_rule,
+    cr.split_categories
+  FROM categorization_rules cr
+  WHERE cr.restaurant_id = p_restaurant_id
+    AND cr.is_active = true
+    AND (cr.applies_to = 'bank_transactions' OR cr.applies_to = 'both')
+    -- Description pattern matching
+    AND (
+      cr.description_pattern IS NULL
+      OR (
+        CASE cr.description_match_type
+          WHEN 'exact' THEN LOWER(p_transaction->>'description') = LOWER(cr.description_pattern)
+          WHEN 'contains' THEN LOWER(p_transaction->>'description') LIKE '%' || LOWER(cr.description_pattern) || '%'
+          WHEN 'starts_with' THEN LOWER(p_transaction->>'description') LIKE LOWER(cr.description_pattern) || '%'
+          WHEN 'ends_with' THEN LOWER(p_transaction->>'description') LIKE '%' || LOWER(cr.description_pattern)
+          WHEN 'regex' THEN (p_transaction->>'description') ~ cr.description_pattern
+          ELSE false
+        END
+      )
+    )
+    -- Amount range matching
+    AND (cr.amount_min IS NULL OR ABS((p_transaction->>'amount')::NUMERIC) >= cr.amount_min)
+    AND (cr.amount_max IS NULL OR ABS((p_transaction->>'amount')::NUMERIC) <= cr.amount_max)
+    -- Supplier matching
+    AND (cr.supplier_id IS NULL OR cr.supplier_id::TEXT = (p_transaction->>'supplier_id'))
+    -- Transaction type matching
+    AND (
+      cr.transaction_type IS NULL
+      OR cr.transaction_type = 'any'
+      OR (cr.transaction_type = 'debit' AND (p_transaction->>'amount')::NUMERIC < 0)
+      OR (cr.transaction_type = 'credit' AND (p_transaction->>'amount')::NUMERIC > 0)
+    )
+  ORDER BY cr.priority DESC, cr.created_at ASC
+  LIMIT 1;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION find_matching_rules_for_pos_sale(
+  p_restaurant_id UUID,
+  p_sale JSONB
+)
+RETURNS TABLE (
+  rule_id UUID,
+  rule_name TEXT,
+  category_id UUID,
+  priority INTEGER,
+  is_split_rule BOOLEAN,
+  split_categories JSONB
+)
+LANGUAGE plpgsql
+STABLE
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    cr.id AS rule_id,
+    cr.rule_name,
+    cr.category_id,
+    cr.priority,
+    cr.is_split_rule,
+    cr.split_categories
+  FROM categorization_rules cr
+  WHERE cr.restaurant_id = p_restaurant_id
+    AND cr.is_active = true
+    AND (cr.applies_to = 'pos_sales' OR cr.applies_to = 'both')
+    -- Item name pattern matching
+    AND (
+      cr.item_name_pattern IS NULL
+      OR (
+        CASE cr.item_name_match_type
+          WHEN 'exact' THEN LOWER(p_sale->>'item_name') = LOWER(cr.item_name_pattern)
+          WHEN 'contains' THEN LOWER(p_sale->>'item_name') LIKE '%' || LOWER(cr.item_name_pattern) || '%'
+          WHEN 'starts_with' THEN LOWER(p_sale->>'item_name') LIKE LOWER(cr.item_name_pattern) || '%'
+          WHEN 'ends_with' THEN LOWER(p_sale->>'item_name') LIKE '%' || LOWER(cr.item_name_pattern)
+          WHEN 'regex' THEN (p_sale->>'item_name') ~ cr.item_name_pattern
+          ELSE false
+        END
+      )
+    )
+    -- POS category matching
+    AND (cr.pos_category IS NULL OR LOWER(p_sale->>'pos_category') = LOWER(cr.pos_category))
+    -- Amount range matching
+    AND (cr.amount_min IS NULL OR (p_sale->>'total_price')::NUMERIC >= cr.amount_min)
+    AND (cr.amount_max IS NULL OR (p_sale->>'total_price')::NUMERIC <= cr.amount_max)
+  ORDER BY cr.priority DESC, cr.created_at ASC
+  LIMIT 1;
+END;
+$$;
+
 -- Update apply_rules_to_bank_transactions to handle split rules
 CREATE OR REPLACE FUNCTION apply_rules_to_bank_transactions(
   p_restaurant_id UUID,
@@ -180,118 +296,6 @@ BEGIN
   END LOOP;
   
   RETURN QUERY SELECT v_applied_count, v_total_count;
-END;
-$$;
-
--- Update find_matching_rules functions to include split rule information
-CREATE OR REPLACE FUNCTION find_matching_rules_for_bank_transaction(
-  p_restaurant_id UUID,
-  p_transaction JSONB
-)
-RETURNS TABLE (
-  rule_id UUID,
-  rule_name TEXT,
-  category_id UUID,
-  priority INTEGER,
-  is_split_rule BOOLEAN,
-  split_categories JSONB
-)
-LANGUAGE plpgsql
-STABLE
-AS $$
-BEGIN
-  RETURN QUERY
-  SELECT 
-    cr.id AS rule_id,
-    cr.rule_name,
-    cr.category_id,
-    cr.priority,
-    cr.is_split_rule,
-    cr.split_categories
-  FROM categorization_rules cr
-  WHERE cr.restaurant_id = p_restaurant_id
-    AND cr.is_active = true
-    AND (cr.applies_to = 'bank_transactions' OR cr.applies_to = 'both')
-    -- Description pattern matching
-    AND (
-      cr.description_pattern IS NULL
-      OR (
-        CASE cr.description_match_type
-          WHEN 'exact' THEN LOWER(p_transaction->>'description') = LOWER(cr.description_pattern)
-          WHEN 'contains' THEN LOWER(p_transaction->>'description') LIKE '%' || LOWER(cr.description_pattern) || '%'
-          WHEN 'starts_with' THEN LOWER(p_transaction->>'description') LIKE LOWER(cr.description_pattern) || '%'
-          WHEN 'ends_with' THEN LOWER(p_transaction->>'description') LIKE '%' || LOWER(cr.description_pattern)
-          WHEN 'regex' THEN (p_transaction->>'description') ~ cr.description_pattern
-          ELSE false
-        END
-      )
-    )
-    -- Amount range matching
-    AND (cr.amount_min IS NULL OR ABS((p_transaction->>'amount')::NUMERIC) >= cr.amount_min)
-    AND (cr.amount_max IS NULL OR ABS((p_transaction->>'amount')::NUMERIC) <= cr.amount_max)
-    -- Supplier matching
-    AND (cr.supplier_id IS NULL OR cr.supplier_id::TEXT = (p_transaction->>'supplier_id'))
-    -- Transaction type matching
-    AND (
-      cr.transaction_type IS NULL
-      OR cr.transaction_type = 'any'
-      OR (cr.transaction_type = 'debit' AND (p_transaction->>'amount')::NUMERIC < 0)
-      OR (cr.transaction_type = 'credit' AND (p_transaction->>'amount')::NUMERIC > 0)
-    )
-  ORDER BY cr.priority DESC, cr.created_at ASC
-  LIMIT 1;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION find_matching_rules_for_pos_sale(
-  p_restaurant_id UUID,
-  p_sale JSONB
-)
-RETURNS TABLE (
-  rule_id UUID,
-  rule_name TEXT,
-  category_id UUID,
-  priority INTEGER,
-  is_split_rule BOOLEAN,
-  split_categories JSONB
-)
-LANGUAGE plpgsql
-STABLE
-AS $$
-BEGIN
-  RETURN QUERY
-  SELECT 
-    cr.id AS rule_id,
-    cr.rule_name,
-    cr.category_id,
-    cr.priority,
-    cr.is_split_rule,
-    cr.split_categories
-  FROM categorization_rules cr
-  WHERE cr.restaurant_id = p_restaurant_id
-    AND cr.is_active = true
-    AND (cr.applies_to = 'pos_sales' OR cr.applies_to = 'both')
-    -- Item name pattern matching
-    AND (
-      cr.item_name_pattern IS NULL
-      OR (
-        CASE cr.item_name_match_type
-          WHEN 'exact' THEN LOWER(p_sale->>'item_name') = LOWER(cr.item_name_pattern)
-          WHEN 'contains' THEN LOWER(p_sale->>'item_name') LIKE '%' || LOWER(cr.item_name_pattern) || '%'
-          WHEN 'starts_with' THEN LOWER(p_sale->>'item_name') LIKE LOWER(cr.item_name_pattern) || '%'
-          WHEN 'ends_with' THEN LOWER(p_sale->>'item_name') LIKE '%' || LOWER(cr.item_name_pattern)
-          WHEN 'regex' THEN (p_sale->>'item_name') ~ cr.item_name_pattern
-          ELSE false
-        END
-      )
-    )
-    -- POS category matching
-    AND (cr.pos_category IS NULL OR LOWER(p_sale->>'pos_category') = LOWER(cr.pos_category))
-    -- Amount range matching
-    AND (cr.amount_min IS NULL OR (p_sale->>'total_price')::NUMERIC >= cr.amount_min)
-    AND (cr.amount_max IS NULL OR (p_sale->>'total_price')::NUMERIC <= cr.amount_max)
-  ORDER BY cr.priority DESC, cr.created_at ASC
-  LIMIT 1;
 END;
 $$;
 

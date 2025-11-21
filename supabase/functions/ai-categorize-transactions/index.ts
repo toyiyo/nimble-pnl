@@ -161,12 +161,12 @@ serve(async (req) => {
       );
     }
 
-    // Get uncategorized accounts (9200 and 9100)
+    // Get uncategorized accounts by NAME (not code) - matches Stripe import logic
     const { data: uncategorizedAccounts, error: uncatError } = await supabaseClient
       .from('chart_of_accounts')
       .select('id')
       .eq('restaurant_id', restaurantId)
-      .in('account_code', ['9200', '9100'])
+      .in('account_name', ['Uncategorized Expense', 'Uncategorized Income'])
       .eq('is_active', true);
 
     if (uncatError) throw uncatError;

@@ -211,7 +211,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   const monthDate = parse(month.period, 'yyyy-MM', new Date());
                   const expenseMonth = getExpenseDataForMonth(month.period);
                   
-                  const foodCost = expenseMonth?.foodCost ?? month.food_cost;
+                  const foodCost = month.food_cost > 0 ? month.food_cost : (expenseMonth?.foodCost ?? 0);
                   const pendingLaborCost = month.pending_labor_cost;
                   const actualLaborCost = expenseMonth?.laborCost ?? month.actual_labor_cost;
                   const laborCost = pendingLaborCost + actualLaborCost;

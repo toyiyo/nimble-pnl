@@ -297,105 +297,135 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     if (!restaurantId) return false;
 
     try {
-      // Generate a unique order ID to group all entries
+      // Generate a unique order ID
       const orderId = `manual_${Date.now()}`;
-      const entries = [];
+      
+      // Check if there are any adjustments
+      const hasAdjustments = saleData.adjustments && Object.values(saleData.adjustments).some(val => val && val > 0);
 
-      // Main revenue item
-      entries.push({
-        restaurant_id: restaurantId,
-        pos_system: 'manual',
-        external_order_id: orderId,
-        item_name: saleData.itemName,
-        adjustment_type: null,
-        quantity: saleData.quantity,
-        unit_price: saleData.unitPrice,
-        total_price: saleData.totalPrice,
-        sale_date: saleData.saleDate,
-        sale_time: saleData.saleTime,
-      });
+      if (!hasAdjustments) {
+        // No adjustments - create a simple sale
+        const { error } = await supabase
+          .from('unified_sales')
+          .insert({
+            restaurant_id: restaurantId,
+            pos_system: 'manual',
+            external_order_id: orderId,
+            item_name: saleData.itemName,
+            adjustment_type: null,
+            quantity: saleData.quantity,
+            unit_price: saleData.unitPrice,
+            total_price: saleData.totalPrice,
+            sale_date: saleData.saleDate,
+            sale_time: saleData.saleTime,
+          });
 
-      // Add adjustment entries
-      if (saleData.adjustments) {
-        if (saleData.adjustments.tax && saleData.adjustments.tax > 0) {
-          entries.push({
-            restaurant_id: restaurantId,
-            pos_system: 'manual',
-            external_order_id: orderId,
-            item_name: 'Sales Tax',
-            adjustment_type: 'tax',
-            quantity: 1,
-            unit_price: saleData.adjustments.tax,
-            total_price: saleData.adjustments.tax,
-            sale_date: saleData.saleDate,
-            sale_time: saleData.saleTime,
-          });
-        }
-        if (saleData.adjustments.tip && saleData.adjustments.tip > 0) {
-          entries.push({
-            restaurant_id: restaurantId,
-            pos_system: 'manual',
-            external_order_id: orderId,
-            item_name: 'Tip',
-            adjustment_type: 'tip',
-            quantity: 1,
-            unit_price: saleData.adjustments.tip,
-            total_price: saleData.adjustments.tip,
-            sale_date: saleData.saleDate,
-            sale_time: saleData.saleTime,
-          });
-        }
-        if (saleData.adjustments.serviceCharge && saleData.adjustments.serviceCharge > 0) {
-          entries.push({
-            restaurant_id: restaurantId,
-            pos_system: 'manual',
-            external_order_id: orderId,
-            item_name: 'Service Charge',
-            adjustment_type: 'service_charge',
-            quantity: 1,
-            unit_price: saleData.adjustments.serviceCharge,
-            total_price: saleData.adjustments.serviceCharge,
-            sale_date: saleData.saleDate,
-            sale_time: saleData.saleTime,
-          });
-        }
-        if (saleData.adjustments.discount && saleData.adjustments.discount > 0) {
-          entries.push({
-            restaurant_id: restaurantId,
-            pos_system: 'manual',
-            external_order_id: orderId,
-            item_name: 'Discount',
-            adjustment_type: 'discount',
-            quantity: 1,
-            unit_price: saleData.adjustments.discount,
-            total_price: saleData.adjustments.discount,
-            sale_date: saleData.saleDate,
-            sale_time: saleData.saleTime,
-          });
-        }
-        if (saleData.adjustments.fee && saleData.adjustments.fee > 0) {
-          entries.push({
-            restaurant_id: restaurantId,
-            pos_system: 'manual',
-            external_order_id: orderId,
-            item_name: 'Platform Fee',
-            adjustment_type: 'fee',
-            quantity: 1,
-            unit_price: saleData.adjustments.fee,
-            total_price: saleData.adjustments.fee,
-            sale_date: saleData.saleDate,
-            sale_time: saleData.saleTime,
-          });
-        }
+        if (error) throw error;
+
+        toast({
+          title: "Sale recorded",
+          description: "Manual sale has been recorded successfully",
+        });
+
+        refetchSales();
+        return true;
       }
 
-      const { error } = await supabase
+      // With adjustments - use the unified_sales_splits approach
+      // Calculate total including all adjustments
+      const baseAmount = saleData.totalPrice || 0;
+      const totalWithAdjustments = baseAmount + 
+        (saleData.adjustments.tax || 0) +
+        (saleData.adjustments.tip || 0) +
+        (saleData.adjustments.serviceCharge || 0) +
+        (saleData.adjustments.fee || 0) -
+        (saleData.adjustments.discount || 0);
+
+      // Create the main sale entry with the total amount
+      const { data: saleEntry, error: insertError } = await supabase
         .from('unified_sales')
-        .insert(entries);
+        .insert({
+          restaurant_id: restaurantId,
+          pos_system: 'manual',
+          external_order_id: orderId,
+          item_name: saleData.itemName,
+          adjustment_type: null,
+          quantity: saleData.quantity,
+          unit_price: saleData.unitPrice,
+          total_price: totalWithAdjustments,
+          sale_date: saleData.saleDate,
+          sale_time: saleData.saleTime,
+          is_split: true, // Mark as split
+          is_categorized: false, // Will need to be categorized
+        })
+        .select('id')
+        .single();
 
-      if (error) throw error;
+      if (insertError) throw insertError;
 
-      const adjCount = entries.length - 1;
+      // Build splits array for unified_sales_splits table
+      const splits = [];
+      
+      // Add base revenue split
+      if (baseAmount > 0) {
+        splits.push({
+          sale_id: saleEntry.id,
+          category_id: null, // Will be categorized later
+          amount: baseAmount,
+          description: saleData.itemName,
+        });
+      }
+
+      // Add adjustment splits
+      if (saleData.adjustments.tax && saleData.adjustments.tax > 0) {
+        splits.push({
+          sale_id: saleEntry.id,
+          category_id: null, // Will be categorized later
+          amount: saleData.adjustments.tax,
+          description: 'Sales Tax',
+        });
+      }
+      if (saleData.adjustments.tip && saleData.adjustments.tip > 0) {
+        splits.push({
+          sale_id: saleEntry.id,
+          category_id: null, // Will be categorized later
+          amount: saleData.adjustments.tip,
+          description: 'Tip',
+        });
+      }
+      if (saleData.adjustments.serviceCharge && saleData.adjustments.serviceCharge > 0) {
+        splits.push({
+          sale_id: saleEntry.id,
+          category_id: null, // Will be categorized later
+          amount: saleData.adjustments.serviceCharge,
+          description: 'Service Charge',
+        });
+      }
+      if (saleData.adjustments.discount && saleData.adjustments.discount > 0) {
+        splits.push({
+          sale_id: saleEntry.id,
+          category_id: null, // Will be categorized later
+          amount: -saleData.adjustments.discount, // Negative for discount
+          description: 'Discount',
+        });
+      }
+      if (saleData.adjustments.fee && saleData.adjustments.fee > 0) {
+        splits.push({
+          sale_id: saleEntry.id,
+          category_id: null, // Will be categorized later
+          amount: saleData.adjustments.fee,
+          description: 'Platform Fee',
+        });
+      }
+
+      // Insert splits into unified_sales_splits table
+      const { error: splitsError } = await supabase
+        .from('unified_sales_splits')
+        .insert(splits);
+
+      if (splitsError) throw splitsError;
+      
+      const adjCount = splits.length - 1;
       toast({
         title: "Sale recorded",
         description: `Manual sale with ${adjCount} adjustment${adjCount !== 1 ? 's' : ''} has been recorded successfully`,

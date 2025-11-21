@@ -46,6 +46,7 @@ export interface CategorizationRule {
   category?: {
     account_name: string;
     account_code: string;
+    is_active: boolean;
   };
 }
 
@@ -99,7 +100,7 @@ export function useCategorizationRulesV2(appliesTo?: AppliesTo) {
         .select(`
           *,
           supplier:suppliers(name),
-          category:chart_of_accounts(account_name, account_code)
+          category:chart_of_accounts(account_name, account_code, is_active)
         `)
         .eq('restaurant_id', selectedRestaurant.restaurant_id);
 

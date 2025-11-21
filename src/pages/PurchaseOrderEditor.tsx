@@ -408,10 +408,12 @@ export const PurchaseOrderEditor: React.FC = () => {
       supplierNames[supplier.id] = supplier.name;
     });
 
+    const restaurantName = selectedRestaurant.restaurant?.name || 'Restaurant';
+
     try {
       switch (format) {
         case 'pdf':
-          exportPurchaseOrderToPDF(po, selectedRestaurant.name, supplierNames);
+          exportPurchaseOrderToPDF(po, restaurantName, supplierNames);
           toast({
             title: 'Export successful',
             description: 'Purchase order exported to PDF',
@@ -425,7 +427,7 @@ export const PurchaseOrderEditor: React.FC = () => {
           });
           break;
         case 'text':
-          exportPurchaseOrderToText(po, selectedRestaurant.name, supplierNames);
+          exportPurchaseOrderToText(po, restaurantName, supplierNames);
           toast({
             title: 'Export successful',
             description: 'Purchase order exported to text file',

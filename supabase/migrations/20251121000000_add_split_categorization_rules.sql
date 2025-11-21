@@ -71,9 +71,9 @@ BEGIN
     RAISE EXCEPTION 'Cannot mix percentage-based and amount-based splits in the same rule';
   END IF;
   
-  -- Validate total percentage equals 100
+  -- Validate total percentage equals 100 (use same tolerance as application functions)
   IF v_has_percentage THEN
-    IF ABS(v_total_percentage - 100) > 0.01 THEN
+    IF ABS(v_total_percentage - 100) > 0.02 THEN
       RAISE EXCEPTION 'Split percentages must sum to 100, got %', v_total_percentage;
     END IF;
   END IF;

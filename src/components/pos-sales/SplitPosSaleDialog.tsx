@@ -1,8 +1,18 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +45,8 @@ export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: Spli
   const { mutate: splitSale, isPending } = useSplitPosSale();
   const { mutate: updateSplit, isPending: isUpdating } = useUpdatePosSaleSplit();
   const { mutate: revertSplit, isPending: isReverting } = useRevertPosSaleSplit();
+  
+  const [showRevertDialog, setShowRevertDialog] = useState(false);
   
   const isEditMode = sale?.is_split && sale?.child_splits && sale.child_splits.length > 0;
 
@@ -114,16 +126,16 @@ export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: Spli
   };
 
   const handleRevert = () => {
-    if (window.confirm('Are you sure you want to revert this split? The original transaction will be restored.')) {
-      revertSplit({ saleId: sale.id }, {
-        onSuccess: () => {
-          onClose();
-        },
-      });
-    }
+    revertSplit({ saleId: sale.id }, {
+      onSuccess: () => {
+        setShowRevertDialog(false);
+        onClose();
+      },
+    });
   };
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -242,7 +254,7 @@ export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: Spli
                 <Button 
                   type="button" 
                   variant="destructive" 
-                  onClick={handleRevert}
+                  onClick={() => setShowRevertDialog(true)}
                   disabled={isReverting}
                   aria-label="Revert split transaction to original state"
                 >
@@ -258,5 +270,26 @@ export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: Spli
         </div>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={showRevertDialog} onOpenChange={setShowRevertDialog}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Revert Split Transaction</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to revert this split? The original transaction will be restored and can be categorized again.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleRevert}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Revert Split
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

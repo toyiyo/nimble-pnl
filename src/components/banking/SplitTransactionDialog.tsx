@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { Plus, Trash2, AlertCircle, RotateCcw } from "lucide-react";
 import {
@@ -8,6 +8,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +42,8 @@ export function SplitTransactionDialog({
   const { data: existingSplits, isLoading: splitsLoading } = useBankTransactionSplits(
     isEditMode && isOpen ? transaction.id : null
   );
+
+  const [showRevertDialog, setShowRevertDialog] = useState(false);
 
   const { register, control, handleSubmit, watch, reset } = useForm<SplitFormData>({
     defaultValues: {
@@ -116,13 +128,12 @@ export function SplitTransactionDialog({
   };
 
   const handleRevert = () => {
-    if (window.confirm('Are you sure you want to revert this split? The original transaction will be restored.')) {
-      revertSplit.mutate({ transactionId: transaction.id }, {
-        onSuccess: () => {
-          onClose();
-        },
-      });
-    }
+    revertSplit.mutate({ transactionId: transaction.id }, {
+      onSuccess: () => {
+        setShowRevertDialog(false);
+        onClose();
+      },
+    });
   };
 
   const formattedTotal = new Intl.NumberFormat('en-US', {
@@ -136,6 +147,7 @@ export function SplitTransactionDialog({
   }).format(Math.abs(remainingAmount));
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
@@ -277,7 +289,7 @@ export function SplitTransactionDialog({
               <Button 
                 type="button" 
                 variant="destructive" 
-                onClick={handleRevert}
+                onClick={() => setShowRevertDialog(true)}
                 disabled={revertSplit.isPending}
                 aria-label="Revert split transaction to original state"
               >
@@ -293,5 +305,26 @@ export function SplitTransactionDialog({
         )}
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={showRevertDialog} onOpenChange={setShowRevertDialog}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Revert Split Transaction</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to revert this split? The original transaction will be restored and can be categorized again.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleRevert}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Revert Split
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

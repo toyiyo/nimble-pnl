@@ -265,6 +265,13 @@ export default function POSSales() {
   };
 
   const handleEditSale = (sale: UnifiedSaleItem) => {
+    // If the sale is already split, open the split dialog for editing
+    if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
+      setSaleToSplit(sale);
+      return;
+    }
+    
+    // Otherwise, open the regular sale dialog
     setEditingSale({
       id: sale.id,
       itemName: sale.itemName,

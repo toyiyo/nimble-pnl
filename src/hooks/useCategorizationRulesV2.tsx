@@ -156,7 +156,7 @@ export function useCreateRuleV2() {
           item_name_match_type: params.itemNameMatchType,
           category_id: params.categoryId,
           is_split_rule: params.isSplitRule ?? false,
-          split_categories: params.isSplitRule && params.splitCategories ? JSON.stringify(params.splitCategories) : null,
+          split_categories: params.isSplitRule && params.splitCategories ? params.splitCategories : null,
           priority: params.priority ?? 0,
           is_active: params.isActive ?? true,
           auto_apply: params.autoApply ?? false,
@@ -204,7 +204,7 @@ export function useUpdateRuleV2() {
       if (params.itemNameMatchType !== undefined) updates.item_name_match_type = params.itemNameMatchType;
       if (params.categoryId !== undefined) updates.category_id = params.categoryId;
       if (params.isSplitRule !== undefined) updates.is_split_rule = params.isSplitRule;
-      if (params.splitCategories !== undefined) updates.split_categories = params.isSplitRule && params.splitCategories ? JSON.stringify(params.splitCategories) : null;
+      if (params.splitCategories !== undefined) updates.split_categories = params.isSplitRule && params.splitCategories ? params.splitCategories : null;
       if (params.priority !== undefined) updates.priority = params.priority;
       if (params.isActive !== undefined) updates.is_active = params.isActive;
       if (params.autoApply !== undefined) updates.auto_apply = params.autoApply;

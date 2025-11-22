@@ -110,7 +110,7 @@ export function SplitSaleView({ sale, onEdit, onSplit, formatCurrency }: SplitSa
               className="flex-1"
             >
               <Edit className="h-3 w-3 mr-1" />
-              Edit
+              Edit Split
             </Button>
           )}
           {onSplit && (
@@ -119,11 +119,9 @@ export function SplitSaleView({ sale, onEdit, onSplit, formatCurrency }: SplitSa
               size="sm"
               onClick={() => onSplit(sale)}
               className="flex-1"
-              disabled
-              title="Already split - cannot split again"
             >
               <Split className="h-3 w-3 mr-1" />
-              Split
+              Re-split
             </Button>
           )}
         </div>

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { SplitLine, invalidateSplitQueries } from "./useSplitTransactionHelpers";
 
 export const useSplitPosSale = () => {
   const queryClient = useQueryClient();
@@ -11,11 +12,7 @@ export const useSplitPosSale = () => {
       splits,
     }: {
       saleId: string;
-      splits: Array<{
-        category_id: string;
-        amount: number;
-        description?: string;
-      }>;
+      splits: SplitLine[];
     }) => {
       const { data, error } = await supabase.rpc('split_pos_sale', {
         p_sale_id: saleId,
@@ -26,9 +23,7 @@ export const useSplitPosSale = () => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
-      queryClient.invalidateQueries({ queryKey: ['pos-sales-splits'] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      invalidateSplitQueries(queryClient);
       toast.success("Sale split successfully across categories.");
     },
     onError: (error: Error) => {
@@ -66,9 +61,7 @@ export const useRevertPosSaleSplit = () => {
       return { success: true };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
-      queryClient.invalidateQueries({ queryKey: ['pos-sales-splits'] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      invalidateSplitQueries(queryClient);
       toast.success("Split reverted successfully.");
     },
     onError: (error: Error) => {
@@ -86,11 +79,7 @@ export const useUpdatePosSaleSplit = () => {
       splits,
     }: {
       saleId: string;
-      splits: Array<{
-        category_id: string;
-        amount: number;
-        description?: string;
-      }>;
+      splits: SplitLine[];
     }) => {
       // First, delete existing child splits
       const { error: deleteError } = await supabase
@@ -121,9 +110,7 @@ export const useUpdatePosSaleSplit = () => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
-      queryClient.invalidateQueries({ queryKey: ['pos-sales-splits'] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      invalidateSplitQueries(queryClient);
       toast.success("Split updated successfully.");
     },
     onError: (error: Error) => {

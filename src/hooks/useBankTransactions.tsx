@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { SplitLine, invalidateSplitQueries } from "./useSplitTransactionHelpers";
 
 export type TransactionStatus = 'for_review' | 'categorized' | 'excluded' | 'reconciled';
 
@@ -296,11 +297,7 @@ export function useSplitTransaction() {
       splits,
     }: {
       transactionId: string;
-      splits: Array<{
-        category_id: string;
-        amount: number;
-        description?: string;
-      }>;
+      splits: SplitLine[];
     }) => {
       const { data, error } = await supabase.rpc('split_bank_transaction' as any, {
         p_transaction_id: transactionId,
@@ -311,9 +308,7 @@ export function useSplitTransaction() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions-split'] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      invalidateSplitQueries(queryClient);
       toast({
         title: "Transaction split",
         description: "The transaction has been successfully split across categories.",
@@ -359,9 +354,7 @@ export function useRevertBankTransactionSplit() {
       return { success: true };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions-split'] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      invalidateSplitQueries(queryClient);
       toast({
         title: "Split reverted",
         description: "The transaction split has been reverted successfully.",
@@ -387,11 +380,7 @@ export function useUpdateBankTransactionSplit() {
       splits,
     }: {
       transactionId: string;
-      splits: Array<{
-        category_id: string;
-        amount: number;
-        description?: string;
-      }>;
+      splits: SplitLine[];
     }) => {
       // Re-split by calling the split function (it handles existing splits)
       const { data, error } = await supabase.rpc('split_bank_transaction' as any, {
@@ -403,9 +392,7 @@ export function useUpdateBankTransactionSplit() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions-split'] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      invalidateSplitQueries(queryClient);
       toast({
         title: "Split updated",
         description: "The transaction split has been updated successfully.",

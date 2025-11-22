@@ -100,6 +100,17 @@ export const useUpdatePosSaleSplit = () => {
 
       if (deleteError) throw deleteError;
 
+      // Reset the parent's is_split flag so it can be split again
+      const { error: resetError } = await supabase
+        .from('unified_sales')
+        .update({ 
+          is_split: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', saleId);
+
+      if (resetError) throw resetError;
+
       // Then create new splits using the RPC function
       const { data, error } = await supabase.rpc('split_pos_sale', {
         p_sale_id: saleId,

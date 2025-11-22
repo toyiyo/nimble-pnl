@@ -490,12 +490,13 @@ export type Database = {
           applies_to: string
           apply_count: number
           auto_apply: boolean
-          category_id: string
+          category_id: string | null
           created_at: string
           description_match_type: string | null
           description_pattern: string | null
           id: string
           is_active: boolean
+          is_split_rule: boolean
           item_name_match_type: string | null
           item_name_pattern: string | null
           last_applied_at: string | null
@@ -503,6 +504,8 @@ export type Database = {
           priority: number
           restaurant_id: string
           rule_name: string
+          split_categories: Json | null
+          split_config: Json | null
           supplier_id: string | null
           transaction_type: string | null
           updated_at: string
@@ -513,12 +516,13 @@ export type Database = {
           applies_to: string
           apply_count?: number
           auto_apply?: boolean
-          category_id: string
+          category_id?: string | null
           created_at?: string
           description_match_type?: string | null
           description_pattern?: string | null
           id?: string
           is_active?: boolean
+          is_split_rule?: boolean
           item_name_match_type?: string | null
           item_name_pattern?: string | null
           last_applied_at?: string | null
@@ -526,6 +530,8 @@ export type Database = {
           priority?: number
           restaurant_id: string
           rule_name: string
+          split_categories?: Json | null
+          split_config?: Json | null
           supplier_id?: string | null
           transaction_type?: string | null
           updated_at?: string
@@ -536,12 +542,13 @@ export type Database = {
           applies_to?: string
           apply_count?: number
           auto_apply?: boolean
-          category_id?: string
+          category_id?: string | null
           created_at?: string
           description_match_type?: string | null
           description_pattern?: string | null
           id?: string
           is_active?: boolean
+          is_split_rule?: boolean
           item_name_match_type?: string | null
           item_name_pattern?: string | null
           last_applied_at?: string | null
@@ -549,6 +556,8 @@ export type Database = {
           priority?: number
           restaurant_id?: string
           rule_name?: string
+          split_categories?: Json | null
+          split_config?: Json | null
           supplier_id?: string | null
           transaction_type?: string | null
           updated_at?: string
@@ -1835,6 +1844,30 @@ export type Database = {
           },
         ]
       }
+      po_number_counters: {
+        Row: {
+          counter: number
+          created_at: string
+          restaurant_id: string
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          counter?: number
+          created_at?: string
+          restaurant_id: string
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          counter?: number
+          created_at?: string
+          restaurant_id?: string
+          updated_at?: string
+          year?: number
+        }
+        Relationships: []
+      }
       pos_sales: {
         Row: {
           created_at: string
@@ -2142,6 +2175,152 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      purchase_order_lines: {
+        Row: {
+          created_at: string
+          id: string
+          item_name: string
+          line_total: number
+          notes: string | null
+          product_id: string
+          purchase_order_id: string
+          quantity: number
+          received_quantity: number | null
+          sku: string | null
+          supplier_id: string
+          unit_cost: number
+          unit_label: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          item_name: string
+          line_total?: number
+          notes?: string | null
+          product_id: string
+          purchase_order_id: string
+          quantity?: number
+          received_quantity?: number | null
+          sku?: string | null
+          supplier_id: string
+          unit_cost?: number
+          unit_label?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          item_name?: string
+          line_total?: number
+          notes?: string | null
+          product_id?: string
+          purchase_order_id?: string
+          quantity?: number
+          received_quantity?: number | null
+          sku?: string | null
+          supplier_id?: string
+          unit_cost?: number
+          unit_label?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_lines_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_lines_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_lines_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_orders: {
+        Row: {
+          budget: number | null
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          location_id: string | null
+          notes: string | null
+          po_number: string | null
+          restaurant_id: string
+          sent_at: string | null
+          status: string
+          supplier_id: string | null
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          budget?: number | null
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id?: string | null
+          notes?: string | null
+          po_number?: string | null
+          restaurant_id: string
+          sent_at?: string | null
+          status?: string
+          supplier_id?: string | null
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          budget?: number | null
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id?: string | null
+          notes?: string | null
+          po_number?: string | null
+          restaurant_id?: string
+          sent_at?: string | null
+          status?: string
+          supplier_id?: string | null
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_orders_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rate_limit_log: {
         Row: {
@@ -4601,7 +4780,7 @@ export type Database = {
       unified_sales_splits: {
         Row: {
           amount: number
-          category_id: string
+          category_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -4609,7 +4788,7 @@ export type Database = {
         }
         Insert: {
           amount: number
-          category_id: string
+          category_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -4617,7 +4796,7 @@ export type Database = {
         }
         Update: {
           amount?: number
-          category_id?: string
+          category_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -4742,12 +4921,55 @@ export type Database = {
           total_count: number
         }[]
       }
+      apply_rules_to_bank_transactions_debug: {
+        Args: { p_batch_limit?: number; p_restaurant_id: string }
+        Returns: {
+          amount: number
+          description: string
+          error_detail: string
+          is_split_rule: boolean
+          rule_found: boolean
+          rule_name: string
+          split_categories_raw: Json
+          split_message: string
+          split_success: boolean
+          splits_converted: Json
+          transaction_id: string
+        }[]
+      }
       apply_rules_to_pos_sales: {
         Args: { p_batch_limit?: number; p_restaurant_id: string }
         Returns: {
           applied_count: number
           total_count: number
         }[]
+      }
+      apply_rules_to_pos_sales_debug: {
+        Args: { p_batch_limit?: number; p_restaurant_id: string }
+        Returns: {
+          error_detail: string
+          is_split_rule: boolean
+          item_name: string
+          rule_found: boolean
+          rule_name: string
+          sale_id: string
+          split_categories_raw: Json
+          split_message: string
+          split_success: boolean
+          splits_converted: Json
+        }[]
+      }
+      apply_split_rule_to_bank_transaction: {
+        Args: {
+          p_rule_id: string
+          p_transaction_amount: number
+          p_transaction_id: string
+        }
+        Returns: undefined
+      }
+      apply_split_rule_to_pos_sale: {
+        Args: { p_rule_id: string; p_sale_amount: number; p_sale_id: string }
+        Returns: undefined
       }
       bulk_process_historical_sales: {
         Args: {
@@ -4861,18 +5083,22 @@ export type Database = {
         Args: { p_restaurant_id: string; p_transaction: Json }
         Returns: {
           category_id: string
+          is_split_rule: boolean
           priority: number
           rule_id: string
           rule_name: string
+          split_categories: Json
         }[]
       }
       find_matching_rules_for_pos_sale: {
         Args: { p_restaurant_id: string; p_sale: Json }
         Returns: {
           category_id: string
+          is_split_rule: boolean
           priority: number
           rule_id: string
           rule_name: string
+          split_categories: Json
         }[]
       }
       find_product_by_gtin: {
@@ -4904,6 +5130,7 @@ export type Database = {
           uom_purchase: string
         }[]
       }
+      generate_po_number: { Args: { p_restaurant_id: string }; Returns: string }
       get_account_subtypes: { Args: never; Returns: Json }
       get_employee_punch_status: {
         Args: { p_employee_id: string }
@@ -5102,6 +5329,10 @@ export type Database = {
           p_unit_cost: number
         }
         Returns: undefined
+      }
+      validate_split_config: {
+        Args: { p_split_config: Json }
+        Returns: boolean
       }
     }
     Enums: {

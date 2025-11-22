@@ -199,7 +199,7 @@ export const EnhancedCategoryRulesDialog = ({
       posCategory: formData.posCategory || undefined,
       itemNamePattern: formData.itemNamePattern || undefined,
       itemNameMatchType: formData.itemNamePattern ? formData.itemNameMatchType : undefined,
-      categoryId: formData.isSplitRule ? undefined : formData.categoryId, // undefined for split rules
+      categoryId: formData.isSplitRule ? null : formData.categoryId, // null for split rules (not undefined)
       isSplitRule: formData.isSplitRule,
       splitCategories: formData.isSplitRule ? formData.splitCategories : undefined,
       priority: parseInt(formData.priority) || 0,
@@ -285,7 +285,7 @@ export const EnhancedCategoryRulesDialog = ({
       posCategory: formData.posCategory || undefined,
       itemNamePattern: formData.itemNamePattern || undefined,
       itemNameMatchType: formData.itemNamePattern ? formData.itemNameMatchType : undefined,
-      categoryId: formData.isSplitRule ? undefined : formData.categoryId,
+      categoryId: formData.isSplitRule ? null : formData.categoryId, // null for split rules (not undefined)
       isSplitRule: formData.isSplitRule,
       splitCategories: formData.isSplitRule ? formData.splitCategories : undefined,
       priority: parseInt(formData.priority) || 0,

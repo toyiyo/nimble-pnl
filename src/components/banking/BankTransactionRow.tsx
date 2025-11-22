@@ -3,7 +3,7 @@ import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, XCircle, FileText, Split, CheckCircle2, MoreVertical, Sparkles } from "lucide-react";
+import { Check, Edit, XCircle, FileText, Split, CheckCircle2, MoreVertical, Sparkles, Settings2 } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { SplitTransactionDialog } from "./SplitTransactionDialog";
 import { BankAccountInfo } from "./BankAccountInfo";
@@ -13,6 +13,7 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { AIConfidenceBadge } from "./AIConfidenceBadge";
+import { EnhancedCategoryRulesDialog } from "./EnhancedCategoryRulesDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +30,7 @@ interface BankTransactionRowProps {
 export function BankTransactionRow({ transaction, status, accounts }: BankTransactionRowProps) {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isSplitOpen, setIsSplitOpen] = useState(false);
+  const [showRulesDialog, setShowRulesDialog] = useState(false);
   const { selectedRestaurant } = useRestaurantContext();
   const categorize = useCategorizeTransaction();
   const exclude = useExcludeTransaction();
@@ -60,6 +62,30 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
       transactionId: transaction.id,
       reason: 'Excluded by user',
     });
+  };
+
+  const handleCreateRule = () => {
+    setShowRulesDialog(true);
+  };
+
+  const getPrefilledRuleData = () => {
+    // Use merchant name, normalized payee, or description for pattern matching
+    const merchantName = transaction.merchant_name || transaction.normalized_payee || transaction.description;
+    const isExpense = transaction.amount < 0;
+    
+    return {
+      ruleName: merchantName 
+        ? `Auto-categorize ${merchantName.substring(0, 30)}${merchantName.length > 30 ? '...' : ''}`
+        : 'Transaction categorization rule',
+      appliesTo: 'bank_transactions' as const,
+      descriptionPattern: merchantName || '',
+      descriptionMatchType: 'contains' as const,
+      supplierId: transaction.supplier?.id || '',
+      transactionType: (isExpense ? 'debit' : 'credit') as const,
+      categoryId: transaction.category_id || transaction.suggested_category_id || '',
+      priority: '5',
+      autoApply: true,
+    };
   };
 
   return (
@@ -195,6 +221,10 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
                     <Split className="h-4 w-4 mr-2" />
                     Split Transaction
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleCreateRule}>
+                    <Settings2 className="h-4 w-4 mr-2" />
+                    Create Rule
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={handleExclude}
                     disabled={exclude.isPending}
@@ -251,6 +281,13 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
         transaction={transaction}
         isOpen={isSplitOpen}
         onClose={() => setIsSplitOpen(false)}
+      />
+
+      <EnhancedCategoryRulesDialog
+        open={showRulesDialog}
+        onOpenChange={setShowRulesDialog}
+        defaultTab="bank"
+        prefilledRule={getPrefilledRuleData()}
       />
     </>
   );

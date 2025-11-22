@@ -36,10 +36,11 @@ ALTER COLUMN category_id DROP NOT NULL;
 -- Add validation check to ensure split rules have split_categories and regular rules have category_id
 -- Note: This constraint ensures data integrity for both rule types
 ALTER TABLE categorization_rules
+DROP CONSTRAINT IF EXISTS check_split_rule_has_categories,
 ADD CONSTRAINT check_split_rule_has_categories
 CHECK (
-  (is_split_rule = false AND split_categories IS NULL) OR
-  (is_split_rule = true AND category_id IS NULL AND split_categories IS NOT NULL AND jsonb_array_length(split_categories) >= 2)
+  (is_split_rule IS FALSE AND split_categories IS NULL AND category_id IS NOT NULL) OR
+  (is_split_rule IS TRUE AND split_categories IS NOT NULL AND jsonb_array_length(split_categories) >= 2)
 );
 
 -- Add index for faster lookup of split rules

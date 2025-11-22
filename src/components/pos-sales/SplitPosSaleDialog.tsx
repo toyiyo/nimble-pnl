@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
-import { useSplitPosSale } from "@/hooks/useSplitPosSale";
-import { Plus, Trash2 } from "lucide-react";
+import { useSplitPosSale, useRevertPosSaleSplit, useUpdatePosSaleSplit } from "@/hooks/useSplitPosSale";
+import { Plus, Trash2, RotateCcw } from "lucide-react";
 
 interface SplitLine {
   category_id: string;
@@ -42,8 +42,12 @@ const splitFormSchema = z.object({
 
 export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: SplitPosSaleDialogProps) {
   const { mutate: splitSale, isPending } = useSplitPosSale();
+  const { mutate: updateSplit, isPending: isUpdating } = useUpdatePosSaleSplit();
+  const { mutate: revertSplit, isPending: isReverting } = useRevertPosSaleSplit();
   
-  const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<SplitFormData>({
+  const isEditMode = sale?.is_split && sale?.child_splits && sale.child_splits.length > 0;
+
+  const { control, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<SplitFormData>({
     resolver: zodResolver(splitFormSchema),
     defaultValues: {
       splits: [
@@ -60,6 +64,26 @@ export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: Spli
 
   const splits = watch("splits");
   
+  // Load existing splits when in edit mode
+  useEffect(() => {
+    if (isOpen && sale && isEditMode) {
+      const existingSplits = sale.child_splits!.map(child => ({
+        category_id: child.category_id || "",
+        amount: child.totalPrice || 0,
+        description: child.itemName?.split(' - ')[1] || "",
+      }));
+      reset({ splits: existingSplits });
+    } else if (isOpen && sale && !isEditMode) {
+      // Reset to default for new split
+      reset({
+        splits: [
+          { category_id: "", amount: 0, description: "" },
+          { category_id: "", amount: 0, description: "" },
+        ],
+      });
+    }
+  }, [isOpen, sale, isEditMode, reset]);
+  
   // Early return if no sale is provided (after all hooks)
   if (!sale) {
     return null;
@@ -74,28 +98,45 @@ export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: Spli
       return;
     }
 
-    splitSale(
-      {
-        saleId: sale.id,
-        splits: data.splits.map(split => ({
-          category_id: split.category_id,
-          amount: Number(split.amount),
-          description: split.description,
-        })),
-      },
-      {
+    const splitData = {
+      saleId: sale.id,
+      splits: data.splits.map(split => ({
+        category_id: split.category_id,
+        amount: Number(split.amount),
+        description: split.description,
+      })),
+    };
+
+    if (isEditMode) {
+      updateSplit(splitData, {
         onSuccess: () => {
           onClose();
         },
-      }
-    );
+      });
+    } else {
+      splitSale(splitData, {
+        onSuccess: () => {
+          onClose();
+        },
+      });
+    }
+  };
+
+  const handleRevert = () => {
+    if (window.confirm('Are you sure you want to revert this split? The original transaction will be restored.')) {
+      revertSplit({ saleId: sale.id }, {
+        onSuccess: () => {
+          onClose();
+        },
+      });
+    }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Split Sale</DialogTitle>
+          <DialogTitle>{isEditMode ? 'Edit Split Sale' : 'Split Sale'}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -201,11 +242,22 @@ export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: Spli
             <div className="flex gap-2 pt-4">
               <Button
                 type="submit"
-                disabled={!isBalanced || isPending}
+                disabled={!isBalanced || isPending || isUpdating}
                 className="flex-1"
               >
-                {isPending ? "Splitting..." : "Split Sale"}
+                {isPending || isUpdating ? "Processing..." : isEditMode ? "Update Split" : "Split Sale"}
               </Button>
+              {isEditMode && (
+                <Button 
+                  type="button" 
+                  variant="destructive" 
+                  onClick={handleRevert}
+                  disabled={isReverting}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  {isReverting ? "Reverting..." : "Revert"}
+                </Button>
+              )}
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>

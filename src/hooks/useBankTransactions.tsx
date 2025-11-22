@@ -328,3 +328,138 @@ export function useSplitTransaction() {
     },
   });
 }
+
+export function useRevertBankTransactionSplit() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ transactionId }: { transactionId: string }) => {
+      // Delete child splits
+      const { error: deleteSplitsError } = await supabase
+        .from('bank_transaction_splits')
+        .delete()
+        .eq('transaction_id', transactionId);
+
+      if (deleteSplitsError) throw deleteSplitsError;
+
+      // Update parent to mark as not split
+      const { error: updateError } = await supabase
+        .from('bank_transactions')
+        .update({ 
+          is_split: false,
+          is_categorized: false,
+          category_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', transactionId);
+
+      if (updateError) throw updateError;
+
+      return { success: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['bank-transactions-split'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      toast({
+        title: "Split reverted",
+        description: "The transaction split has been reverted successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error reverting split",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+export function useUpdateBankTransactionSplit() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({
+      transactionId,
+      splits,
+    }: {
+      transactionId: string;
+      splits: Array<{
+        category_id: string;
+        amount: number;
+        description?: string;
+      }>;
+    }) => {
+      // Re-split by calling the split function (it handles existing splits)
+      const { data, error } = await supabase.rpc('split_bank_transaction' as any, {
+        p_transaction_id: transactionId,
+        p_splits: splits as any,
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['bank-transactions-split'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      toast({
+        title: "Split updated",
+        description: "The transaction split has been updated successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error updating split",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+export interface BankTransactionSplit {
+  id: string;
+  transaction_id: string;
+  category_id: string;
+  amount: number;
+  description: string | null;
+  chart_account?: {
+    id: string;
+    account_name: string;
+    account_code: string;
+  };
+}
+
+export function useBankTransactionSplits(transactionId: string | null) {
+  return useQuery({
+    queryKey: ['bank-transaction-splits', transactionId],
+    queryFn: async () => {
+      if (!transactionId) return [];
+
+      const { data, error } = await supabase
+        .from('bank_transaction_splits')
+        .select(`
+          id,
+          transaction_id,
+          category_id,
+          amount,
+          description,
+          chart_account:chart_of_accounts!category_id(
+            id,
+            account_name,
+            account_code
+          )
+        `)
+        .eq('transaction_id', transactionId)
+        .order('amount', { ascending: false });
+
+      if (error) throw error;
+      return data as BankTransactionSplit[];
+    },
+    enabled: !!transactionId,
+  });
+}

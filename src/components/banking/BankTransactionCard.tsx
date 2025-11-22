@@ -278,6 +278,17 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
                   <FileText className="h-4 w-4 mr-2" />
                   View Details
                 </Button>
+                {transaction.is_split && (
+                  <Button
+                    onClick={() => setIsSplitOpen(true)}
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Split
+                  </Button>
+                )}
                 {transaction.is_reconciled ? (
                   <Button
                     onClick={() => unreconcile.mutate({ transactionId: transaction.id })}

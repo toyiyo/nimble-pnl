@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
-import { Plus, Trash2, AlertCircle } from "lucide-react";
+import { Plus, Trash2, AlertCircle, RotateCcw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,9 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { BankTransaction } from "@/hooks/useBankTransactions";
+import { BankTransaction, useSplitTransaction, useRevertBankTransactionSplit, useUpdateBankTransactionSplit, useBankTransactionSplits } from "@/hooks/useBankTransactions";
 import { SearchableAccountSelector } from "./SearchableAccountSelector";
-import { useSplitTransaction } from "@/hooks/useBankTransactions";
 
 interface SplitTransactionDialogProps {
   transaction: BankTransaction;
@@ -38,7 +37,12 @@ export function SplitTransactionDialog({
   isOpen,
   onClose,
 }: SplitTransactionDialogProps) {
-  const { register, control, handleSubmit, watch, formState: { errors } } = useForm<SplitFormData>({
+  const isEditMode = transaction.is_split;
+  const { data: existingSplits, isLoading: splitsLoading } = useBankTransactionSplits(
+    isEditMode && isOpen ? transaction.id : null
+  );
+
+  const { register, control, handleSubmit, watch, reset, formState: { errors } } = useForm<SplitFormData>({
     defaultValues: {
       splits: [
         { category_id: '', amount: 0, description: '' },
@@ -53,6 +57,8 @@ export function SplitTransactionDialog({
   });
 
   const splitTransaction = useSplitTransaction();
+  const updateSplit = useUpdateBankTransactionSplit();
+  const revertSplit = useRevertBankTransactionSplit();
   const watchSplits = watch("splits");
 
   const totalAmount = Math.abs(transaction.amount);
@@ -61,6 +67,34 @@ export function SplitTransactionDialog({
   const isBalanced = Math.abs(remainingAmount) < 0.01;
 
   const [categorySelections, setCategorySelections] = useState<Record<number, string>>({});
+
+  // Load existing splits when in edit mode
+  useEffect(() => {
+    if (isOpen && isEditMode && existingSplits && existingSplits.length > 0) {
+      const loadedSplits = existingSplits.map(split => ({
+        category_id: split.category_id,
+        amount: split.amount,
+        description: split.description || '',
+      }));
+      reset({ splits: loadedSplits });
+      
+      // Set initial category selections
+      const initialSelections: Record<number, string> = {};
+      existingSplits.forEach((split, index) => {
+        initialSelections[index] = split.category_id;
+      });
+      setCategorySelections(initialSelections);
+    } else if (isOpen && !isEditMode) {
+      // Reset to default for new split
+      reset({
+        splits: [
+          { category_id: '', amount: 0, description: '' },
+          { category_id: '', amount: 0, description: '' },
+        ],
+      });
+      setCategorySelections({});
+    }
+  }, [isOpen, isEditMode, existingSplits, reset]);
 
   const handleCategoryChange = (index: number, categoryId: string) => {
     setCategorySelections(prev => ({ ...prev, [index]: categoryId }));
@@ -76,12 +110,28 @@ export function SplitTransactionDialog({
       category_id: categorySelections[index] || split.category_id,
     }));
 
-    await splitTransaction.mutateAsync({
+    const splitData = {
       transactionId: transaction.id,
       splits,
-    });
+    };
+
+    if (isEditMode) {
+      await updateSplit.mutateAsync(splitData);
+    } else {
+      await splitTransaction.mutateAsync(splitData);
+    }
 
     onClose();
+  };
+
+  const handleRevert = () => {
+    if (window.confirm('Are you sure you want to revert this split? The original transaction will be restored.')) {
+      revertSplit.mutate({ transactionId: transaction.id }, {
+        onSuccess: () => {
+          onClose();
+        },
+      });
+    }
   };
 
   const formattedTotal = new Intl.NumberFormat('en-US', {
@@ -98,13 +148,16 @@ export function SplitTransactionDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Split Transaction</DialogTitle>
+          <DialogTitle>{isEditMode ? 'Edit Split Transaction' : 'Split Transaction'}</DialogTitle>
           <DialogDescription>
             Allocate {formattedTotal} across multiple categories
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {splitsLoading && isEditMode ? (
+          <div className="text-center py-8 text-muted-foreground">Loading existing splits...</div>
+        ) : (
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           {/* Original Transaction Info */}
           <div className="p-4 bg-muted rounded-lg">
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -221,15 +274,31 @@ export function SplitTransactionDialog({
             <Button
               type="submit"
               className="flex-1"
-              disabled={!isBalanced || splitTransaction.isPending || !watchSplits.every((_, i) => categorySelections[i])}
+              disabled={!isBalanced || splitTransaction.isPending || updateSplit.isPending || !watchSplits.every((_, i) => categorySelections[i])}
             >
-              Split Transaction
+              {splitTransaction.isPending || updateSplit.isPending 
+                ? "Processing..." 
+                : isEditMode 
+                  ? "Update Split" 
+                  : "Split Transaction"}
             </Button>
+            {isEditMode && (
+              <Button 
+                type="button" 
+                variant="destructive" 
+                onClick={handleRevert}
+                disabled={revertSplit.isPending}
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                {revertSplit.isPending ? "Reverting..." : "Revert"}
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">
               Cancel
             </Button>
           </div>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );

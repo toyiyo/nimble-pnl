@@ -867,7 +867,12 @@ export const EnhancedCategoryRulesDialog = ({
                       <>
                         <Button
                           onClick={handleSaveEdit}
-                          disabled={!formData.categoryId || updateRule.isPending}
+                          disabled={
+                            (formData.isSplitRule 
+                              ? formData.splitCategories.length < 2 || formData.splitCategories.some(s => !s.category_id)
+                              : !formData.categoryId
+                            ) || updateRule.isPending
+                          }
                         >
                           <Save className="h-4 w-4 mr-2" />
                           Save Changes
@@ -881,7 +886,12 @@ export const EnhancedCategoryRulesDialog = ({
                       <>
                         <Button
                           onClick={handleCreateRule}
-                          disabled={!formData.categoryId || createRule.isPending}
+                          disabled={
+                            (formData.isSplitRule 
+                              ? formData.splitCategories.length < 2 || formData.splitCategories.some(s => !s.category_id)
+                              : !formData.categoryId
+                            ) || createRule.isPending
+                          }
                         >
                           <Plus className="h-4 w-4 mr-2" />
                           Create Rule

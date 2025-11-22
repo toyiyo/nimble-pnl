@@ -929,20 +929,24 @@ export default function POSSales() {
                                     size="sm"
                                     variant="ghost"
                                     className="h-6 px-2 text-xs"
-                                    onClick={() => setSaleToSplit(sale)}
-                                  >
-                                    Split
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-6 px-2 text-xs"
                                     onClick={() => handleSuggestRuleFromSale(sale)}
                                     title="Create a rule based on this sale"
                                   >
                                     <Settings2 className="h-3 w-3" />
                                   </Button>
                                 </div>
+                              )}
+                              {/* Show Split button for all sales (categorized or not) */}
+                              {!sale.is_split && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 px-2 text-xs"
+                                  onClick={() => setSaleToSplit(sale)}
+                                >
+                                  <Split className="h-3 w-3 mr-1" />
+                                  Split
+                                </Button>
                               )}
                               {sale.ai_confidence && sale.suggested_category_id && !sale.is_categorized && (
                                 <Badge 

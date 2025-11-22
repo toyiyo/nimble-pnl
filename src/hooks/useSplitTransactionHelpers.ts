@@ -10,6 +10,13 @@ export interface SplitLine {
 }
 
 /**
+ * Shared type for split form data
+ */
+export interface SplitFormData {
+  splits: SplitLine[];
+}
+
+/**
  * Invalidates all split-related queries for both POS and bank transactions
  */
 export const invalidateSplitQueries = (queryClient: QueryClient) => {

@@ -10,11 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
 import { useSplitPosSale, useRevertPosSaleSplit, useUpdatePosSaleSplit } from "@/hooks/useSplitPosSale";
 import { Plus, Trash2, RotateCcw } from "lucide-react";
-import { SplitLine } from "@/hooks/useSplitTransactionHelpers";
-
-interface SplitFormData {
-  splits: SplitLine[];
-}
+import { SplitFormData } from "@/hooks/useSplitTransactionHelpers";
 
 import { UnifiedSaleItem } from "@/types/pos";
 

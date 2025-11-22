@@ -284,6 +284,7 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
                     size="sm"
                     variant="outline"
                     className="flex-1"
+                    aria-label="Edit split categories and amounts"
                   >
                     <Edit className="h-4 w-4 mr-2" />
                     Edit Split

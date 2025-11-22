@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { Plus, Trash2, AlertCircle, RotateCcw } from "lucide-react";
 import {
@@ -33,7 +33,7 @@ export function SplitTransactionDialog({
     isEditMode && isOpen ? transaction.id : null
   );
 
-  const { register, control, handleSubmit, watch, reset, formState: { errors } } = useForm<SplitFormData>({
+  const { register, control, handleSubmit, watch, reset } = useForm<SplitFormData>({
     defaultValues: {
       splits: [
         { category_id: '', amount: 0, description: '' },
@@ -279,6 +279,7 @@ export function SplitTransactionDialog({
                 variant="destructive" 
                 onClick={handleRevert}
                 disabled={revertSplit.isPending}
+                aria-label="Revert split transaction to original state"
               >
                 <RotateCcw className="h-4 w-4 mr-2" />
                 {revertSplit.isPending ? "Reverting..." : "Revert"}

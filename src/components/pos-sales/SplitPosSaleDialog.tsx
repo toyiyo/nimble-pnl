@@ -244,6 +244,7 @@ export function SplitPosSaleDialog({ sale, isOpen, onClose, restaurantId }: Spli
                   variant="destructive" 
                   onClick={handleRevert}
                   disabled={isReverting}
+                  aria-label="Revert split transaction to original state"
                 >
                   <RotateCcw className="h-4 w-4 mr-2" />
                   {isReverting ? "Reverting..." : "Revert"}

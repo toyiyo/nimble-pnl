@@ -10,12 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
 import { useSplitPosSale, useRevertPosSaleSplit, useUpdatePosSaleSplit } from "@/hooks/useSplitPosSale";
 import { Plus, Trash2, RotateCcw } from "lucide-react";
-
-interface SplitLine {
-  category_id: string;
-  amount: number;
-  description?: string;
-}
+import { SplitLine } from "@/hooks/useSplitTransactionHelpers";
 
 interface SplitFormData {
   splits: SplitLine[];

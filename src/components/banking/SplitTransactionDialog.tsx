@@ -15,17 +15,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { BankTransaction, useSplitTransaction, useRevertBankTransactionSplit, useUpdateBankTransactionSplit, useBankTransactionSplits } from "@/hooks/useBankTransactions";
 import { SearchableAccountSelector } from "./SearchableAccountSelector";
+import { SplitLine } from "@/hooks/useSplitTransactionHelpers";
 
 interface SplitTransactionDialogProps {
   transaction: BankTransaction;
   isOpen: boolean;
   onClose: () => void;
-}
-
-interface SplitLine {
-  category_id: string;
-  amount: number;
-  description: string;
 }
 
 interface SplitFormData {

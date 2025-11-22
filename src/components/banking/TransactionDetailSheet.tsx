@@ -169,20 +169,40 @@ export function TransactionDetailSheet({
     if (!selectedCategoryId) return undefined;
 
     const merchantName = transaction.merchant_name || payee || '';
+    const description = transaction.description?.trim() || '';
     const isExpense = transaction.amount < 0;
+    const amount = Math.abs(transaction.amount);
+    
+    // Check if description is too generic to use as pattern
+    const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire'];
+    const isGenericDescription = genericTerms.some(term => 
+      description.toLowerCase() === term.toLowerCase()
+    );
+    
+    // Use merchant name if available and specific (length >= 3)
+    const hasSpecificMerchant = merchantName && merchantName.length >= 3 && 
+      !genericTerms.some(term => merchantName.toLowerCase() === term.toLowerCase());
+    
+    // For recurring amounts (like salaries), suggest amount range
+    const isLikelyRecurring = amount > 0 && amount >= 100 && Number.isInteger(amount * 100);
+    const shouldSuggestAmountRange = isLikelyRecurring && !hasSpecificMerchant;
     
     return {
-      ruleName: merchantName 
+      ruleName: hasSpecificMerchant 
         ? `Auto-categorize ${merchantName.substring(0, RULE_NAME_MAX_LENGTH)}${merchantName.length > RULE_NAME_MAX_LENGTH ? '...' : ''}`
         : 'Transaction categorization rule',
       appliesTo: 'bank_transactions' as const,
-      descriptionPattern: merchantName || '',
+      // Only use merchant name if it's specific, not generic description
+      descriptionPattern: hasSpecificMerchant ? merchantName : '',
       descriptionMatchType: 'contains' as const,
       supplierId: selectedSupplierId || '',
       transactionType: (isExpense ? 'debit' : 'credit') as const,
       categoryId: selectedCategoryId,
       priority: '5',
       autoApply: true,
+      // Suggest amount range for recurring payments (±5% tolerance)
+      minAmount: shouldSuggestAmountRange ? (amount * 0.95).toFixed(2) : '',
+      maxAmount: shouldSuggestAmountRange ? (amount * 1.05).toFixed(2) : '',
     };
   };
 

@@ -5,7 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Plus, Settings2, Edit2, Save, X, Sparkles, Check, Split } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Trash2, Plus, Settings2, Edit2, Save, X, Sparkles, Check, Split, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
   useCategorizationRulesV2,
@@ -183,6 +184,29 @@ export const EnhancedCategoryRulesDialog = ({
 
     if (!hasPattern) {
       toast.error("Please specify at least one matching condition");
+      return;
+    }
+
+    // Check for overly generic rules (safety check)
+    const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire', 'check', 'atm'];
+    const descPattern = formData.descriptionPattern?.trim().toLowerCase() || '';
+    const isGenericPattern = descPattern && genericTerms.includes(descPattern);
+    
+    if (isGenericPattern) {
+      // Generic pattern - check if we have other specificity
+      const hasOtherSpecificity = formData.supplierId || 
+                                  (formData.amountMin && parseFloat(formData.amountMin) > 0) || 
+                                  (formData.amountMax && parseFloat(formData.amountMax) > 0);
+      
+      if (!hasOtherSpecificity) {
+        toast.error(`"${formData.descriptionPattern}" is too generic. Add a supplier or amount range to make this rule more specific.`);
+        return;
+      }
+    }
+
+    // Warn if description pattern is very short (< 3 chars) without other criteria
+    if (descPattern && descPattern.length < 3 && !formData.supplierId) {
+      toast.error("Description pattern is too short. Use at least 3 characters or add a supplier.");
       return;
     }
 
@@ -704,6 +728,33 @@ export const EnhancedCategoryRulesDialog = ({
                               </SelectContent>
                             </Select>
                           </div>
+                          
+                          {/* Warning for generic or missing patterns */}
+                          {(() => {
+                            const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire', 'check', 'atm'];
+                            const descPattern = formData.descriptionPattern?.trim().toLowerCase() || '';
+                            const isGeneric = descPattern && genericTerms.includes(descPattern);
+                            const isEmpty = !descPattern;
+                            const hasOtherCriteria = formData.supplierId || 
+                                                    (formData.amountMin && parseFloat(formData.amountMin) > 0) || 
+                                                    (formData.amountMax && parseFloat(formData.amountMax) > 0);
+                            
+                            if ((isEmpty || isGeneric) && !hasOtherCriteria) {
+                              return (
+                                <Alert variant="warning" className="mt-2">
+                                  <AlertTriangle className="h-4 w-4" />
+                                  <AlertDescription>
+                                    {isEmpty ? (
+                                      <>Add a specific description pattern, supplier, or amount range to avoid matching too many transactions.</>
+                                    ) : (
+                                      <>"{formData.descriptionPattern}" is too generic. Add a supplier or amount range to make this rule more specific.</>
+                                    )}
+                                  </AlertDescription>
+                                </Alert>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
 
                         <div className="col-span-2">

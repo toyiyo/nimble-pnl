@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useShifts, useDeleteShift } from '@/hooks/useShifts';
+import { useBulkShiftValidation, useWeeklyOvertimeForecast } from '@/hooks/useShiftValidation';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import { 
@@ -19,6 +20,8 @@ import {
   ChevronLeft,
   ChevronRight,
   UserPlus,
+  AlertTriangle,
+  AlertCircle,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import { Employee, Shift } from '@/types/scheduling';
@@ -32,6 +35,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 const Scheduling = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -51,6 +60,15 @@ const Scheduling = () => {
   const { employees, loading: employeesLoading } = useEmployees(restaurantId);
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
   const deleteShift = useDeleteShift();
+
+  // Conflict detection and overtime validation
+  const shiftValidations = useBulkShiftValidation(restaurantId, currentWeekStart, weekEnd);
+  const overtimeForecast = useWeeklyOvertimeForecast(
+    restaurantId,
+    activeEmployees.map(e => ({ id: e.id, name: e.name })),
+    currentWeekStart,
+    weekEnd
+  );
 
   const activeEmployees = employees.filter(emp => emp.status === 'active');
 
@@ -160,7 +178,7 @@ const Scheduling = () => {
       </Card>
 
       {/* Metrics Row */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Employees</CardTitle>
@@ -205,7 +223,65 @@ const Scheduling = () => {
             <p className="text-xs text-muted-foreground">Estimated weekly cost</p>
           </CardContent>
         </Card>
+
+        {/* Overtime Forecast Card */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Overtime Hours</CardTitle>
+            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {shiftsLoading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">
+                  {(overtimeForecast.reduce((sum, emp) => sum + emp.overtimeMinutes, 0) / 60).toFixed(1)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {overtimeForecast.filter(emp => emp.overtimeMinutes > 0).length} employees with OT
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Conflicts and Warnings Summary */}
+      {shiftValidations.size > 0 && (
+        <Card className="border-orange-500/50 bg-orange-500/5">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+              Scheduling Issues Detected
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {Array.from(shiftValidations.entries()).map(([shiftId, validation]) => {
+                const shift = shifts.find(s => s.id === shiftId);
+                if (!shift) return null;
+                
+                return (
+                  <div key={shiftId} className="text-sm p-2 rounded bg-background border">
+                    <div className="font-medium">
+                      {shift.employee?.name || 'Unknown'} - {format(parseISO(shift.start_time), 'MMM d, h:mm a')}
+                    </div>
+                    <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                      {validation.conflicts.map((conflict, idx) => (
+                        <li key={`c-${idx}`} className="text-destructive">• {conflict.message}</li>
+                      ))}
+                      {validation.overtimeWarnings.map((warning, idx) => (
+                        <li key={`w-${idx}`} className="text-orange-600">• {warning.message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Week Navigation */}
       <Card>
@@ -294,42 +370,64 @@ const Scheduling = () => {
                         return (
                           <td key={day.toISOString()} className="p-2 align-top">
                             <div className="space-y-1">
-                              {dayShifts.map((shift) => (
-                                <div
-                                  key={shift.id}
-                                  className="group relative p-2 rounded border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
-                                  onClick={() => handleEditShift(shift)}
-                                >
-                                  <div className="text-xs font-medium">
-                                    {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-                                    {format(parseISO(shift.end_time), 'h:mm a')}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">{shift.position}</div>
-                                  <Badge
-                                    variant={
-                                      shift.status === 'confirmed'
-                                        ? 'default'
-                                        : shift.status === 'cancelled'
-                                        ? 'destructive'
-                                        : 'outline'
-                                    }
-                                    className="mt-1 text-xs"
-                                  >
-                                    {shift.status}
-                                  </Badge>
-                                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleEditShift(shift);
-                                      }}
-                                      aria-label="Edit shift"
-                                    >
-                                      <Edit className="h-3 w-3" />
-                                    </Button>
+                              {dayShifts.map((shift) => {
+                                const validation = shiftValidations.get(shift.id);
+                                const hasConflicts = validation && validation.conflicts.length > 0;
+                                const hasOvertimeWarnings = validation && validation.overtimeWarnings.length > 0;
+                                
+                                return (
+                                  <TooltipProvider key={shift.id}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div
+                                          className={`group relative p-2 rounded border transition-colors cursor-pointer ${
+                                            hasConflicts 
+                                              ? 'bg-destructive/10 border-destructive hover:bg-destructive/20' 
+                                              : 'bg-card hover:bg-accent/50'
+                                          }`}
+                                          onClick={() => handleEditShift(shift)}
+                                        >
+                                          {/* Conflict/Warning Indicator */}
+                                          {(hasConflicts || hasOvertimeWarnings) && (
+                                            <div className="absolute -top-1 -left-1">
+                                              {hasConflicts ? (
+                                                <AlertTriangle className="h-4 w-4 text-destructive fill-destructive/20" />
+                                              ) : (
+                                                <AlertCircle className="h-4 w-4 text-orange-500 fill-orange-500/20" />
+                                              )}
+                                            </div>
+                                          )}
+                                          
+                                          <div className="text-xs font-medium">
+                                            {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
+                                            {format(parseISO(shift.end_time), 'h:mm a')}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">{shift.position}</div>
+                                          <Badge
+                                            variant={
+                                              shift.status === 'confirmed'
+                                                ? 'default'
+                                                : shift.status === 'cancelled'
+                                                ? 'destructive'
+                                                : 'outline'
+                                            }
+                                            className="mt-1 text-xs"
+                                          >
+                                            {shift.status}
+                                          </Badge>
+                                          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                                            <Button
+                                              size="icon"
+                                              variant="ghost"
+                                              className="h-6 w-6"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditShift(shift);
+                                              }}
+                                              aria-label="Edit shift"
+                                            >
+                                              <Edit className="h-3 w-3" />
+                                            </Button>
                                     <Button
                                       size="icon"
                                       variant="ghost"
@@ -344,7 +442,27 @@ const Scheduling = () => {
                                     </Button>
                                   </div>
                                 </div>
-                              ))}
+                              </TooltipTrigger>
+                              {validation && (
+                                <TooltipContent className="max-w-xs">
+                                  <div className="space-y-1">
+                                    {validation.conflicts.map((conflict, idx) => (
+                                      <div key={`conflict-${idx}`} className="text-xs text-destructive">
+                                        • {conflict.message}
+                                      </div>
+                                    ))}
+                                    {validation.overtimeWarnings.map((warning, idx) => (
+                                      <div key={`warning-${idx}`} className="text-xs text-orange-500">
+                                        • {warning.message}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
+                        );
+                      })}
                               <Button
                                 variant="outline"
                                 size="sm"

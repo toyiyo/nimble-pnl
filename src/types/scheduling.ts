@@ -88,3 +88,47 @@ export interface LaborMetrics {
   employeeCount: number;
   averageHourlyRate: number; // In cents
 }
+
+export interface OvertimeRules {
+  id: string;
+  restaurant_id: string;
+  daily_threshold_minutes: number;
+  weekly_threshold_minutes: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ConflictType = 'double_booking' | 'overlapping_shift' | 'time_off_conflict';
+
+export interface ShiftConflict {
+  type: ConflictType;
+  message: string;
+  conflictingShift?: Shift;
+  conflictingTimeOff?: TimeOffRequest;
+  severity: 'warning' | 'error';
+}
+
+export interface OvertimeWarning {
+  type: 'daily' | 'weekly';
+  currentMinutes: number;
+  thresholdMinutes: number;
+  overtimeMinutes: number;
+  message: string;
+  severity: 'info' | 'warning' | 'error';
+}
+
+export interface ShiftValidationResult {
+  isValid: boolean;
+  conflicts: ShiftConflict[];
+  overtimeWarnings: OvertimeWarning[];
+}
+
+export interface EmployeeWeeklyHours {
+  employeeId: string;
+  employeeName: string;
+  totalMinutes: number;
+  regularMinutes: number;
+  overtimeMinutes: number;
+  projectedOvertimeMinutes: number; // If a new shift is added
+}

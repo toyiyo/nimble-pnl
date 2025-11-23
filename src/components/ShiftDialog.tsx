@@ -5,12 +5,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Shift, RecurrencePattern, RecurrenceType } from '@/types/scheduling';
 import { useCreateShift, useUpdateShift } from '@/hooks/useShifts';
 import { useEmployees } from '@/hooks/useEmployees';
-import { format, getDay } from 'date-fns';
+import { useShiftValidation } from '@/hooks/useShiftValidation';
+import { useToast } from '@/hooks/use-toast';
+import { format, startOfWeek, endOfWeek } from 'date-fns';
 import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
 import { getRecurrencePresetsForDate, getRecurrenceDescription } from '@/utils/recurrenceUtils';
+import { AlertTriangle, Clock, AlertCircle } from 'lucide-react';
 
 interface ShiftDialogProps {
   open: boolean;
@@ -49,6 +54,43 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
   const { employees } = useEmployees(restaurantId);
   const createShift = useCreateShift();
   const updateShift = useUpdateShift();
+  const { toast } = useToast();
+
+  // Create a preview shift for validation
+  const previewShift = useMemo(() => {
+    if (!employeeId || !startDate || !startTime || !endDate || !endTime) return null;
+
+    const startDateTime = new Date(`${startDate}T${startTime}`);
+    const endDateTime = new Date(`${endDate}T${endTime}`);
+
+    if (endDateTime <= startDateTime) return null;
+
+    return {
+      restaurant_id: restaurantId,
+      employee_id: employeeId,
+      start_time: startDateTime.toISOString(),
+      end_time: endDateTime.toISOString(),
+      break_duration: parseInt(breakDuration, 10) || 0,
+      position,
+      status,
+      notes,
+      recurrence_pattern: recurrencePattern,
+      is_recurring: recurrencePattern !== null,
+    };
+  }, [employeeId, startDate, startTime, endDate, endTime, breakDuration, position, status, notes, recurrencePattern, restaurantId]);
+
+  // Get validation for the preview shift
+  const weekStart = useMemo(() => previewShift ? startOfWeek(new Date(previewShift.start_time), { weekStartsOn: 0 }) : undefined, [previewShift]);
+  const weekEnd = useMemo(() => previewShift ? endOfWeek(new Date(previewShift.start_time), { weekStartsOn: 0 }) : undefined, [previewShift]);
+  
+  const validation = useShiftValidation(
+    previewShift,
+    restaurantId,
+    weekStart,
+    weekEnd,
+    shift?.id
+  );
+
 
   useEffect(() => {
     if (shift) {
@@ -93,14 +135,22 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
 
     // Validate employee selection
     if (!employeeId) {
-      alert('Please select an employee');
+      toast({
+        title: 'Employee required',
+        description: 'Please select an employee for this shift.',
+        variant: 'destructive',
+      });
       return;
     }
 
     // Validate and parse break duration
     const parsedBreak = parseInt(breakDuration, 10);
     if (Number.isNaN(parsedBreak) || parsedBreak < 0) {
-      alert('Please enter a valid break duration (0 or greater)');
+      toast({
+        title: 'Invalid break duration',
+        description: 'Please enter a valid break duration (0 or greater).',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -108,7 +158,21 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
     const endDateTime = new Date(`${endDate}T${endTime}`);
 
     if (endDateTime <= startDateTime) {
-      alert('End time must be after start time');
+      toast({
+        title: 'Invalid time range',
+        description: 'End time must be after start time.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Check for conflicts - block submission if there are any
+    if (validation && validation.conflicts.length > 0) {
+      toast({
+        title: 'Scheduling conflicts',
+        description: 'Cannot save shift. Please resolve scheduling conflicts first.',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -186,6 +250,43 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
+            {/* Validation Warnings */}
+            {validation && (
+              <>
+                {/* Conflicts */}
+                {validation.conflicts.map((conflict, index) => (
+                  <Alert key={`conflict-${index}`} variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Scheduling Conflict</AlertTitle>
+                    <AlertDescription>{conflict.message}</AlertDescription>
+                  </Alert>
+                ))}
+                
+                {/* Overtime Warnings */}
+                {validation.overtimeWarnings.map((warning, index) => (
+                  <Alert 
+                    key={`overtime-${index}`} 
+                    variant={warning.severity === 'error' ? 'destructive' : 'default'}
+                    className={warning.severity === 'info' ? 'border-blue-500 text-blue-900' : ''}
+                  >
+                    <Clock className="h-4 w-4" />
+                    <AlertTitle>
+                      {warning.type === 'daily' ? 'Daily Overtime' : 'Weekly Overtime'}
+                      {warning.severity === 'info' && ' - Approaching Threshold'}
+                    </AlertTitle>
+                    <AlertDescription>
+                      {warning.message}
+                      <div className="mt-2">
+                        <Badge variant={warning.severity === 'error' ? 'destructive' : 'outline'}>
+                          {(warning.currentMinutes / 60).toFixed(1)}h / {(warning.thresholdMinutes / 60).toFixed(0)}h
+                        </Badge>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                ))}
+              </>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="employee">
                 Employee <span className="text-destructive">*</span>

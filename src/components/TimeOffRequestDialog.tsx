@@ -18,6 +18,7 @@ interface TimeOffRequestDialogProps {
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
   request?: TimeOffRequest;
+  defaultEmployeeId?: string; // For employee self-service
 }
 
 export const TimeOffRequestDialog = ({
@@ -25,6 +26,7 @@ export const TimeOffRequestDialog = ({
   onOpenChange,
   restaurantId,
   request,
+  defaultEmployeeId,
 }: TimeOffRequestDialogProps) => {
   const [employeeId, setEmployeeId] = useState<string>('');
   const [startDate, setStartDate] = useState<Date | undefined>();
@@ -41,12 +43,12 @@ export const TimeOffRequestDialog = ({
       setEndDate(new Date(request.end_date));
       setReason(request.reason || '');
     } else {
-      setEmployeeId('');
+      setEmployeeId(defaultEmployeeId || '');
       setStartDate(undefined);
       setEndDate(undefined);
       setReason('');
     }
-  }, [request, open]);
+  }, [request, open, defaultEmployeeId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +101,7 @@ export const TimeOffRequestDialog = ({
             restaurantId={restaurantId}
             value={employeeId}
             onValueChange={setEmployeeId}
-            disabled={!!request}
+            disabled={!!request || !!defaultEmployeeId}
           />
 
           <div className="grid grid-cols-2 gap-4">

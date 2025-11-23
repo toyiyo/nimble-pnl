@@ -469,10 +469,9 @@ export const PurchaseOrderEditor: React.FC = () => {
               <Label htmlFor="supplier">Primary Supplier (optional)</Label>
               <Select value={supplierId} onValueChange={handleSupplierChange} disabled={suppliersLoading}>
                 <SelectTrigger id="supplier">
-                  <SelectValue placeholder="Select primary supplier" />
+                  <SelectValue placeholder="No supplier selected" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
                   {suppliers.map((supplier) => (
                     <SelectItem key={supplier.id} value={supplier.id}>
                       {supplier.name}

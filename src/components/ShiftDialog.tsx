@@ -354,7 +354,6 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
                         <p key={conflictKey} className="text-sm">• {conflict.message}</p>
                       );
                     })}
-                    ))}
                   </div>
                 </AlertDescription>
               </Alert>

@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ShiftTemplate } from '@/types/scheduling';
 import { useCreateShiftTemplate, useUpdateShiftTemplate } from '@/hooks/useShiftTemplates';
+import { useToast } from '@/hooks/use-toast';
 
 interface ShiftTemplateDialogProps {
   open: boolean;
@@ -46,6 +47,7 @@ export const ShiftTemplateDialog = ({ open, onOpenChange, template, restaurantId
 
   const createTemplate = useCreateShiftTemplate();
   const updateTemplate = useUpdateShiftTemplate();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (template) {
@@ -73,19 +75,31 @@ export const ShiftTemplateDialog = ({ open, onOpenChange, template, restaurantId
     e.preventDefault();
 
     if (!name.trim()) {
-      alert('Please enter a template name');
+      toast({
+        title: 'Template name required',
+        description: 'Please enter a template name',
+        variant: 'destructive',
+      });
       return;
     }
 
     const parsedBreak = parseInt(breakDuration, 10);
     if (Number.isNaN(parsedBreak) || parsedBreak < 0) {
-      alert('Please enter a valid break duration (0 or greater)');
+      toast({
+        title: 'Invalid break duration',
+        description: 'Please enter a valid break duration (0 or greater)',
+        variant: 'destructive',
+      });
       return;
     }
 
     // Validate times
     if (startTime >= endTime) {
-      alert('End time must be after start time');
+      toast({
+        title: 'Invalid time range',
+        description: 'End time must be after start time',
+        variant: 'destructive',
+      });
       return;
     }
 

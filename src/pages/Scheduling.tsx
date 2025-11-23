@@ -53,7 +53,6 @@ const Scheduling = () => {
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
   const [defaultShiftDate, setDefaultShiftDate] = useState<Date | undefined>();
   const [selectedShifts, setSelectedShifts] = useState<Set<string>>(new Set());
-  const [activeShift, setActiveShift] = useState<Shift | null>(null);
 
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
@@ -191,7 +190,6 @@ const Scheduling = () => {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    setActiveShift(null);
 
     if (!over || !restaurantId) return;
 

@@ -11,6 +11,10 @@ import { useEmployees } from '@/hooks/useEmployees';
 import { format, getDay } from 'date-fns';
 import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
 import { getRecurrencePresetsForDate, getRecurrenceDescription } from '@/utils/recurrenceUtils';
+import { useCheckShiftCompliance, useCreateComplianceViolation } from '@/hooks/useCompliance';
+import { ComplianceWarnings } from '@/components/ComplianceWarnings';
+import { ComplianceCheckResult } from '@/types/compliance';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ShiftDialogProps {
   open: boolean;
@@ -45,10 +49,15 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType | 'none'>('none');
   const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern | null>(null);
   const [customRecurrenceOpen, setCustomRecurrenceOpen] = useState(false);
+  const [complianceCheck, setComplianceCheck] = useState<ComplianceCheckResult | null>(null);
+  const [showOverrideConfirm, setShowOverrideConfirm] = useState(false);
 
+  const { user } = useAuth();
   const { employees } = useEmployees(restaurantId);
   const createShift = useCreateShift();
   const updateShift = useUpdateShift();
+  const checkCompliance = useCheckShiftCompliance();
+  const createViolation = useCreateComplianceViolation();
 
   useEffect(() => {
     if (shift) {
@@ -86,6 +95,83 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
     setNotes('');
     setRecurrenceType('none');
     setRecurrencePattern(null);
+    setComplianceCheck(null);
+    setShowOverrideConfirm(false);
+  };
+
+  // Check compliance when key fields change
+  useEffect(() => {
+    if (employeeId && startDate && startTime && endDate && endTime) {
+      const startDateTime = new Date(`${startDate}T${startTime}`);
+      const endDateTime = new Date(`${endDate}T${endTime}`);
+      
+      if (endDateTime > startDateTime) {
+        checkCompliance.mutate({
+          shiftId: shift?.id || null,
+          restaurantId,
+          employeeId,
+          startTime: startDateTime.toISOString(),
+          endTime: endDateTime.toISOString(),
+        }, {
+          onSuccess: (result) => {
+            setComplianceCheck(result);
+          },
+        });
+      }
+    }
+  }, [employeeId, startDate, startTime, endDate, endTime, restaurantId]);
+
+  const saveShift = (override: boolean = false) => {
+    const parsedBreak = parseInt(breakDuration, 10);
+    const startDateTime = new Date(`${startDate}T${startTime}`);
+    const endDateTime = new Date(`${endDate}T${endTime}`);
+
+    const shiftData = {
+      restaurant_id: restaurantId,
+      employee_id: employeeId,
+      start_time: startDateTime.toISOString(),
+      end_time: endDateTime.toISOString(),
+      break_duration: parsedBreak,
+      position,
+      status,
+      notes: notes || undefined,
+      recurrence_pattern: recurrencePattern,
+      is_recurring: recurrencePattern !== null,
+    };
+
+    const onSuccess = (createdShift?: { id: string }) => {
+      // Create violation records if override was used
+      if (override && complianceCheck?.hasViolations && user && createdShift?.id) {
+        complianceCheck.violations.forEach((violation) => {
+          createViolation.mutate({
+            restaurant_id: restaurantId,
+            shift_id: createdShift.id,
+            employee_id: employeeId,
+            rule_type: violation.rule_type,
+            violation_details: violation,
+            severity: violation.severity,
+            status: 'overridden',
+            override_reason: 'Manager override during shift creation',
+            overridden_by: user.id,
+            overridden_at: new Date().toISOString(),
+          });
+        });
+      }
+      
+      onOpenChange(false);
+      resetForm();
+    };
+
+    if (shift) {
+      updateShift.mutate(
+        { id: shift.id, ...shiftData },
+        { onSuccess: () => onSuccess() }
+      );
+    } else {
+      createShift.mutate(shiftData, {
+        onSuccess: (data) => onSuccess(data),
+      });
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -112,37 +198,29 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
       return;
     }
 
-    const shiftData = {
-      restaurant_id: restaurantId,
-      employee_id: employeeId,
-      start_time: startDateTime.toISOString(),
-      end_time: endDateTime.toISOString(),
-      break_duration: parsedBreak,
-      position,
-      status,
-      notes: notes || undefined,
-      recurrence_pattern: recurrencePattern,
-      is_recurring: recurrencePattern !== null,
-    };
-
-    if (shift) {
-      updateShift.mutate(
-        { id: shift.id, ...shiftData },
-        {
-          onSuccess: () => {
-            onOpenChange(false);
-            resetForm();
-          },
-        }
-      );
-    } else {
-      createShift.mutate(shiftData, {
-        onSuccess: () => {
-          onOpenChange(false);
-          resetForm();
-        },
-      });
+    // Check for compliance violations
+    if (complianceCheck?.hasViolations) {
+      // Critical violations cannot be overridden
+      const hasCritical = complianceCheck.violations.some(v => v.severity === 'critical');
+      if (hasCritical) {
+        alert('This shift has critical compliance violations that cannot be overridden. Please adjust the shift times.');
+        return;
+      }
+      
+      // Errors require confirmation
+      if (complianceCheck.requiresOverride) {
+        setShowOverrideConfirm(true);
+        return;
+      }
     }
+
+    // No violations or only warnings - save directly
+    saveShift(false);
+  };
+
+  const handleOverrideAndSave = () => {
+    setShowOverrideConfirm(false);
+    saveShift(true);
   };
 
   const handleRecurrenceChange = (value: string) => {
@@ -350,22 +428,51 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
                 aria-label="Shift notes"
               />
             </div>
+
+            {/* Compliance Warnings */}
+            {complianceCheck?.hasViolations && (
+              <ComplianceWarnings
+                violations={complianceCheck.violations}
+                canOverride={complianceCheck.canOverride}
+                className="mt-4"
+              />
+            )}
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={createShift.isPending || updateShift.isPending}
-            >
-              {createShift.isPending || updateShift.isPending
-                ? 'Saving...'
-                : shift
-                ? 'Update Shift'
-                : 'Create Shift'}
-            </Button>
+            {showOverrideConfirm ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowOverrideConfirm(false)}
+                >
+                  Review
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleOverrideAndSave}
+                  disabled={createShift.isPending || updateShift.isPending}
+                  className="bg-orange-500 hover:bg-orange-600"
+                >
+                  Override & Save
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="submit"
+                disabled={createShift.isPending || updateShift.isPending}
+              >
+                {createShift.isPending || updateShift.isPending
+                  ? 'Saving...'
+                  : shift
+                  ? 'Update Shift'
+                  : 'Create Shift'}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

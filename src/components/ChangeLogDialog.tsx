@@ -20,6 +20,12 @@ import {
 import { format } from 'date-fns';
 import { ScheduleChangeLog, ChangeType } from '@/types/scheduling';
 
+type ShiftSnapshot = {
+  start_time?: string | null;
+  end_time?: string | null;
+  position?: string | null;
+};
+
 interface ChangeLogDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -55,6 +61,31 @@ const getChangeBadgeVariant = (type: ChangeType): 'default' | 'destructive' | 'o
     default:
       return 'outline';
   }
+};
+
+const renderShiftSnapshot = (
+  snapshot: ShiftSnapshot | null | undefined,
+  label: string,
+  accentClass: string
+) => {
+  if (!snapshot) return null;
+
+  return (
+    <div className={`mt-2 p-3 rounded text-xs ${accentClass}`}>
+      <strong>{label}</strong>
+      <div className="mt-1 space-y-1">
+        {snapshot.start_time && (
+          <div>Start: {format(new Date(snapshot.start_time), 'PPp')}</div>
+        )}
+        {snapshot.end_time && (
+          <div>End: {format(new Date(snapshot.end_time), 'PPp')}</div>
+        )}
+        {snapshot.position && (
+          <div>Position: {snapshot.position}</div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 export const ChangeLogDialog = ({
@@ -132,71 +163,25 @@ export const ChangeLogDialog = ({
                         {log.change_type === 'updated' && log.before_data && log.after_data && (
                           <div className="mt-2 p-3 bg-muted/50 rounded text-xs space-y-2">
                             <div className="grid grid-cols-2 gap-2">
-                              <div className="text-red-700 dark:text-red-400">
-                                <strong>Before:</strong>
-                                <div className="mt-1 space-y-1">
-                                  {log.before_data.start_time && (
-                                    <div>Start: {format(new Date(log.before_data.start_time as string), 'PPp')}</div>
-                                  )}
-                                  {log.before_data.end_time && (
-                                    <div>End: {format(new Date(log.before_data.end_time as string), 'PPp')}</div>
-                                  )}
-                                  {log.before_data.position && (
-                                    <div>Position: {log.before_data.position as string}</div>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="text-green-700 dark:text-green-400">
-                                <strong>After:</strong>
-                                <div className="mt-1 space-y-1">
-                                  {log.after_data.start_time && (
-                                    <div>Start: {format(new Date(log.after_data.start_time as string), 'PPp')}</div>
-                                  )}
-                                  {log.after_data.end_time && (
-                                    <div>End: {format(new Date(log.after_data.end_time as string), 'PPp')}</div>
-                                  )}
-                                  {log.after_data.position && (
-                                    <div>Position: {log.after_data.position as string}</div>
-                                  )}
-                                </div>
-                              </div>
+                              {renderShiftSnapshot(log.before_data, 'Before:', 'text-red-700 dark:text-red-400')}
+                              {renderShiftSnapshot(log.after_data, 'After:', 'text-green-700 dark:text-green-400')}
                             </div>
                           </div>
                         )}
 
-                        {log.change_type === 'deleted' && log.before_data && (
-                          <div className="mt-2 p-3 bg-red-50 dark:bg-red-950/20 rounded text-xs">
-                            <strong className="text-red-700 dark:text-red-400">Deleted shift:</strong>
-                            <div className="mt-1 space-y-1">
-                              {log.before_data.start_time && (
-                                <div>Start: {format(new Date(log.before_data.start_time as string), 'PPp')}</div>
-                              )}
-                              {log.before_data.end_time && (
-                                <div>End: {format(new Date(log.before_data.end_time as string), 'PPp')}</div>
-                              )}
-                              {log.before_data.position && (
-                                <div>Position: {log.before_data.position as string}</div>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                        {log.change_type === 'deleted' &&
+                          renderShiftSnapshot(
+                            log.before_data,
+                            'Deleted shift:',
+                            'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400'
+                          )}
 
-                        {log.change_type === 'created' && log.after_data && (
-                          <div className="mt-2 p-3 bg-green-50 dark:bg-green-950/20 rounded text-xs">
-                            <strong className="text-green-700 dark:text-green-400">New shift:</strong>
-                            <div className="mt-1 space-y-1">
-                              {log.after_data.start_time && (
-                                <div>Start: {format(new Date(log.after_data.start_time as string), 'PPp')}</div>
-                              )}
-                              {log.after_data.end_time && (
-                                <div>End: {format(new Date(log.after_data.end_time as string), 'PPp')}</div>
-                              )}
-                              {log.after_data.position && (
-                                <div>Position: {log.after_data.position as string}</div>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                        {log.change_type === 'created' &&
+                          renderShiftSnapshot(
+                            log.after_data,
+                            'New shift:',
+                            'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400'
+                          )}
                       </div>
                     </div>
                   </CardContent>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { zonedTimeToUtc } from 'date-fns-tz';
+import * as dateFnsTz from 'date-fns-tz';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -67,6 +67,7 @@ export const AvailabilityDialog = ({
 
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const { zonedTimeToUtc } = dateFnsTz;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,7 +77,8 @@ export const AvailabilityDialog = ({
     const toUTC = (time: string) => {
       const today = new Date();
       const dateStr = `${today.getFullYear()}-${(today.getMonth()+1).toString().padStart(2,'0')}-${today.getDate().toString().padStart(2,'0')}T${time}:00`;
-      const utcDate = zonedTimeToUtc(dateStr, restaurantTimezone);
+      const converter = zonedTimeToUtc ?? ((value: string) => new Date(value));
+      const utcDate = converter(dateStr, restaurantTimezone);
       return `${utcDate.getUTCHours().toString().padStart(2, '0')}:${utcDate.getUTCMinutes().toString().padStart(2, '0')}:${utcDate.getUTCSeconds().toString().padStart(2, '0')}`;
     };
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { zonedTimeToUtc } from 'date-fns-tz';
+import * as dateFnsTz from 'date-fns-tz';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -36,6 +36,7 @@ export const TimeOffRequestDialog = ({
   const [reason, setReason] = useState('');
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const { zonedTimeToUtc } = dateFnsTz;
 
   const createRequest = useCreateTimeOffRequest();
   const updateRequest = useUpdateTimeOffRequest();
@@ -57,9 +58,10 @@ export const TimeOffRequestDialog = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Convert start/end dates to UTC
+    // Convert start/end dates to UTC using provided timezone; fallback is identity
     const toUTCDate = (date: Date) => {
-      return zonedTimeToUtc(date, restaurantTimezone).toISOString().substring(0, 10);
+      const converter = zonedTimeToUtc ?? ((value: Date) => value);
+      return converter(date, restaurantTimezone).toISOString().substring(0, 10);
     };
 
     if (!employeeId || !startDate || !endDate) {

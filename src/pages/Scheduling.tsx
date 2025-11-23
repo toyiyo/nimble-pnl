@@ -31,7 +31,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
-import { zonedTimeToUtc } from 'date-fns-tz';
+import * as dateFnsTz from 'date-fns-tz';
 import { Employee, Shift, ConflictCheck } from '@/types/scheduling';
 import {
   AlertDialog,
@@ -56,10 +56,12 @@ const buildConflictKey = (conflict: ConflictCheck) =>
 const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const { zonedTimeToUtc } = dateFnsTz;
 
   const formatToUTC = (isoString: string) => {
     const date = new Date(isoString);
-    const utcDate = zonedTimeToUtc(date, restaurantTimezone);
+    const converter = zonedTimeToUtc ?? ((value: Date) => value);
+    const utcDate = converter(date, restaurantTimezone);
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;
   };

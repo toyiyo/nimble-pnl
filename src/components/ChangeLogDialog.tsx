@@ -128,35 +128,73 @@ export const ChangeLogDialog = ({
                           </div>
                         )}
 
-                        {/* Show before/after data if available */}
-                        {log.change_type === 'updated' && (
-                          <div className="mt-2 p-2 bg-muted/50 rounded text-xs space-y-1">
-                            {log.before_data && (
-                              <div className="text-red-600">
-                                <strong>Before:</strong>{' '}
-                                {JSON.stringify(log.before_data, null, 2)}
+                        {/* Show formatted before/after data */}
+                        {log.change_type === 'updated' && log.before_data && log.after_data && (
+                          <div className="mt-2 p-3 bg-muted/50 rounded text-xs space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="text-red-700 dark:text-red-400">
+                                <strong>Before:</strong>
+                                <div className="mt-1 space-y-1">
+                                  {log.before_data.start_time && (
+                                    <div>Start: {format(new Date(log.before_data.start_time as string), 'PPp')}</div>
+                                  )}
+                                  {log.before_data.end_time && (
+                                    <div>End: {format(new Date(log.before_data.end_time as string), 'PPp')}</div>
+                                  )}
+                                  {log.before_data.position && (
+                                    <div>Position: {log.before_data.position as string}</div>
+                                  )}
+                                </div>
                               </div>
-                            )}
-                            {log.after_data && (
-                              <div className="text-green-600">
-                                <strong>After:</strong>{' '}
-                                {JSON.stringify(log.after_data, null, 2)}
+                              <div className="text-green-700 dark:text-green-400">
+                                <strong>After:</strong>
+                                <div className="mt-1 space-y-1">
+                                  {log.after_data.start_time && (
+                                    <div>Start: {format(new Date(log.after_data.start_time as string), 'PPp')}</div>
+                                  )}
+                                  {log.after_data.end_time && (
+                                    <div>End: {format(new Date(log.after_data.end_time as string), 'PPp')}</div>
+                                  )}
+                                  {log.after_data.position && (
+                                    <div>Position: {log.after_data.position as string}</div>
+                                  )}
+                                </div>
                               </div>
-                            )}
+                            </div>
                           </div>
                         )}
 
                         {log.change_type === 'deleted' && log.before_data && (
-                          <div className="mt-2 p-2 bg-red-50 dark:bg-red-950/20 rounded text-xs">
-                            <strong>Deleted shift:</strong>{' '}
-                            {JSON.stringify(log.before_data, null, 2)}
+                          <div className="mt-2 p-3 bg-red-50 dark:bg-red-950/20 rounded text-xs">
+                            <strong className="text-red-700 dark:text-red-400">Deleted shift:</strong>
+                            <div className="mt-1 space-y-1">
+                              {log.before_data.start_time && (
+                                <div>Start: {format(new Date(log.before_data.start_time as string), 'PPp')}</div>
+                              )}
+                              {log.before_data.end_time && (
+                                <div>End: {format(new Date(log.before_data.end_time as string), 'PPp')}</div>
+                              )}
+                              {log.before_data.position && (
+                                <div>Position: {log.before_data.position as string}</div>
+                              )}
+                            </div>
                           </div>
                         )}
 
                         {log.change_type === 'created' && log.after_data && (
-                          <div className="mt-2 p-2 bg-green-50 dark:bg-green-950/20 rounded text-xs">
-                            <strong>New shift:</strong>{' '}
-                            {JSON.stringify(log.after_data, null, 2)}
+                          <div className="mt-2 p-3 bg-green-50 dark:bg-green-950/20 rounded text-xs">
+                            <strong className="text-green-700 dark:text-green-400">New shift:</strong>
+                            <div className="mt-1 space-y-1">
+                              {log.after_data.start_time && (
+                                <div>Start: {format(new Date(log.after_data.start_time as string), 'PPp')}</div>
+                              )}
+                              {log.after_data.end_time && (
+                                <div>End: {format(new Date(log.after_data.end_time as string), 'PPp')}</div>
+                              )}
+                              {log.after_data.position && (
+                                <div>Position: {log.after_data.position as string}</div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>

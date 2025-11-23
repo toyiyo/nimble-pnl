@@ -242,8 +242,10 @@ BEGIN
   WHERE restaurant_id = p_restaurant_id
     AND start_time::date >= p_week_start
     AND start_time::date <= p_week_end
-    AND is_published = true
-  RETURNING COUNT(*) INTO v_shift_count;
+    AND is_published = true;
+
+  -- Get the count of updated rows
+  GET DIAGNOSTICS v_shift_count = ROW_COUNT;
 
   -- Log the unpublish action
   INSERT INTO schedule_change_logs (

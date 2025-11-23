@@ -2188,7 +2188,7 @@ export type Database = {
           quantity: number
           received_quantity: number | null
           sku: string | null
-          supplier_id: string
+          supplier_id: string | null
           unit_cost: number
           unit_label: string | null
           updated_at: string
@@ -2204,7 +2204,7 @@ export type Database = {
           quantity?: number
           received_quantity?: number | null
           sku?: string | null
-          supplier_id: string
+          supplier_id?: string | null
           unit_cost?: number
           unit_label?: string | null
           updated_at?: string
@@ -2220,7 +2220,7 @@ export type Database = {
           quantity?: number
           received_quantity?: number | null
           sku?: string | null
-          supplier_id?: string
+          supplier_id?: string | null
           unit_cost?: number
           unit_label?: string | null
           updated_at?: string

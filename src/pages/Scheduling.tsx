@@ -147,11 +147,29 @@ const Scheduling = () => {
 
   // Component to render shift card with conflict detection
   const ShiftCard = ({ shift }: { shift: Shift }) => {
-    // Format start and end times as ISO string with seconds for SQL TIME comparison
+
+    // Format start and end times as 'YYYY-MM-DD HH:mm:ss' for SQL TIME comparison
     const formatTimeWithSeconds = (isoString: string) => {
       const date = new Date(isoString);
-      return date.toISOString().slice(0, 19).replace('T', ' '); // 'YYYY-MM-DD HH:mm:ss'
+      // Always pad to seconds
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
     };
+
+    // Debug: log parameters sent to SQL function
+    useEffect(() => {
+      // Only log for the current shift being edited
+      if (shift) {
+        // eslint-disable-next-line no-console
+        console.log('Conflict check params:', {
+          employeeId: shift.employee_id,
+          restaurantId: shift.restaurant_id,
+          startTime: formatTimeWithSeconds(shift.start_time),
+          endTime: formatTimeWithSeconds(shift.end_time),
+          dayOfWeek: new Date(shift.start_time).getDay(),
+        });
+      }
+    }, [shift]);
 
     const conflictParams = useMemo(() => ({
       employeeId: shift.employee_id,

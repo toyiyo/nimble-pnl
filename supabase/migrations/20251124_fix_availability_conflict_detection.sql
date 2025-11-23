@@ -77,7 +77,6 @@ BEGIN
     ELSE
       -- No exception, check recurring availability for this day of week
       v_has_availability := false;
-      
       FOR v_availability IN
         SELECT * FROM employee_availability
         WHERE employee_id = p_employee_id
@@ -85,23 +84,22 @@ BEGIN
           AND day_of_week = v_day_of_week
       LOOP
         v_has_availability := true;
-        
         IF NOT v_availability.is_available THEN
-          -- Employee marked as unavailable for this day of week
           RETURN QUERY SELECT true, 'recurring'::TEXT,
             'Employee is not available on this day of the week';
           RETURN;
         ELSIF NOT (v_shift_start_time::TIME >= v_availability.start_time::TIME AND v_shift_end_time::TIME <= v_availability.end_time::TIME) THEN
-          -- Shift is not fully contained within available window (inclusive, cast to TIME)
           RETURN QUERY SELECT true, 'recurring'::TEXT,
             'Shift on ' || v_current_date::TEXT || ' is outside employee availability (' || 
             v_availability.start_time::TEXT || ' - ' || v_availability.end_time::TEXT || ')';
           RETURN;
         END IF;
       END LOOP;
-      
-      -- If no availability is set for this day of week, don't flag as conflict
-      -- (This allows scheduling when no availability preferences are set)
+      -- If no availability is set for this day of week, do NOT flag as conflict
+      IF NOT v_has_availability THEN
+        -- No availability set for this day, allow scheduling
+        NULL;
+      END IF;
     END IF;
     
     -- Move to next date

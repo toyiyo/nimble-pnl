@@ -20,7 +20,7 @@ import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionD
 import { ScheduleStatusBadge } from '@/components/ScheduleStatusBadge';
 import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
-import { Unlock, Send } from 'lucide-react';
+import { Unlock, Send, History } from 'lucide-react';
 import { 
   Calendar, 
   Plus, 

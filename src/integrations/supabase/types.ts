@@ -46,6 +46,60 @@ export type Database = {
           },
         ]
       }
+      availability_exceptions: {
+        Row: {
+          created_at: string | null
+          date: string
+          employee_id: string
+          end_time: string | null
+          id: string
+          is_available: boolean
+          reason: string | null
+          restaurant_id: string
+          start_time: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          date: string
+          employee_id: string
+          end_time?: string | null
+          id?: string
+          is_available?: boolean
+          reason?: string | null
+          restaurant_id: string
+          start_time?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          date?: string
+          employee_id?: string
+          end_time?: string | null
+          id?: string
+          is_available?: boolean
+          reason?: string | null
+          restaurant_id?: string
+          start_time?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "availability_exceptions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_exceptions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_account_balances: {
         Row: {
           account_mask: string | null
@@ -1198,6 +1252,60 @@ export type Database = {
           },
         ]
       }
+      employee_availability: {
+        Row: {
+          created_at: string | null
+          day_of_week: number
+          employee_id: string
+          end_time: string
+          id: string
+          is_available: boolean
+          notes: string | null
+          restaurant_id: string
+          start_time: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          day_of_week: number
+          employee_id: string
+          end_time: string
+          id?: string
+          is_available?: boolean
+          notes?: string | null
+          restaurant_id: string
+          start_time: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          day_of_week?: number
+          employee_id?: string
+          end_time?: string
+          id?: string
+          is_available?: boolean
+          notes?: string | null
+          restaurant_id?: string
+          start_time?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_availability_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_availability_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_tips: {
         Row: {
           created_at: string
@@ -1758,6 +1866,50 @@ export type Database = {
             columns: ["journal_entry_id"]
             isOneToOne: false
             referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_settings: {
+        Row: {
+          created_at: string | null
+          id: string
+          notify_time_off_approved: boolean
+          notify_time_off_rejected: boolean
+          notify_time_off_request: boolean
+          restaurant_id: string
+          time_off_notify_employee: boolean
+          time_off_notify_managers: boolean
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          notify_time_off_approved?: boolean
+          notify_time_off_rejected?: boolean
+          notify_time_off_request?: boolean
+          restaurant_id: string
+          time_off_notify_employee?: boolean
+          time_off_notify_managers?: boolean
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          notify_time_off_approved?: boolean
+          notify_time_off_rejected?: boolean
+          notify_time_off_request?: boolean
+          restaurant_id?: string
+          time_off_notify_employee?: boolean
+          time_off_notify_managers?: boolean
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
         ]
@@ -2853,6 +3005,117 @@ export type Database = {
           },
         ]
       }
+      schedule_change_logs: {
+        Row: {
+          after_data: Json | null
+          before_data: Json | null
+          change_type: string
+          changed_at: string
+          changed_by: string
+          created_at: string | null
+          employee_id: string | null
+          id: string
+          reason: string | null
+          restaurant_id: string
+          shift_id: string | null
+        }
+        Insert: {
+          after_data?: Json | null
+          before_data?: Json | null
+          change_type: string
+          changed_at?: string
+          changed_by: string
+          created_at?: string | null
+          employee_id?: string | null
+          id?: string
+          reason?: string | null
+          restaurant_id: string
+          shift_id?: string | null
+        }
+        Update: {
+          after_data?: Json | null
+          before_data?: Json | null
+          change_type?: string
+          changed_at?: string
+          changed_by?: string
+          created_at?: string | null
+          employee_id?: string | null
+          id?: string
+          reason?: string | null
+          restaurant_id?: string
+          shift_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_change_logs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_change_logs_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_change_logs_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_publications: {
+        Row: {
+          created_at: string | null
+          id: string
+          notes: string | null
+          notification_sent: boolean
+          published_at: string
+          published_by: string
+          restaurant_id: string
+          shift_count: number
+          week_end_date: string
+          week_start_date: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          notification_sent?: boolean
+          published_at?: string
+          published_by: string
+          restaurant_id: string
+          shift_count?: number
+          week_end_date: string
+          week_start_date: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          notification_sent?: boolean
+          published_at?: string
+          published_by?: string
+          restaurant_id?: string
+          shift_count?: number
+          week_end_date?: string
+          week_start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_publications_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scim_group_members: {
         Row: {
           created_at: string
@@ -3325,9 +3588,13 @@ export type Database = {
           employee_id: string
           end_time: string
           id: string
+          is_published: boolean
           is_recurring: boolean | null
+          locked: boolean
           notes: string | null
           position: string
+          published_at: string | null
+          published_by: string | null
           recurrence_parent_id: string | null
           recurrence_pattern: Json | null
           restaurant_id: string
@@ -3341,9 +3608,13 @@ export type Database = {
           employee_id: string
           end_time: string
           id?: string
+          is_published?: boolean
           is_recurring?: boolean | null
+          locked?: boolean
           notes?: string | null
           position: string
+          published_at?: string | null
+          published_by?: string | null
           recurrence_parent_id?: string | null
           recurrence_pattern?: Json | null
           restaurant_id: string
@@ -3357,9 +3628,13 @@ export type Database = {
           employee_id?: string
           end_time?: string
           id?: string
+          is_published?: boolean
           is_recurring?: boolean | null
+          locked?: boolean
           notes?: string | null
           position?: string
+          published_at?: string | null
+          published_by?: string | null
           recurrence_parent_id?: string | null
           recurrence_pattern?: Json | null
           restaurant_id?: string
@@ -5031,6 +5306,19 @@ export type Database = {
         Args: { p_category_id: string; p_sale_id: string }
         Returns: undefined
       }
+      check_availability_conflict: {
+        Args: {
+          p_employee_id: string
+          p_end_time: string
+          p_restaurant_id: string
+          p_start_time: string
+        }
+        Returns: {
+          conflict_type: string
+          has_conflict: boolean
+          message: string
+        }[]
+      }
       check_reconciliation_boundary: {
         Args: { p_restaurant_id: string }
         Returns: Json
@@ -5044,6 +5332,20 @@ export type Database = {
           p_sale_date: string
         }
         Returns: boolean
+      }
+      check_timeoff_conflict: {
+        Args: {
+          p_employee_id: string
+          p_end_time: string
+          p_start_time: string
+        }
+        Returns: {
+          end_date: string
+          has_conflict: boolean
+          start_date: string
+          status: string
+          time_off_id: string
+        }[]
       }
       cleanup_expired_invitations: { Args: never; Returns: undefined }
       cleanup_old_audit_logs: { Args: never; Returns: undefined }
@@ -5132,6 +5434,10 @@ export type Database = {
       }
       generate_po_number: { Args: { p_restaurant_id: string }; Returns: string }
       get_account_subtypes: { Args: never; Returns: Json }
+      get_current_employee_id: {
+        Args: { p_restaurant_id: string }
+        Returns: string
+      }
       get_employee_punch_status: {
         Args: { p_employee_id: string }
         Returns: {
@@ -5236,6 +5542,15 @@ export type Database = {
             }
             Returns: Json
           }
+      publish_schedule: {
+        Args: {
+          p_notes?: string
+          p_restaurant_id: string
+          p_week_end: string
+          p_week_start: string
+        }
+        Returns: string
+      }
       rebuild_account_balances: {
         Args: { p_restaurant_id: string }
         Returns: number
@@ -5320,6 +5635,15 @@ export type Database = {
       text_soundex: { Args: { "": string }; Returns: string }
       trigger_square_periodic_sync: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
+      unpublish_schedule: {
+        Args: {
+          p_reason?: string
+          p_restaurant_id: string
+          p_week_end: string
+          p_week_start: string
+        }
+        Returns: number
+      }
       upsert_product_supplier: {
         Args: {
           p_product_id: string

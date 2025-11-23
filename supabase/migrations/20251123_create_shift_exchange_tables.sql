@@ -137,12 +137,14 @@ CREATE POLICY "Users can delete their own shift offers"
   USING (
     EXISTS (
       SELECT 1 FROM user_restaurants ur
-      JOIN employees e ON e.id = shift_offers.offering_employee_id
       WHERE ur.restaurant_id = shift_offers.restaurant_id
       AND ur.user_id = auth.uid()
-      AND (ur.role IN ('owner', 'manager') OR e.id = shift_offers.offering_employee_id)
+      AND ur.role IN ('owner', 'manager')
     )
   );
+
+-- Note: Employee-level deletion should be handled in application logic
+-- since there's no direct user_id field on employees table.
 
 -- RLS Policies for shift_claims table
 CREATE POLICY "Users can view shift claims for their restaurants"
@@ -180,12 +182,14 @@ CREATE POLICY "Users can delete their own shift claims"
   USING (
     EXISTS (
       SELECT 1 FROM user_restaurants ur
-      JOIN employees e ON e.id = shift_claims.claiming_employee_id
       WHERE ur.restaurant_id = shift_claims.restaurant_id
       AND ur.user_id = auth.uid()
-      AND (ur.role IN ('owner', 'manager') OR e.id = shift_claims.claiming_employee_id)
+      AND ur.role IN ('owner', 'manager')
     )
   );
+
+-- Note: Employee-level deletion should be handled in application logic
+-- since there's no direct user_id field on employees table.
 
 -- RLS Policies for shift_approvals table
 CREATE POLICY "Users can view shift approvals for their restaurants"
@@ -279,6 +283,11 @@ CREATE TRIGGER update_shift_claims_updated_at
 -- Create function to automatically update shift assignment when claim is approved
 CREATE OR REPLACE FUNCTION handle_shift_claim_approval()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_shift_offer_id UUID;
+  v_open_shift_id UUID;
+  v_claiming_employee_id UUID;
+  v_shift_id UUID;
 BEGIN
   -- Only process if the decision is 'approved'
   IF NEW.decision = 'approved' THEN
@@ -288,46 +297,36 @@ BEGIN
     WHERE id = NEW.shift_claim_id;
     
     -- Get the claim details
-    DECLARE
-      v_shift_offer_id UUID;
-      v_open_shift_id UUID;
-      v_claiming_employee_id UUID;
-    BEGIN
-      SELECT shift_offer_id, open_shift_id, claiming_employee_id
-      INTO v_shift_offer_id, v_open_shift_id, v_claiming_employee_id
-      FROM shift_claims
-      WHERE id = NEW.shift_claim_id;
+    SELECT shift_offer_id, open_shift_id, claiming_employee_id
+    INTO v_shift_offer_id, v_open_shift_id, v_claiming_employee_id
+    FROM shift_claims
+    WHERE id = NEW.shift_claim_id;
+    
+    -- If it's a shift offer claim, update the original shift
+    IF v_shift_offer_id IS NOT NULL THEN
+      -- Update shift offer status
+      UPDATE shift_offers
+      SET status = 'approved'
+      WHERE id = v_shift_offer_id;
       
-      -- If it's a shift offer claim, update the original shift
-      IF v_shift_offer_id IS NOT NULL THEN
-        -- Update shift offer status
-        UPDATE shift_offers
-        SET status = 'approved'
-        WHERE id = v_shift_offer_id;
-        
-        -- Get the shift_id from the offer
-        DECLARE
-          v_shift_id UUID;
-        BEGIN
-          SELECT shift_id INTO v_shift_id
-          FROM shift_offers
-          WHERE id = v_shift_offer_id;
-          
-          -- Update the shift to assign to the claiming employee
-          UPDATE shifts
-          SET employee_id = v_claiming_employee_id
-          WHERE id = v_shift_id;
-        END;
-      END IF;
+      -- Get the shift_id from the offer
+      SELECT shift_id INTO v_shift_id
+      FROM shift_offers
+      WHERE id = v_shift_offer_id;
       
-      -- If it's an open shift claim, update the open shift
-      IF v_open_shift_id IS NOT NULL THEN
-        UPDATE shifts
-        SET employee_id = v_claiming_employee_id,
-            is_open = FALSE
-        WHERE id = v_open_shift_id;
-      END IF;
-    END;
+      -- Update the shift to assign to the claiming employee
+      UPDATE shifts
+      SET employee_id = v_claiming_employee_id
+      WHERE id = v_shift_id;
+    END IF;
+    
+    -- If it's an open shift claim, update the open shift
+    IF v_open_shift_id IS NOT NULL THEN
+      UPDATE shifts
+      SET employee_id = v_claiming_employee_id,
+          is_open = FALSE
+      WHERE id = v_open_shift_id;
+    END IF;
   ELSIF NEW.decision = 'rejected' THEN
     -- Update the shift claim status to rejected
     UPDATE shift_claims

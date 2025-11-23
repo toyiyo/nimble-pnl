@@ -3,7 +3,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Shift } from '@/types/scheduling';
 import { useCreateShiftOffer } from '@/hooks/useShiftOffers';
 import { format } from 'date-fns';
@@ -25,7 +24,6 @@ export const ShiftOfferDialog = ({
   restaurantId,
 }: ShiftOfferDialogProps) => {
   const [reason, setReason] = useState('');
-  const [isPartial, setIsPartial] = useState(false);
   const [loading, setLoading] = useState(false);
   
   const createShiftOffer = useCreateShiftOffer();
@@ -40,15 +38,13 @@ export const ShiftOfferDialog = ({
         shift_id: shift.id,
         offering_employee_id: employeeId,
         reason: reason || undefined,
-        is_partial: isPartial,
-        // For now, partial shifts require manual time entry - can be enhanced later
+        is_partial: false,
         partial_start_time: undefined,
         partial_end_time: undefined,
       });
       
       onOpenChange(false);
       setReason('');
-      setIsPartial(false);
     } catch (error) {
       console.error('Error creating shift offer:', error);
     } finally {
@@ -98,21 +94,9 @@ export const ShiftOfferDialog = ({
               onChange={(e) => setReason(e.target.value)}
               rows={3}
             />
-          </div>
-
-          {/* Partial Shift Option */}
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="partial"
-              checked={isPartial}
-              onCheckedChange={(checked) => setIsPartial(checked as boolean)}
-            />
-            <Label
-              htmlFor="partial"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-            >
-              Allow partial shift trade (claim part of the shift)
-            </Label>
+            <p className="text-sm text-muted-foreground">
+              Help your coworkers understand why this shift is available.
+            </p>
           </div>
 
           {/* Action Buttons */}

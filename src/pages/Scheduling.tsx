@@ -438,10 +438,24 @@ const Scheduling = () => {
 
         {/* Marketplace Tab */}
         <TabsContent value="marketplace" className="mt-6">
-          <ShiftMarketplace
-            restaurantId={restaurantId}
-            currentEmployeeId={activeEmployees[0]?.id || ''}
-          />
+          {activeEmployees.length > 0 ? (
+            <ShiftMarketplace
+              restaurantId={restaurantId}
+              currentEmployeeId={activeEmployees[0]?.id || ''}
+            />
+          ) : (
+            <Card className="bg-gradient-to-br from-muted/50 to-transparent">
+              <CardContent className="py-12 text-center">
+                <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No Employees</h3>
+                <p className="text-muted-foreground mb-4">Add employees to use the shift marketplace.</p>
+                <Button onClick={handleAddEmployee}>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Add Employee
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Approvals Tab */}

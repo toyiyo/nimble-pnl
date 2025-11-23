@@ -23,6 +23,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import * as dateFnsTz from 'date-fns-tz';
 import { TimeOffRequest, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
   AlertDialog,
@@ -39,6 +40,7 @@ import { formatTime } from '@/lib/utils';
 const EmployeePortal = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
   const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
@@ -144,6 +146,13 @@ const EmployeePortal = () => {
   }
 
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const formatTimeInRestaurantTz = (time: string | null | undefined) => {
+    if (!time) return '';
+    const converter = dateFnsTz.utcToZonedTime ?? ((date: Date) => date);
+    const date = new Date(`1970-01-01T${time}Z`);
+    const zoned = converter(date, restaurantTimezone);
+    return format(zoned, 'HH:mm');
+  };
 
   const renderTimeOffContent = () => {
     if (requestsLoading) {
@@ -280,7 +289,7 @@ const EmployeePortal = () => {
                     Available
                   </Badge>
                   <span className="text-sm text-muted-foreground">
-                    {formatTime(avail.start_time)} - {formatTime(avail.end_time)}
+                    {formatTimeInRestaurantTz(avail.start_time)} - {formatTimeInRestaurantTz(avail.end_time)}
                   </span>
                 </div>
               ) : (
@@ -348,11 +357,11 @@ const EmployeePortal = () => {
                   <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
                     Available
                   </Badge>
-                  {exception.start_time && exception.end_time && (
-                    <span className="text-sm text-muted-foreground">
-                      {formatTime(exception.start_time)} - {formatTime(exception.end_time)}
-                    </span>
-                  )}
+                    {exception.start_time && exception.end_time && (
+                      <span className="text-sm text-muted-foreground">
+                        {formatTimeInRestaurantTz(exception.start_time)} - {formatTimeInRestaurantTz(exception.end_time)}
+                      </span>
+                    )}
                 </div>
               ) : (
                 <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/20">

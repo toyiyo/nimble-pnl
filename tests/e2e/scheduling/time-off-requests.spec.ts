@@ -2,9 +2,8 @@ import { test, expect } from '@playwright/test';
 import { createTestUser, createTestRestaurant, cleanupTestUser } from '../../helpers/auth';
 import { getDaysFromNow, formatDateForInput } from '../../helpers/dateUtils';
 
-test.describe('Time-Off Requests', () => {
+test.describe.serial('Time-Off Requests', () => {
   let testUserId: string;
-  let testRestaurantId: string;
   const testEmail = `test-timeoff-${Date.now()}@example.com`;
   const testPassword = 'TestPassword123!';
 
@@ -12,7 +11,7 @@ test.describe('Time-Off Requests', () => {
     // Setup test user and restaurant
     const user = await createTestUser(testEmail, testPassword, 'Test User');
     testUserId = user.id;
-    testRestaurantId = await createTestRestaurant(testUserId, 'Test Restaurant');
+    await createTestRestaurant(testUserId, 'Test Restaurant');
   });
 
   test.afterAll(async () => {
@@ -44,26 +43,25 @@ test.describe('Time-Off Requests', () => {
       await page.click('[role="combobox"]');
       await page.click('[role="option"]:has-text("Server")');
       await page.click('button[type="submit"]:has-text("Add Employee")');
-      await page.waitForTimeout(1000);
+      await expect(page.locator('text=Test Employee')).toBeVisible();
     }
     
     // Navigate to Time-Off tab
     await page.click('[role="tab"]:has-text("Time-Off")');
-    await page.waitForTimeout(500);
+    await expect(page.locator('button:has-text("New Request")')).toBeVisible();
     
     // Click New Request button
     await page.click('button:has-text("New Request")');
     
     // Fill out time-off request form
-    await page.click('select#employee');
-    await page.click('select#employee option:has-text("Test Employee")');
+    await page.getByRole('combobox', { name: /employee/i }).click();
+    await page.getByRole('option', { name: /Test Employee/i }).click();
     
     // Set start date (tomorrow)
     const tomorrow = getDaysFromNow(1);
-    const startDateStr = formatDateForInput(tomorrow);
     
     await page.click('button[id="start-date"]');
-    await page.waitForTimeout(300);
+    await expect(page.locator('[role="dialog"] button:has-text("1")')).toBeVisible();
     // Select date in calendar
     const startDay = tomorrow.getDate().toString();
     await page.click(`button:has-text("${startDay}"):visible`);
@@ -72,7 +70,7 @@ test.describe('Time-Off Requests', () => {
     const endDate = getDaysFromNow(2);
     
     await page.click('button[id="end-date"]');
-    await page.waitForTimeout(300);
+    await expect(page.locator('[role="dialog"] button:has-text("1")')).toBeVisible();
     const endDay = endDate.getDate().toString();
     await page.click(`button:has-text("${endDay}"):visible`);
     
@@ -82,8 +80,8 @@ test.describe('Time-Off Requests', () => {
     // Submit request
     await page.click('button[type="submit"]:has-text("Submit Request")');
     
-    // Wait for dialog to close
-    await page.waitForTimeout(1000);
+    // Wait for dialog to close and request to appear
+    await expect(page.locator('button:has-text("New Request")')).toBeVisible();
     
     // Verify request appears in list with pending status
     await expect(page.locator('text=Test Employee')).toBeVisible();
@@ -103,7 +101,7 @@ test.describe('Time-Off Requests', () => {
     await page.goto('/scheduling');
     await page.waitForLoadState('networkidle');
     await page.click('[role="tab"]:has-text("Time-Off")');
-    await page.waitForTimeout(500);
+    await expect(page.locator('text=Test Employee')).toBeVisible();
     
     // Find pending request
     const requestCard = page.locator('div:has-text("Test Employee"):has-text("Pending")').first();
@@ -111,9 +109,6 @@ test.describe('Time-Off Requests', () => {
     
     // Click approve button
     await requestCard.locator('button[aria-label="Approve request"]').click();
-    
-    // Wait for update
-    await page.waitForTimeout(1000);
     
     // Verify status changed to approved
     await expect(page.locator('text=Approved')).toBeVisible();
@@ -131,13 +126,14 @@ test.describe('Time-Off Requests', () => {
     await page.goto('/scheduling');
     await page.waitForLoadState('networkidle');
     await page.click('[role="tab"]:has-text("Schedule")');
+    await expect(page.locator('button:has-text("Create Shift")')).toBeVisible();
     
     // Try to create a shift during time-off period
     await page.click('button:has-text("Create Shift")');
     
     // Select employee
-    await page.click('select#employee');
-    await page.click('select#employee option:has-text("Test Employee")');
+    await page.getByRole('combobox', { name: /employee/i }).click();
+    await page.getByRole('option', { name: /Test Employee/i }).click();
     
     // Set date to tomorrow (when time-off exists)
     const tomorrow = getDaysFromNow(1);
@@ -148,11 +144,8 @@ test.describe('Time-Off Requests', () => {
     await page.fill('input[id="endDate"]', dateStr);
     await page.fill('input[id="endTime"]', '17:00');
     
-    // Wait for conflict detection
-    await page.waitForTimeout(1500);
-    
     // Verify conflict warning is displayed
-    await expect(page.locator('text=Scheduling conflicts detected')).toBeVisible();
+    await expect(page.locator('text=Scheduling conflicts detected')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('text=time-off')).toBeVisible();
   });
 
@@ -168,7 +161,7 @@ test.describe('Time-Off Requests', () => {
     await page.goto('/scheduling');
     await page.waitForLoadState('networkidle');
     await page.click('[role="tab"]:has-text("Time-Off")');
-    await page.waitForTimeout(500);
+    await expect(page.locator('text=Test Employee')).toBeVisible();
     
     // Hover over request card to show delete button
     const requestCard = page.locator('div:has-text("Test Employee")').first();
@@ -180,13 +173,15 @@ test.describe('Time-Off Requests', () => {
     // Confirm deletion in alert dialog
     await page.click('button:has-text("Delete")');
     
-    // Wait for deletion
-    await page.waitForTimeout(1000);
-    
     // Verify request is removed (or "No time-off requests" message appears)
-    const hasRequests = await page.locator('text=Test Employee').count() > 0;
-    if (!hasRequests) {
-      await expect(page.locator('text=No time-off requests')).toBeVisible();
-    }
+    const noRequestsMessage = page.locator('text=No time-off requests');
+    const testEmployeeText = page.locator('text=Test Employee');
+    
+    await expect(async () => {
+      const hasRequests = await testEmployeeText.count() > 0;
+      if (!hasRequests) {
+        await expect(noRequestsMessage).toBeVisible();
+      }
+    }).toPass({ timeout: 3000 });
   });
 });

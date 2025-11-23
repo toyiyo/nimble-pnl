@@ -55,12 +55,12 @@ test.describe('Employee Availability', () => {
     await page.click('button:has-text("Set Availability")');
     
     // Select employee
-    await page.click('select#employee');
-    await page.click('select#employee option:has-text("Test Employee")');
+    await page.getByRole('combobox', { name: /employee/i }).click();
+    await page.getByRole('option', { name: /Test Employee/i }).click();
     
     // Select day of week (Monday)
-    await page.click('select#day-of-week');
-    await page.click('select#day-of-week option:has-text("Monday")');
+    await page.getByRole('combobox', { name: /day of week/i }).click();
+    await page.getByRole('option', { name: /Monday/i }).click();
     
     // Ensure is available toggle is on
     const availableToggle = page.locator('button[id="is-available"]');
@@ -104,8 +104,8 @@ test.describe('Employee Availability', () => {
     await page.click('button:has-text("Add Exception")');
     
     // Select employee
-    await page.click('select#employee');
-    await page.click('select#employee option:has-text("Test Employee")');
+    await page.getByRole('combobox', { name: /employee/i }).click();
+    await page.getByRole('option', { name: /Test Employee/i }).click();
     
     // Select date (3 days from now)
     const exceptionDate = new Date();
@@ -147,8 +147,8 @@ test.describe('Employee Availability', () => {
     await page.click('button:has-text("Create Shift")');
     
     // Select employee
-    await page.click('select#employee');
-    await page.click('select#employee option:has-text("Test Employee")');
+    await page.getByRole('combobox', { name: /employee/i }).click();
+    await page.getByRole('option', { name: /Test Employee/i }).click();
     
     // Select Monday (when we set 9-5 availability)
     // But schedule for 6am-2pm (outside typical hours)
@@ -185,8 +185,8 @@ test.describe('Employee Availability', () => {
     await page.click('button:has-text("Create Shift")');
     
     // Select employee
-    await page.click('select#employee');
-    await page.click('select#employee option:has-text("Test Employee")');
+    await page.getByRole('combobox', { name: /employee/i }).click();
+    await page.getByRole('option', { name: /Test Employee/i }).click();
     
     // Select exception date
     const exceptionDate = new Date();

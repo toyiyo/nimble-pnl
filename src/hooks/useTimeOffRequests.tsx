@@ -53,9 +53,13 @@ export const useUpdateTimeOffRequest = () => {
   });
 };
 
-export const useApproveTimeOffRequest = () => {
+// Shared hook for approving/rejecting time-off requests
+const useReviewTimeOffRequest = (action: 'approved' | 'rejected') => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const actionLabel = action === 'approved' ? 'approved' : 'rejected';
+  const actionPastTense = action === 'approved' ? 'approved' : 'rejected';
 
   return useMutation({
     mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
@@ -65,7 +69,7 @@ export const useApproveTimeOffRequest = () => {
       const { data, error } = await supabase
         .from('time_off_requests')
         .update({
-          status: 'approved',
+          status: action,
           reviewed_at: new Date().toISOString(),
           reviewed_by: user.id,
         })
@@ -79,13 +83,13 @@ export const useApproveTimeOffRequest = () => {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['time-off-requests', variables.restaurantId] });
       toast({
-        title: 'Time-off approved',
-        description: 'The time-off request has been approved.',
+        title: `Time-off ${actionPastTense}`,
+        description: `The time-off request has been ${actionPastTense}.`,
       });
     },
     onError: (error: Error) => {
       toast({
-        title: 'Error approving time-off',
+        title: `Error ${actionLabel} time-off`,
         description: error.message,
         variant: 'destructive',
       });
@@ -93,44 +97,12 @@ export const useApproveTimeOffRequest = () => {
   });
 };
 
+export const useApproveTimeOffRequest = () => {
+  return useReviewTimeOffRequest('approved');
+};
+
 export const useRejectTimeOffRequest = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { data, error } = await supabase
-        .from('time_off_requests')
-        .update({
-          status: 'rejected',
-          reviewed_at: new Date().toISOString(),
-          reviewed_by: user.id,
-        })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['time-off-requests', variables.restaurantId] });
-      toast({
-        title: 'Time-off rejected',
-        description: 'The time-off request has been rejected.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error rejecting time-off',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
-  });
+  return useReviewTimeOffRequest('rejected');
 };
 
 export const useDeleteTimeOffRequest = () => {

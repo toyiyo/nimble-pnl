@@ -44,92 +44,73 @@ CREATE INDEX IF NOT EXISTS idx_availability_exceptions_date ON availability_exce
 ALTER TABLE employee_availability ENABLE ROW LEVEL SECURITY;
 ALTER TABLE availability_exceptions ENABLE ROW LEVEL SECURITY;
 
+-- Helper to check whether the current user can access a restaurant
+CREATE OR REPLACE FUNCTION user_has_restaurant_access(
+  p_restaurant_id UUID,
+  p_require_manager_role BOOLEAN DEFAULT false
+)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = p_restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND (
+        NOT p_require_manager_role
+        OR user_restaurants.role IN ('owner', 'manager')
+      )
+  );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
+
 -- RLS Policies for employee_availability table
 CREATE POLICY "Users can view availability for their restaurants"
   ON employee_availability FOR SELECT
   USING (
-    EXISTS (
-      SELECT 1 FROM user_restaurants
-      WHERE user_restaurants.restaurant_id = employee_availability.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-    )
+    user_has_restaurant_access(employee_availability.restaurant_id)
   );
 
 CREATE POLICY "Users can create availability for their restaurants"
   ON employee_availability FOR INSERT
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM user_restaurants
-      WHERE user_restaurants.restaurant_id = employee_availability.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager')
-    )
+    user_has_restaurant_access(employee_availability.restaurant_id, true)
   );
 
 CREATE POLICY "Users can update availability for their restaurants"
   ON employee_availability FOR UPDATE
   USING (
-    EXISTS (
-      SELECT 1 FROM user_restaurants
-      WHERE user_restaurants.restaurant_id = employee_availability.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager')
-    )
+    user_has_restaurant_access(employee_availability.restaurant_id, true)
   );
 
 CREATE POLICY "Users can delete availability for their restaurants"
   ON employee_availability FOR DELETE
   USING (
-    EXISTS (
-      SELECT 1 FROM user_restaurants
-      WHERE user_restaurants.restaurant_id = employee_availability.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager')
-    )
+    user_has_restaurant_access(employee_availability.restaurant_id, true)
   );
 
 -- RLS Policies for availability_exceptions table
 CREATE POLICY "Users can view availability exceptions for their restaurants"
   ON availability_exceptions FOR SELECT
   USING (
-    EXISTS (
-      SELECT 1 FROM user_restaurants
-      WHERE user_restaurants.restaurant_id = availability_exceptions.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-    )
+    user_has_restaurant_access(availability_exceptions.restaurant_id)
   );
 
 CREATE POLICY "Users can create availability exceptions for their restaurants"
   ON availability_exceptions FOR INSERT
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM user_restaurants
-      WHERE user_restaurants.restaurant_id = availability_exceptions.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager')
-    )
+    user_has_restaurant_access(availability_exceptions.restaurant_id, true)
   );
 
 CREATE POLICY "Users can update availability exceptions for their restaurants"
   ON availability_exceptions FOR UPDATE
   USING (
-    EXISTS (
-      SELECT 1 FROM user_restaurants
-      WHERE user_restaurants.restaurant_id = availability_exceptions.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager')
-    )
+    user_has_restaurant_access(availability_exceptions.restaurant_id, true)
   );
 
 CREATE POLICY "Users can delete availability exceptions for their restaurants"
   ON availability_exceptions FOR DELETE
   USING (
-    EXISTS (
-      SELECT 1 FROM user_restaurants
-      WHERE user_restaurants.restaurant_id = availability_exceptions.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager')
-    )
+    user_has_restaurant_access(availability_exceptions.restaurant_id, true)
   );
 
 -- Create triggers for updated_at

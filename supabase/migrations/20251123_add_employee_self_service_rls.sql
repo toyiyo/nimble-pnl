@@ -4,22 +4,31 @@
 -- TIME-OFF REQUESTS: Employee Self-Service Policies
 -- ============================================================================
 
+-- Shared helper to avoid repeating the employee ownership check
+CREATE OR REPLACE FUNCTION is_current_user_employee(p_employee_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1
+    FROM employees
+    WHERE id = p_employee_id
+      AND user_id = auth.uid()
+  );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
+
 -- Allow employees to view their own time-off requests
 CREATE POLICY "Employees can view own time-off requests"
   ON time_off_requests FOR SELECT
   USING (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   );
 
 -- Allow employees to create their own time-off requests
 CREATE POLICY "Employees can create own time-off requests"
   ON time_off_requests FOR INSERT
   WITH CHECK (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   );
 
 -- Allow employees to update their own pending time-off requests
@@ -27,15 +36,11 @@ CREATE POLICY "Employees can create own time-off requests"
 CREATE POLICY "Employees can update own pending time-off requests"
   ON time_off_requests FOR UPDATE
   USING (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
     AND status = 'pending'
   )
   WITH CHECK (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
     AND status = 'pending'
   );
 
@@ -43,9 +48,7 @@ CREATE POLICY "Employees can update own pending time-off requests"
 CREATE POLICY "Employees can delete own pending time-off requests"
   ON time_off_requests FOR DELETE
   USING (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
     AND status = 'pending'
   );
 
@@ -57,41 +60,31 @@ CREATE POLICY "Employees can delete own pending time-off requests"
 CREATE POLICY "Employees can view own availability"
   ON employee_availability FOR SELECT
   USING (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   );
 
 -- Allow employees to create their own availability
 CREATE POLICY "Employees can create own availability"
   ON employee_availability FOR INSERT
   WITH CHECK (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   );
 
 -- Allow employees to update their own availability
 CREATE POLICY "Employees can update own availability"
   ON employee_availability FOR UPDATE
   USING (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   )
   WITH CHECK (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   );
 
 -- Allow employees to delete their own availability
 CREATE POLICY "Employees can delete own availability"
   ON employee_availability FOR DELETE
   USING (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   );
 
 -- ============================================================================
@@ -102,41 +95,31 @@ CREATE POLICY "Employees can delete own availability"
 CREATE POLICY "Employees can view own availability exceptions"
   ON availability_exceptions FOR SELECT
   USING (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   );
 
 -- Allow employees to create their own availability exceptions
 CREATE POLICY "Employees can create own availability exceptions"
   ON availability_exceptions FOR INSERT
   WITH CHECK (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   );
 
 -- Allow employees to update their own availability exceptions
 CREATE POLICY "Employees can update own availability exceptions"
   ON availability_exceptions FOR UPDATE
   USING (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   )
   WITH CHECK (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   );
 
 -- Allow employees to delete their own availability exceptions
 CREATE POLICY "Employees can delete own availability exceptions"
   ON availability_exceptions FOR DELETE
   USING (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
-    )
+    is_current_user_employee(employee_id)
   );
 
 -- ============================================================================

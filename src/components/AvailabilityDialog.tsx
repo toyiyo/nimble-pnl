@@ -1,6 +1,4 @@
-import { useState, useEffect } from 'react';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { zonedTimeToUtc } from 'date-fns-tz';
+import React, { useState, useEffect } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { zonedTimeToUtc } from 'date-fns-tz';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -66,9 +64,6 @@ export const AvailabilityDialog = ({
       setNotes('');
     }
   }, [availability, open, defaultEmployeeId]);
-
-  const { selectedRestaurant } = useRestaurantContext();
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';

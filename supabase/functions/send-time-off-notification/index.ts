@@ -14,6 +14,66 @@ interface RequestBody {
   action: 'created' | 'approved' | 'rejected';
 }
 
+const ACTION_CONTENT: Record<RequestBody['action'], {
+  subject: (employeeName?: string) => string;
+  heading: string;
+  statusBadge: string;
+  message: (employeeName?: string) => string;
+}> = {
+  created: {
+    subject: (employeeName) => `New Time-Off Request from ${employeeName ?? 'Employee'}`,
+    heading: 'New Time-Off Request Submitted',
+    statusBadge: '<span style="background: #f59e0b; color: white; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 600;">Pending</span>',
+    message: (employeeName) => `${employeeName ?? 'An employee'} has submitted a new time-off request.`,
+  },
+  approved: {
+    subject: () => 'Time-Off Request Approved',
+    heading: 'Your Time-Off Request Has Been Approved',
+    statusBadge: '<span style="background: #10b981; color: white; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 600;">Approved</span>',
+    message: () => 'Your time-off request has been approved.',
+  },
+  rejected: {
+    subject: () => 'Time-Off Request Rejected',
+    heading: 'Your Time-Off Request Has Been Rejected',
+    statusBadge: '<span style="background: #ef4444; color: white; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 600;">Rejected</span>',
+    message: () => 'Your time-off request has been rejected.',
+  },
+};
+
+const formatDate = (date: string) => new Date(date).toLocaleDateString('en-US', {
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric'
+});
+
+const buildEmails = async (supabase: any, restaurantId: string, employeeEmail?: string, notifyEmployee?: boolean, notifyManagers?: boolean) => {
+  const emails: string[] = [];
+
+  if (notifyEmployee && employeeEmail) {
+    emails.push(employeeEmail);
+  }
+
+  if (notifyManagers) {
+    const { data: managers, error: managersError } = await supabase
+      .from('user_restaurants')
+      .select(`
+        user:auth.users(email)
+      `)
+      .eq('restaurant_id', restaurantId)
+      .in('role', ['owner', 'manager']);
+
+    if (!managersError && managers) {
+      managers.forEach((manager: any) => {
+        if (manager.user?.email) {
+          emails.push(manager.user.email);
+        }
+      });
+    }
+  }
+
+  return [...new Set(emails)];
+};
+
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -34,7 +94,6 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log('Processing time-off notification:', { timeOffRequestId, action });
 
-    // Get the time-off request with employee details
     const { data: timeOffRequest, error: requestError } = await supabase
       .from('time_off_requests')
       .select(`
@@ -52,7 +111,6 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Time-off request not found');
     }
 
-    // Get restaurant details
     const { data: restaurant, error: restaurantError } = await supabase
       .from('restaurants')
       .select('name')
@@ -63,14 +121,12 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Restaurant not found');
     }
 
-    // Get notification settings
-    const { data: notificationSettings, error: settingsError } = await supabase
+    const { data: notificationSettings } = await supabase
       .from('notification_settings')
       .select('*')
       .eq('restaurant_id', timeOffRequest.restaurant_id)
       .single();
 
-    // Use default settings if none exist
     const settings = notificationSettings || {
       notify_time_off_request: true,
       notify_time_off_approved: true,
@@ -79,8 +135,7 @@ const handler = async (req: Request): Promise<Response> => {
       time_off_notify_employee: true,
     };
 
-    // Check if notification is enabled for this action
-    const shouldNotify = 
+    const shouldNotify =
       (action === 'created' && settings.notify_time_off_request) ||
       (action === 'approved' && settings.notify_time_off_approved) ||
       (action === 'rejected' && settings.notify_time_off_rejected);
@@ -88,7 +143,7 @@ const handler = async (req: Request): Promise<Response> => {
     if (!shouldNotify) {
       console.log('Notification disabled for action:', action);
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: true,
           message: 'Notification disabled by settings'
         }),
@@ -99,39 +154,18 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const emails: string[] = [];
-
-    // Add employee email if enabled
-    if (settings.time_off_notify_employee && timeOffRequest.employee?.email) {
-      emails.push(timeOffRequest.employee.email);
-    }
-
-    // Add manager emails if enabled
-    if (settings.time_off_notify_managers) {
-      const { data: managers, error: managersError } = await supabase
-        .from('user_restaurants')
-        .select(`
-          user:auth.users(email)
-        `)
-        .eq('restaurant_id', timeOffRequest.restaurant_id)
-        .in('role', ['owner', 'manager']);
-
-      if (!managersError && managers) {
-        managers.forEach((manager: any) => {
-          if (manager.user?.email) {
-            emails.push(manager.user.email);
-          }
-        });
-      }
-    }
-
-    // Remove duplicates
-    const uniqueEmails = [...new Set(emails)];
+    const uniqueEmails = await buildEmails(
+      supabase,
+      timeOffRequest.restaurant_id,
+      timeOffRequest.employee?.email,
+      settings.time_off_notify_employee,
+      settings.time_off_notify_managers
+    );
 
     if (uniqueEmails.length === 0) {
       console.log('No recipients found for notification');
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: true,
           message: 'No recipients configured'
         }),
@@ -142,40 +176,12 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Format dates
-    const startDate = new Date(timeOffRequest.start_date).toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric'
-    });
-    const endDate = new Date(timeOffRequest.end_date).toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric'
-    });
+    const startDate = formatDate(timeOffRequest.start_date);
+    const endDate = formatDate(timeOffRequest.end_date);
 
-    // Prepare email content based on action
-    let subject = '';
-    let heading = '';
-    let statusBadge = '';
-    let message = '';
-
-    if (action === 'created') {
-      subject = `New Time-Off Request from ${timeOffRequest.employee?.name}`;
-      heading = 'New Time-Off Request Submitted';
-      statusBadge = '<span style="background: #f59e0b; color: white; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 600;">Pending</span>';
-      message = `${timeOffRequest.employee?.name} has submitted a new time-off request.`;
-    } else if (action === 'approved') {
-      subject = `Time-Off Request Approved`;
-      heading = 'Your Time-Off Request Has Been Approved';
-      statusBadge = '<span style="background: #10b981; color: white; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 600;">Approved</span>';
-      message = `Your time-off request has been approved.`;
-    } else if (action === 'rejected') {
-      subject = `Time-Off Request Rejected`;
-      heading = 'Your Time-Off Request Has Been Rejected';
-      statusBadge = '<span style="background: #ef4444; color: white; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 600;">Rejected</span>';
-      message = `Your time-off request has been rejected.`;
-    }
+    const { subject, heading, statusBadge, message } = ACTION_CONTENT[action];
+    const emailSubject = subject(timeOffRequest.employee?.name);
+    const emailMessage = message(timeOffRequest.employee?.name);
 
     // Send notification emails
     try {
@@ -183,7 +189,7 @@ const handler = async (req: Request): Promise<Response> => {
         resend.emails.send({
           from: "Restaurant Team <team@easyshifthq.com>",
           to: [email],
-          subject: `${subject} - ${restaurant.name}`,
+          subject: `${emailSubject} - ${restaurant.name}`,
           html: `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
               <!-- Header with Logo -->
@@ -210,7 +216,7 @@ const handler = async (req: Request): Promise<Response> => {
                 <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3; text-align: center;">${heading}</h1>
                 
                 <p style="color: #6b7280; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0; text-align: center;">
-                  ${message}
+                  ${emailMessage}
                 </p>
                 
                 <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 24px; border-radius: 12px; margin: 24px 0; border-left: 4px solid #10b981;">

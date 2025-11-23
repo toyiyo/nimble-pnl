@@ -36,11 +36,35 @@ export const useTimeOffRequests = (restaurantId: string | null) => {
 };
 
 export const useCreateTimeOffRequest = () => {
-  return useCreateEntity<TimeOffRequest>({
+  const baseHook = useCreateEntity<TimeOffRequest>({
     tableName: 'time_off_requests',
     queryKey: 'time-off-requests',
     entityName: 'Time-off request',
     getRestaurantId: (data) => data.restaurant_id,
+  });
+
+  return useMutation({
+    mutationFn: baseHook.mutateAsync,
+    onSuccess: async (data, variables, context) => {
+      // Call base hook's onSuccess if it exists
+      if (baseHook.onSuccess) {
+        baseHook.onSuccess(data, variables, context);
+      }
+
+      // Send notification
+      try {
+        await supabase.functions.invoke('send-time-off-notification', {
+          body: {
+            timeOffRequestId: data.id,
+            action: 'created',
+          },
+        });
+      } catch (error) {
+        console.error('Failed to send notification:', error);
+        // Don't fail the mutation if notification fails
+      }
+    },
+    onError: baseHook.onError,
   });
 };
 
@@ -80,12 +104,25 @@ const useReviewTimeOffRequest = (action: 'approved' | 'rejected') => {
       if (error) throw error;
       return data;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['time-off-requests', variables.restaurantId] });
       toast({
         title: `Time-off ${actionPastTense}`,
         description: `The time-off request has been ${actionPastTense}.`,
       });
+
+      // Send notification
+      try {
+        await supabase.functions.invoke('send-time-off-notification', {
+          body: {
+            timeOffRequestId: data.id,
+            action: action,
+          },
+        });
+      } catch (error) {
+        console.error('Failed to send notification:', error);
+        // Don't fail the mutation if notification fails
+      }
     },
     onError: (error: Error) => {
       toast({

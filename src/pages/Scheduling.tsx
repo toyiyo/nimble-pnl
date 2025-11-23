@@ -9,7 +9,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useShifts, useDeleteShift } from '@/hooks/useShifts';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
-import { usePublishSchedule, useUnpublishSchedule } from '@/hooks/useSchedulePublish';
+import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';

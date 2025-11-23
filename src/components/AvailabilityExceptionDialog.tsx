@@ -19,6 +19,7 @@ interface AvailabilityExceptionDialogProps {
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
   exception?: AvailabilityException;
+  defaultEmployeeId?: string; // For employee self-service
 }
 
 export const AvailabilityExceptionDialog = ({
@@ -26,6 +27,7 @@ export const AvailabilityExceptionDialog = ({
   onOpenChange,
   restaurantId,
   exception,
+  defaultEmployeeId,
 }: AvailabilityExceptionDialogProps) => {
   const [employeeId, setEmployeeId] = useState<string>('');
   const [date, setDate] = useState<Date | undefined>();
@@ -50,14 +52,14 @@ export const AvailabilityExceptionDialog = ({
       }
       setReason(exception.reason || '');
     } else {
-      setEmployeeId('');
+      setEmployeeId(defaultEmployeeId || '');
       setDate(undefined);
       setIsAvailable(false);
       setStartTime('09:00');
       setEndTime('17:00');
       setReason('');
     }
-  }, [exception, open]);
+  }, [exception, open, defaultEmployeeId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,7 +115,7 @@ export const AvailabilityExceptionDialog = ({
             restaurantId={restaurantId}
             value={employeeId}
             onValueChange={setEmployeeId}
-            disabled={!!exception}
+            disabled={!!exception || !!defaultEmployeeId}
           />
 
           <div className="space-y-2">

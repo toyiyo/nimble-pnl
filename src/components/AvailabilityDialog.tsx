@@ -15,6 +15,7 @@ interface AvailabilityDialogProps {
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
   availability?: EmployeeAvailability;
+  defaultEmployeeId?: string; // For employee self-service
 }
 
 const daysOfWeek = [
@@ -32,6 +33,7 @@ export const AvailabilityDialog = ({
   onOpenChange,
   restaurantId,
   availability,
+  defaultEmployeeId,
 }: AvailabilityDialogProps) => {
   const [employeeId, setEmployeeId] = useState<string>('');
   const [dayOfWeek, setDayOfWeek] = useState<number>(1);
@@ -52,14 +54,14 @@ export const AvailabilityDialog = ({
       setEndTime(availability.end_time.substring(0, 5)); // HH:MM
       setNotes(availability.notes || '');
     } else {
-      setEmployeeId('');
+      setEmployeeId(defaultEmployeeId || '');
       setDayOfWeek(1);
       setIsAvailable(true);
       setStartTime('09:00');
       setEndTime('17:00');
       setNotes('');
     }
-  }, [availability, open]);
+  }, [availability, open, defaultEmployeeId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,7 +117,7 @@ export const AvailabilityDialog = ({
             restaurantId={restaurantId}
             value={employeeId}
             onValueChange={setEmployeeId}
-            disabled={!!availability}
+            disabled={!!availability || !!defaultEmployeeId}
           />
 
           <div className="space-y-2">

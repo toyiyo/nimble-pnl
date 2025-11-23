@@ -13,8 +13,12 @@ export const calculateShiftMinutes = (shift: Shift): number => {
 
 /**
  * Check if two shifts overlap in time
+ * Accepts both full Shift objects and new shift data without id
  */
-export const shiftsOverlap = (shift1: Shift, shift2: Shift): boolean => {
+export const shiftsOverlap = (
+  shift1: Shift | Omit<Shift, 'id' | 'created_at' | 'updated_at'>,
+  shift2: Shift | Omit<Shift, 'id' | 'created_at' | 'updated_at'>
+): boolean => {
   const start1 = parseISO(shift1.start_time);
   const end1 = parseISO(shift1.end_time);
   const start2 = parseISO(shift2.start_time);
@@ -29,9 +33,10 @@ export const shiftsOverlap = (shift1: Shift, shift2: Shift): boolean => {
 
 /**
  * Check if a shift conflicts with approved time-off
+ * Accepts both full Shift objects and new shift data without id
  */
 export const shiftConflictsWithTimeOff = (
-  shift: Shift,
+  shift: Shift | Omit<Shift, 'id' | 'created_at' | 'updated_at'>,
   timeOffRequests: TimeOffRequest[]
 ): TimeOffRequest | null => {
   const shiftStart = parseISO(shift.start_time);
@@ -94,10 +99,7 @@ export const detectShiftConflicts = (
   }
 
   // Check for overlapping shifts
-  const overlappingShifts = activeShifts.filter((s) => {
-    const tempShift = shift as Shift;
-    return shiftsOverlap(tempShift.id ? tempShift : { ...tempShift, id: 'temp' } as Shift, s);
-  });
+  const overlappingShifts = activeShifts.filter((s) => shiftsOverlap(shift, s));
 
   overlappingShifts.forEach((conflictingShift) => {
     conflicts.push({

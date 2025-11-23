@@ -1,4 +1,4 @@
-import { describe, it, expect } from '@playwright/test';
+import { describe, test, expect } from '@playwright/test';
 import {
   calculateShiftMinutes,
   shiftsOverlap,
@@ -8,12 +8,12 @@ import {
   calculateDailyOvertime,
   calculateWeeklyOvertime,
   validateShift,
-} from '@/utils/shiftValidation';
-import { Shift, TimeOffRequest, OvertimeRules } from '@/types/scheduling';
+} from '../../src/utils/shiftValidation';
+import { Shift, TimeOffRequest, OvertimeRules } from '../../src/types/scheduling';
 
 describe('Shift Validation Utils', () => {
   describe('calculateShiftMinutes', () => {
-    it('should calculate net working minutes correctly', () => {
+    test('should calculate net working minutes correctly', () => {
       const shift: Shift = {
         id: '1',
         restaurant_id: 'r1',
@@ -31,7 +31,7 @@ describe('Shift Validation Utils', () => {
       expect(minutes).toBe(450); // 8 hours - 30 min break = 450 minutes
     });
 
-    it('should not return negative minutes', () => {
+    test('should not return negative minutes', () => {
       const shift: Shift = {
         id: '1',
         restaurant_id: 'r1',
@@ -51,7 +51,7 @@ describe('Shift Validation Utils', () => {
   });
 
   describe('shiftsOverlap', () => {
-    it('should detect overlapping shifts', () => {
+    test('should detect overlapping shifts', () => {
       const shift1: Shift = {
         id: '1',
         restaurant_id: 'r1',
@@ -75,7 +75,7 @@ describe('Shift Validation Utils', () => {
       expect(shiftsOverlap(shift1, shift2)).toBe(true);
     });
 
-    it('should not detect overlapping for back-to-back shifts', () => {
+    test('should not detect overlapping for back-to-back shifts', () => {
       const shift1: Shift = {
         id: '1',
         restaurant_id: 'r1',
@@ -101,7 +101,7 @@ describe('Shift Validation Utils', () => {
   });
 
   describe('detectShiftConflicts', () => {
-    it('should detect double-booking', () => {
+    test('should detect double-booking', () => {
       const newShift = {
         restaurant_id: 'r1',
         employee_id: 'e1',
@@ -128,7 +128,7 @@ describe('Shift Validation Utils', () => {
       expect(conflicts[0].severity).toBe('error');
     });
 
-    it('should detect time-off conflicts', () => {
+    test('should detect time-off conflicts', () => {
       const newShift = {
         restaurant_id: 'r1',
         employee_id: 'e1',
@@ -171,7 +171,7 @@ describe('Shift Validation Utils', () => {
       updated_at: '2024-01-01T00:00:00Z',
     };
 
-    it('should detect daily overtime', () => {
+    test('should detect daily overtime', () => {
       const shifts: Shift[] = [
         {
           id: '1',
@@ -199,7 +199,7 @@ describe('Shift Validation Utils', () => {
       expect(warning?.overtimeMinutes).toBe(90); // 9.5 hours - 8 hours = 90 minutes
     });
 
-    it('should return null when no overtime', () => {
+    test('should return null when no overtime', () => {
       const shifts: Shift[] = [
         {
           id: '1',
@@ -237,7 +237,7 @@ describe('Shift Validation Utils', () => {
       updated_at: '2024-01-01T00:00:00Z',
     };
 
-    it('should return valid when no issues', () => {
+    test('should return valid when no issues', () => {
       const newShift = {
         restaurant_id: 'r1',
         employee_id: 'e1',
@@ -255,7 +255,7 @@ describe('Shift Validation Utils', () => {
       expect(result.overtimeWarnings.length).toBe(0);
     });
 
-    it('should return invalid when conflicts exist', () => {
+    test('should return invalid when conflicts exist', () => {
       const newShift = {
         restaurant_id: 'r1',
         employee_id: 'e1',

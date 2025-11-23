@@ -11,6 +11,7 @@ import { Shift, RecurrencePattern, RecurrenceType } from '@/types/scheduling';
 import { useCreateShift, useUpdateShift } from '@/hooks/useShifts';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useShiftValidation } from '@/hooks/useShiftValidation';
+import { useToast } from '@/hooks/use-toast';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
 import { getRecurrencePresetsForDate, getRecurrenceDescription } from '@/utils/recurrenceUtils';
@@ -53,6 +54,7 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
   const { employees } = useEmployees(restaurantId);
   const createShift = useCreateShift();
   const updateShift = useUpdateShift();
+  const { toast } = useToast();
 
   // Create a preview shift for validation
   const previewShift = useMemo(() => {
@@ -133,14 +135,22 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
 
     // Validate employee selection
     if (!employeeId) {
-      alert('Please select an employee');
+      toast({
+        title: 'Employee required',
+        description: 'Please select an employee for this shift.',
+        variant: 'destructive',
+      });
       return;
     }
 
     // Validate and parse break duration
     const parsedBreak = parseInt(breakDuration, 10);
     if (Number.isNaN(parsedBreak) || parsedBreak < 0) {
-      alert('Please enter a valid break duration (0 or greater)');
+      toast({
+        title: 'Invalid break duration',
+        description: 'Please enter a valid break duration (0 or greater).',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -148,13 +158,21 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
     const endDateTime = new Date(`${endDate}T${endTime}`);
 
     if (endDateTime <= startDateTime) {
-      alert('End time must be after start time');
+      toast({
+        title: 'Invalid time range',
+        description: 'End time must be after start time.',
+        variant: 'destructive',
+      });
       return;
     }
 
     // Check for conflicts - block submission if there are any
     if (validation && validation.conflicts.length > 0) {
-      alert('Cannot save shift: Please resolve scheduling conflicts first.');
+      toast({
+        title: 'Scheduling conflicts',
+        description: 'Cannot save shift. Please resolve scheduling conflicts first.',
+        variant: 'destructive',
+      });
       return;
     }
 

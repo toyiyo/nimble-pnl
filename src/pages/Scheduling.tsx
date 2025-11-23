@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useShifts, useDeleteShift } from '@/hooks/useShifts';
+import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
@@ -26,6 +28,7 @@ import {
   UserPlus,
   CalendarClock,
   CalendarX,
+  AlertTriangle,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import { Employee, Shift } from '@/types/scheduling';
@@ -139,6 +142,92 @@ const Scheduling = () => {
   const getShiftsForEmployee = (employeeId: string, day: Date) => {
     return shifts.filter(
       shift => shift.employee_id === employeeId && isSameDay(parseISO(shift.start_time), day)
+    );
+  };
+
+  // Component to render shift card with conflict detection
+  const ShiftCard = ({ shift }: { shift: Shift }) => {
+    const conflictParams = useMemo(() => ({
+      employeeId: shift.employee_id,
+      restaurantId: shift.restaurant_id,
+      startTime: shift.start_time,
+      endTime: shift.end_time,
+    }), [shift]);
+
+    const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);
+
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className={`group relative p-2 rounded border transition-colors cursor-pointer ${
+                hasConflicts 
+                  ? 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100' 
+                  : 'bg-card hover:bg-accent/50'
+              }`}
+              onClick={() => handleEditShift(shift)}
+            >
+              {hasConflicts && (
+                <AlertTriangle className="absolute top-1 left-1 h-3 w-3 text-yellow-600" />
+              )}
+              <div className="text-xs font-medium">
+                {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
+                {format(parseISO(shift.end_time), 'h:mm a')}
+              </div>
+              <div className="text-xs text-muted-foreground">{shift.position}</div>
+              <Badge
+                variant={
+                  shift.status === 'confirmed'
+                    ? 'default'
+                    : shift.status === 'cancelled'
+                    ? 'destructive'
+                    : 'outline'
+                }
+                className="mt-1 text-xs"
+              >
+                {shift.status}
+              </Badge>
+              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEditShift(shift);
+                  }}
+                  aria-label="Edit shift"
+                >
+                  <Edit className="h-3 w-3" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteShift(shift);
+                  }}
+                  aria-label="Delete shift"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          </TooltipTrigger>
+          {hasConflicts && (
+            <TooltipContent side="top" className="max-w-xs">
+              <div className="space-y-1">
+                <p className="font-semibold text-xs">Conflicts:</p>
+                {conflicts.map((conflict, index) => (
+                  <p key={index} className="text-xs">• {conflict.message}</p>
+                ))}
+              </div>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
     );
   };
 
@@ -323,55 +412,7 @@ const Scheduling = () => {
                           <td key={day.toISOString()} className="p-2 align-top">
                             <div className="space-y-1">
                               {dayShifts.map((shift) => (
-                                <div
-                                  key={shift.id}
-                                  className="group relative p-2 rounded border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
-                                  onClick={() => handleEditShift(shift)}
-                                >
-                                  <div className="text-xs font-medium">
-                                    {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-                                    {format(parseISO(shift.end_time), 'h:mm a')}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">{shift.position}</div>
-                                  <Badge
-                                    variant={
-                                      shift.status === 'confirmed'
-                                        ? 'default'
-                                        : shift.status === 'cancelled'
-                                        ? 'destructive'
-                                        : 'outline'
-                                    }
-                                    className="mt-1 text-xs"
-                                  >
-                                    {shift.status}
-                                  </Badge>
-                                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleEditShift(shift);
-                                      }}
-                                      aria-label="Edit shift"
-                                    >
-                                      <Edit className="h-3 w-3" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteShift(shift);
-                                      }}
-                                      aria-label="Delete shift"
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </div>
+                                <ShiftCard key={shift.id} shift={shift} />
                               ))}
                               <Button
                                 variant="outline"

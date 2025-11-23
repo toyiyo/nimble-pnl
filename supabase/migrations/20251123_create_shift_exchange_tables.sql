@@ -132,7 +132,7 @@ CREATE POLICY "Users can update shift offers for their restaurants"
     )
   );
 
-CREATE POLICY "Users can delete their own shift offers"
+CREATE POLICY "Managers can delete shift offers"
   ON shift_offers FOR DELETE
   USING (
     EXISTS (
@@ -143,8 +143,9 @@ CREATE POLICY "Users can delete their own shift offers"
     )
   );
 
--- Note: Employee-level deletion should be handled in application logic
--- since there's no direct user_id field on employees table.
+-- TODO: Add employee-level deletion when user_id is added to employees table
+-- Employees should be able to delete their own offers but not others'
+-- Current limitation: no direct user_id field on employees table
 
 -- RLS Policies for shift_claims table
 CREATE POLICY "Users can view shift claims for their restaurants"
@@ -177,7 +178,7 @@ CREATE POLICY "Users can update shift claims for their restaurants"
     )
   );
 
-CREATE POLICY "Users can delete their own shift claims"
+CREATE POLICY "Managers can delete shift claims"
   ON shift_claims FOR DELETE
   USING (
     EXISTS (
@@ -188,8 +189,9 @@ CREATE POLICY "Users can delete their own shift claims"
     )
   );
 
--- Note: Employee-level deletion should be handled in application logic
--- since there's no direct user_id field on employees table.
+-- TODO: Add employee-level deletion when user_id is added to employees table
+-- Employees should be able to cancel their own claims but not others'
+-- Current limitation: no direct user_id field on employees table
 
 -- RLS Policies for shift_approvals table
 CREATE POLICY "Users can view shift approvals for their restaurants"
@@ -334,11 +336,14 @@ BEGIN
     WHERE id = NEW.shift_claim_id;
     
     -- If there's a shift offer, set it back to open
-    UPDATE shift_offers
+    UPDATE shift_offers so
     SET status = 'open'
-    WHERE id IN (
-      SELECT shift_offer_id FROM shift_claims WHERE id = NEW.shift_claim_id
-    ) AND shift_offer_id IS NOT NULL;
+    WHERE so.id = (
+      SELECT shift_offer_id 
+      FROM shift_claims 
+      WHERE id = NEW.shift_claim_id 
+      AND shift_offer_id IS NOT NULL
+    );
   END IF;
   
   RETURN NEW;

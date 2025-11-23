@@ -441,6 +441,8 @@ const Scheduling = () => {
           {activeEmployees.length > 0 ? (
             <ShiftMarketplace
               restaurantId={restaurantId}
+              // TODO: Replace with actual logged-in user's employee ID
+              // For MVP, using first employee as placeholder
               currentEmployeeId={activeEmployees[0]?.id || ''}
             />
           ) : (

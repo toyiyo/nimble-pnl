@@ -124,3 +124,15 @@ export interface ConflictCheck {
   end_date?: string;
   status?: string;
 }
+
+export interface NotificationSettings {
+  id: string;
+  restaurant_id: string;
+  notify_time_off_request: boolean;
+  notify_time_off_approved: boolean;
+  notify_time_off_rejected: boolean;
+  time_off_notify_managers: boolean;
+  time_off_notify_employee: boolean;
+  created_at: string;
+  updated_at: string;
+}

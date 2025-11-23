@@ -147,11 +147,17 @@ const Scheduling = () => {
 
   // Component to render shift card with conflict detection
   const ShiftCard = ({ shift }: { shift: Shift }) => {
+    // Format start and end times as ISO string with seconds for SQL TIME comparison
+    const formatTimeWithSeconds = (isoString: string) => {
+      const date = new Date(isoString);
+      return date.toISOString().slice(0, 19).replace('T', ' '); // 'YYYY-MM-DD HH:mm:ss'
+    };
+
     const conflictParams = useMemo(() => ({
       employeeId: shift.employee_id,
       restaurantId: shift.restaurant_id,
-      startTime: shift.start_time,
-      endTime: shift.end_time,
+      startTime: formatTimeWithSeconds(shift.start_time),
+      endTime: formatTimeWithSeconds(shift.end_time),
     }), [shift]);
 
     const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);

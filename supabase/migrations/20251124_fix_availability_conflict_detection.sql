@@ -91,8 +91,8 @@ BEGIN
           RETURN QUERY SELECT true, 'recurring'::TEXT,
             'Employee is not available on this day of the week';
           RETURN;
-        ELSIF NOT (v_shift_start_time >= v_availability.start_time AND v_shift_end_time <= v_availability.end_time) THEN
-          -- Shift is not fully contained within available window
+        ELSIF NOT (v_shift_start_time::TIME >= v_availability.start_time::TIME AND v_shift_end_time::TIME <= v_availability.end_time::TIME) THEN
+          -- Shift is not fully contained within available window (inclusive, cast to TIME)
           RETURN QUERY SELECT true, 'recurring'::TEXT,
             'Shift on ' || v_current_date::TEXT || ' is outside employee availability (' || 
             v_availability.start_time::TEXT || ' - ' || v_availability.end_time::TEXT || ')';

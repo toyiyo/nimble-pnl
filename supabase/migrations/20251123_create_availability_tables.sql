@@ -217,9 +217,9 @@ BEGIN
         'Employee has marked themselves as unavailable on ' || v_date::TEXT;
       RETURN;
     ELSIF v_exception.start_time IS NOT NULL THEN
-      -- Check if shift overlaps with exception availability window
-      IF NOT (v_end_time <= v_exception.start_time OR v_start_time >= v_exception.end_time) THEN
-        -- Shift is within available window, no conflict
+      -- Check if shift is fully contained within exception availability window
+      IF v_start_time >= v_exception.start_time AND v_end_time <= v_exception.end_time THEN
+        -- Shift is fully within available window, no conflict
         RETURN;
       ELSE
         RETURN QUERY SELECT true, 'exception'::TEXT,
@@ -241,8 +241,8 @@ BEGIN
       RETURN QUERY SELECT true, 'recurring'::TEXT,
         'Employee is typically unavailable on this day of the week';
       RETURN;
-    ELSIF v_end_time <= v_availability.start_time OR v_start_time >= v_availability.end_time THEN
-      -- Shift is outside available window
+    ELSIF NOT (v_start_time >= v_availability.start_time AND v_end_time <= v_availability.end_time) THEN
+      -- Shift is not fully contained within available window
       RETURN QUERY SELECT true, 'recurring'::TEXT,
         'Shift is outside employee typical availability (' || 
         v_availability.start_time::TEXT || ' - ' || v_availability.end_time::TEXT || ')';

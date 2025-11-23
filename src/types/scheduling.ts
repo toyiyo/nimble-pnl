@@ -41,6 +41,10 @@ export interface Shift {
   recurrence_pattern?: RecurrencePattern | null;
   recurrence_parent_id?: string | null;
   is_recurring?: boolean;
+  published_at?: string | null;
+  published_by?: string | null;
+  is_published: boolean;
+  locked: boolean;
   created_at: string;
   updated_at: string;
   employee?: Employee; // Joined data
@@ -87,4 +91,34 @@ export interface LaborMetrics {
   totalCost: number; // In cents
   employeeCount: number;
   averageHourlyRate: number; // In cents
+}
+
+export interface SchedulePublication {
+  id: string;
+  restaurant_id: string;
+  week_start_date: string;
+  week_end_date: string;
+  published_by: string;
+  published_at: string;
+  shift_count: number;
+  notification_sent: boolean;
+  notes?: string;
+  created_at: string;
+}
+
+export type ChangeType = 'created' | 'updated' | 'deleted' | 'unpublished';
+
+export interface ScheduleChangeLog {
+  id: string;
+  restaurant_id: string;
+  shift_id?: string | null;
+  employee_id?: string | null;
+  change_type: ChangeType;
+  changed_by: string;
+  changed_at: string;
+  before_data?: Record<string, unknown> | null;
+  after_data?: Record<string, unknown> | null;
+  reason?: string;
+  created_at: string;
+  employee?: Employee; // Joined data
 }

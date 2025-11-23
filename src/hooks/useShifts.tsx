@@ -168,6 +168,19 @@ export const useUpdateShift = () => {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Shift> & { id: string }) => {
+      // Check if shift is locked before allowing update
+      const { data: existingShift, error: fetchError } = await supabase
+        .from('shifts')
+        .select('locked, is_published')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      if (existingShift.locked) {
+        throw new Error('Cannot update a locked shift. The schedule has been published.');
+      }
+
       // Remove employee data from updates if present
       const { employee, ...shiftUpdates } = updates as Partial<Shift>;
       
@@ -210,6 +223,19 @@ export const useDeleteShift = () => {
 
   return useMutation({
     mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
+      // Check if shift is locked before allowing deletion
+      const { data: existingShift, error: fetchError } = await supabase
+        .from('shifts')
+        .select('locked, is_published')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      if (existingShift.locked) {
+        throw new Error('Cannot delete a locked shift. The schedule has been published.');
+      }
+
       const { error } = await supabase
         .from('shifts')
         .delete()

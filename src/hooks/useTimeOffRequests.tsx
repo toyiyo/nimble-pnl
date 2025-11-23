@@ -36,11 +36,50 @@ export const useTimeOffRequests = (restaurantId: string | null) => {
 };
 
 export const useCreateTimeOffRequest = () => {
-  return useCreateEntity<TimeOffRequest>({
-    tableName: 'time_off_requests',
-    queryKey: 'time-off-requests',
-    entityName: 'Time-off request',
-    getRestaurantId: (data) => data.restaurant_id,
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (entity: Omit<TimeOffRequest, 'id' | 'created_at' | 'updated_at'>) => {
+      const { data, error } = await supabase
+        .from('time_off_requests')
+        .insert(entity)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as TimeOffRequest;
+    },
+    onSuccess: async (data) => {
+      // Invalidate queries
+      queryClient.invalidateQueries({ queryKey: ['time-off-requests', data.restaurant_id] });
+      
+      // Show success toast
+      toast({
+        title: 'Time-off request created',
+        description: 'The time-off request has been created successfully.',
+      });
+
+      // Send notification
+      try {
+        await supabase.functions.invoke('send-time-off-notification', {
+          body: {
+            timeOffRequestId: data.id,
+            action: 'created',
+          },
+        });
+      } catch (error) {
+        console.error('Failed to send notification:', error);
+        // Don't fail the mutation if notification fails
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error creating time-off request',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
   });
 };
 
@@ -80,12 +119,25 @@ const useReviewTimeOffRequest = (action: 'approved' | 'rejected') => {
       if (error) throw error;
       return data;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['time-off-requests', variables.restaurantId] });
       toast({
         title: `Time-off ${actionPastTense}`,
         description: `The time-off request has been ${actionPastTense}.`,
       });
+
+      // Send notification
+      try {
+        await supabase.functions.invoke('send-time-off-notification', {
+          body: {
+            timeOffRequestId: data.id,
+            action: action,
+          },
+        });
+      } catch (error) {
+        console.error('Failed to send notification:', error);
+        // Don't fail the mutation if notification fails
+      }
     },
     onError: (error: Error) => {
       toast({

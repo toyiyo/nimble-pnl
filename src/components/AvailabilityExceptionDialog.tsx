@@ -68,13 +68,21 @@ export const AvailabilityExceptionDialog = ({
       return;
     }
 
+    // Convert start/end times to UTC (HH:MM:SS in UTC)
+    const toUTC = (time: string) => {
+      const [h, m, s = '00'] = time.split(':');
+      const now = new Date();
+      now.setUTCHours(Number(h), Number(m), Number(s), 0);
+      return `${now.getUTCHours().toString().padStart(2, '0')}:${now.getUTCMinutes().toString().padStart(2, '0')}:${now.getUTCSeconds().toString().padStart(2, '0')}`;
+    };
+
     const exceptionData = {
       restaurant_id: restaurantId,
       employee_id: employeeId,
       date: format(date, 'yyyy-MM-dd'),
       is_available: isAvailable,
-      start_time: isAvailable ? `${startTime}:00` : undefined,
-      end_time: isAvailable ? `${endTime}:00` : undefined,
+      start_time: isAvailable ? toUTC(startTime) : undefined,
+      end_time: isAvailable ? toUTC(endTime) : undefined,
       reason: reason || undefined,
     };
 

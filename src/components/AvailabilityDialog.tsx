@@ -70,13 +70,22 @@ export const AvailabilityDialog = ({
       return;
     }
 
+    // Convert start/end times to UTC (HH:MM:SS in UTC)
+    const toUTC = (time: string) => {
+      // time: 'HH:MM' or 'HH:MM:SS'
+      const [h, m, s = '00'] = time.split(':');
+      const now = new Date();
+      now.setUTCHours(Number(h), Number(m), Number(s), 0);
+      return `${now.getUTCHours().toString().padStart(2, '0')}:${now.getUTCMinutes().toString().padStart(2, '0')}:${now.getUTCSeconds().toString().padStart(2, '0')}`;
+    };
+
     const availabilityData = {
       restaurant_id: restaurantId,
       employee_id: employeeId,
       day_of_week: dayOfWeek,
       is_available: isAvailable,
-      start_time: `${startTime}:00`,
-      end_time: `${endTime}:00`,
+      start_time: toUTC(startTime),
+      end_time: toUTC(endTime),
       notes: notes || undefined,
     };
 

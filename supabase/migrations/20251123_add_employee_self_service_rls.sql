@@ -148,7 +148,21 @@ CREATE OR REPLACE FUNCTION get_current_employee_id(p_restaurant_id UUID)
 RETURNS UUID AS $$
 DECLARE
   v_employee_id UUID;
+  v_has_access BOOLEAN;
 BEGIN
+  -- First verify user has access to this restaurant
+  SELECT EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_id = auth.uid()
+      AND restaurant_id = p_restaurant_id
+  ) INTO v_has_access;
+  
+  -- If no access, return NULL
+  IF NOT v_has_access THEN
+    RETURN NULL;
+  END IF;
+  
+  -- Get the employee ID for the current user
   SELECT id INTO v_employee_id
   FROM employees
   WHERE user_id = auth.uid()

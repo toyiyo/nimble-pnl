@@ -335,7 +335,7 @@ const EmployeePortal = () => {
                               Available
                             </Badge>
                             <span className="text-sm text-muted-foreground">
-                              {avail.start_time.substring(0, 5)} - {avail.end_time.substring(0, 5)}
+                              {formatTime(avail.start_time)} - {formatTime(avail.end_time)}
                             </span>
                           </div>
                         ) : (
@@ -412,7 +412,7 @@ const EmployeePortal = () => {
                             </Badge>
                             {exception.start_time && exception.end_time && (
                               <span className="text-sm text-muted-foreground">
-                                {exception.start_time.substring(0, 5)} - {exception.end_time.substring(0, 5)}
+                                {formatTime(exception.start_time)} - {formatTime(exception.end_time)}
                               </span>
                             )}
                           </div>

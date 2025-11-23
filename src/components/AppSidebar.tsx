@@ -107,6 +107,7 @@ export function AppSidebar() {
           label: 'Employee',
           items: [
             { path: '/employee/clock', label: 'Time Clock', icon: Clock },
+            { path: '/employee/portal', label: 'My Requests', icon: CalendarCheck },
           ],
         },
         {

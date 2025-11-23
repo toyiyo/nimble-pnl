@@ -34,6 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { formatTime } from '@/lib/utils';
 
 const EmployeePortal = () => {
   const { selectedRestaurant } = useRestaurantContext();

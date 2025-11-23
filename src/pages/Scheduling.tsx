@@ -6,8 +6,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useShifts, useDeleteShift } from '@/hooks/useShifts';
+import { useCopyPreviousWeek } from '@/hooks/useShiftTemplates';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { ShiftDialog } from '@/components/ShiftDialog';
+import { ShiftTemplatesManager } from '@/components/ShiftTemplatesManager';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Calendar, 
   Plus, 
@@ -19,6 +22,8 @@ import {
   ChevronLeft,
   ChevronRight,
   UserPlus,
+  Copy,
+  LayoutTemplate,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import { Employee, Shift } from '@/types/scheduling';
@@ -51,6 +56,7 @@ const Scheduling = () => {
   const { employees, loading: employeesLoading } = useEmployees(restaurantId);
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
   const deleteShift = useDeleteShift();
+  const copyPreviousWeek = useCopyPreviousWeek();
 
   const activeEmployees = employees.filter(emp => emp.status === 'active');
 
@@ -120,6 +126,15 @@ const Scheduling = () => {
         }
       );
     }
+  };
+
+  const handleCopyPreviousWeek = () => {
+    if (!restaurantId) return;
+    
+    copyPreviousWeek.mutate({
+      restaurantId,
+      targetWeekStart: currentWeekStart,
+    });
   };
 
   const getShiftsForDay = (day: Date) => {
@@ -207,165 +222,193 @@ const Scheduling = () => {
         </Card>
       </div>
 
-      {/* Week Navigation */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={handlePreviousWeek} aria-label="Previous week">
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" onClick={handleToday}>
-                Today
-              </Button>
-              <Button variant="outline" size="icon" onClick={handleNextWeek} aria-label="Next week">
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <div className="ml-4 text-lg font-semibold">
-                {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleAddEmployee}>
-                <UserPlus className="h-4 w-4 mr-2" />
-                Add Employee
-              </Button>
-              <Button onClick={() => handleAddShift()}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Shift
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
+      {/* Main Content with Tabs */}
+      <Tabs defaultValue="schedule" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="schedule">
+            <Calendar className="h-4 w-4 mr-2" />
+            Schedule
+          </TabsTrigger>
+          <TabsTrigger value="templates">
+            <LayoutTemplate className="h-4 w-4 mr-2" />
+            Templates
+          </TabsTrigger>
+        </TabsList>
 
-        <CardContent>
-          {employeesLoading || shiftsLoading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </div>
-          ) : activeEmployees.length === 0 ? (
-            <div className="text-center py-12">
-              <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No employees yet</h3>
-              <p className="text-muted-foreground mb-4">Get started by adding your first employee.</p>
-              <Button onClick={handleAddEmployee}>
-                <UserPlus className="h-4 w-4 mr-2" />
-                Add Employee
-              </Button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2 font-medium sticky left-0 bg-background">Employee</th>
-                    {weekDays.map((day) => (
-                      <th key={day.toISOString()} className="text-center p-2 font-medium min-w-[120px]">
-                        <div>{format(day, 'EEE')}</div>
-                        <div className="text-sm text-muted-foreground">{format(day, 'MMM d')}</div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeEmployees.map((employee) => (
-                    <tr key={employee.id} className="border-b hover:bg-muted/50 group">
-                      <td className="p-2 sticky left-0 bg-background">
-                        <div className="flex items-center gap-2 justify-between">
-                          <div>
-                            <div className="font-medium">{employee.name}</div>
-                            <div className="text-sm text-muted-foreground">{employee.position}</div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEditEmployee(employee)}
-                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                            aria-label={`Edit ${employee.name}`}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                      {weekDays.map((day) => {
-                        const dayShifts = getShiftsForEmployee(employee.id, day);
-                        return (
-                          <td key={day.toISOString()} className="p-2 align-top">
-                            <div className="space-y-1">
-                              {dayShifts.map((shift) => (
-                                <div
-                                  key={shift.id}
-                                  className="group relative p-2 rounded border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
-                                  onClick={() => handleEditShift(shift)}
-                                >
-                                  <div className="text-xs font-medium">
-                                    {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-                                    {format(parseISO(shift.end_time), 'h:mm a')}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">{shift.position}</div>
-                                  <Badge
-                                    variant={
-                                      shift.status === 'confirmed'
-                                        ? 'default'
-                                        : shift.status === 'cancelled'
-                                        ? 'destructive'
-                                        : 'outline'
-                                    }
-                                    className="mt-1 text-xs"
-                                  >
-                                    {shift.status}
-                                  </Badge>
-                                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleEditShift(shift);
-                                      }}
-                                      aria-label="Edit shift"
-                                    >
-                                      <Edit className="h-3 w-3" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteShift(shift);
-                                      }}
-                                      aria-label="Delete shift"
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
+        <TabsContent value="schedule" className="space-y-4">
+          {/* Week Navigation */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" onClick={handlePreviousWeek} aria-label="Previous week">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" onClick={handleToday}>
+                    Today
+                  </Button>
+                  <Button variant="outline" size="icon" onClick={handleNextWeek} aria-label="Next week">
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <div className="ml-4 text-lg font-semibold">
+                    {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
+                  </div>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <Button 
+                    variant="outline" 
+                    onClick={handleCopyPreviousWeek}
+                    disabled={copyPreviousWeek.isPending}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    {copyPreviousWeek.isPending ? 'Copying...' : 'Copy Previous Week'}
+                  </Button>
+                  <Button variant="outline" onClick={handleAddEmployee}>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Add Employee
+                  </Button>
+                  <Button onClick={() => handleAddShift()}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Shift
+                  </Button>
+                </div>
+              </div>
+                </CardHeader>
+
+            <CardContent>
+              {employeesLoading || shiftsLoading ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              ) : activeEmployees.length === 0 ? (
+                <div className="text-center py-12">
+                  <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No employees yet</h3>
+                  <p className="text-muted-foreground mb-4">Get started by adding your first employee.</p>
+                  <Button onClick={handleAddEmployee}>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Add Employee
+                  </Button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left p-2 font-medium sticky left-0 bg-background">Employee</th>
+                        {weekDays.map((day) => (
+                          <th key={day.toISOString()} className="text-center p-2 font-medium min-w-[120px]">
+                            <div>{format(day, 'EEE')}</div>
+                            <div className="text-sm text-muted-foreground">{format(day, 'MMM d')}</div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeEmployees.map((employee) => (
+                        <tr key={employee.id} className="border-b hover:bg-muted/50 group">
+                          <td className="p-2 sticky left-0 bg-background">
+                            <div className="flex items-center gap-2 justify-between">
+                              <div>
+                                <div className="font-medium">{employee.name}</div>
+                                <div className="text-sm text-muted-foreground">{employee.position}</div>
+                              </div>
                               <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full text-xs"
-                                onClick={() => handleAddShift(day)}
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleEditEmployee(employee)}
+                                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                                aria-label={`Edit ${employee.name}`}
                               >
-                                <Plus className="h-3 w-3 mr-1" />
-                                Add
+                                <Edit className="h-4 w-4" />
                               </Button>
                             </div>
                           </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                          {weekDays.map((day) => {
+                            const dayShifts = getShiftsForEmployee(employee.id, day);
+                            return (
+                              <td key={day.toISOString()} className="p-2 align-top">
+                                <div className="space-y-1">
+                                  {dayShifts.map((shift) => (
+                                    <div
+                                      key={shift.id}
+                                      className="group relative p-2 rounded border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+                                      onClick={() => handleEditShift(shift)}
+                                    >
+                                      <div className="text-xs font-medium">
+                                        {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
+                                        {format(parseISO(shift.end_time), 'h:mm a')}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">{shift.position}</div>
+                                      <Badge
+                                        variant={
+                                          shift.status === 'confirmed'
+                                            ? 'default'
+                                            : shift.status === 'cancelled'
+                                            ? 'destructive'
+                                            : 'outline'
+                                        }
+                                        className="mt-1 text-xs"
+                                      >
+                                        {shift.status}
+                                      </Badge>
+                                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-6 w-6"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleEditShift(shift);
+                                          }}
+                                          aria-label="Edit shift"
+                                        >
+                                          <Edit className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-6 w-6"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteShift(shift);
+                                          }}
+                                          aria-label="Delete shift"
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full text-xs"
+                                    onClick={() => handleAddShift(day)}
+                                  >
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Add
+                                  </Button>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                </table>
+              </div>
+            )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="templates">
+          {restaurantId && <ShiftTemplatesManager restaurantId={restaurantId} />}
+        </TabsContent>
+      </Tabs>
 
       {/* Dialogs */}
       {restaurantId && (

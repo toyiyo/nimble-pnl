@@ -3,11 +3,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useShifts, useDeleteShift } from '@/hooks/useShifts';
+import { useShiftNotifications } from '@/hooks/useShiftNotifications';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { ShiftDialog } from '@/components/ShiftDialog';
+import { ShiftOfferDialog } from '@/components/ShiftOfferDialog';
+import { OpenShiftDialog } from '@/components/OpenShiftDialog';
+import { ShiftMarketplace } from '@/components/ShiftMarketplace';
+import { ShiftApprovalWorkflow } from '@/components/ShiftApprovalWorkflow';
 import { 
   Calendar, 
   Plus, 
@@ -19,6 +25,10 @@ import {
   ChevronLeft,
   ChevronRight,
   UserPlus,
+  ArrowRightLeft,
+  CheckCircle,
+  Bell,
+  Share2,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import { Employee, Shift } from '@/types/scheduling';
@@ -40,19 +50,26 @@ const Scheduling = () => {
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
+  const [shiftOfferDialogOpen, setShiftOfferDialogOpen] = useState(false);
+  const [openShiftDialogOpen, setOpenShiftDialogOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>();
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
   const [defaultShiftDate, setDefaultShiftDate] = useState<Date | undefined>();
+  const [currentTab, setCurrentTab] = useState('schedule');
 
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
   const { employees, loading: employeesLoading } = useEmployees(restaurantId);
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
+  const { unreadCount } = useShiftNotifications(restaurantId, true);
   const deleteShift = useDeleteShift();
 
   const activeEmployees = employees.filter(emp => emp.status === 'active');
+  
+  // Get unique positions for open shift dialog
+  const uniquePositions = [...new Set(employees.map(emp => emp.position))].filter(Boolean);
 
   // Calculate labor metrics
   const calculateShiftHours = (shift: Shift) => {
@@ -103,6 +120,16 @@ const Scheduling = () => {
     setSelectedShift(shift);
     setDefaultShiftDate(undefined);
     setShiftDialogOpen(true);
+  };
+
+  const handleOfferShift = (shift: Shift) => {
+    setSelectedShift(shift);
+    setShiftOfferDialogOpen(true);
+  };
+
+  const handleCreateOpenShift = (date?: Date) => {
+    setDefaultShiftDate(date);
+    setOpenShiftDialogOpen(true);
   };
 
   const handleDeleteShift = (shift: Shift) => {
@@ -159,6 +186,30 @@ const Scheduling = () => {
         </CardHeader>
       </Card>
 
+      {/* Tabs for different views */}
+      <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="schedule">
+            <Calendar className="h-4 w-4 mr-2" />
+            Schedule
+          </TabsTrigger>
+          <TabsTrigger value="marketplace">
+            <ArrowRightLeft className="h-4 w-4 mr-2" />
+            Marketplace
+            {unreadCount > 0 && (
+              <Badge variant="destructive" className="ml-2">
+                {unreadCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="approvals">
+            <CheckCircle className="h-4 w-4 mr-2" />
+            Approvals
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Schedule Tab */}
+        <TabsContent value="schedule" className="space-y-6 mt-6">
       {/* Metrics Row */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -229,6 +280,10 @@ const Scheduling = () => {
               <Button variant="outline" onClick={handleAddEmployee}>
                 <UserPlus className="h-4 w-4 mr-2" />
                 Add Employee
+              </Button>
+              <Button variant="outline" onClick={() => handleCreateOpenShift()}>
+                <Share2 className="h-4 w-4 mr-2" />
+                Open Shift
               </Button>
               <Button onClick={() => handleAddShift()}>
                 <Plus className="h-4 w-4 mr-2" />
@@ -324,6 +379,19 @@ const Scheduling = () => {
                                       className="h-6 w-6"
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        handleOfferShift(shift);
+                                      }}
+                                      aria-label="Offer shift"
+                                      title="Offer shift for trade"
+                                    >
+                                      <ArrowRightLeft className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                         handleEditShift(shift);
                                       }}
                                       aria-label="Edit shift"
@@ -366,6 +434,21 @@ const Scheduling = () => {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        {/* Marketplace Tab */}
+        <TabsContent value="marketplace" className="mt-6">
+          <ShiftMarketplace
+            restaurantId={restaurantId}
+            currentEmployeeId={activeEmployees[0]?.id || ''}
+          />
+        </TabsContent>
+
+        {/* Approvals Tab */}
+        <TabsContent value="approvals" className="mt-6">
+          <ShiftApprovalWorkflow restaurantId={restaurantId} />
+        </TabsContent>
+      </Tabs>
 
       {/* Dialogs */}
       {restaurantId && (
@@ -382,6 +465,20 @@ const Scheduling = () => {
             shift={selectedShift}
             restaurantId={restaurantId}
             defaultDate={defaultShiftDate}
+          />
+          <ShiftOfferDialog
+            open={shiftOfferDialogOpen}
+            onOpenChange={setShiftOfferDialogOpen}
+            shift={selectedShift!}
+            employeeId={selectedShift?.employee_id || ''}
+            restaurantId={restaurantId}
+          />
+          <OpenShiftDialog
+            open={openShiftDialogOpen}
+            onOpenChange={setOpenShiftDialogOpen}
+            restaurantId={restaurantId}
+            defaultDate={defaultShiftDate}
+            availablePositions={uniquePositions}
           />
         </>
       )}

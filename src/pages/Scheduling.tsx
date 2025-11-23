@@ -3,11 +3,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useShifts, useDeleteShift } from '@/hooks/useShifts';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { ShiftDialog } from '@/components/ShiftDialog';
+import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
+import { TimeOffList } from '@/components/TimeOffList';
+import { AvailabilityDialog } from '@/components/AvailabilityDialog';
+import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionDialog';
 import { 
   Calendar, 
   Plus, 
@@ -19,6 +24,8 @@ import {
   ChevronLeft,
   ChevronRight,
   UserPlus,
+  CalendarClock,
+  CalendarX,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import { Employee, Shift } from '@/types/scheduling';
@@ -40,6 +47,9 @@ const Scheduling = () => {
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
+  const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
+  const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
+  const [exceptionDialogOpen, setExceptionDialogOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>();
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
@@ -207,8 +217,26 @@ const Scheduling = () => {
         </Card>
       </div>
 
-      {/* Week Navigation */}
-      <Card>
+      {/* Tabs for Schedule, Time-Off, and Availability */}
+      <Tabs defaultValue="schedule" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="schedule">
+            <Calendar className="h-4 w-4 mr-2" />
+            Schedule
+          </TabsTrigger>
+          <TabsTrigger value="timeoff">
+            <CalendarX className="h-4 w-4 mr-2" />
+            Time-Off
+          </TabsTrigger>
+          <TabsTrigger value="availability">
+            <CalendarClock className="h-4 w-4 mr-2" />
+            Availability
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="schedule">
+          {/* Week Navigation */}
+          <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -366,6 +394,55 @@ const Scheduling = () => {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        {/* Time-Off Tab */}
+        <TabsContent value="timeoff">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Time-Off Requests</CardTitle>
+                <Button onClick={() => setTimeOffDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Request
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {restaurantId && <TimeOffList restaurantId={restaurantId} />}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Availability Tab */}
+        <TabsContent value="availability">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Employee Availability</CardTitle>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setExceptionDialogOpen(true)}>
+                    <CalendarX className="h-4 w-4 mr-2" />
+                    Add Exception
+                  </Button>
+                  <Button onClick={() => setAvailabilityDialogOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Set Availability
+                  </Button>
+                </div>
+              </div>
+              <CardDescription>
+                Manage recurring weekly availability and one-time exceptions
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Set employee availability preferences to automatically detect scheduling conflicts.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Dialogs */}
       {restaurantId && (
@@ -382,6 +459,21 @@ const Scheduling = () => {
             shift={selectedShift}
             restaurantId={restaurantId}
             defaultDate={defaultShiftDate}
+          />
+          <TimeOffRequestDialog
+            open={timeOffDialogOpen}
+            onOpenChange={setTimeOffDialogOpen}
+            restaurantId={restaurantId}
+          />
+          <AvailabilityDialog
+            open={availabilityDialogOpen}
+            onOpenChange={setAvailabilityDialogOpen}
+            restaurantId={restaurantId}
+          />
+          <AvailabilityExceptionDialog
+            open={exceptionDialogOpen}
+            onOpenChange={setExceptionDialogOpen}
+            restaurantId={restaurantId}
           />
         </>
       )}

@@ -65,7 +65,27 @@ export const usePublishSchedule = () => {
 
       if (error) throw error;
       
-      return { publicationId: data, restaurantId };
+      const publicationId = data;
+
+      // Send push notifications asynchronously (don't await)
+      supabase.functions
+        .invoke('notify-schedule-published', {
+          body: {
+            publicationId,
+            restaurantId,
+            weekStart: weekStartStr,
+            weekEnd: weekEndStr,
+          },
+        })
+        .then((result) => {
+          if (result.error) {
+            console.error('Failed to send notifications:', result.error);
+          } else {
+            console.log('Notifications sent:', result.data);
+          }
+        });
+      
+      return { publicationId, restaurantId };
     },
     onSuccess: ({ restaurantId }) => {
       // Invalidate relevant queries

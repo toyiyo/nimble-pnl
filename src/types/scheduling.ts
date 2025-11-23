@@ -88,3 +88,39 @@ export interface LaborMetrics {
   employeeCount: number;
   averageHourlyRate: number; // In cents
 }
+
+export interface EmployeeAvailability {
+  id: string;
+  restaurant_id: string;
+  employee_id: string;
+  day_of_week: number; // 0 = Sunday, 6 = Saturday
+  start_time: string; // TIME format (HH:MM:SS)
+  end_time: string; // TIME format (HH:MM:SS)
+  is_available: boolean;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AvailabilityException {
+  id: string;
+  restaurant_id: string;
+  employee_id: string;
+  date: string; // DATE format (YYYY-MM-DD)
+  start_time?: string; // TIME format (HH:MM:SS) - null if unavailable all day
+  end_time?: string; // TIME format (HH:MM:SS) - null if unavailable all day
+  is_available: boolean; // false for unavailable, true for available with specific hours
+  reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConflictCheck {
+  has_conflict: boolean;
+  conflict_type?: 'recurring' | 'exception' | 'time-off';
+  message?: string;
+  time_off_id?: string;
+  start_date?: string;
+  end_date?: string;
+  status?: string;
+}

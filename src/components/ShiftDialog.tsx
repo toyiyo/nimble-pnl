@@ -53,7 +53,8 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
   const createShift = useCreateShift();
   const updateShift = useUpdateShift();
 
-  // Check for conflicts when employee and times are selected
+  // Check for time-off and availability conflicts when employee and shift times are selected
+  // This provides real-time feedback before the user submits the form
   const conflictParams = useMemo(() => {
     if (!employeeId || !startDate || !startTime || !endDate || !endTime) {
       return null;

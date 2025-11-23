@@ -9,6 +9,20 @@ interface ConflictCheckParams {
   endTime: string; // ISO timestamp
 }
 
+interface TimeOffConflictResponse {
+  has_conflict: boolean;
+  time_off_id: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+}
+
+interface AvailabilityConflictResponse {
+  has_conflict: boolean;
+  conflict_type: 'recurring' | 'exception';
+  message: string;
+}
+
 export const useCheckConflicts = (params: ConflictCheckParams | null) => {
   const { data, isLoading, error } = useQuery({
     queryKey: ['conflict-check', params?.employeeId, params?.startTime, params?.endTime],
@@ -28,7 +42,7 @@ export const useCheckConflicts = (params: ConflictCheckParams | null) => {
       if (timeOffError) throw timeOffError;
 
       if (timeOffConflicts && timeOffConflicts.length > 0) {
-        timeOffConflicts.forEach((conflict: any) => {
+        timeOffConflicts.forEach((conflict: TimeOffConflictResponse) => {
           conflicts.push({
             has_conflict: true,
             conflict_type: 'time-off',
@@ -53,7 +67,7 @@ export const useCheckConflicts = (params: ConflictCheckParams | null) => {
       if (availError) throw availError;
 
       if (availabilityConflicts && availabilityConflicts.length > 0) {
-        availabilityConflicts.forEach((conflict: any) => {
+        availabilityConflicts.forEach((conflict: AvailabilityConflictResponse) => {
           conflicts.push({
             has_conflict: true,
             conflict_type: conflict.conflict_type,

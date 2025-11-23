@@ -3,16 +3,15 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar as CalendarIcon, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { useEmployees } from '@/hooks/useEmployees';
 import { useCreateTimeOffRequest, useUpdateTimeOffRequest } from '@/hooks/useTimeOffRequests';
 import { TimeOffRequest } from '@/types/scheduling';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { EmployeeSelector } from './scheduling/EmployeeSelector';
 
 interface TimeOffRequestDialogProps {
   open: boolean;
@@ -32,11 +31,8 @@ export const TimeOffRequestDialog = ({
   const [endDate, setEndDate] = useState<Date | undefined>();
   const [reason, setReason] = useState('');
 
-  const { employees } = useEmployees(restaurantId);
   const createRequest = useCreateTimeOffRequest();
   const updateRequest = useUpdateTimeOffRequest();
-
-  const activeEmployees = employees.filter(emp => emp.status === 'active');
 
   useEffect(() => {
     if (request) {
@@ -99,25 +95,12 @@ export const TimeOffRequestDialog = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="employee">Employee *</Label>
-            <Select
-              value={employeeId}
-              onValueChange={setEmployeeId}
-              disabled={!!request}
-            >
-              <SelectTrigger id="employee">
-                <SelectValue placeholder="Select an employee" />
-              </SelectTrigger>
-              <SelectContent>
-                {activeEmployees.map((employee) => (
-                  <SelectItem key={employee.id} value={employee.id}>
-                    {employee.name} - {employee.position}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <EmployeeSelector
+            restaurantId={restaurantId}
+            value={employeeId}
+            onValueChange={setEmployeeId}
+            disabled={!!request}
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

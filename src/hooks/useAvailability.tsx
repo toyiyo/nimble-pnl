@@ -1,7 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
-import { useToast } from '@/hooks/use-toast';
+import { useCreateEntity, useUpdateEntity, useDeleteEntity } from './useCRUDEntity';
 
 // Hook for managing recurring availability
 export const useEmployeeAvailability = (restaurantId: string | null, employeeId?: string) => {
@@ -38,98 +38,29 @@ export const useEmployeeAvailability = (restaurantId: string | null, employeeId?
 };
 
 export const useCreateAvailability = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async (availability: Omit<EmployeeAvailability, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase
-        .from('employee_availability')
-        .insert(availability)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['employee-availability', data.restaurant_id] });
-      toast({
-        title: 'Availability saved',
-        description: 'Employee availability has been updated.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error saving availability',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+  return useCreateEntity<EmployeeAvailability>({
+    tableName: 'employee_availability',
+    queryKey: 'employee-availability',
+    entityName: 'Availability',
+    getRestaurantId: (data) => data.restaurant_id,
   });
 };
 
 export const useUpdateAvailability = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<EmployeeAvailability> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('employee_availability')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['employee-availability', data.restaurant_id] });
-      toast({
-        title: 'Availability updated',
-        description: 'Employee availability has been updated.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error updating availability',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+  return useUpdateEntity<EmployeeAvailability>({
+    tableName: 'employee_availability',
+    queryKey: 'employee-availability',
+    entityName: 'Availability',
+    getRestaurantId: (data) => data.restaurant_id,
   });
 };
 
 export const useDeleteAvailability = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
-      const { error } = await supabase
-        .from('employee_availability')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      return { id, restaurantId };
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['employee-availability', data.restaurantId] });
-      toast({
-        title: 'Availability deleted',
-        description: 'Employee availability has been removed.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error deleting availability',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+  return useDeleteEntity<EmployeeAvailability>({
+    tableName: 'employee_availability',
+    queryKey: 'employee-availability',
+    entityName: 'Availability',
+    getRestaurantId: (data) => data.restaurant_id,
   });
 };
 
@@ -168,97 +99,28 @@ export const useAvailabilityExceptions = (restaurantId: string | null, employeeI
 };
 
 export const useCreateAvailabilityException = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async (exception: Omit<AvailabilityException, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase
-        .from('availability_exceptions')
-        .insert(exception)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['availability-exceptions', data.restaurant_id] });
-      toast({
-        title: 'Exception saved',
-        description: 'Availability exception has been added.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error saving exception',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+  return useCreateEntity<AvailabilityException>({
+    tableName: 'availability_exceptions',
+    queryKey: 'availability-exceptions',
+    entityName: 'Exception',
+    getRestaurantId: (data) => data.restaurant_id,
   });
 };
 
 export const useUpdateAvailabilityException = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<AvailabilityException> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('availability_exceptions')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['availability-exceptions', data.restaurant_id] });
-      toast({
-        title: 'Exception updated',
-        description: 'Availability exception has been updated.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error updating exception',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+  return useUpdateEntity<AvailabilityException>({
+    tableName: 'availability_exceptions',
+    queryKey: 'availability-exceptions',
+    entityName: 'Exception',
+    getRestaurantId: (data) => data.restaurant_id,
   });
 };
 
 export const useDeleteAvailabilityException = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
-      const { error } = await supabase
-        .from('availability_exceptions')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      return { id, restaurantId };
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['availability-exceptions', data.restaurantId] });
-      toast({
-        title: 'Exception deleted',
-        description: 'Availability exception has been removed.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error deleting exception',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+  return useDeleteEntity<AvailabilityException>({
+    tableName: 'availability_exceptions',
+    queryKey: 'availability-exceptions',
+    entityName: 'Exception',
+    getRestaurantId: (data) => data.restaurant_id,
   });
 };

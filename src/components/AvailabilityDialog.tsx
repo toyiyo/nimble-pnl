@@ -5,11 +5,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Input } from '@/components/ui/input';
-import { Clock } from 'lucide-react';
-import { useEmployees } from '@/hooks/useEmployees';
 import { useCreateAvailability, useUpdateAvailability } from '@/hooks/useAvailability';
 import { EmployeeAvailability } from '@/types/scheduling';
+import { EmployeeSelector } from './scheduling/EmployeeSelector';
+import { TimeInput } from './scheduling/TimeInput';
 
 interface AvailabilityDialogProps {
   open: boolean;
@@ -41,11 +40,8 @@ export const AvailabilityDialog = ({
   const [endTime, setEndTime] = useState('17:00');
   const [notes, setNotes] = useState('');
 
-  const { employees } = useEmployees(restaurantId);
   const createAvailability = useCreateAvailability();
   const updateAvailability = useUpdateAvailability();
-
-  const activeEmployees = employees.filter(emp => emp.status === 'active');
 
   useEffect(() => {
     if (availability) {
@@ -115,25 +111,12 @@ export const AvailabilityDialog = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="employee">Employee *</Label>
-            <Select
-              value={employeeId}
-              onValueChange={setEmployeeId}
-              disabled={!!availability}
-            >
-              <SelectTrigger id="employee">
-                <SelectValue placeholder="Select an employee" />
-              </SelectTrigger>
-              <SelectContent>
-                {activeEmployees.map((employee) => (
-                  <SelectItem key={employee.id} value={employee.id}>
-                    {employee.name} - {employee.position}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <EmployeeSelector
+            restaurantId={restaurantId}
+            value={employeeId}
+            onValueChange={setEmployeeId}
+            disabled={!!availability}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="day-of-week">Day of Week *</Label>
@@ -167,33 +150,18 @@ export const AvailabilityDialog = ({
 
           {isAvailable && (
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="start-time">Start Time *</Label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="start-time"
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="end-time">End Time *</Label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="end-time"
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
+              <TimeInput
+                id="start-time"
+                label="Start Time"
+                value={startTime}
+                onChange={setStartTime}
+              />
+              <TimeInput
+                id="end-time"
+                label="End Time"
+                value={endTime}
+                onChange={setEndTime}
+              />
             </div>
           )}
 

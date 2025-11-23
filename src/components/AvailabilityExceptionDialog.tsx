@@ -3,17 +3,16 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Input } from '@/components/ui/input';
-import { Calendar as CalendarIcon, Clock } from 'lucide-react';
+import { Calendar as CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { useEmployees } from '@/hooks/useEmployees';
 import { useCreateAvailabilityException, useUpdateAvailabilityException } from '@/hooks/useAvailability';
 import { AvailabilityException } from '@/types/scheduling';
+import { EmployeeSelector } from './scheduling/EmployeeSelector';
+import { TimeInput } from './scheduling/TimeInput';
 
 interface AvailabilityExceptionDialogProps {
   open: boolean;
@@ -35,11 +34,8 @@ export const AvailabilityExceptionDialog = ({
   const [endTime, setEndTime] = useState('17:00');
   const [reason, setReason] = useState('');
 
-  const { employees } = useEmployees(restaurantId);
   const createException = useCreateAvailabilityException();
   const updateException = useUpdateAvailabilityException();
-
-  const activeEmployees = employees.filter(emp => emp.status === 'active');
 
   useEffect(() => {
     if (exception) {
@@ -113,25 +109,12 @@ export const AvailabilityExceptionDialog = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="employee">Employee *</Label>
-            <Select
-              value={employeeId}
-              onValueChange={setEmployeeId}
-              disabled={!!exception}
-            >
-              <SelectTrigger id="employee">
-                <SelectValue placeholder="Select an employee" />
-              </SelectTrigger>
-              <SelectContent>
-                {activeEmployees.map((employee) => (
-                  <SelectItem key={employee.id} value={employee.id}>
-                    {employee.name} - {employee.position}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <EmployeeSelector
+            restaurantId={restaurantId}
+            value={employeeId}
+            onValueChange={setEmployeeId}
+            disabled={!!exception}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="date">Date *</Label>
@@ -174,33 +157,18 @@ export const AvailabilityExceptionDialog = ({
 
           {isAvailable && (
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="start-time">Start Time *</Label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="start-time"
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="end-time">End Time *</Label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="end-time"
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
+              <TimeInput
+                id="start-time"
+                label="Start Time"
+                value={startTime}
+                onChange={setStartTime}
+              />
+              <TimeInput
+                id="end-time"
+                label="End Time"
+                value={endTime}
+                onChange={setEndTime}
+              />
             </div>
           )}
 

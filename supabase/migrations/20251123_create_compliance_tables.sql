@@ -153,6 +153,15 @@ CREATE OR REPLACE FUNCTION check_shift_compliance(
   p_start_time TIMESTAMP WITH TIME ZONE,
   p_end_time TIMESTAMP WITH TIME ZONE
 ) RETURNS JSONB AS $$
+-- Function to validate a shift against all enabled compliance rules for a restaurant.
+-- Parameters:
+--   p_shift_id: The shift ID being validated (null for new shifts)
+--   p_restaurant_id: The restaurant ID to check rules for
+--   p_employee_id: The employee ID being scheduled
+--   p_start_time: Shift start timestamp
+--   p_end_time: Shift end timestamp
+-- Returns: JSONB array of violation objects with structure:
+--   [{rule_type, severity, message, ...additional_details}]
 DECLARE
   v_violations JSONB := '[]'::JSONB;
   v_rule RECORD;
@@ -160,6 +169,7 @@ DECLARE
   v_shift_duration_hours NUMERIC;
   v_previous_shift RECORD;
   v_age INTEGER;
+  v_hours_between NUMERIC;
 BEGIN
   -- Get employee details
   SELECT * INTO v_employee FROM employees WHERE id = p_employee_id;
@@ -224,22 +234,18 @@ BEGIN
       LIMIT 1;
       
       IF v_previous_shift.id IS NOT NULL THEN
-        DECLARE
-          v_hours_between NUMERIC;
-        BEGIN
-          v_hours_between := EXTRACT(EPOCH FROM (p_start_time - v_previous_shift.end_time)) / 3600.0;
-          
-          IF v_hours_between < (v_rule.rule_config->>'min_hours_between_shifts')::NUMERIC THEN
-            v_violations := v_violations || jsonb_build_object(
-              'rule_type', v_rule.rule_type,
-              'severity', 'error',
-              'message', format('Insufficient rest period: %.1f hours < %s hours required', 
-                               v_hours_between, v_rule.rule_config->>'min_hours_between_shifts'),
-              'previous_shift_end', v_previous_shift.end_time,
-              'hours_between', v_hours_between
-            );
-          END IF;
-        END;
+        v_hours_between := EXTRACT(EPOCH FROM (p_start_time - v_previous_shift.end_time)) / 3600.0;
+        
+        IF v_hours_between < (v_rule.rule_config->>'min_hours_between_shifts')::NUMERIC THEN
+          v_violations := v_violations || jsonb_build_object(
+            'rule_type', v_rule.rule_type,
+            'severity', 'error',
+            'message', format('Insufficient rest period: %.1f hours < %s hours required', 
+                             v_hours_between, v_rule.rule_config->>'min_hours_between_shifts'),
+            'previous_shift_end', v_previous_shift.end_time,
+            'hours_between', v_hours_between
+          );
+        END IF;
       END IF;
     END IF;
   END LOOP;

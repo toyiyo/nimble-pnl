@@ -8,6 +8,9 @@ import {
   ViolationDetails 
 } from '@/types/compliance';
 
+// Cache configuration
+const COMPLIANCE_CACHE_STALE_TIME = 30000; // 30 seconds
+
 // Fetch compliance rules for a restaurant
 export const useComplianceRules = (restaurantId: string | null) => {
   const { data, isLoading, error } = useQuery({
@@ -25,7 +28,7 @@ export const useComplianceRules = (restaurantId: string | null) => {
       return data as ComplianceRule[];
     },
     enabled: !!restaurantId,
-    staleTime: 30000,
+    staleTime: COMPLIANCE_CACHE_STALE_TIME,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
@@ -231,7 +234,7 @@ export const useComplianceViolations = (
       return data as ComplianceViolation[];
     },
     enabled: !!restaurantId,
-    staleTime: 30000,
+    staleTime: COMPLIANCE_CACHE_STALE_TIME,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });

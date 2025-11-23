@@ -119,7 +119,8 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
         });
       }
     }
-  }, [employeeId, startDate, startTime, endDate, endTime, restaurantId]);
+  }, [employeeId, startDate, startTime, endDate, endTime, restaurantId, shift?.id]);
+  // Note: checkCompliance is stable from useMutation and doesn't need to be in deps
 
   const saveShift = (override: boolean = false) => {
     const parsedBreak = parseInt(breakDuration, 10);

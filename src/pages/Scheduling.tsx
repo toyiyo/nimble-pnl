@@ -10,12 +10,17 @@ import { useEmployees } from '@/hooks/useEmployees';
 import { useShifts, useDeleteShift } from '@/hooks/useShifts';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
+import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
 import { TimeOffList } from '@/components/TimeOffList';
 import { AvailabilityDialog } from '@/components/AvailabilityDialog';
 import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionDialog';
+import { ScheduleStatusBadge } from '@/components/ScheduleStatusBadge';
+import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
+import { ChangeLogDialog } from '@/components/ChangeLogDialog';
+import { Unlock, Send } from 'lucide-react';
 import { 
   Calendar, 
   Plus, 

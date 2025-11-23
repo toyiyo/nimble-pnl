@@ -75,7 +75,7 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
     };
   }, [employeeId, restaurantId, startDate, startTime, endDate, endTime]);
 
-  const { conflicts, hasConflicts, loading: conflictsLoading } = useCheckConflicts(conflictParams);
+  const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);
 
   useEffect(() => {
     if (shift) {
@@ -346,8 +346,14 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
                 <AlertDescription>
                   <div className="space-y-1">
                     <p className="font-semibold">Scheduling conflicts detected:</p>
-                    {conflicts.map((conflict, index) => (
-                      <p key={index} className="text-sm">• {conflict.message}</p>
+                    {conflicts.map((conflict) => {
+                      const conflictKey = conflict.time_off_id
+                        ? `timeoff-${conflict.time_off_id}`
+                        : `${conflict.conflict_type}-${conflict.message}`;
+                      return (
+                        <p key={conflictKey} className="text-sm">• {conflict.message}</p>
+                      );
+                    })}
                     ))}
                   </div>
                 </AlertDescription>

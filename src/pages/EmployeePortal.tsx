@@ -145,6 +145,238 @@ const EmployeePortal = () => {
 
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+  const renderTimeOffContent = () => {
+    if (requestsLoading) {
+      return (
+        <div className="space-y-2">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+      );
+    }
+
+    if (myTimeOffRequests.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <CalendarX className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No Time-Off Requests</h3>
+          <p className="text-muted-foreground mb-4">You haven't submitted any time-off requests yet.</p>
+          <Button onClick={handleNewTimeOffRequest}>
+            <Plus className="mr-2 h-4 w-4" />
+            Request Time Off
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {myTimeOffRequests.map((request) => (
+          <Card key={request.id} className="hover:bg-accent/5 transition-colors">
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge
+                      variant={
+                        request.status === 'approved'
+                          ? 'default'
+                          : request.status === 'rejected'
+                          ? 'destructive'
+                          : 'outline'
+                      }
+                      className={
+                        request.status === 'approved'
+                          ? 'bg-green-500/10 text-green-700 border-green-500/20'
+                          : ''
+                      }
+                    >
+                      {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="font-medium">
+                      {format(new Date(request.start_date), 'MMM d, yyyy')} -{' '}
+                      {format(new Date(request.end_date), 'MMM d, yyyy')}
+                    </p>
+                    {request.reason && (
+                      <p className="text-sm text-muted-foreground">{request.reason}</p>
+                    )}
+                    {request.reviewed_at && (
+                      <p className="text-xs text-muted-foreground">
+                        Reviewed on {format(new Date(request.reviewed_at), 'MMM d, yyyy')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {request.status === 'pending' && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEditTimeOffRequest(request)}
+                        aria-label="Edit request"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteTimeOffRequest(request)}
+                        aria-label="Delete request"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  };
+
+  const renderAvailabilityContent = () => {
+    if (availabilityLoading) {
+      return (
+        <div className="space-y-2">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      );
+    }
+
+    if (availability.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <CalendarClock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No Availability Set</h3>
+          <p className="text-muted-foreground mb-4">
+            Set your regular weekly availability to help with scheduling.
+          </p>
+          <Button onClick={handleNewAvailability}>
+            <Plus className="mr-2 h-4 w-4" />
+            Set Availability
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        {availability.map((avail) => (
+          <div
+            key={avail.id}
+            className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-24 font-medium">{daysOfWeek[avail.day_of_week]}</div>
+              {avail.is_available ? (
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
+                    Available
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    {formatTime(avail.start_time)} - {formatTime(avail.end_time)}
+                  </span>
+                </div>
+              ) : (
+                <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/20">
+                  Unavailable
+                </Badge>
+              )}
+              {avail.notes && (
+                <span className="text-sm text-muted-foreground">({avail.notes})</span>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleEditAvailability(avail)}
+              aria-label="Edit availability"
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderExceptionContent = () => {
+    if (exceptionsLoading) {
+      return (
+        <div className="space-y-2">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      );
+    }
+
+    if (exceptions.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <CalendarX className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No Exceptions</h3>
+          <p className="text-muted-foreground mb-4">
+            Add exceptions for specific dates when your availability differs from your regular schedule.
+          </p>
+          <Button onClick={handleNewException}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Exception
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        {exceptions.map((exception) => (
+          <div
+            key={exception.id}
+            className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-32 font-medium">
+                {format(new Date(exception.date), 'MMM d, yyyy')}
+              </div>
+              {exception.is_available ? (
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
+                    Available
+                  </Badge>
+                  {exception.start_time && exception.end_time && (
+                    <span className="text-sm text-muted-foreground">
+                      {formatTime(exception.start_time)} - {formatTime(exception.end_time)}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/20">
+                  Unavailable
+                </Badge>
+              )}
+              {exception.reason && (
+                <span className="text-sm text-muted-foreground">({exception.reason})</span>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleEditException(exception)}
+              aria-label="Edit exception"
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -192,89 +424,7 @@ const EmployeePortal = () => {
               </div>
             </CardHeader>
             <CardContent>
-              {requestsLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-24 w-full" />
-                  <Skeleton className="h-24 w-full" />
-                </div>
-              ) : myTimeOffRequests.length === 0 ? (
-                <div className="text-center py-12">
-                  <CalendarX className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Time-Off Requests</h3>
-                  <p className="text-muted-foreground mb-4">You haven't submitted any time-off requests yet.</p>
-                  <Button onClick={handleNewTimeOffRequest}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Request Time Off
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {myTimeOffRequests.map((request) => (
-                    <Card key={request.id} className="hover:bg-accent/5 transition-colors">
-                      <CardContent className="pt-6">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge
-                                variant={
-                                  request.status === 'approved'
-                                    ? 'default'
-                                    : request.status === 'rejected'
-                                    ? 'destructive'
-                                    : 'outline'
-                                }
-                                className={
-                                  request.status === 'approved'
-                                    ? 'bg-green-500/10 text-green-700 border-green-500/20'
-                                    : ''
-                                }
-                              >
-                                {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                              </Badge>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="font-medium">
-                                {format(new Date(request.start_date), 'MMM d, yyyy')} -{' '}
-                                {format(new Date(request.end_date), 'MMM d, yyyy')}
-                              </p>
-                              {request.reason && (
-                                <p className="text-sm text-muted-foreground">{request.reason}</p>
-                              )}
-                              {request.reviewed_at && (
-                                <p className="text-xs text-muted-foreground">
-                                  Reviewed on {format(new Date(request.reviewed_at), 'MMM d, yyyy')}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            {request.status === 'pending' && (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleEditTimeOffRequest(request)}
-                                  aria-label="Edit request"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleDeleteTimeOffRequest(request)}
-                                  aria-label="Delete request"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
+              {renderTimeOffContent()}
             </CardContent>
           </Card>
 
@@ -304,62 +454,7 @@ const EmployeePortal = () => {
               </div>
             </CardHeader>
             <CardContent>
-              {availabilityLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-16 w-full" />
-                  <Skeleton className="h-16 w-full" />
-                </div>
-              ) : availability.length === 0 ? (
-                <div className="text-center py-12">
-                  <CalendarClock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Availability Set</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Set your regular weekly availability to help with scheduling.
-                  </p>
-                  <Button onClick={handleNewAvailability}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Set Availability
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {availability.map((avail) => (
-                    <div
-                      key={avail.id}
-                      className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-24 font-medium">{daysOfWeek[avail.day_of_week]}</div>
-                        {avail.is_available ? (
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
-                              Available
-                            </Badge>
-                            <span className="text-sm text-muted-foreground">
-                              {formatTime(avail.start_time)} - {formatTime(avail.end_time)}
-                            </span>
-                          </div>
-                        ) : (
-                          <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/20">
-                            Unavailable
-                          </Badge>
-                        )}
-                        {avail.notes && (
-                          <span className="text-sm text-muted-foreground">({avail.notes})</span>
-                        )}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEditAvailability(avail)}
-                        aria-label="Edit availability"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {renderAvailabilityContent()}
             </CardContent>
           </Card>
 
@@ -378,66 +473,7 @@ const EmployeePortal = () => {
               </div>
             </CardHeader>
             <CardContent>
-              {exceptionsLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-16 w-full" />
-                  <Skeleton className="h-16 w-full" />
-                </div>
-              ) : exceptions.length === 0 ? (
-                <div className="text-center py-12">
-                  <CalendarX className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Exceptions</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Add exceptions for specific dates when your availability differs from your regular schedule.
-                  </p>
-                  <Button onClick={handleNewException}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Exception
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {exceptions.map((exception) => (
-                    <div
-                      key={exception.id}
-                      className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-32 font-medium">
-                          {format(new Date(exception.date), 'MMM d, yyyy')}
-                        </div>
-                        {exception.is_available ? (
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
-                              Available
-                            </Badge>
-                            {exception.start_time && exception.end_time && (
-                              <span className="text-sm text-muted-foreground">
-                                {formatTime(exception.start_time)} - {formatTime(exception.end_time)}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/20">
-                            Unavailable
-                          </Badge>
-                        )}
-                        {exception.reason && (
-                          <span className="text-sm text-muted-foreground">({exception.reason})</span>
-                        )}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEditException(exception)}
-                        aria-label="Edit exception"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {renderExceptionContent()}
             </CardContent>
           </Card>
 

@@ -134,7 +134,7 @@ export const AvailabilityDialog = ({
             <Label htmlFor="day-of-week">Day of Week *</Label>
             <Select
               value={dayOfWeek.toString()}
-              onValueChange={(value) => setDayOfWeek(parseInt(value))}
+              onValueChange={(value) => setDayOfWeek(Number.parseInt(value))}
             >
               <SelectTrigger id="day-of-week">
                 <SelectValue />

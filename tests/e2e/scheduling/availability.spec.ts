@@ -6,7 +6,6 @@ import { getNextDayOfWeek, formatDateForInput, getDaysFromNow } from '../../help
 
 test.describe('Employee Availability', () => {
   let testUserId: string;
-  let testRestaurantId: string;
   const testEmail = `test-availability-${Date.now()}@example.com`;
   const testPassword = 'TestPassword123!';
 
@@ -14,7 +13,7 @@ test.describe('Employee Availability', () => {
     // Setup test user and restaurant
     const user = await createTestUser(testEmail, testPassword, 'Test User');
     testUserId = user.id;
-    testRestaurantId = await createTestRestaurant(testUserId, 'Test Restaurant');
+    await createTestRestaurant(testUserId, 'Test Restaurant');
   });
 
   test.afterAll(async () => {

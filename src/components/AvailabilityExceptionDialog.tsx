@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { zonedTimeToUtc } from 'date-fns-tz';
+import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -39,6 +41,9 @@ export const AvailabilityExceptionDialog = ({
   const createException = useCreateAvailabilityException();
   const updateException = useUpdateAvailabilityException();
 
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+
   useEffect(() => {
     if (exception) {
       setEmployeeId(exception.employee_id);
@@ -61,6 +66,15 @@ export const AvailabilityExceptionDialog = ({
     }
   }, [exception, open, defaultEmployeeId]);
 
+  const toUTC = (time: string) => {
+    if (!date) return '';
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const zoned = zonedTimeToUtc(`${dateStr}T${time}:00`, restaurantTimezone);
+    return `${zoned.getUTCHours().toString().padStart(2, '0')}:${zoned.getUTCMinutes().toString().padStart(2, '0')}:${zoned.getUTCSeconds().toString().padStart(2, '0')}`;
+  };
+
+  const formatDateToUTC = (value: Date) => zonedTimeToUtc(value, restaurantTimezone).toISOString().substring(0, 10);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -68,18 +82,10 @@ export const AvailabilityExceptionDialog = ({
       return;
     }
 
-    // Convert start/end times to UTC (HH:MM:SS in UTC)
-    const toUTC = (time: string) => {
-      const [h, m, s = '00'] = time.split(':');
-      const now = new Date();
-      now.setUTCHours(Number(h), Number(m), Number(s), 0);
-      return `${now.getUTCHours().toString().padStart(2, '0')}:${now.getUTCMinutes().toString().padStart(2, '0')}:${now.getUTCSeconds().toString().padStart(2, '0')}`;
-    };
-
     const exceptionData = {
       restaurant_id: restaurantId,
       employee_id: employeeId,
-      date: format(date, 'yyyy-MM-dd'),
+      date: formatDateToUTC(date),
       is_available: isAvailable,
       start_time: isAvailable ? toUTC(startTime) : undefined,
       end_time: isAvailable ? toUTC(endTime) : undefined,
@@ -128,9 +134,7 @@ export const AvailabilityExceptionDialog = ({
 
           <div className="space-y-2">
             <Label htmlFor="date">Date *</Label>
-            import { useState, useEffect } from 'react';
-            import { useRestaurantContext } from '@/contexts/RestaurantContext';
-            import { zonedTimeToUtc } from 'date-fns-tz';
+            <Popover>
               <PopoverTrigger asChild>
                 <Button
                   id="date"
@@ -146,8 +150,6 @@ export const AvailabilityExceptionDialog = ({
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
-                const { selectedRestaurant } = useRestaurantContext();
-                const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
                 <Calendar
                   mode="single"
                   selected={date}
@@ -191,7 +193,7 @@ export const AvailabilityExceptionDialog = ({
             <Textarea
               id="reason"
               value={reason}
-                    date: zonedTimeToUtc(date, restaurantTimezone).toISOString().substring(0, 10),
+              onChange={(e) => setReason(e.target.value)}
               placeholder="Enter reason for this exception..."
               rows={2}
             />

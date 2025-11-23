@@ -128,7 +128,9 @@ export const AvailabilityExceptionDialog = ({
 
           <div className="space-y-2">
             <Label htmlFor="date">Date *</Label>
-            <Popover>
+            import { useState, useEffect } from 'react';
+            import { useRestaurantContext } from '@/contexts/RestaurantContext';
+            import { zonedTimeToUtc } from 'date-fns-tz';
               <PopoverTrigger asChild>
                 <Button
                   id="date"
@@ -144,6 +146,8 @@ export const AvailabilityExceptionDialog = ({
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
+                const { selectedRestaurant } = useRestaurantContext();
+                const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
                 <Calendar
                   mode="single"
                   selected={date}
@@ -187,7 +191,7 @@ export const AvailabilityExceptionDialog = ({
             <Textarea
               id="reason"
               value={reason}
-              onChange={(e) => setReason(e.target.value)}
+                    date: zonedTimeToUtc(date, restaurantTimezone).toISOString().substring(0, 10),
               placeholder="Enter reason for this exception..."
               rows={2}
             />

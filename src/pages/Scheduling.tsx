@@ -148,12 +148,15 @@ const Scheduling = () => {
   // Component to render shift card with conflict detection
   const ShiftCard = ({ shift }: { shift: Shift }) => {
 
-    // Format start and end times as UTC for SQL TIME comparison
-    const formatUTCWithSeconds = (isoString: string) => {
+    // Convert shift times from restaurant timezone to UTC for SQL comparison
+    const { selectedRestaurant } = useRestaurantContext();
+    const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+    const formatToUTC = (isoString: string) => {
       const date = new Date(isoString);
-      // Get UTC components
+      // Convert to UTC using restaurant timezone
+      const utcDate = zonedTimeToUtc(date, restaurantTimezone);
       const pad = (n: number) => n.toString().padStart(2, '0');
-      return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
+      return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;
     };
 
     // Debug: log parameters sent to SQL function
@@ -174,8 +177,8 @@ const Scheduling = () => {
     const conflictParams = useMemo(() => ({
   employeeId: shift.employee_id,
   restaurantId: shift.restaurant_id,
-  startTime: formatUTCWithSeconds(shift.start_time),
-  endTime: formatUTCWithSeconds(shift.end_time),
+  startTime: formatToUTC(shift.start_time),
+  endTime: formatToUTC(shift.end_time),
     }), [shift]);
 
     const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);

@@ -1,4 +1,8 @@
 import { useState, useEffect } from 'react';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { zonedTimeToUtc } from 'date-fns-tz';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { zonedTimeToUtc } from 'date-fns-tz';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -63,20 +67,22 @@ export const AvailabilityDialog = ({
     }
   }, [availability, open, defaultEmployeeId]);
 
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!employeeId) return;
 
-    if (!employeeId) {
-      return;
-    }
-
-    // Convert start/end times to UTC (HH:MM:SS in UTC)
+    // Convert local time (restaurant timezone) to UTC string (HH:MM:SS)
     const toUTC = (time: string) => {
-      // time: 'HH:MM' or 'HH:MM:SS'
-      const [h, m, s = '00'] = time.split(':');
-      const now = new Date();
-      now.setUTCHours(Number(h), Number(m), Number(s), 0);
-      return `${now.getUTCHours().toString().padStart(2, '0')}:${now.getUTCMinutes().toString().padStart(2, '0')}:${now.getUTCSeconds().toString().padStart(2, '0')}`;
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${(today.getMonth()+1).toString().padStart(2,'0')}-${today.getDate().toString().padStart(2,'0')}T${time}:00`;
+      const utcDate = zonedTimeToUtc(dateStr, restaurantTimezone);
+      return `${utcDate.getUTCHours().toString().padStart(2, '0')}:${utcDate.getUTCMinutes().toString().padStart(2, '0')}:${utcDate.getUTCSeconds().toString().padStart(2, '0')}`;
     };
 
     const availabilityData = {

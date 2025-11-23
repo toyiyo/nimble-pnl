@@ -30,16 +30,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { usePurchaseOrders } from '@/hooks/usePurchaseOrders';
@@ -85,8 +75,6 @@ export const PurchaseOrderEditor: React.FC = () => {
   const [lines, setLines] = useState<PurchaseOrderLine[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [changeSupplierDialog, setChangeSupplierDialog] = useState(false);
-  const [pendingSupplierId, setPendingSupplierId] = useState<string>('');
 
   const isNew = poId === 'new';
   const isEditing = !isNew;
@@ -133,14 +121,9 @@ export const PurchaseOrderEditor: React.FC = () => {
     return supplier?.name || 'Unknown';
   };
 
-  // Filter products by selected supplier (if any) and search
+  // Filter products by search term and category
   const availableProducts = useMemo(() => {
     let filtered = products;
-
-    // Filter by supplier if one is selected
-    if (supplierId) {
-      filtered = filtered.filter((p) => p.supplier_id === supplierId);
-    }
 
     // Filter by search term
     if (searchTerm) {
@@ -158,49 +141,18 @@ export const PurchaseOrderEditor: React.FC = () => {
     }
 
     return filtered;
-  }, [products, supplierId, searchTerm, selectedCategory]);
+  }, [products, searchTerm, selectedCategory]);
 
-  // Get unique categories (all or filtered by supplier)
+  // Get unique categories from all products
   const categories = useMemo(() => {
-    const filteredProducts = supplierId 
-      ? products.filter((p) => p.supplier_id === supplierId && p.category)
-      : products.filter((p) => p.category);
+    const filteredProducts = products.filter((p) => p.category);
     const cats = new Set(filteredProducts.map((p) => p.category!));
     return Array.from(cats).sort();
-  }, [products, supplierId]);
+  }, [products]);
 
-  // Handle supplier change
+  // Handle supplier change (simplified - no clearing of items)
   const handleSupplierChange = (newSupplierId: string) => {
-    if (lines.length > 0 && supplierId !== newSupplierId) {
-      setPendingSupplierId(newSupplierId);
-      setChangeSupplierDialog(true);
-    } else {
-      setSupplierId(newSupplierId);
-    }
-  };
-
-  const confirmSupplierChange = async () => {
-    setSupplierId(pendingSupplierId);
-
-    // For existing POs, also clear persisted lines from backend
-    if (isEditing && po) {
-      const persistedLines = lines.filter((line) => !line.id.startsWith('temp-'));
-      if (persistedLines.length > 0) {
-        try {
-          await Promise.all(persistedLines.map((line) => deleteLineItem(line.id)));
-        } catch (error) {
-          console.error('Error clearing lines on supplier change:', error);
-          toast({
-            title: 'Warning',
-            description: 'Failed to clear some items. Please refresh and try again.',
-            variant: 'destructive',
-          });
-        }
-      }
-    }
-
-    setLines([]);
-    setChangeSupplierDialog(false);
+    setSupplierId(newSupplierId);
   };
 
   // Add item to PO
@@ -217,16 +169,8 @@ export const PurchaseOrderEditor: React.FC = () => {
       return;
     }
 
-    // Get supplier from the product
-    const itemSupplierId = product.supplier_id;
-    if (!itemSupplierId) {
-      toast({
-        title: 'No supplier',
-        description: 'This product does not have a supplier assigned',
-        variant: 'destructive',
-      });
-      return;
-    }
+    // Get supplier from the product (can be null)
+    const itemSupplierId = product.supplier_id || null;
 
     const newLine: Partial<PurchaseOrderLine> = {
       product_id: product.id,
@@ -522,12 +466,13 @@ export const PurchaseOrderEditor: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Supplier Selector */}
             <div className="space-y-2">
-              <Label htmlFor="supplier">Supplier *</Label>
+              <Label htmlFor="supplier">Primary Supplier (optional)</Label>
               <Select value={supplierId} onValueChange={handleSupplierChange} disabled={suppliersLoading}>
                 <SelectTrigger id="supplier">
-                  <SelectValue placeholder="Select supplier" />
+                  <SelectValue placeholder="Select primary supplier" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="">None</SelectItem>
                   {suppliers.map((supplier) => (
                     <SelectItem key={supplier.id} value={supplier.id}>
                       {supplier.name}
@@ -644,9 +589,15 @@ export const PurchaseOrderEditor: React.FC = () => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {getSupplierName(line.supplier_id)}
-                          </Badge>
+                          {line.supplier_id ? (
+                            <Badge variant="outline" className="text-xs">
+                              {getSupplierName(line.supplier_id)}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                              No supplier
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell>{line.unit_label}</TableCell>
                         <TableCell>
@@ -716,7 +667,7 @@ export const PurchaseOrderEditor: React.FC = () => {
           <Card className="sticky top-6">
             <CardHeader>
               <CardTitle>Add Items</CardTitle>
-              <CardDescription>Search and add products to the order</CardDescription>
+              <CardDescription>Search and add products from any supplier</CardDescription>
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="search" className="w-full">
@@ -768,11 +719,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                       <div className="text-center py-8">
                         <Package className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                         <p className="text-sm text-muted-foreground">
-                          {searchTerm 
-                            ? 'No products found' 
-                            : supplierId 
-                              ? 'No products available for this supplier' 
-                              : 'No products available'}
+                          {searchTerm ? 'No products found' : 'No products available'}
                         </p>
                       </div>
                     ) : (
@@ -784,15 +731,19 @@ export const PurchaseOrderEditor: React.FC = () => {
                                 className="p-3 border rounded-lg space-y-2 hover:bg-muted/50 transition-colors"
                               >
                                 <div className="flex items-start justify-between">
-                                  <div className="flex-1 min-w-0">
+                                   <div className="flex-1 min-w-0">
                                     <p className="font-medium truncate">{product.name}</p>
                                     {product.sku && (
                                       <p className="text-xs text-muted-foreground">SKU: {product.sku}</p>
                                     )}
                                     <div className="flex gap-1 mt-1 flex-wrap">
-                                      {product.supplier_id && (
+                                      {product.supplier_id ? (
                                         <Badge variant="secondary" className="text-xs">
                                           {getSupplierName(product.supplier_id)}
+                                        </Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="text-xs text-muted-foreground">
+                                          No supplier
                                         </Badge>
                                       )}
                                       {product.category && (
@@ -849,21 +800,6 @@ export const PurchaseOrderEditor: React.FC = () => {
         </div>
       </div>
 
-      {/* Change Supplier Confirmation Dialog */}
-      <AlertDialog open={changeSupplierDialog} onOpenChange={setChangeSupplierDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Change Supplier?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Changing the supplier will clear the current items. Do you want to continue?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmSupplierChange}>Change Supplier & Clear Items</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

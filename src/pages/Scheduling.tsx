@@ -1,13 +1,20 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useShifts, useDeleteShift } from '@/hooks/useShifts';
+import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { ShiftDialog } from '@/components/ShiftDialog';
+import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
+import { TimeOffList } from '@/components/TimeOffList';
+import { AvailabilityDialog } from '@/components/AvailabilityDialog';
+import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionDialog';
 import { 
   Calendar, 
   Plus, 
@@ -19,9 +26,13 @@ import {
   ChevronLeft,
   ChevronRight,
   UserPlus,
+  CalendarClock,
+  CalendarX,
+  AlertTriangle,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
-import { Employee, Shift } from '@/types/scheduling';
+import * as dateFnsTz from 'date-fns-tz';
+import { Employee, Shift, ConflictCheck } from '@/types/scheduling';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +44,112 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+type ShiftCardProps = {
+  shift: Shift;
+  onEdit: (shift: Shift) => void;
+  onDelete: (shift: Shift) => void;
+};
+
+const buildConflictKey = (conflict: ConflictCheck) =>
+  conflict.time_off_id ? `timeoff-${conflict.time_off_id}` : `${conflict.conflict_type}-${conflict.message}`;
+
+const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const { zonedTimeToUtc } = dateFnsTz;
+
+  const formatToUTC = (isoString: string) => {
+    const date = new Date(isoString);
+    const converter = zonedTimeToUtc ?? ((value: Date) => value);
+    const utcDate = converter(date, restaurantTimezone);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;
+  };
+
+  const conflictParams = useMemo(() => ({
+    employeeId: shift.employee_id,
+    restaurantId: shift.restaurant_id,
+    startTime: formatToUTC(shift.start_time),
+    endTime: formatToUTC(shift.end_time),
+  }), [shift, restaurantTimezone]);
+
+  const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className={`group relative p-2 rounded border transition-colors cursor-pointer ${
+              hasConflicts 
+                ? 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100' 
+                : 'bg-card hover:bg-accent/50'
+            }`}
+            onClick={() => onEdit(shift)}
+          >
+            {hasConflicts && (
+              <AlertTriangle className="absolute top-1 left-1 h-3 w-3 text-yellow-600" />
+            )}
+            <div className="text-xs font-medium">
+              {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
+              {format(parseISO(shift.end_time), 'h:mm a')}
+            </div>
+            <div className="text-xs text-muted-foreground">{shift.position}</div>
+            <Badge
+              variant={
+                shift.status === 'confirmed'
+                  ? 'default'
+                  : shift.status === 'cancelled'
+                  ? 'destructive'
+                  : 'outline'
+              }
+              className="mt-1 text-xs"
+            >
+              {shift.status}
+            </Badge>
+            <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(shift);
+                }}
+                aria-label="Edit shift"
+              >
+                <Edit className="h-3 w-3" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(shift);
+                }}
+                aria-label="Delete shift"
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        </TooltipTrigger>
+        {hasConflicts && (
+          <TooltipContent side="top" className="max-w-xs">
+            <div className="space-y-1">
+              <p className="font-semibold text-xs">Conflicts:</p>
+              {conflicts.map((conflict) => (
+                <p key={buildConflictKey(conflict)} className="text-xs">• {conflict.message}</p>
+              ))}
+            </div>
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
 const Scheduling = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
@@ -40,6 +157,9 @@ const Scheduling = () => {
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
+  const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
+  const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
+  const [exceptionDialogOpen, setExceptionDialogOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>();
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
@@ -207,8 +327,26 @@ const Scheduling = () => {
         </Card>
       </div>
 
-      {/* Week Navigation */}
-      <Card>
+      {/* Tabs for Schedule, Time-Off, and Availability */}
+      <Tabs defaultValue="schedule" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="schedule">
+            <Calendar className="h-4 w-4 mr-2" />
+            Schedule
+          </TabsTrigger>
+          <TabsTrigger value="timeoff">
+            <CalendarX className="h-4 w-4 mr-2" />
+            Time-Off
+          </TabsTrigger>
+          <TabsTrigger value="availability">
+            <CalendarClock className="h-4 w-4 mr-2" />
+            Availability
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="schedule">
+          {/* Week Navigation */}
+          <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -295,55 +433,12 @@ const Scheduling = () => {
                           <td key={day.toISOString()} className="p-2 align-top">
                             <div className="space-y-1">
                               {dayShifts.map((shift) => (
-                                <div
+                                <ShiftCard
                                   key={shift.id}
-                                  className="group relative p-2 rounded border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
-                                  onClick={() => handleEditShift(shift)}
-                                >
-                                  <div className="text-xs font-medium">
-                                    {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-                                    {format(parseISO(shift.end_time), 'h:mm a')}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">{shift.position}</div>
-                                  <Badge
-                                    variant={
-                                      shift.status === 'confirmed'
-                                        ? 'default'
-                                        : shift.status === 'cancelled'
-                                        ? 'destructive'
-                                        : 'outline'
-                                    }
-                                    className="mt-1 text-xs"
-                                  >
-                                    {shift.status}
-                                  </Badge>
-                                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleEditShift(shift);
-                                      }}
-                                      aria-label="Edit shift"
-                                    >
-                                      <Edit className="h-3 w-3" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteShift(shift);
-                                      }}
-                                      aria-label="Delete shift"
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </div>
+                                  shift={shift}
+                                  onEdit={handleEditShift}
+                                  onDelete={handleDeleteShift}
+                                />
                               ))}
                               <Button
                                 variant="outline"
@@ -366,6 +461,55 @@ const Scheduling = () => {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        {/* Time-Off Tab */}
+        <TabsContent value="timeoff">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Time-Off Requests</CardTitle>
+                <Button onClick={() => setTimeOffDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Request
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {restaurantId && <TimeOffList restaurantId={restaurantId} />}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Availability Tab */}
+        <TabsContent value="availability">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Employee Availability</CardTitle>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setExceptionDialogOpen(true)}>
+                    <CalendarX className="h-4 w-4 mr-2" />
+                    Add Exception
+                  </Button>
+                  <Button onClick={() => setAvailabilityDialogOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Set Availability
+                  </Button>
+                </div>
+              </div>
+              <CardDescription>
+                Manage recurring weekly availability and one-time exceptions
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Set employee availability preferences to automatically detect scheduling conflicts.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Dialogs */}
       {restaurantId && (
@@ -382,6 +526,21 @@ const Scheduling = () => {
             shift={selectedShift}
             restaurantId={restaurantId}
             defaultDate={defaultShiftDate}
+          />
+          <TimeOffRequestDialog
+            open={timeOffDialogOpen}
+            onOpenChange={setTimeOffDialogOpen}
+            restaurantId={restaurantId}
+          />
+          <AvailabilityDialog
+            open={availabilityDialogOpen}
+            onOpenChange={setAvailabilityDialogOpen}
+            restaurantId={restaurantId}
+          />
+          <AvailabilityExceptionDialog
+            open={exceptionDialogOpen}
+            onOpenChange={setExceptionDialogOpen}
+            restaurantId={restaurantId}
           />
         </>
       )}

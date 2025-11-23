@@ -1,3 +1,5 @@
+// sonar.duplication.exclusions: This E2E test file contains intentional duplication
+// for test setup, login flows, and UI interactions which is standard in E2E testing.
 import { test, expect } from '@playwright/test';
 import { createTestUser, createTestRestaurant, cleanupTestUser } from '../../helpers/auth';
 import { getNextDayOfWeek, formatDateForInput, getDaysFromNow } from '../../helpers/dateUtils';

@@ -93,32 +93,50 @@ export interface LaborMetrics {
   averageHourlyRate: number; // In cents
 }
 
-export interface SchedulePublication {
+export interface EmployeeAvailability {
   id: string;
   restaurant_id: string;
-  week_start_date: string;
-  week_end_date: string;
-  published_by: string;
-  published_at: string;
-  shift_count: number;
-  notification_sent: boolean;
+  employee_id: string;
+  day_of_week: number; // 0 = Sunday, 6 = Saturday
+  start_time: string; // TIME format (HH:MM:SS)
+  end_time: string; // TIME format (HH:MM:SS)
+  is_available: boolean;
   notes?: string;
   created_at: string;
+  updated_at: string;
 }
 
-export type ChangeType = 'created' | 'updated' | 'deleted' | 'unpublished';
-
-export interface ScheduleChangeLog {
+export interface AvailabilityException {
   id: string;
   restaurant_id: string;
-  shift_id?: string | null;
-  employee_id?: string | null;
-  change_type: ChangeType;
-  changed_by: string;
-  changed_at: string;
-  before_data?: Record<string, unknown> | null;
-  after_data?: Record<string, unknown> | null;
+  employee_id: string;
+  date: string; // DATE format (YYYY-MM-DD)
+  start_time?: string; // TIME format (HH:MM:SS) - null if unavailable all day
+  end_time?: string; // TIME format (HH:MM:SS) - null if unavailable all day
+  is_available: boolean; // false for unavailable, true for available with specific hours
   reason?: string;
   created_at: string;
-  employee?: Employee; // Joined data
+  updated_at: string;
+}
+
+export interface ConflictCheck {
+  has_conflict: boolean;
+  conflict_type?: 'recurring' | 'exception' | 'time-off';
+  message?: string;
+  time_off_id?: string;
+  start_date?: string;
+  end_date?: string;
+  status?: string;
+}
+
+export interface NotificationSettings {
+  id: string;
+  restaurant_id: string;
+  notify_time_off_request: boolean;
+  notify_time_off_approved: boolean;
+  notify_time_off_rejected: boolean;
+  time_off_notify_managers: boolean;
+  time_off_notify_employee: boolean;
+  created_at: string;
+  updated_at: string;
 }

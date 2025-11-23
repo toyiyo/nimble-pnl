@@ -5,12 +5,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Shift, RecurrencePattern, RecurrenceType } from '@/types/scheduling';
 import { useCreateShift, useUpdateShift } from '@/hooks/useShifts';
 import { useEmployees } from '@/hooks/useEmployees';
+import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { format, getDay } from 'date-fns';
 import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
 import { getRecurrencePresetsForDate, getRecurrenceDescription } from '@/utils/recurrenceUtils';
+import { AlertTriangle } from 'lucide-react';
 
 interface ShiftDialogProps {
   open: boolean;
@@ -49,6 +52,30 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
   const { employees } = useEmployees(restaurantId);
   const createShift = useCreateShift();
   const updateShift = useUpdateShift();
+
+  // Check for time-off and availability conflicts when employee and shift times are selected
+  // This provides real-time feedback before the user submits the form
+  const conflictParams = useMemo(() => {
+    if (!employeeId || !startDate || !startTime || !endDate || !endTime) {
+      return null;
+    }
+    
+    const startDateTime = new Date(`${startDate}T${startTime}`);
+    const endDateTime = new Date(`${endDate}T${endTime}`);
+    
+    if (endDateTime <= startDateTime) {
+      return null;
+    }
+
+    return {
+      employeeId,
+      restaurantId,
+      startTime: startDateTime.toISOString(),
+      endTime: endDateTime.toISOString(),
+    };
+  }, [employeeId, restaurantId, startDate, startTime, endDate, endTime]);
+
+  const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);
 
   useEffect(() => {
     if (shift) {
@@ -340,6 +367,26 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
                 </Select>
               </div>
             </div>
+
+            {/* Conflict Warnings */}
+            {hasConflicts && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="space-y-1">
+                    <p className="font-semibold">Scheduling conflicts detected:</p>
+                    {conflicts.map((conflict) => {
+                      const conflictKey = conflict.time_off_id
+                        ? `timeoff-${conflict.time_off_id}`
+                        : `${conflict.conflict_type}-${conflict.message}`;
+                      return (
+                        <p key={conflictKey} className="text-sm">• {conflict.message}</p>
+                      );
+                    })}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* Recurrence Selection - Only show for new shifts */}
             {!shift && (

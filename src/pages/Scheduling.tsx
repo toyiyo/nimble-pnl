@@ -5,12 +5,14 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useShifts, useDeleteShift } from '@/hooks/useShifts';
-import { useCopyPreviousWeek } from '@/hooks/useShiftTemplates';
+import { useShifts, useDeleteShift, useUpdateShift } from '@/hooks/useShifts';
+import { useCopyPreviousWeek, useBulkDeleteShifts } from '@/hooks/useShiftTemplates';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import { ShiftTemplatesManager } from '@/components/ShiftTemplatesManager';
+import { DroppableScheduleCell } from '@/components/DroppableScheduleCell';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DndContext, DragEndEvent, DragOverlay, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { 
   Calendar, 
   Plus, 
@@ -24,6 +26,7 @@ import {
   UserPlus,
   Copy,
   LayoutTemplate,
+  X,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import { Employee, Shift } from '@/types/scheduling';
@@ -49,6 +52,8 @@ const Scheduling = () => {
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
   const [defaultShiftDate, setDefaultShiftDate] = useState<Date | undefined>();
+  const [selectedShifts, setSelectedShifts] = useState<Set<string>>(new Set());
+  const [activeShift, setActiveShift] = useState<Shift | null>(null);
 
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
@@ -56,7 +61,18 @@ const Scheduling = () => {
   const { employees, loading: employeesLoading } = useEmployees(restaurantId);
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
   const deleteShift = useDeleteShift();
+  const updateShift = useUpdateShift();
   const copyPreviousWeek = useCopyPreviousWeek();
+  const bulkDeleteShifts = useBulkDeleteShifts();
+
+  // Configure drag sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px of movement required before drag starts
+      },
+    })
+  );
 
   const activeEmployees = employees.filter(emp => emp.status === 'active');
 
@@ -134,6 +150,89 @@ const Scheduling = () => {
     copyPreviousWeek.mutate({
       restaurantId,
       targetWeekStart: currentWeekStart,
+    });
+  };
+
+  const handleSelectShift = (shift: Shift, isMultiSelect: boolean) => {
+    setSelectedShifts(prev => {
+      const newSet = new Set(prev);
+      if (isMultiSelect) {
+        // Toggle selection
+        if (newSet.has(shift.id)) {
+          newSet.delete(shift.id);
+        } else {
+          newSet.add(shift.id);
+        }
+      } else {
+        // Single selection
+        newSet.clear();
+        newSet.add(shift.id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedShifts(new Set());
+  };
+
+  const handleBulkDelete = () => {
+    if (!restaurantId || selectedShifts.size === 0) return;
+    
+    bulkDeleteShifts.mutate(
+      { shiftIds: Array.from(selectedShifts), restaurantId },
+      {
+        onSuccess: () => {
+          setSelectedShifts(new Set());
+        },
+      }
+    );
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveShift(null);
+
+    if (!over || !restaurantId) return;
+
+    const activeShift = shifts.find(s => s.id === active.id);
+    if (!activeShift) return;
+
+    // Parse the drop target data
+    const overData = over.data.current as { employeeId: string; date: string } | undefined;
+    if (!overData) return;
+
+    const { employeeId: newEmployeeId, date: newDateStr } = overData;
+    const newDate = new Date(newDateStr);
+
+    // Check if anything changed
+    const oldDate = new Date(activeShift.start_time);
+    const isSameEmployee = activeShift.employee_id === newEmployeeId;
+    const isSameDate = isSameDay(oldDate, newDate);
+
+    if (isSameEmployee && isSameDate) return;
+
+    // Calculate new start and end times
+    const startTime = new Date(activeShift.start_time);
+    const endTime = new Date(activeShift.end_time);
+    
+    const newStartTime = new Date(newDate);
+    newStartTime.setHours(startTime.getHours(), startTime.getMinutes(), startTime.getSeconds());
+    
+    const newEndTime = new Date(newDate);
+    newEndTime.setHours(endTime.getHours(), endTime.getMinutes(), endTime.getSeconds());
+
+    // Update the shift
+    updateShift.mutate({
+      id: activeShift.id,
+      employee_id: newEmployeeId,
+      start_time: newStartTime.toISOString(),
+      end_time: newEndTime.toISOString(),
+      restaurant_id: activeShift.restaurant_id,
+      break_duration: activeShift.break_duration,
+      position: activeShift.position,
+      status: activeShift.status,
+      notes: activeShift.notes,
     });
   };
 
@@ -255,6 +354,31 @@ const Scheduling = () => {
                   </div>
                 </div>
                 <div className="flex gap-2 flex-wrap">
+                  {selectedShifts.size > 0 && (
+                    <>
+                      <Badge variant="secondary" className="flex items-center gap-2">
+                        {selectedShifts.size} selected
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4 p-0 hover:bg-transparent"
+                          onClick={handleClearSelection}
+                          aria-label="Clear selection"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </Badge>
+                      <Button 
+                        variant="destructive"
+                        size="sm"
+                        onClick={handleBulkDelete}
+                        disabled={bulkDeleteShifts.isPending}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete Selected
+                      </Button>
+                    </>
+                  )}
                   <Button 
                     variant="outline" 
                     onClick={handleCopyPreviousWeek}
@@ -273,7 +397,7 @@ const Scheduling = () => {
                   </Button>
                 </div>
               </div>
-                </CardHeader>
+            </CardHeader>
 
             <CardContent>
               {employeesLoading || shiftsLoading ? (
@@ -293,114 +417,67 @@ const Scheduling = () => {
                   </Button>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-2 font-medium sticky left-0 bg-background">Employee</th>
-                        {weekDays.map((day) => (
-                          <th key={day.toISOString()} className="text-center p-2 font-medium min-w-[120px]">
-                            <div>{format(day, 'EEE')}</div>
-                            <div className="text-sm text-muted-foreground">{format(day, 'MMM d')}</div>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeEmployees.map((employee) => (
-                        <tr key={employee.id} className="border-b hover:bg-muted/50 group">
-                          <td className="p-2 sticky left-0 bg-background">
-                            <div className="flex items-center gap-2 justify-between">
-                              <div>
-                                <div className="font-medium">{employee.name}</div>
-                                <div className="text-sm text-muted-foreground">{employee.position}</div>
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleEditEmployee(employee)}
-                                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                                aria-label={`Edit ${employee.name}`}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </td>
-                          {weekDays.map((day) => {
-                            const dayShifts = getShiftsForEmployee(employee.id, day);
-                            return (
-                              <td key={day.toISOString()} className="p-2 align-top">
-                                <div className="space-y-1">
-                                  {dayShifts.map((shift) => (
-                                    <div
-                                      key={shift.id}
-                                      className="group relative p-2 rounded border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
-                                      onClick={() => handleEditShift(shift)}
-                                    >
-                                      <div className="text-xs font-medium">
-                                        {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-                                        {format(parseISO(shift.end_time), 'h:mm a')}
-                                      </div>
-                                      <div className="text-xs text-muted-foreground">{shift.position}</div>
-                                      <Badge
-                                        variant={
-                                          shift.status === 'confirmed'
-                                            ? 'default'
-                                            : shift.status === 'cancelled'
-                                            ? 'destructive'
-                                            : 'outline'
-                                        }
-                                        className="mt-1 text-xs"
-                                      >
-                                        {shift.status}
-                                      </Badge>
-                                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                                        <Button
-                                          size="icon"
-                                          variant="ghost"
-                                          className="h-6 w-6"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleEditShift(shift);
-                                          }}
-                                          aria-label="Edit shift"
-                                        >
-                                          <Edit className="h-3 w-3" />
-                                        </Button>
-                                        <Button
-                                          size="icon"
-                                          variant="ghost"
-                                          className="h-6 w-6"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteShift(shift);
-                                          }}
-                                          aria-label="Delete shift"
-                                        >
-                                          <Trash2 className="h-3 w-3" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ))}
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="w-full text-xs"
-                                    onClick={() => handleAddShift(day)}
-                                  >
-                                    <Plus className="h-3 w-3 mr-1" />
-                                    Add
-                                  </Button>
-                                </div>
-                              </td>
-                            );
-                          })}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left p-2 font-medium sticky left-0 bg-background">Employee</th>
+                          {weekDays.map((day) => (
+                            <th key={day.toISOString()} className="text-center p-2 font-medium min-w-[120px]">
+                              <div>{format(day, 'EEE')}</div>
+                              <div className="text-sm text-muted-foreground">{format(day, 'MMM d')}</div>
+                            </th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                </table>
-              </div>
-            )}
+                      </thead>
+                      <tbody>
+                        {activeEmployees.map((employee) => (
+                          <tr key={employee.id} className="border-b hover:bg-muted/50 group">
+                            <td className="p-2 sticky left-0 bg-background">
+                              <div className="flex items-center gap-2 justify-between">
+                                <div>
+                                  <div className="font-medium">{employee.name}</div>
+                                  <div className="text-sm text-muted-foreground">{employee.position}</div>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEditEmployee(employee)}
+                                  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  aria-label={`Edit ${employee.name}`}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                            {weekDays.map((day) => {
+                              const dayShifts = getShiftsForEmployee(employee.id, day);
+                              return (
+                                <DroppableScheduleCell
+                                  key={day.toISOString()}
+                                  employeeId={employee.id}
+                                  date={day}
+                                  shifts={dayShifts}
+                                  onAddShift={handleAddShift}
+                                  onEditShift={handleEditShift}
+                                  onDeleteShift={handleDeleteShift}
+                                  selectedShifts={selectedShifts}
+                                  onSelectShift={handleSelectShift}
+                                />
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </DndContext>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

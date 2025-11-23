@@ -284,3 +284,89 @@ export const useCopyPreviousWeek = () => {
     },
   });
 };
+
+export const useBulkUpdateShifts = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({
+      shiftIds,
+      updates,
+      restaurantId,
+    }: {
+      shiftIds: string[];
+      updates: Partial<Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>>;
+      restaurantId: string;
+    }) => {
+      const updatePromises = shiftIds.map(id =>
+        supabase
+          .from('shifts')
+          .update(updates)
+          .eq('id', id)
+          .select()
+          .single()
+      );
+
+      const results = await Promise.all(updatePromises);
+      
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        throw new Error(`Failed to update ${errors.length} shifts`);
+      }
+
+      return results.map(r => r.data);
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['shifts', variables.restaurantId] });
+      toast({
+        title: 'Shifts updated',
+        description: `${data.length} shifts updated successfully.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error updating shifts',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+};
+
+export const useBulkDeleteShifts = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({
+      shiftIds,
+      restaurantId,
+    }: {
+      shiftIds: string[];
+      restaurantId: string;
+    }) => {
+      const { error } = await supabase
+        .from('shifts')
+        .delete()
+        .in('id', shiftIds);
+
+      if (error) throw error;
+      return { shiftIds, restaurantId };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
+      toast({
+        title: 'Shifts deleted',
+        description: `${data.shiftIds.length} shifts deleted successfully.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error deleting shifts',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+};

@@ -41,6 +41,7 @@ export interface Shift {
   recurrence_pattern?: RecurrencePattern | null;
   recurrence_parent_id?: string | null;
   is_recurring?: boolean;
+  is_open?: boolean; // True if this is an open/unassigned shift
   created_at: string;
   updated_at: string;
   employee?: Employee; // Joined data
@@ -87,4 +88,72 @@ export interface LaborMetrics {
   totalCost: number; // In cents
   employeeCount: number;
   averageHourlyRate: number; // In cents
+}
+
+// Shift Exchange Types
+export type ShiftOfferStatus = 'open' | 'claimed' | 'approved' | 'rejected' | 'cancelled';
+export type ShiftClaimStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type ShiftApprovalDecision = 'approved' | 'rejected';
+
+export interface ShiftOffer {
+  id: string;
+  restaurant_id: string;
+  shift_id: string;
+  offering_employee_id: string;
+  reason?: string;
+  status: ShiftOfferStatus;
+  is_partial: boolean;
+  partial_start_time?: string;
+  partial_end_time?: string;
+  created_at: string;
+  updated_at: string;
+  shift?: Shift; // Joined data
+  offering_employee?: Employee; // Joined data
+}
+
+export interface ShiftClaim {
+  id: string;
+  restaurant_id: string;
+  shift_offer_id?: string | null;
+  open_shift_id?: string | null;
+  claiming_employee_id: string;
+  message?: string;
+  status: ShiftClaimStatus;
+  created_at: string;
+  updated_at: string;
+  shift_offer?: ShiftOffer; // Joined data
+  open_shift?: Shift; // Joined data
+  claiming_employee?: Employee; // Joined data
+}
+
+export interface ShiftApproval {
+  id: string;
+  restaurant_id: string;
+  shift_claim_id: string;
+  approved_by: string;
+  decision: ShiftApprovalDecision;
+  notes?: string;
+  created_at: string;
+  shift_claim?: ShiftClaim; // Joined data
+}
+
+export type ShiftNotificationType = 
+  | 'offer_created' 
+  | 'claim_requested' 
+  | 'claim_approved' 
+  | 'claim_rejected' 
+  | 'open_shift_available';
+
+export interface ShiftNotification {
+  id: string;
+  restaurant_id: string;
+  employee_id?: string | null;
+  user_id?: string | null;
+  notification_type: ShiftNotificationType;
+  title: string;
+  message: string;
+  shift_offer_id?: string | null;
+  shift_claim_id?: string | null;
+  is_read: boolean;
+  created_at: string;
 }

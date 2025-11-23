@@ -9,12 +9,18 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useShifts, useDeleteShift } from '@/hooks/useShifts';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
+import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
+import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
 import { TimeOffList } from '@/components/TimeOffList';
 import { AvailabilityDialog } from '@/components/AvailabilityDialog';
 import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionDialog';
+import { ScheduleStatusBadge } from '@/components/ScheduleStatusBadge';
+import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
+import { ChangeLogDialog } from '@/components/ChangeLogDialog';
+import { Unlock, Send } from 'lucide-react';
 import { 
   Calendar, 
   Plus, 
@@ -164,6 +170,9 @@ const Scheduling = () => {
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
   const [defaultShiftDate, setDefaultShiftDate] = useState<Date | undefined>();
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [changeLogDialogOpen, setChangeLogDialogOpen] = useState(false);
+  const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
 
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
@@ -171,6 +180,18 @@ const Scheduling = () => {
   const { employees, loading: employeesLoading } = useEmployees(restaurantId);
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
   const deleteShift = useDeleteShift();
+  const publishSchedule = usePublishSchedule();
+  const unpublishSchedule = useUnpublishSchedule();
+  const { publication, isPublished, loading: publicationLoading } = useWeekPublicationStatus(
+    restaurantId,
+    currentWeekStart,
+    weekEnd
+  );
+  const { changeLogs, loading: changeLogsLoading } = useScheduleChangeLogs(
+    restaurantId,
+    currentWeekStart,
+    weekEnd
+  );
 
   const activeEmployees = employees.filter(emp => emp.status === 'active');
 
@@ -241,6 +262,46 @@ const Scheduling = () => {
       );
     }
   };
+
+  const handlePublishSchedule = (notes?: string) => {
+    if (restaurantId) {
+      publishSchedule.mutate(
+        {
+          restaurantId,
+          weekStart: currentWeekStart,
+          weekEnd,
+          notes,
+        },
+        {
+          onSuccess: () => {
+            setPublishDialogOpen(false);
+          },
+        }
+      );
+    }
+  };
+
+  const handleUnpublishSchedule = () => {
+    if (restaurantId) {
+      unpublishSchedule.mutate(
+        {
+          restaurantId,
+          weekStart: currentWeekStart,
+          weekEnd,
+          reason: 'Schedule unpublished for corrections',
+        },
+        {
+          onSuccess: () => {
+            setUnpublishDialogOpen(false);
+          },
+        }
+      );
+    }
+  };
+
+  // Get unique employees scheduled this week
+  const scheduledEmployeeIds = new Set(shifts.map(shift => shift.employee_id));
+  const scheduledEmployeeCount = scheduledEmployeeIds.size;
 
   const getShiftsForDay = (day: Date) => {
     return shifts.filter(shift => isSameDay(parseISO(shift.start_time), day));
@@ -362,8 +423,49 @@ const Scheduling = () => {
               <div className="ml-4 text-lg font-semibold">
                 {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
               </div>
+              {!publicationLoading && (
+                <div className="ml-4">
+                  <ScheduleStatusBadge
+                    isPublished={isPublished}
+                    publishedAt={publication?.published_at}
+                    locked={isPublished}
+                  />
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
+              {/* Publishing buttons */}
+              {isPublished ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setChangeLogDialogOpen(true)}
+                  >
+                    <History className="h-4 w-4 mr-2" />
+                    View Changes
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setUnpublishDialogOpen(true)}
+                  >
+                    <Unlock className="h-4 w-4 mr-2" />
+                    Unpublish
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => setPublishDialogOpen(true)}
+                  disabled={shifts.length === 0}
+                  className="bg-gradient-to-r from-primary to-accent"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Publish Schedule
+                </Button>
+              )}
               <Button variant="outline" onClick={handleAddEmployee}>
                 <UserPlus className="h-4 w-4 mr-2" />
                 Add Employee
@@ -544,6 +646,49 @@ const Scheduling = () => {
           />
         </>
       )}
+
+      {/* Publish Schedule Dialog */}
+      <PublishScheduleDialog
+        open={publishDialogOpen}
+        onOpenChange={setPublishDialogOpen}
+        weekStart={currentWeekStart}
+        weekEnd={weekEnd}
+        shiftCount={shifts.length}
+        employeeCount={scheduledEmployeeCount}
+        totalHours={totalScheduledHours}
+        onConfirm={handlePublishSchedule}
+        isPublishing={publishSchedule.isPending}
+      />
+
+      {/* Change Log Dialog */}
+      <ChangeLogDialog
+        open={changeLogDialogOpen}
+        onOpenChange={setChangeLogDialogOpen}
+        changeLogs={changeLogs}
+        loading={changeLogsLoading}
+      />
+
+      {/* Unpublish Confirmation Dialog */}
+      <AlertDialog open={unpublishDialogOpen} onOpenChange={setUnpublishDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unpublish Schedule</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to unpublish this schedule? This will unlock all shifts for editing
+              and notify employees that the schedule has changed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUnpublishSchedule}
+              className="bg-gradient-to-r from-primary to-accent"
+            >
+              Unpublish
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!shiftToDelete} onOpenChange={() => setShiftToDelete(null)}>

@@ -213,6 +213,35 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
+            {/* Lock Warning for Published Shifts */}
+            {shift?.locked && (
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <div>
+                    <div className="font-semibold text-sm">Shift is Locked</div>
+                    <div className="text-xs mt-1">
+                      This shift is part of a published schedule and cannot be edited.
+                      You must unpublish the schedule first to make changes.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="employee">
                 Employee <span className="text-destructive">*</span>
@@ -405,10 +434,12 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
             </Button>
             <Button
               type="submit"
-              disabled={createShift.isPending || updateShift.isPending}
+              disabled={createShift.isPending || updateShift.isPending || shift?.locked}
             >
               {createShift.isPending || updateShift.isPending
                 ? 'Saving...'
+                : shift?.locked
+                ? 'Locked'
                 : shift
                 ? 'Update Shift'
                 : 'Create Shift'}

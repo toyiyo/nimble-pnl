@@ -41,6 +41,10 @@ export interface Shift {
   recurrence_pattern?: RecurrencePattern | null;
   recurrence_parent_id?: string | null;
   is_recurring?: boolean;
+  published_at?: string | null;
+  published_by?: string | null;
+  is_published: boolean;
+  locked: boolean;
   created_at: string;
   updated_at: string;
   employee?: Employee; // Joined data

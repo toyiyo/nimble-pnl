@@ -64,7 +64,20 @@ async function fetchLighthouseSalesSummary(token: string, start: string, end: st
     method: 'POST',
     headers: {
       'accept': 'application/json, text/javascript, */*; q=0.01',
+      'accept-language': 'en-US,en;q=0.9',
+      'cache-control': 'no-cache',
       'content-type': 'application/json',
+      'origin': 'https://lh.shift4.com',
+      'pragma': 'no-cache',
+      'priority': 'u=1, i',
+      'referer': 'https://lh.shift4.com/',
+      'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"macOS"',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'cross-site',
+      'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
       'x-access-token': token,
     },
     body: JSON.stringify(payload),
@@ -295,10 +308,26 @@ Deno.serve(async (req) => {
       } else if (connection.email && connection.password) {
         const email = await encryption.decrypt(connection.email);
         const password = await encryption.decrypt(connection.password);
-        lighthouseToken = await authenticateWithLighthouse(email, password);
+        // Authenticate and get full response
+        const authResponse = await (async () => {
+          const response = await fetch('https://lighthouse-api.harbortouch.com/api/v1/auth/authenticate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Lighthouse authentication failed: ${errorText}`);
+          }
+          return await response.json();
+        })();
+        lighthouseToken = authResponse.token;
+        // Extract all unique location IDs from permissions
+        const locationIds = Array.from(new Set((authResponse.permissions || []).map((p: any) => p.l).filter((l: any) => typeof l === 'number')));
         const { data: updatedConn, error: tokenError } = await supabase.from('shift4_connections').update({
           lighthouse_token: await encryption.encrypt(lighthouseToken),
           lighthouse_token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+          lighthouse_location_ids: locationIds.length ? JSON.stringify(locationIds) : null,
           updated_at: new Date().toISOString(),
         }).eq('id', connection.id).select().single();
         if (tokenError || !updatedConn) {
@@ -311,7 +340,7 @@ Deno.serve(async (req) => {
             'LIGHTHOUSE_TOKEN_ACQUIRED',
             userId,
             restaurantId,
-            { action, merchantId: connection.merchant_id },
+            { action, merchantId: connection.merchant_id, locationIds },
           );
         }
       }

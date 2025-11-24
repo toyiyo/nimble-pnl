@@ -296,13 +296,13 @@ Deno.serve(async (req) => {
         const email = await encryption.decrypt(connection.email);
         const password = await encryption.decrypt(connection.password);
         lighthouseToken = await authenticateWithLighthouse(email, password);
-        const { error: tokenError } = await supabase.from('shift4_connections').update({
+        const { data: updatedConn, error: tokenError } = await supabase.from('shift4_connections').update({
           lighthouse_token: await encryption.encrypt(lighthouseToken),
           lighthouse_token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
           updated_at: new Date().toISOString(),
-        }).eq('id', connection.id);
-        if (tokenError) {
-          console.error('Failed to persist Lighthouse token:', tokenError);
+        }).eq('id', connection.id).select().single();
+        if (tokenError || !updatedConn) {
+          console.error('Failed to persist Lighthouse token:', tokenError, updatedConn);
           throw new Error('Failed to persist Lighthouse token');
         }
         if (userId) {
@@ -334,11 +334,12 @@ Deno.serve(async (req) => {
       // Store each row as a charge (minimal example)
       if (Array.isArray(salesSummary.rows)) {
         for (const row of salesSummary.rows) {
-          // Map row to fields (example: item, qty, gross sales, net sales)
+          // Map row to fields (example: item, qty, gross sales, net sales, discount)
           const item = row[0];
           const qty = parseFloat(row[4]);
           const grossSales = parseFloat(row[9].replace(/[^\d.]/g, ''));
           const netSales = parseFloat(row[10].replace(/[^\d.]/g, ''));
+          const discount = parseFloat(row[7].replace(/[^\d.\-]/g, ''));
 
           await supabase.from('shift4_charges').upsert({
             restaurant_id: restaurantId,
@@ -362,6 +363,27 @@ Deno.serve(async (req) => {
             onConflict: 'restaurant_id,charge_id',
           });
           results.chargesSynced++;
+
+          // Store discount as negative adjustment in unified_sales (if non-zero)
+          if (discount && Math.abs(discount) > 0.0001) {
+            await supabase.from('unified_sales').upsert({
+              restaurant_id: restaurantId,
+              pos_system: 'lighthouse',
+              external_order_id: `${item}-${startIso}`,
+              external_item_id: `${item}-${startIso}-discount`,
+              item_name: `${item} Discount`,
+              item_type: 'discount',
+              adjustment_type: 'discount',
+              total_price: -discount, // negative for discounts
+              sale_date: startIso.split('T')[0],
+              sale_time: startIso.split('T')[1]?.substring(0,8) || '',
+              raw_data: { discount, row },
+              synced_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }, {
+              onConflict: 'restaurant_id,external_order_id,external_item_id',
+            });
+          }
         }
       }
 

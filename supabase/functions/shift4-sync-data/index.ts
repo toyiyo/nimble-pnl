@@ -380,14 +380,17 @@ Deno.serve(async (req) => {
           // Map row to fields (example: item, qty, gross sales, net sales, discount)
           const item = row[0];
           const qty = parseFloat(row[4]);
-          const grossSales = parseFloat(row[9].replace(/[^\d.]/g, ''));
-          const netSales = parseFloat(row[10].replace(/[^\d.]/g, ''));
-          const discount = parseFloat(row[7].replace(/[^\d.\-]/g, ''));
+          const grossSales = parseFloat(row[9].replace(/[^ -\d.]/g, ''));
+          const netSales = parseFloat(row[10].replace(/[^ -\d.]/g, ''));
+          const discount = parseFloat(row[7].replace(/[^ -\d.\-]/g, ''));
+
+          // Use first location id for merchant_id (or null if not available)
+          const locationId = locations[0] ?? null;
 
           await supabase.from('shift4_charges').upsert({
             restaurant_id: restaurantId,
             charge_id: `${item}-${startIso}`,
-            merchant_id: connection.merchant_id,
+            merchant_id: locationId,
             amount: grossSales,
             currency: 'USD',
             status: 'completed',
@@ -412,6 +415,7 @@ Deno.serve(async (req) => {
             await supabase.from('unified_sales').upsert({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
+              merchant_id: locationId,
               external_order_id: `${item}-${startIso}`,
               external_item_id: `${item}-${startIso}-discount`,
               item_name: `${item} Discount`,

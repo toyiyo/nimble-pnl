@@ -20,6 +20,10 @@ import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionD
 import { ScheduleStatusBadge } from '@/components/ScheduleStatusBadge';
 import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
+import { ShiftOfferDialog } from '@/components/ShiftOfferDialog';
+import { OpenShiftDialog } from '@/components/OpenShiftDialog';
+import { ShiftMarketplace } from '@/components/ShiftMarketplace';
+import { ShiftApprovalWorkflow } from '@/components/ShiftApprovalWorkflow';
 import { Unlock, Send, History } from 'lucide-react';
 import { 
   Calendar, 
@@ -586,66 +590,6 @@ const Scheduling = () => {
                               {dayShifts.map((shift) => (
                                 <ShiftCard
                                   key={shift.id}
-                                  className="group relative p-2 rounded border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
-                                  onClick={() => handleEditShift(shift)}
-                                >
-                                  <div className="text-xs font-medium">
-                                    {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-                                    {format(parseISO(shift.end_time), 'h:mm a')}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">{shift.position}</div>
-                                  <Badge
-                                    variant={
-                                      shift.status === 'confirmed'
-                                        ? 'default'
-                                        : shift.status === 'cancelled'
-                                        ? 'destructive'
-                                        : 'outline'
-                                    }
-                                    className="mt-1 text-xs"
-                                  >
-                                    {shift.status}
-                                  </Badge>
-                                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleOfferShift(shift);
-                                      }}
-                                      aria-label="Offer shift"
-                                      title="Offer shift for trade"
-                                    >
-                                      <ArrowRightLeft className="h-3 w-3" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleEditShift(shift);
-                                      }}
-                                      aria-label="Edit shift"
-                                    >
-                                      <Edit className="h-3 w-3" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteShift(shift);
-                                      }}
-                                      aria-label="Delete shift"
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </div>
                                   shift={shift}
                                   onEdit={handleEditShift}
                                   onDelete={handleDeleteShift}
@@ -701,6 +645,7 @@ const Scheduling = () => {
         {/* Approvals Tab */}
         <TabsContent value="approvals" className="mt-6">
           <ShiftApprovalWorkflow restaurantId={restaurantId} />
+        </TabsContent>
         {/* Time-Off Tab */}
         <TabsContent value="timeoff">
           <Card>
@@ -747,7 +692,7 @@ const Scheduling = () => {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
+  </Tabs>
 
       {/* Dialogs */}
       {restaurantId && (
@@ -777,7 +722,8 @@ const Scheduling = () => {
             onOpenChange={setOpenShiftDialogOpen}
             restaurantId={restaurantId}
             defaultDate={defaultShiftDate}
-            availablePositions={uniquePositions}
+            availablePositions={uniquePositions as string[]}
+          />
           <TimeOffRequestDialog
             open={timeOffDialogOpen}
             onOpenChange={setTimeOffDialogOpen}
@@ -856,7 +802,8 @@ const Scheduling = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+  </TabsContent>
+  </div>
   );
 };
 

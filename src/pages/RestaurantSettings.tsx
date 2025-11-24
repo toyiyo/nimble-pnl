@@ -12,6 +12,7 @@ import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 import { MetricIcon } from '@/components/MetricIcon';
 import { SecuritySettings } from '@/components/SecuritySettings';
+import { NotificationSettings } from '@/components/NotificationSettings';
 import { useToast } from '@/hooks/use-toast';
 import { Settings, Save, RotateCcw, AlertCircle } from 'lucide-react';
 
@@ -307,6 +308,13 @@ export default function RestaurantSettings() {
           )}
         </CardContent>
       </Card>
+
+      {/* Notification Settings */}
+      {canEdit && (
+        <div className="mt-6">
+          <NotificationSettings restaurantId={selectedRestaurant.restaurant_id} />
+        </div>
+      )}
 
       {/* Security Settings */}
       <SecuritySettings />

@@ -1,18 +1,26 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useShifts, useDeleteShift, useUpdateShift } from '@/hooks/useShifts';
-import { useCopyPreviousWeek, useBulkDeleteShifts } from '@/hooks/useShiftTemplates';
+import { useShifts, useDeleteShift } from '@/hooks/useShifts';
+import { useCheckConflicts } from '@/hooks/useConflictDetection';
+import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
+import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { ShiftDialog } from '@/components/ShiftDialog';
-import { ShiftTemplatesManager } from '@/components/ShiftTemplatesManager';
-import { DroppableScheduleCell } from '@/components/DroppableScheduleCell';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DndContext, DragEndEvent, DragOverlay, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
+import { TimeOffList } from '@/components/TimeOffList';
+import { AvailabilityDialog } from '@/components/AvailabilityDialog';
+import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionDialog';
+import { ScheduleStatusBadge } from '@/components/ScheduleStatusBadge';
+import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
+import { ChangeLogDialog } from '@/components/ChangeLogDialog';
+import { Unlock, Send, History } from 'lucide-react';
 import { 
   Calendar, 
   Plus, 
@@ -24,12 +32,13 @@ import {
   ChevronLeft,
   ChevronRight,
   UserPlus,
-  Copy,
-  LayoutTemplate,
-  X,
+  CalendarClock,
+  CalendarX,
+  AlertTriangle,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
-import { Employee, Shift } from '@/types/scheduling';
+import * as dateFnsTz from 'date-fns-tz';
+import { Employee, Shift, ConflictCheck } from '@/types/scheduling';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,6 +50,112 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+type ShiftCardProps = {
+  shift: Shift;
+  onEdit: (shift: Shift) => void;
+  onDelete: (shift: Shift) => void;
+};
+
+const buildConflictKey = (conflict: ConflictCheck) =>
+  conflict.time_off_id ? `timeoff-${conflict.time_off_id}` : `${conflict.conflict_type}-${conflict.message}`;
+
+const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const { zonedTimeToUtc } = dateFnsTz;
+
+  const formatToUTC = (isoString: string) => {
+    const date = new Date(isoString);
+    const converter = zonedTimeToUtc ?? ((value: Date) => value);
+    const utcDate = converter(date, restaurantTimezone);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;
+  };
+
+  const conflictParams = useMemo(() => ({
+    employeeId: shift.employee_id,
+    restaurantId: shift.restaurant_id,
+    startTime: formatToUTC(shift.start_time),
+    endTime: formatToUTC(shift.end_time),
+  }), [shift, restaurantTimezone]);
+
+  const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className={`group relative p-2 rounded border transition-colors cursor-pointer ${
+              hasConflicts 
+                ? 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100' 
+                : 'bg-card hover:bg-accent/50'
+            }`}
+            onClick={() => onEdit(shift)}
+          >
+            {hasConflicts && (
+              <AlertTriangle className="absolute top-1 left-1 h-3 w-3 text-yellow-600" />
+            )}
+            <div className="text-xs font-medium">
+              {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
+              {format(parseISO(shift.end_time), 'h:mm a')}
+            </div>
+            <div className="text-xs text-muted-foreground">{shift.position}</div>
+            <Badge
+              variant={
+                shift.status === 'confirmed'
+                  ? 'default'
+                  : shift.status === 'cancelled'
+                  ? 'destructive'
+                  : 'outline'
+              }
+              className="mt-1 text-xs"
+            >
+              {shift.status}
+            </Badge>
+            <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(shift);
+                }}
+                aria-label="Edit shift"
+              >
+                <Edit className="h-3 w-3" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(shift);
+                }}
+                aria-label="Delete shift"
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        </TooltipTrigger>
+        {hasConflicts && (
+          <TooltipContent side="top" className="max-w-xs">
+            <div className="space-y-1">
+              <p className="font-semibold text-xs">Conflicts:</p>
+              {conflicts.map((conflict) => (
+                <p key={buildConflictKey(conflict)} className="text-xs">• {conflict.message}</p>
+              ))}
+            </div>
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
 const Scheduling = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
@@ -48,11 +163,16 @@ const Scheduling = () => {
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
+  const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
+  const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
+  const [exceptionDialogOpen, setExceptionDialogOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>();
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
   const [defaultShiftDate, setDefaultShiftDate] = useState<Date | undefined>();
-  const [selectedShifts, setSelectedShifts] = useState<Set<string>>(new Set());
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [changeLogDialogOpen, setChangeLogDialogOpen] = useState(false);
+  const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
 
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
@@ -60,17 +180,17 @@ const Scheduling = () => {
   const { employees, loading: employeesLoading } = useEmployees(restaurantId);
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
   const deleteShift = useDeleteShift();
-  const updateShift = useUpdateShift();
-  const copyPreviousWeek = useCopyPreviousWeek();
-  const bulkDeleteShifts = useBulkDeleteShifts();
-
-  // Configure drag sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8, // 8px of movement required before drag starts
-      },
-    })
+  const publishSchedule = usePublishSchedule();
+  const unpublishSchedule = useUnpublishSchedule();
+  const { publication, isPublished, loading: publicationLoading } = useWeekPublicationStatus(
+    restaurantId,
+    currentWeekStart,
+    weekEnd
+  );
+  const { changeLogs, loading: changeLogsLoading } = useScheduleChangeLogs(
+    restaurantId,
+    currentWeekStart,
+    weekEnd
   );
 
   const activeEmployees = employees.filter(emp => emp.status === 'active');
@@ -143,96 +263,45 @@ const Scheduling = () => {
     }
   };
 
-  const handleCopyPreviousWeek = () => {
-    if (!restaurantId) return;
-    
-    copyPreviousWeek.mutate({
-      restaurantId,
-      targetWeekStart: currentWeekStart,
-    });
-  };
-
-  const handleSelectShift = (shift: Shift, isMultiSelect: boolean) => {
-    setSelectedShifts(prev => {
-      const newSet = new Set(prev);
-      if (isMultiSelect) {
-        // Toggle selection
-        if (newSet.has(shift.id)) {
-          newSet.delete(shift.id);
-        } else {
-          newSet.add(shift.id);
-        }
-      } else {
-        // Single selection
-        newSet.clear();
-        newSet.add(shift.id);
-      }
-      return newSet;
-    });
-  };
-
-  const handleClearSelection = () => {
-    setSelectedShifts(new Set());
-  };
-
-  const handleBulkDelete = () => {
-    if (!restaurantId || selectedShifts.size === 0) return;
-    
-    bulkDeleteShifts.mutate(
-      { shiftIds: Array.from(selectedShifts), restaurantId },
-      {
-        onSuccess: () => {
-          setSelectedShifts(new Set());
+  const handlePublishSchedule = (notes?: string) => {
+    if (restaurantId) {
+      publishSchedule.mutate(
+        {
+          restaurantId,
+          weekStart: currentWeekStart,
+          weekEnd,
+          notes,
         },
-      }
-    );
+        {
+          onSuccess: () => {
+            setPublishDialogOpen(false);
+          },
+        }
+      );
+    }
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (!over || !restaurantId) return;
-
-    const activeShift = shifts.find(s => s.id === active.id);
-    if (!activeShift) return;
-
-    // Parse the drop target data
-    const overData = over.data.current as { employeeId: string; date: string } | undefined;
-    if (!overData) return;
-
-    const { employeeId: newEmployeeId, date: newDateStr } = overData;
-    const newDate = new Date(newDateStr);
-
-    // Check if anything changed
-    const oldDate = new Date(activeShift.start_time);
-    const isSameEmployee = activeShift.employee_id === newEmployeeId;
-    const isSameDate = isSameDay(oldDate, newDate);
-
-    if (isSameEmployee && isSameDate) return;
-
-    // Calculate new start and end times
-    const startTime = new Date(activeShift.start_time);
-    const endTime = new Date(activeShift.end_time);
-    
-    const newStartTime = new Date(newDate);
-    newStartTime.setHours(startTime.getHours(), startTime.getMinutes(), startTime.getSeconds());
-    
-    const newEndTime = new Date(newDate);
-    newEndTime.setHours(endTime.getHours(), endTime.getMinutes(), endTime.getSeconds());
-
-    // Update the shift
-    updateShift.mutate({
-      id: activeShift.id,
-      employee_id: newEmployeeId,
-      start_time: newStartTime.toISOString(),
-      end_time: newEndTime.toISOString(),
-      restaurant_id: activeShift.restaurant_id,
-      break_duration: activeShift.break_duration,
-      position: activeShift.position,
-      status: activeShift.status,
-      notes: activeShift.notes,
-    });
+  const handleUnpublishSchedule = () => {
+    if (restaurantId) {
+      unpublishSchedule.mutate(
+        {
+          restaurantId,
+          weekStart: currentWeekStart,
+          weekEnd,
+          reason: 'Schedule unpublished for corrections',
+        },
+        {
+          onSuccess: () => {
+            setUnpublishDialogOpen(false);
+          },
+        }
+      );
+    }
   };
+
+  // Get unique employees scheduled this week
+  const scheduledEmployeeIds = new Set(shifts.map(shift => shift.employee_id));
+  const scheduledEmployeeCount = scheduledEmployeeIds.size;
 
   const getShiftsForDay = (day: Date) => {
     return shifts.filter(shift => isSameDay(parseISO(shift.start_time), day));
@@ -319,169 +388,228 @@ const Scheduling = () => {
         </Card>
       </div>
 
-      {/* Main Content with Tabs */}
+      {/* Tabs for Schedule, Time-Off, and Availability */}
       <Tabs defaultValue="schedule" className="space-y-4">
         <TabsList>
           <TabsTrigger value="schedule">
             <Calendar className="h-4 w-4 mr-2" />
             Schedule
           </TabsTrigger>
-          <TabsTrigger value="templates">
-            <LayoutTemplate className="h-4 w-4 mr-2" />
-            Templates
+          <TabsTrigger value="timeoff">
+            <CalendarX className="h-4 w-4 mr-2" />
+            Time-Off
+          </TabsTrigger>
+          <TabsTrigger value="availability">
+            <CalendarClock className="h-4 w-4 mr-2" />
+            Availability
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="schedule" className="space-y-4">
+        <TabsContent value="schedule">
           {/* Week Navigation */}
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" onClick={handlePreviousWeek} aria-label="Previous week">
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button variant="outline" onClick={handleToday}>
-                    Today
-                  </Button>
-                  <Button variant="outline" size="icon" onClick={handleNextWeek} aria-label="Next week">
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                  <div className="ml-4 text-lg font-semibold">
-                    {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
-                  </div>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={handlePreviousWeek} aria-label="Previous week">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" onClick={handleToday}>
+                Today
+              </Button>
+              <Button variant="outline" size="icon" onClick={handleNextWeek} aria-label="Next week">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <div className="ml-4 text-lg font-semibold">
+                {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
+              </div>
+              {!publicationLoading && (
+                <div className="ml-4">
+                  <ScheduleStatusBadge
+                    isPublished={isPublished}
+                    publishedAt={publication?.published_at}
+                    locked={isPublished}
+                  />
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                  {selectedShifts.size > 0 && (
-                    <>
-                      <Badge variant="secondary" className="flex items-center gap-2">
-                        {selectedShifts.size} selected
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-4 w-4 p-0 hover:bg-transparent"
-                          onClick={handleClearSelection}
-                          aria-label="Clear selection"
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </Badge>
-                      <Button 
-                        variant="destructive"
-                        size="sm"
-                        onClick={handleBulkDelete}
-                        disabled={bulkDeleteShifts.isPending}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete Selected
-                      </Button>
-                    </>
-                  )}
-                  <Button 
-                    variant="outline" 
-                    onClick={handleCopyPreviousWeek}
-                    disabled={copyPreviousWeek.isPending}
+              )}
+            </div>
+            <div className="flex gap-2">
+              {/* Publishing buttons */}
+              {isPublished ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setChangeLogDialogOpen(true)}
                   >
-                    <Copy className="h-4 w-4 mr-2" />
-                    {copyPreviousWeek.isPending ? 'Copying...' : 'Copy Previous Week'}
+                    <History className="h-4 w-4 mr-2" />
+                    View Changes
                   </Button>
-                  <Button variant="outline" onClick={handleAddEmployee}>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Add Employee
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setUnpublishDialogOpen(true)}
+                  >
+                    <Unlock className="h-4 w-4 mr-2" />
+                    Unpublish
                   </Button>
-                  <Button onClick={() => handleAddShift()}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Shift
-                  </Button>
-                </div>
+                </>
+              ) : (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => setPublishDialogOpen(true)}
+                  disabled={shifts.length === 0}
+                  className="bg-gradient-to-r from-primary to-accent"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Publish Schedule
+                </Button>
+              )}
+              <Button variant="outline" onClick={handleAddEmployee}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add Employee
+              </Button>
+              <Button onClick={() => handleAddShift()}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Shift
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          {employeesLoading || shiftsLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ) : activeEmployees.length === 0 ? (
+            <div className="text-center py-12">
+              <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No employees yet</h3>
+              <p className="text-muted-foreground mb-4">Get started by adding your first employee.</p>
+              <Button onClick={handleAddEmployee}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add Employee
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2 font-medium sticky left-0 bg-background">Employee</th>
+                    {weekDays.map((day) => (
+                      <th key={day.toISOString()} className="text-center p-2 font-medium min-w-[120px]">
+                        <div>{format(day, 'EEE')}</div>
+                        <div className="text-sm text-muted-foreground">{format(day, 'MMM d')}</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeEmployees.map((employee) => (
+                    <tr key={employee.id} className="border-b hover:bg-muted/50 group">
+                      <td className="p-2 sticky left-0 bg-background">
+                        <div className="flex items-center gap-2 justify-between">
+                          <div>
+                            <div className="font-medium">{employee.name}</div>
+                            <div className="text-sm text-muted-foreground">{employee.position}</div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditEmployee(employee)}
+                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label={`Edit ${employee.name}`}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
+                      {weekDays.map((day) => {
+                        const dayShifts = getShiftsForEmployee(employee.id, day);
+                        return (
+                          <td key={day.toISOString()} className="p-2 align-top">
+                            <div className="space-y-1">
+                              {dayShifts.map((shift) => (
+                                <ShiftCard
+                                  key={shift.id}
+                                  shift={shift}
+                                  onEdit={handleEditShift}
+                                  onDelete={handleDeleteShift}
+                                />
+                              ))}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full text-xs"
+                                onClick={() => handleAddShift(day)}
+                              >
+                                <Plus className="h-3 w-3 mr-1" />
+                                Add
+                              </Button>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+        </TabsContent>
+
+        {/* Time-Off Tab */}
+        <TabsContent value="timeoff">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Time-Off Requests</CardTitle>
+                <Button onClick={() => setTimeOffDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Request
+                </Button>
               </div>
             </CardHeader>
-
             <CardContent>
-              {employeesLoading || shiftsLoading ? (
-                <div className="space-y-4">
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-                </div>
-              ) : activeEmployees.length === 0 ? (
-                <div className="text-center py-12">
-                  <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No employees yet</h3>
-                  <p className="text-muted-foreground mb-4">Get started by adding your first employee.</p>
-                  <Button onClick={handleAddEmployee}>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Add Employee
-                  </Button>
-                </div>
-              ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left p-2 font-medium sticky left-0 bg-background">Employee</th>
-                          {weekDays.map((day) => (
-                            <th key={day.toISOString()} className="text-center p-2 font-medium min-w-[120px]">
-                              <div>{format(day, 'EEE')}</div>
-                              <div className="text-sm text-muted-foreground">{format(day, 'MMM d')}</div>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {activeEmployees.map((employee) => (
-                          <tr key={employee.id} className="border-b hover:bg-muted/50 group">
-                            <td className="p-2 sticky left-0 bg-background">
-                              <div className="flex items-center gap-2 justify-between">
-                                <div>
-                                  <div className="font-medium">{employee.name}</div>
-                                  <div className="text-sm text-muted-foreground">{employee.position}</div>
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleEditEmployee(employee)}
-                                  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  aria-label={`Edit ${employee.name}`}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </td>
-                            {weekDays.map((day) => {
-                              const dayShifts = getShiftsForEmployee(employee.id, day);
-                              return (
-                                <DroppableScheduleCell
-                                  key={day.toISOString()}
-                                  employeeId={employee.id}
-                                  date={day}
-                                  shifts={dayShifts}
-                                  onAddShift={handleAddShift}
-                                  onEditShift={handleEditShift}
-                                  onDeleteShift={handleDeleteShift}
-                                  selectedShifts={selectedShifts}
-                                  onSelectShift={handleSelectShift}
-                                />
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </DndContext>
-              )}
+              {restaurantId && <TimeOffList restaurantId={restaurantId} />}
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="templates">
-          {restaurantId && <ShiftTemplatesManager restaurantId={restaurantId} />}
+        {/* Availability Tab */}
+        <TabsContent value="availability">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Employee Availability</CardTitle>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setExceptionDialogOpen(true)}>
+                    <CalendarX className="h-4 w-4 mr-2" />
+                    Add Exception
+                  </Button>
+                  <Button onClick={() => setAvailabilityDialogOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Set Availability
+                  </Button>
+                </div>
+              </div>
+              <CardDescription>
+                Manage recurring weekly availability and one-time exceptions
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Set employee availability preferences to automatically detect scheduling conflicts.
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
@@ -501,8 +629,66 @@ const Scheduling = () => {
             restaurantId={restaurantId}
             defaultDate={defaultShiftDate}
           />
+          <TimeOffRequestDialog
+            open={timeOffDialogOpen}
+            onOpenChange={setTimeOffDialogOpen}
+            restaurantId={restaurantId}
+          />
+          <AvailabilityDialog
+            open={availabilityDialogOpen}
+            onOpenChange={setAvailabilityDialogOpen}
+            restaurantId={restaurantId}
+          />
+          <AvailabilityExceptionDialog
+            open={exceptionDialogOpen}
+            onOpenChange={setExceptionDialogOpen}
+            restaurantId={restaurantId}
+          />
         </>
       )}
+
+      {/* Publish Schedule Dialog */}
+      <PublishScheduleDialog
+        open={publishDialogOpen}
+        onOpenChange={setPublishDialogOpen}
+        weekStart={currentWeekStart}
+        weekEnd={weekEnd}
+        shiftCount={shifts.length}
+        employeeCount={scheduledEmployeeCount}
+        totalHours={totalScheduledHours}
+        onConfirm={handlePublishSchedule}
+        isPublishing={publishSchedule.isPending}
+      />
+
+      {/* Change Log Dialog */}
+      <ChangeLogDialog
+        open={changeLogDialogOpen}
+        onOpenChange={setChangeLogDialogOpen}
+        changeLogs={changeLogs}
+        loading={changeLogsLoading}
+      />
+
+      {/* Unpublish Confirmation Dialog */}
+      <AlertDialog open={unpublishDialogOpen} onOpenChange={setUnpublishDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unpublish Schedule</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to unpublish this schedule? This will unlock all shifts for editing
+              and notify employees that the schedule has changed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUnpublishSchedule}
+              className="bg-gradient-to-r from-primary to-accent"
+            >
+              Unpublish
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!shiftToDelete} onOpenChange={() => setShiftToDelete(null)}>

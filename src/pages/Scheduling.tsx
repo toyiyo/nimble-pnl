@@ -802,8 +802,9 @@ const Scheduling = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-  </TabsContent>
-  </div>
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 };
 

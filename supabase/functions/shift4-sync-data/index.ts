@@ -385,6 +385,10 @@ Deno.serve(async (req) => {
 
         for (const row of salesSummary.rows) {
           const item = row[0];
+          // Skip total/summary rows
+          if (typeof item === 'string' && item.toLowerCase().includes('totals')) {
+            continue;
+          }
           const revenueClass = row[1];
           const department = row[2];
           const defaultPrice = parseCurrency(row[3]);

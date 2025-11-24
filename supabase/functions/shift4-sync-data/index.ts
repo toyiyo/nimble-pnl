@@ -229,25 +229,7 @@ Deno.serve(async (req) => {
     const encryption = await getEncryptionService();
     const secretKey = await encryption.decrypt(connection.secret_key);
 
-    // Authenticate with Lighthouse if credentials exist
-    if (connection.email && connection.password) {
-      const email = await encryption.decrypt(connection.email);
-      const password = await encryption.decrypt(connection.password);
-      try {
-        const lighthouseToken = await authenticateWithLighthouse(email, password);
-        await storeLighthouseToken(supabase, connection.id, lighthouseToken);
-        // Optionally: log security event for token access
-        if (userId) {
-          await logSecurityEvent(supabase, 'LIGHTHOUSE_TOKEN_ACQUIRED', userId, restaurantId, {
-            action,
-            merchantId: connection.merchant_id,
-          });
-        }
-      } catch (authErr: any) {
-        console.error('Lighthouse authentication error:', authErr);
-        throw new Error('Failed to authenticate with Lighthouse: ' + authErr.message);
-      }
-    }
+    // (Authentication handled later when token is actually needed)
 
     // Log security event (only if user authenticated)
     if (userId) {
@@ -303,15 +285,34 @@ Deno.serve(async (req) => {
     try {
       // Decrypt Lighthouse token
       let lighthouseToken: string | null = null;
-      if (connection.lighthouse_token) {
+      const now = new Date();
+      const expiresAt = connection.lighthouse_token_expires_at
+        ? new Date(connection.lighthouse_token_expires_at)
+        : null;
+
+      if (connection.lighthouse_token && expiresAt && expiresAt > now) {
         lighthouseToken = await encryption.decrypt(connection.lighthouse_token);
-      } else {
-        // If not present, authenticate and store
-        if (connection.email && connection.password) {
-          const email = await encryption.decrypt(connection.email);
-          const password = await encryption.decrypt(connection.password);
-          lighthouseToken = await authenticateWithLighthouse(email, password);
-          await storeLighthouseToken(supabase, connection.id, lighthouseToken);
+      } else if (connection.email && connection.password) {
+        const email = await encryption.decrypt(connection.email);
+        const password = await encryption.decrypt(connection.password);
+        lighthouseToken = await authenticateWithLighthouse(email, password);
+        const { error: tokenError } = await supabase.from('shift4_connections').update({
+          lighthouse_token: await encryption.encrypt(lighthouseToken),
+          lighthouse_token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq('id', connection.id);
+        if (tokenError) {
+          console.error('Failed to persist Lighthouse token:', tokenError);
+          throw new Error('Failed to persist Lighthouse token');
+        }
+        if (userId) {
+          await logSecurityEvent(
+            supabase,
+            'LIGHTHOUSE_TOKEN_ACQUIRED',
+            userId,
+            restaurantId,
+            { action, merchantId: connection.merchant_id },
+          );
         }
       }
       if (!lighthouseToken) throw new Error('No Lighthouse token available');

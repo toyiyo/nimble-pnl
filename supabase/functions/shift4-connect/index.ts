@@ -76,8 +76,8 @@ Deno.serve(async (req) => {
     const body: Shift4ConnectRequest = await req.json();
     const { restaurantId, secretKey, merchantId, environment = 'production', email, password } = body;
 
-    if (!restaurantId || !secretKey) {
-      throw new Error('Restaurant ID and Secret Key are required');
+    if (!restaurantId) {
+      throw new Error('Restaurant ID is required');
     }
     if (!email || !password) {
       throw new Error('Lighthouse email and password are required');

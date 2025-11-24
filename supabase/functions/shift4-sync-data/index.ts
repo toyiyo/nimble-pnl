@@ -457,7 +457,7 @@ Deno.serve(async (req) => {
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }, {
-            onConflict: 'restaurant_id,external_order_id,external_item_id',
+            onConflict: 'restaurant_id,pos_system,external_order_id,external_item_id',
           });
           if (saleError) {
             console.error('[Lighthouse Sync] unified_sales sale upsert error:', saleError);
@@ -480,7 +480,7 @@ Deno.serve(async (req) => {
               synced_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             }, {
-              onConflict: 'restaurant_id,external_order_id,external_item_id',
+              onConflict: 'restaurant_id,pos_system,external_order_id,external_item_id',
             });
             if (discountError) {
               console.error(`[Lighthouse Sync] Discount upsert error for ${item}:`, discountError);

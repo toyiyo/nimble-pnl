@@ -70,6 +70,21 @@ const getLocalDateRangeDays = (startDate: Date, endDate: Date, timeZone: string)
   return days;
 };
 
+const withRetry = async <T>(fn: () => Promise<T>, attempts = 3, delayMs = 500): Promise<T> => {
+  let lastError: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastError;
+};
+
 interface Shift4SyncRequest {
   restaurantId: string;
   action: 'initial_sync' | 'daily_sync' | 'hourly_sync';
@@ -81,10 +96,10 @@ interface Shift4SyncRequest {
 
 
 /**
- * Fetch sales summary by item from Lighthouse API
+ * Fetch ticket detail (closed) from Lighthouse API
  */
-async function fetchLighthouseSalesSummary(token: string, start: string, end: string, locations: number[], locale = 'en-US'): Promise<any> {
-  const url = 'https://lighthouse-api.harbortouch.com/api/v1/reports/echo-pro/sales-summary-by-item';
+async function fetchLighthouseTicketDetails(token: string, start: string, end: string, locations: number[], locale = 'en-US'): Promise<any> {
+  const url = 'https://lighthouse-api.harbortouch.com/api/v1/reports/echo-pro/ticket-detail-closed';
   const payload = {
     start,
     end,
@@ -97,7 +112,7 @@ async function fetchLighthouseSalesSummary(token: string, start: string, end: st
     method: 'POST',
     headers: {
       'accept': 'application/json, text/javascript, */*; q=0.01',
-      'accept-language': 'en-US,en;q=0.9',
+      'accept-language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt-PT;q=0.7,pt;q=0.6',
       'cache-control': 'no-cache',
       'content-type': 'application/json',
       'origin': 'https://lh.shift4.com',
@@ -117,7 +132,7 @@ async function fetchLighthouseSalesSummary(token: string, start: string, end: st
   });
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Lighthouse sales summary fetch failed: ${errorText}`);
+    throw new Error(`Lighthouse ticket detail fetch failed: ${errorText}`);
   }
   return await response.json();
 }
@@ -402,65 +417,63 @@ Deno.serve(async (req) => {
         const dayEndIso = dayEnd.toISOString();
         const dayDateString = `${syncDate.year}-${String(syncDate.month).padStart(2, '0')}-${String(syncDate.day).padStart(2, '0')}`;
 
-        const salesSummary = await fetchLighthouseSalesSummary(
-          lighthouseToken,
-          dayStartIso,
-          dayEndIso,
-          locations,
-          'en-US'
-        );
-
-        if (!Array.isArray(salesSummary.rows)) {
-          continue;
+        let salesSummary;
+        try {
+          salesSummary = await withRetry(
+            () => fetchLighthouseTicketDetails(
+              lighthouseToken,
+              dayStartIso,
+              dayEndIso,
+              locations,
+              'en-US'
+            ),
+            3,
+            750
+          );
+        } catch (err: any) {
+          console.error(`[${dayDateString}] Lighthouse fetch failed:`, err?.message || err);
+          results.errors.push(`[${dayDateString}] Lighthouse fetch failed: ${err?.message || err}`);
+          continue; // proceed to next day
         }
 
-        const parseCurrency = (value: string): number => {
-          if (!value) return 0;
+        const parseCurrency = (value: string | number | null | undefined): number => {
+          if (value === null || value === undefined) return 0;
+          if (typeof value === 'number') return value;
           const cleaned = value.replace(/[^0-9.-]/g, '');
           const parsed = parseFloat(cleaned);
           return Number.isFinite(parsed) ? parsed : 0;
         };
 
-        for (const row of salesSummary.rows) {
-          const item = row[0];
-          // Skip total/summary rows
-          if (typeof item === 'string' && item.toLowerCase().includes('totals')) {
+        const tickets = Array.isArray(salesSummary.rows) ? salesSummary.rows : [];
+
+        for (const ticket of tickets) {
+          // Skip voided tickets
+          if (ticket.status && typeof ticket.status === 'string' && ticket.status.toLowerCase().includes('void')) {
             continue;
           }
-          const revenueClass = row[1];
-          const department = row[2];
-          const defaultPrice = parseCurrency(row[3]);
-          const qty = parseFloat(row[4]) || 0;
-          const totalCost = parseCurrency(row[5]);
-          const discount = parseCurrency(row[7]); // reported as positive in Lighthouse
-          const avgSalePrice = parseCurrency(row[8]);
-          const grossSales = parseCurrency(row[9]);
-          const netSales = parseCurrency(row[10]);
+
+          const orderNumber = ticket.orderNumber || ticket.order || ticket.ticket || ticket.ticketNumber;
+          if (!orderNumber) {
+            continue;
+          }
 
           const locationId = locations[0] ?? null;
           const merchantId = locationId !== null ? String(locationId) : 'unknown';
-          const chargeId = `${item}-${merchantId}-${dayDateString}`;
-          const chargeAmount = netSales || grossSales || 0;
-          const chargeAmountCents = Math.round(chargeAmount * 100);
+          const chargeId = `${orderNumber}-${merchantId}-${dayDateString}`;
 
-          const rawData = {
-            item,
-            revenueClass,
-            department,
-            defaultPrice,
-            qty,
-            totalCost,
-            discount,
-            avgSalePrice,
-            grossSales,
-            netSales,
-          };
+          const subtotal = parseCurrency(ticket.subtotal);
+          const discountTotal = parseCurrency(ticket.discountTotal);
+          const surchargeTotal = parseCurrency(ticket.surchargeTotal);
+          const taxTotal = parseCurrency(ticket.taxTotal);
+          const grandTotal = parseCurrency(ticket.grandTotal);
+
+          const rawData = ticket;
 
           const { error: chargeError } = await supabase.from('shift4_charges').upsert({
             restaurant_id: restaurantId,
             charge_id: chargeId,
             merchant_id: merchantId,
-            amount: chargeAmountCents,
+            amount: Math.round(grandTotal * 100),
             currency: 'USD',
             status: 'completed',
             refunded: false,
@@ -469,7 +482,7 @@ Deno.serve(async (req) => {
             created_time: dayStartIso,
             service_date: dayDateString,
             service_time: '00:00:00',
-            description: item,
+            description: `Ticket ${orderNumber}`,
             tip_amount: 0,
             raw_json: rawData,
             synced_at: new Date().toISOString(),
@@ -479,7 +492,8 @@ Deno.serve(async (req) => {
           });
           if (chargeError) {
             console.error(`[${dayDateString}] [Lighthouse Sync] shift4_charges upsert error:`, chargeError);
-            results.errors.push(`[${dayDateString}] Charge upsert failed for ${item}: ${chargeError.message}`);
+            results.errors.push(`[${dayDateString}] Charge upsert failed for ticket ${orderNumber}: ${chargeError.message}`);
+            continue;
           } else {
             results.chargesSynced++;
           }
@@ -492,49 +506,202 @@ Deno.serve(async (req) => {
             .eq('pos_system', 'lighthouse')
             .eq('external_order_id', chargeId);
 
-          const { error: saleError } = await supabase.from('unified_sales').insert({
-            restaurant_id: restaurantId,
-            pos_system: 'lighthouse',
-            external_order_id: chargeId,
-            external_item_id: `${chargeId}-sale`,
-            item_name: item,
-            item_type: 'sale',
-            adjustment_type: 'sale',
-            quantity: qty,
-            total_price: grossSales,
-            unit_price: grossSales && qty ? grossSales / qty : null,
-            sale_date: dayDateString,
-            sale_time: '00:00:00',
-            raw_data: rawData,
-            synced_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-          if (saleError) {
-            console.error(`[${dayDateString}] [Lighthouse Sync] unified_sales sale insert error:`, saleError);
-            results.errors.push(`[${dayDateString}] Sale insert failed for ${item}: ${saleError.message}`);
-          }
+          let lineIndex = 0;
 
-          if (discount && Math.abs(discount) > 0.0001) {
-            const { error: discountError } = await supabase.from('unified_sales').insert({
+          // Items
+          const items = Array.isArray(ticket.items) ? ticket.items : [];
+          for (const item of items) {
+            if (item.status && typeof item.status === 'string' && item.status.toLowerCase().includes('void')) {
+              continue;
+            }
+            const qty = Number(item.qty) || 0;
+            const itemSubtotal = parseCurrency(item.subtotal);
+            const itemName = item.name || 'Item';
+            const discount = parseCurrency(item.discountTotal);
+            const sur = parseCurrency(item.surTotal);
+
+            const { error: saleError } = await supabase.from('unified_sales').insert({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               external_order_id: chargeId,
-              external_item_id: `${chargeId}-discount`,
-              item_name: `${item} Discount`,
-              item_type: 'discount',
-              adjustment_type: 'discount',
-              total_price: -discount,
+              external_item_id: `${chargeId}-item-${lineIndex}`,
+              item_name: itemName,
+              item_type: 'sale',
+              adjustment_type: 'sale',
+              quantity: qty || 1,
+              total_price: itemSubtotal,
+              unit_price: itemSubtotal && qty ? itemSubtotal / qty : null,
               sale_date: dayDateString,
               sale_time: '00:00:00',
-              raw_data: { discount, row },
+              raw_data: item,
               synced_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             });
-            if (discountError) {
-              console.error(`[${dayDateString}] [Lighthouse Sync] Discount insert error for ${item}:`, discountError);
-              results.errors.push(`[${dayDateString}] Discount insert failed for ${item}: ${discountError.message}`);
+            if (saleError) {
+              console.error(`[${dayDateString}] [Lighthouse Sync] unified_sales item insert error:`, saleError);
+              results.errors.push(`[${dayDateString}] Item insert failed for ${itemName}: ${saleError.message}`);
             }
+
+            // Item-level discount
+            if (discount && Math.abs(discount) > 0.0001) {
+              const { error: discountError } = await supabase.from('unified_sales').insert({
+                restaurant_id: restaurantId,
+                pos_system: 'lighthouse',
+                external_order_id: chargeId,
+                external_item_id: `${chargeId}-item-discount-${lineIndex}`,
+                item_name: `${itemName} Discount`,
+                item_type: 'discount',
+                adjustment_type: 'discount',
+                total_price: -Math.abs(discount),
+                sale_date: dayDateString,
+                sale_time: '00:00:00',
+                raw_data: item,
+                synced_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+              if (discountError) {
+                console.error(`[${dayDateString}] [Lighthouse Sync] Item discount insert error for ${itemName}:`, discountError);
+                results.errors.push(`[${dayDateString}] Item discount insert failed for ${itemName}: ${discountError.message}`);
+              }
+            }
+
+            // Item-level surcharge
+            if (sur && Math.abs(sur) > 0.0001) {
+              const { error: feeError } = await supabase.from('unified_sales').insert({
+                restaurant_id: restaurantId,
+                pos_system: 'lighthouse',
+                external_order_id: chargeId,
+                external_item_id: `${chargeId}-item-fee-${lineIndex}`,
+                item_name: `${itemName} Surcharge`,
+                item_type: 'fee',
+                adjustment_type: 'surcharge',
+                total_price: sur,
+                sale_date: dayDateString,
+                sale_time: '00:00:00',
+                raw_data: item,
+                synced_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+              if (feeError) {
+                console.error(`[${dayDateString}] [Lighthouse Sync] Item surcharge insert error for ${itemName}:`, feeError);
+                results.errors.push(`[${dayDateString}] Item surcharge insert failed for ${itemName}: ${feeError.message}`);
+              }
+            }
+
+            lineIndex++;
           }
+
+          // Ticket-level discounts
+          const ticketDiscounts = Array.isArray(ticket.ticketDiscounts) ? ticket.ticketDiscounts : [];
+          ticketDiscounts.forEach((d: any, idx: number) => {
+            const name = Array.isArray(d) ? d[0] : (d?.name || 'Ticket Discount');
+            const amount = Array.isArray(d) ? parseCurrency(d[1]) : parseCurrency(d?.amount);
+            if (!amount) return;
+            supabase.from('unified_sales').insert({
+              restaurant_id: restaurantId,
+              pos_system: 'lighthouse',
+              external_order_id: chargeId,
+              external_item_id: `${chargeId}-discount-${idx}`,
+              item_name: name,
+              item_type: 'discount',
+              adjustment_type: 'discount',
+              total_price: -Math.abs(amount),
+              sale_date: dayDateString,
+              sale_time: '00:00:00',
+              raw_data: d,
+              synced_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).then(({ error }) => {
+              if (error) {
+                console.error(`[${dayDateString}] [Lighthouse Sync] Ticket discount insert error for ${name}:`, error);
+                results.errors.push(`[${dayDateString}] Ticket discount insert failed for ${name}: ${error.message}`);
+              }
+            });
+          });
+
+          // Ticket-level fees/surcharges
+          const ticketFees = Array.isArray(ticket.ticketFees) ? ticket.ticketFees : [];
+          ticketFees.forEach((f: any, idx: number) => {
+            const name = Array.isArray(f) ? f[0] : (f?.name || 'Fee');
+            const amount = Array.isArray(f) ? parseCurrency(f[4] ?? f[1]) : parseCurrency(f?.grandTotal || f?.amount);
+            if (!amount) return;
+            supabase.from('unified_sales').insert({
+              restaurant_id: restaurantId,
+              pos_system: 'lighthouse',
+              external_order_id: chargeId,
+              external_item_id: `${chargeId}-fee-${idx}`,
+              item_name: name,
+              item_type: 'fee',
+              adjustment_type: 'surcharge',
+              total_price: amount,
+              sale_date: dayDateString,
+              sale_time: '00:00:00',
+              raw_data: f,
+              synced_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).then(({ error }) => {
+              if (error) {
+                console.error(`[${dayDateString}] [Lighthouse Sync] Fee insert error for ${name}:`, error);
+                results.errors.push(`[${dayDateString}] Fee insert failed for ${name}: ${error.message}`);
+              }
+            });
+          });
+
+          // Ticket-level taxes
+          const ticketTaxes = Array.isArray(ticket.ticketTaxes) ? ticket.ticketTaxes : [];
+          ticketTaxes.forEach((t: any, idx: number) => {
+            const name = Array.isArray(t) ? t[0] : (t?.name || 'Tax');
+            const amount = Array.isArray(t) ? parseCurrency(t[1]) : parseCurrency(t?.amount);
+            if (!amount) return;
+            supabase.from('unified_sales').insert({
+              restaurant_id: restaurantId,
+              pos_system: 'lighthouse',
+              external_order_id: chargeId,
+              external_item_id: `${chargeId}-tax-${idx}`,
+              item_name: name,
+              item_type: 'tax',
+              adjustment_type: 'tax',
+              total_price: amount,
+              sale_date: dayDateString,
+              sale_time: '00:00:00',
+              raw_data: t,
+              synced_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).then(({ error }) => {
+              if (error) {
+                console.error(`[${dayDateString}] [Lighthouse Sync] Tax insert error for ${name}:`, error);
+                results.errors.push(`[${dayDateString}] Tax insert failed for ${name}: ${error.message}`);
+              }
+            });
+          });
+
+          // Ticket-level tips from payments
+          const payments = Array.isArray(ticket.ticketPayments) ? ticket.ticketPayments : [];
+          payments.forEach((p: any, idx: number) => {
+            const tipAmount = Array.isArray(p) ? parseCurrency(p[3]) : parseCurrency(p?.tip);
+            if (!tipAmount) return;
+            const tenderType = Array.isArray(p) ? p[0] : (p?.tenderType || 'Tip');
+            supabase.from('unified_sales').insert({
+              restaurant_id: restaurantId,
+              pos_system: 'lighthouse',
+              external_order_id: chargeId,
+              external_item_id: `${chargeId}-tip-${idx}`,
+              item_name: `${tenderType} Tip`,
+              item_type: 'tip',
+              adjustment_type: 'tip',
+              total_price: tipAmount,
+              sale_date: dayDateString,
+              sale_time: '00:00:00',
+              raw_data: p,
+              synced_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).then(({ error }) => {
+              if (error) {
+                console.error(`[${dayDateString}] [Lighthouse Sync] Tip insert error for ${tenderType}:`, error);
+                results.errors.push(`[${dayDateString}] Tip insert failed for ${tenderType}: ${error.message}`);
+              }
+            });
+          });
         }
 
         // Small delay to avoid hammering the API

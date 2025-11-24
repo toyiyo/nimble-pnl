@@ -450,7 +450,7 @@ Deno.serve(async (req) => {
             adjustment_type: 'sale',
             quantity: qty,
             total_price: grossSales,
-            net_price: netSales || grossSales,
+            unit_price: grossSales && qty ? grossSales / qty : null,
             sale_date: startIso.split('T')[0],
             sale_time: startIso.split('T')[1]?.substring(0,8) || '',
             raw_data: rawData,

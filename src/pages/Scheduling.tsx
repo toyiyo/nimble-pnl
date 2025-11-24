@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +24,7 @@ import { ShiftOfferDialog } from '@/components/ShiftOfferDialog';
 import { OpenShiftDialog } from '@/components/OpenShiftDialog';
 import { ShiftMarketplace } from '@/components/ShiftMarketplace';
 import { ShiftApprovalWorkflow } from '@/components/ShiftApprovalWorkflow';
+import { useShiftNotifications } from '@/hooks/useShiftNotifications';
 import { Unlock, Send, History } from 'lucide-react';
 import { 
   Calendar, 
@@ -588,12 +589,13 @@ const Scheduling = () => {
                           <td key={day.toISOString()} className="p-2 align-top">
                             <div className="space-y-1">
                               {dayShifts.map((shift) => (
-                                <ShiftCard
-                                  key={shift.id}
-                                  shift={shift}
-                                  onEdit={handleEditShift}
-                                  onDelete={handleDeleteShift}
-                                />
+                                <React.Fragment key={shift.id}>
+                                  <ShiftCard
+                                    shift={shift}
+                                    onEdit={handleEditShift}
+                                    onDelete={handleDeleteShift}
+                                  />
+                                </React.Fragment>
                               ))}
                               <Button
                                 variant="outline"

@@ -55,7 +55,9 @@ export const useShift4Integration = (restaurantId: string | null) => {
   const connectShift4 = useCallback(async (
     secretKey: string,
     merchantId: string | undefined,
-    environment: 'production' | 'sandbox' = 'production'
+    environment: 'production' | 'sandbox' = 'production',
+    email?: string,
+    password?: string
   ) => {
     if (!restaurantId) {
       throw new Error('No restaurant selected');
@@ -70,6 +72,8 @@ export const useShift4Integration = (restaurantId: string | null) => {
           secretKey,
           merchantId,
           environment,
+          email,
+          password,
         },
       });
 

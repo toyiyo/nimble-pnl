@@ -858,6 +858,9 @@ export default function POSSales() {
                         "manual_upload": "border-l-purple-500",
                       };
                       
+                      // Map 'lighthouse' to 'shift4-pos' for icon
+                      let integrationId = sale.posSystem.toLowerCase().replace("_", "-") + "-pos";
+                      if (integrationId === "lighthouse-pos") integrationId = "shift4-pos";
                       return (
                         <div
                           key={sale.id}
@@ -872,7 +875,7 @@ export default function POSSales() {
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-2 mb-2">
                               <IntegrationLogo
-                                integrationId={sale.posSystem.toLowerCase().replace("_", "-") + "-pos"}
+                                integrationId={integrationId}
                                 size={20}
                               />
                               <h3 className="font-semibold text-base truncate">{sale.itemName}</h3>

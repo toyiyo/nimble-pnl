@@ -1,6 +1,37 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { getEncryptionService, logSecurityEvent } from "../_shared/encryption.ts";
 
+/**
+ * Authenticate with Lighthouse API and return token
+ */
+async function authenticateWithLighthouse(email: string, password: string): Promise<string> {
+  const response = await fetch('https://lighthouse-api.harbortouch.com/api/v1/auth/authenticate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Lighthouse authentication failed: ${errorText}`);
+  }
+  const data = await response.json();
+  if (!data.token) throw new Error('No token returned from Lighthouse');
+  return data.token;
+}
+
+/**
+ * Store Lighthouse token in shift4_connections (encrypted)
+ */
+async function storeLighthouseToken(supabase: any, connectionId: string, token: string) {
+  const encryption = await getEncryptionService();
+  const encryptedToken = await encryption.encrypt(token);
+  await supabase.from('shift4_connections').update({
+    lighthouse_token: encryptedToken,
+    lighthouse_token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(), // 1hr expiry (adjust if needed)
+    updated_at: new Date().toISOString(),
+  }).eq('id', connectionId);
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -15,78 +46,47 @@ interface Shift4SyncRequest {
   };
 }
 
+
 /**
- * Fetch charges from Shift4 API with pagination
- * Note: Shift4 uses the same URL for both test and production.
- * The difference is in the API key prefix (sk_test_ vs sk_live_).
+ * Fetch sales summary by item from Lighthouse API
  */
-async function fetchCharges(
-  secretKey: string,
-  environment: string,
-  startTimestamp: number,
-  endTimestamp?: number
-): Promise<any[]> {
-  // Shift4 uses the same base URL for both test and production environments
-  const baseUrl = 'https://api.shift4.com';
-
-  const authHeader = 'Basic ' + btoa(secretKey + ':');
-  const allCharges: any[] = [];
-  let startingAfterId: string | null = null;
-  let hasMore = true;
-  const limit = 100; // Max supported by Shift4
-  let iterations = 0;
-  const maxIterations = 100; // Safety limit
-
-  while (hasMore && iterations < maxIterations) {
-    iterations++;
-
-    const params = new URLSearchParams({
-      limit: limit.toString(),
-      'created[gte]': startTimestamp.toString(),
-    });
-
-    if (endTimestamp) {
-      params.set('created[lte]', endTimestamp.toString());
-    }
-
-    if (startingAfterId) {
-      params.set('startingAfterId', startingAfterId);
-    }
-
-    const url = `${baseUrl}/charges?${params.toString()}`;
-    console.log(`Fetching charges: ${url.substring(0, 100)}...`);
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': authHeader,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Failed to fetch charges:', errorText);
-      throw new Error(`Failed to fetch charges: ${response.status} ${errorText}`);
-    }
-
-    const data = await response.json();
-    const charges = data.list || [];
-    
-    console.log(`Fetched ${charges.length} charges, hasMore: ${data.hasMore}`);
-    
-    allCharges.push(...charges);
-
-    hasMore = data.hasMore || false;
-    
-    if (hasMore && charges.length > 0) {
-      // Get the last charge ID for pagination
-      startingAfterId = charges[charges.length - 1].id;
-    }
+async function fetchLighthouseSalesSummary(token: string, start: string, end: string, locations: number[], locale = 'en-US'): Promise<any> {
+  const url = 'https://lighthouse-api.harbortouch.com/api/v1/reports/echo-pro/sales-summary-by-item';
+  const payload = {
+    start,
+    end,
+    locations,
+    intradayPeriodGroupGuids: [],
+    revenueCenterGuids: [],
+    locale,
+  };
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json, text/javascript, */*; q=0.01',
+      'accept-language': 'en-US,en;q=0.9',
+      'cache-control': 'no-cache',
+      'content-type': 'application/json',
+      'origin': 'https://lh.shift4.com',
+      'pragma': 'no-cache',
+      'priority': 'u=1, i',
+      'referer': 'https://lh.shift4.com/',
+      'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"macOS"',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'cross-site',
+      'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+      'x-access-token': token,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Lighthouse sales summary fetch failed: ${errorText}`);
   }
-
-  console.log(`Total charges fetched: ${allCharges.length}`);
-  return allCharges;
+  return await response.json();
 }
 
 /**
@@ -217,6 +217,7 @@ Deno.serve(async (req) => {
 
     console.log('Shift4 sync started:', { restaurantId, action, dateRange, userId });
 
+
     // Get Shift4 connection
     const { data: connection, error: connError } = await supabase
       .from('shift4_connections')
@@ -237,9 +238,11 @@ Deno.serve(async (req) => {
 
     const restaurantTimezone = restaurant?.timezone || 'America/Chicago';
 
-    // Decrypt the secret key
-    const encryption = await getEncryptionService();
-    const secretKey = await encryption.decrypt(connection.secret_key);
+  // Decrypt the secret key only if present
+  const encryption = await getEncryptionService();
+  const secretKey = connection.secret_key ? await encryption.decrypt(connection.secret_key) : null;
+
+    // (Authentication handled later when token is actually needed)
 
     // Log security event (only if user authenticated)
     if (userId) {
@@ -290,112 +293,213 @@ Deno.serve(async (req) => {
       errors: [] as string[],
     };
 
-    // Fetch and store charges
+
+    // Fetch and store Lighthouse sales summary
     try {
-      const charges = await fetchCharges(
-        secretKey,
-        connection.environment,
-        startTimestamp,
-        endTimestamp
+      // Decrypt Lighthouse token
+      let lighthouseToken: string | null = null;
+      const now = new Date();
+      const expiresAt = connection.lighthouse_token_expires_at
+        ? new Date(connection.lighthouse_token_expires_at)
+        : null;
+
+      if (connection.lighthouse_token && expiresAt && expiresAt > now) {
+        lighthouseToken = await encryption.decrypt(connection.lighthouse_token);
+      } else if (connection.email && connection.password) {
+        const email = await encryption.decrypt(connection.email);
+        const password = await encryption.decrypt(connection.password);
+        // Authenticate and get full response
+        const authResponse = await (async () => {
+          const response = await fetch('https://lighthouse-api.harbortouch.com/api/v1/auth/authenticate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Lighthouse authentication failed: ${errorText}`);
+          }
+          return await response.json();
+        })();
+        lighthouseToken = authResponse.token;
+        // Extract all unique location IDs from permissions
+        const locationIds = Array.from(new Set((authResponse.permissions || []).map((p: any) => p.l).filter((l: any) => typeof l === 'number')));
+        const { data: updatedConn, error: tokenError } = await supabase.from('shift4_connections').update({
+          lighthouse_token: await encryption.encrypt(lighthouseToken),
+          lighthouse_token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+          lighthouse_location_ids: locationIds.length ? JSON.stringify(locationIds) : null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', connection.id).select().single();
+        if (tokenError || !updatedConn) {
+          console.error('Failed to persist Lighthouse token:', tokenError, updatedConn);
+          throw new Error('Failed to persist Lighthouse token');
+        }
+        if (userId) {
+          await logSecurityEvent(
+            supabase,
+            'LIGHTHOUSE_TOKEN_ACQUIRED',
+            userId,
+            restaurantId,
+            { action, merchantId: connection.merchant_id, locationIds },
+          );
+        }
+      }
+      if (!lighthouseToken) throw new Error('No Lighthouse token available');
+
+      // Prepare request params
+      const startIso = new Date(startTimestamp * 1000).toISOString();
+      const endIso = new Date(endTimestamp * 1000).toISOString();
+      let locations: number[] = [];
+      if (connection.lighthouse_location_ids) {
+        try {
+          const parsed = JSON.parse(connection.lighthouse_location_ids);
+          if (Array.isArray(parsed)) {
+            locations = parsed.filter((l) => typeof l === 'number');
+          }
+        } catch (e) {
+          console.error('Failed to parse lighthouse_location_ids:', connection.lighthouse_location_ids, e);
+        }
+      }
+      // If no valid location IDs, throw error
+      if (!locations.length) {
+        throw new Error('No valid Lighthouse location IDs found for sync');
+      }
+
+      // Fetch sales summary
+      const salesSummary = await fetchLighthouseSalesSummary(
+        lighthouseToken,
+        startIso,
+        endIso,
+        locations,
+        'en-US'
       );
 
-      console.log(`Processing ${charges.length} charges`);
+      // Store each row as a charge (aggregated per item)
+      if (Array.isArray(salesSummary.rows)) {
+        const parseCurrency = (value: string): number => {
+          if (!value) return 0;
+          const cleaned = value.replace(/[^0-9.-]/g, '');
+          const parsed = parseFloat(cleaned);
+          return Number.isFinite(parsed) ? parsed : 0;
+        };
 
-      for (const charge of charges) {
-        try {
-          // Extract tip amount from splits (if available)
-          const tipAmount = extractTipAmount(charge);
+        for (const row of salesSummary.rows) {
+          const item = row[0];
+          // Skip total/summary rows
+          if (typeof item === 'string' && item.toLowerCase().includes('totals')) {
+            continue;
+          }
+          const revenueClass = row[1];
+          const department = row[2];
+          const defaultPrice = parseCurrency(row[3]);
+          const qty = parseFloat(row[4]) || 0;
+          const totalCost = parseCurrency(row[5]);
+          const discount = parseCurrency(row[7]); // reported as positive in Lighthouse
+          const avgSalePrice = parseCurrency(row[8]);
+          const grossSales = parseCurrency(row[9]);
+          const netSales = parseCurrency(row[10]);
 
-          // Convert timestamp to local date/time
-          const { date: serviceDate, time: serviceTime } = convertToLocalDateTime(
-            charge.created,
-            restaurantTimezone
-          );
+          const locationId = locations[0] ?? null;
+          const merchantId = locationId !== null ? String(locationId) : 'unknown';
+          const chargeId = `${item}-${merchantId}-${startIso}`;
+          const chargeAmount = netSales || grossSales || 0;
+          const chargeAmountCents = Math.round(chargeAmount * 100);
 
-          // Store charge
-          await supabase.from('shift4_charges').upsert({
+          const rawData = {
+            item,
+            revenueClass,
+            department,
+            defaultPrice,
+            qty,
+            totalCost,
+            discount,
+            avgSalePrice,
+            grossSales,
+            netSales,
+          };
+
+          const { error: chargeError } = await supabase.from('shift4_charges').upsert({
             restaurant_id: restaurantId,
-            charge_id: charge.id,
-            merchant_id: connection.merchant_id,
-            amount: charge.amount,
-            currency: charge.currency || 'USD',
-            status: charge.status || 'unknown',
-            refunded: charge.refunded || false,
-            captured: charge.captured || false,
-            created_at_ts: charge.created,
-            created_time: new Date(charge.created * 1000).toISOString(),
-            service_date: serviceDate,
-            service_time: serviceTime,
-            description: charge.description,
-            tip_amount: tipAmount,
-            raw_json: charge,
+            charge_id: chargeId,
+            merchant_id: merchantId,
+            amount: chargeAmountCents,
+            currency: 'USD',
+            status: 'completed',
+            refunded: false,
+            captured: true,
+            created_at_ts: startTimestamp,
+            created_time: startIso,
+            service_date: startIso.split('T')[0],
+            service_time: startIso.split('T')[1]?.substring(0,8) || '',
+            description: item,
+            tip_amount: 0,
+            raw_json: rawData,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }, {
             onConflict: 'restaurant_id,charge_id',
           });
-
-          results.chargesSynced++;
-
-          // Fetch and store refunds for this charge (if it has been refunded)
-          if (charge.refunded) {
-            try {
-              const refunds = await fetchRefundsForCharge(
-                secretKey,
-                connection.environment,
-                charge.id
-              );
-
-              for (const refund of refunds) {
-                const { date: refundDate } = convertToLocalDateTime(
-                  refund.created,
-                  restaurantTimezone
-                );
-
-                await supabase.from('shift4_refunds').upsert({
-                  restaurant_id: restaurantId,
-                  refund_id: refund.id,
-                  charge_id: charge.id,
-                  merchant_id: connection.merchant_id,
-                  amount: refund.amount,
-                  currency: refund.currency || 'USD',
-                  status: refund.status,
-                  reason: refund.reason,
-                  created_at_ts: refund.created,
-                  created_time: new Date(refund.created * 1000).toISOString(),
-                  service_date: refundDate,
-                  raw_json: refund,
-                  synced_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                }, {
-                  onConflict: 'restaurant_id,refund_id',
-                });
-
-                results.refundsSynced++;
-              }
-            } catch (refundError: any) {
-              console.error(`Failed to fetch refunds for charge ${charge.id}:`, refundError);
-              results.errors.push(`Refunds for charge ${charge.id}: ${refundError.message}`);
-            }
+          if (chargeError) {
+            console.error('[Lighthouse Sync] shift4_charges upsert error:', chargeError);
+            results.errors.push(`Charge upsert failed for ${item}: ${chargeError.message}`);
+          } else {
+            results.chargesSynced++;
           }
 
-        } catch (chargeError: any) {
-          console.error(`Failed to process charge ${charge.id}:`, chargeError);
-          results.errors.push(`Charge ${charge.id}: ${chargeError.message}`);
+          // Remove any prior rows for this charge to avoid partial-index conflict issues
+          await supabase
+            .from('unified_sales')
+            .delete()
+            .eq('restaurant_id', restaurantId)
+            .eq('pos_system', 'lighthouse')
+            .eq('external_order_id', chargeId);
+
+          const { error: saleError } = await supabase.from('unified_sales').insert({
+            restaurant_id: restaurantId,
+            pos_system: 'lighthouse',
+            external_order_id: chargeId,
+            external_item_id: `${chargeId}-sale`,
+            item_name: item,
+            item_type: 'sale',
+            adjustment_type: 'sale',
+            quantity: qty,
+            total_price: grossSales,
+            unit_price: grossSales && qty ? grossSales / qty : null,
+            sale_date: startIso.split('T')[0],
+            sale_time: startIso.split('T')[1]?.substring(0,8) || '',
+            raw_data: rawData,
+            synced_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+          if (saleError) {
+            console.error('[Lighthouse Sync] unified_sales sale upsert error:', saleError);
+            results.errors.push(`Sale upsert failed for ${item}: ${saleError.message}`);
+          }
+
+          if (discount && Math.abs(discount) > 0.0001) {
+            const { error: discountError } = await supabase.from('unified_sales').insert({
+              restaurant_id: restaurantId,
+              pos_system: 'lighthouse',
+              external_order_id: chargeId,
+              external_item_id: `${chargeId}-discount`,
+              item_name: `${item} Discount`,
+              item_type: 'discount',
+              adjustment_type: 'discount',
+              total_price: -discount,
+              sale_date: startIso.split('T')[0],
+              sale_time: startIso.split('T')[1]?.substring(0,8) || '',
+              raw_data: { discount, row },
+              synced_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }, {
+              onConflict: 'restaurant_id,pos_system,external_order_id,external_item_id',
+            });
+            if (discountError) {
+              console.error(`[Lighthouse Sync] Discount upsert error for ${item}:`, discountError);
+              results.errors.push(`Discount upsert failed for ${item}: ${discountError.message}`);
+            }
+          }
         }
-      }
-
-      // Sync to unified_sales table
-      const { data: syncResult, error: syncError } = await supabase.rpc(
-        'sync_shift4_to_unified_sales',
-        { p_restaurant_id: restaurantId }
-      );
-
-      if (syncError) {
-        console.error('Error syncing to unified_sales:', syncError);
-        results.errors.push(`Unified sync error: ${syncError.message}`);
-      } else {
-        console.log(`Synced ${syncResult} items to unified_sales`);
       }
 
       // Update last sync timestamp
@@ -405,16 +509,18 @@ Deno.serve(async (req) => {
         .eq('id', connection.id);
 
     } catch (syncError: any) {
-      console.error('Sync error:', syncError);
+      console.error('Lighthouse sync error:', syncError);
       results.errors.push(syncError.message);
     }
 
+    const success = results.errors.length === 0;
     return new Response(
       JSON.stringify({
-        success: true,
+        success,
         results,
       }),
       {
+        status: success ? 200 : 207,
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/json',

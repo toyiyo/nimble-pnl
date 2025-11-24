@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSquareSalesAdapter } from './adapters/useSquareSalesAdapter';
 import { useCloverSalesAdapter } from './adapters/useCloverSalesAdapter';
 import { useToastSalesAdapter } from './adapters/useToastSalesAdapter';
+import { useShift4SalesAdapter } from './adapters/useShift4SalesAdapter';
 import { POSAdapter, POSIntegrationStatus, POSSystemType } from '@/types/pos';
 
 export const usePOSIntegrations = (restaurantId: string | null) => {
@@ -13,6 +14,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
   const squareAdapter = useSquareSalesAdapter(restaurantId);
   const cloverAdapter = useCloverSalesAdapter(restaurantId);
   const toastAdapter = useToastSalesAdapter(restaurantId);
+  const shift4Adapter = useShift4SalesAdapter(restaurantId);
 
   // Use useMemo to stabilize the manual adapter object
   const manualAdapter = useCallback(() => ({
@@ -33,6 +35,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
       square: squareAdapter,
       clover: cloverAdapter,
       toast: toastAdapter,
+      shift4: shift4Adapter,
       // Future adapters will be added here:
       // resy: useResySalesAdapter(restaurantId),
       manual: manualAdapter(),

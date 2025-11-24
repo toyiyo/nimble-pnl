@@ -34,18 +34,8 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Missing authorization header');
     }
 
-    // Create a client with the user's token for auth operations
-    const userSupabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: {
-            Authorization: authHeader,
-          },
-        },
-      }
-    );
+    // Extract JWT token from Authorization header
+    const token = authHeader.replace('Bearer ', '');
 
     const { restaurantId, email, role, employeeId }: RequestBody = await req.json();
 
@@ -66,15 +56,15 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Restaurant not found');
     }
 
-    // Get current user info using the user client
-    const { data: { user }, error: authError } = await userSupabase.auth.getUser();
+    // Get current user info by passing token directly
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
       console.error('Auth error:', authError);
       throw new Error('Unauthorized');
     }
 
     // Check if user has permission to invite (owner or manager)
-    const { data: userRole, error: roleError } = await userSupabase
+    const { data: userRole, error: roleError } = await supabase
       .from('user_restaurants')
       .select('role')
       .eq('restaurant_id', restaurantId)

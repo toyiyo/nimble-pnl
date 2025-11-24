@@ -1,6 +1,37 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { getEncryptionService, logSecurityEvent } from "../_shared/encryption.ts";
 
+/**
+ * Authenticate with Lighthouse API and return token
+ */
+async function authenticateWithLighthouse(email: string, password: string): Promise<string> {
+  const response = await fetch('https://lighthouse-api.harbortouch.com/api/v1/auth/authenticate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Lighthouse authentication failed: ${errorText}`);
+  }
+  const data = await response.json();
+  if (!data.token) throw new Error('No token returned from Lighthouse');
+  return data.token;
+}
+
+/**
+ * Store Lighthouse token in shift4_connections (encrypted)
+ */
+async function storeLighthouseToken(supabase: any, connectionId: string, token: string) {
+  const encryption = await getEncryptionService();
+  const encryptedToken = await encryption.encrypt(token);
+  await supabase.from('shift4_connections').update({
+    lighthouse_token: encryptedToken,
+    lighthouse_token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(), // 1hr expiry (adjust if needed)
+    updated_at: new Date().toISOString(),
+  }).eq('id', connectionId);
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -15,78 +46,34 @@ interface Shift4SyncRequest {
   };
 }
 
+
 /**
- * Fetch charges from Shift4 API with pagination
- * Note: Shift4 uses the same URL for both test and production.
- * The difference is in the API key prefix (sk_test_ vs sk_live_).
+ * Fetch sales summary by item from Lighthouse API
  */
-async function fetchCharges(
-  secretKey: string,
-  environment: string,
-  startTimestamp: number,
-  endTimestamp?: number
-): Promise<any[]> {
-  // Shift4 uses the same base URL for both test and production environments
-  const baseUrl = 'https://api.shift4.com';
-
-  const authHeader = 'Basic ' + btoa(secretKey + ':');
-  const allCharges: any[] = [];
-  let startingAfterId: string | null = null;
-  let hasMore = true;
-  const limit = 100; // Max supported by Shift4
-  let iterations = 0;
-  const maxIterations = 100; // Safety limit
-
-  while (hasMore && iterations < maxIterations) {
-    iterations++;
-
-    const params = new URLSearchParams({
-      limit: limit.toString(),
-      'created[gte]': startTimestamp.toString(),
-    });
-
-    if (endTimestamp) {
-      params.set('created[lte]', endTimestamp.toString());
-    }
-
-    if (startingAfterId) {
-      params.set('startingAfterId', startingAfterId);
-    }
-
-    const url = `${baseUrl}/charges?${params.toString()}`;
-    console.log(`Fetching charges: ${url.substring(0, 100)}...`);
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': authHeader,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Failed to fetch charges:', errorText);
-      throw new Error(`Failed to fetch charges: ${response.status} ${errorText}`);
-    }
-
-    const data = await response.json();
-    const charges = data.list || [];
-    
-    console.log(`Fetched ${charges.length} charges, hasMore: ${data.hasMore}`);
-    
-    allCharges.push(...charges);
-
-    hasMore = data.hasMore || false;
-    
-    if (hasMore && charges.length > 0) {
-      // Get the last charge ID for pagination
-      startingAfterId = charges[charges.length - 1].id;
-    }
+async function fetchLighthouseSalesSummary(token: string, start: string, end: string, locations: number[], locale = 'en-US'): Promise<any> {
+  const url = 'https://lighthouse-api.harbortouch.com/api/v1/reports/echo-pro/sales-summary-by-item';
+  const payload = {
+    start,
+    end,
+    locations,
+    intradayPeriodGroupGuids: [],
+    revenueCenterGuids: [],
+    locale,
+  };
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json, text/javascript, */*; q=0.01',
+      'content-type': 'application/json',
+      'x-access-token': token,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Lighthouse sales summary fetch failed: ${errorText}`);
   }
-
-  console.log(`Total charges fetched: ${allCharges.length}`);
-  return allCharges;
+  return await response.json();
 }
 
 /**
@@ -217,6 +204,7 @@ Deno.serve(async (req) => {
 
     console.log('Shift4 sync started:', { restaurantId, action, dateRange, userId });
 
+
     // Get Shift4 connection
     const { data: connection, error: connError } = await supabase
       .from('shift4_connections')
@@ -240,6 +228,26 @@ Deno.serve(async (req) => {
     // Decrypt the secret key
     const encryption = await getEncryptionService();
     const secretKey = await encryption.decrypt(connection.secret_key);
+
+    // Authenticate with Lighthouse if credentials exist
+    if (connection.email && connection.password) {
+      const email = await encryption.decrypt(connection.email);
+      const password = await encryption.decrypt(connection.password);
+      try {
+        const lighthouseToken = await authenticateWithLighthouse(email, password);
+        await storeLighthouseToken(supabase, connection.id, lighthouseToken);
+        // Optionally: log security event for token access
+        if (userId) {
+          await logSecurityEvent(supabase, 'LIGHTHOUSE_TOKEN_ACQUIRED', userId, restaurantId, {
+            action,
+            merchantId: connection.merchant_id,
+          });
+        }
+      } catch (authErr: any) {
+        console.error('Lighthouse authentication error:', authErr);
+        throw new Error('Failed to authenticate with Lighthouse: ' + authErr.message);
+      }
+    }
 
     // Log security event (only if user authenticated)
     if (userId) {
@@ -290,112 +298,70 @@ Deno.serve(async (req) => {
       errors: [] as string[],
     };
 
-    // Fetch and store charges
+
+    // Fetch and store Lighthouse sales summary
     try {
-      const charges = await fetchCharges(
-        secretKey,
-        connection.environment,
-        startTimestamp,
-        endTimestamp
+      // Decrypt Lighthouse token
+      let lighthouseToken: string | null = null;
+      if (connection.lighthouse_token) {
+        lighthouseToken = await encryption.decrypt(connection.lighthouse_token);
+      } else {
+        // If not present, authenticate and store
+        if (connection.email && connection.password) {
+          const email = await encryption.decrypt(connection.email);
+          const password = await encryption.decrypt(connection.password);
+          lighthouseToken = await authenticateWithLighthouse(email, password);
+          await storeLighthouseToken(supabase, connection.id, lighthouseToken);
+        }
+      }
+      if (!lighthouseToken) throw new Error('No Lighthouse token available');
+
+      // Prepare request params
+      const startIso = new Date(startTimestamp * 1000).toISOString();
+      const endIso = new Date(endTimestamp * 1000).toISOString();
+      const locations = connection.lighthouse_location_ids || [connection.merchant_id];
+
+      // Fetch sales summary
+      const salesSummary = await fetchLighthouseSalesSummary(
+        lighthouseToken,
+        startIso,
+        endIso,
+        locations,
+        'en-US'
       );
 
-      console.log(`Processing ${charges.length} charges`);
+      // Store each row as a charge (minimal example)
+      if (Array.isArray(salesSummary.rows)) {
+        for (const row of salesSummary.rows) {
+          // Map row to fields (example: item, qty, gross sales, net sales)
+          const item = row[0];
+          const qty = parseFloat(row[4]);
+          const grossSales = parseFloat(row[9].replace(/[^\d.]/g, ''));
+          const netSales = parseFloat(row[10].replace(/[^\d.]/g, ''));
 
-      for (const charge of charges) {
-        try {
-          // Extract tip amount from splits (if available)
-          const tipAmount = extractTipAmount(charge);
-
-          // Convert timestamp to local date/time
-          const { date: serviceDate, time: serviceTime } = convertToLocalDateTime(
-            charge.created,
-            restaurantTimezone
-          );
-
-          // Store charge
           await supabase.from('shift4_charges').upsert({
             restaurant_id: restaurantId,
-            charge_id: charge.id,
+            charge_id: `${item}-${startIso}`,
             merchant_id: connection.merchant_id,
-            amount: charge.amount,
-            currency: charge.currency || 'USD',
-            status: charge.status || 'unknown',
-            refunded: charge.refunded || false,
-            captured: charge.captured || false,
-            created_at_ts: charge.created,
-            created_time: new Date(charge.created * 1000).toISOString(),
-            service_date: serviceDate,
-            service_time: serviceTime,
-            description: charge.description,
-            tip_amount: tipAmount,
-            raw_json: charge,
+            amount: grossSales,
+            currency: 'USD',
+            status: 'completed',
+            refunded: false,
+            captured: true,
+            created_at_ts: startTimestamp,
+            created_time: startIso,
+            service_date: startIso.split('T')[0],
+            service_time: startIso.split('T')[1]?.substring(0,8) || '',
+            description: item,
+            tip_amount: 0,
+            raw_json: row,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }, {
             onConflict: 'restaurant_id,charge_id',
           });
-
           results.chargesSynced++;
-
-          // Fetch and store refunds for this charge (if it has been refunded)
-          if (charge.refunded) {
-            try {
-              const refunds = await fetchRefundsForCharge(
-                secretKey,
-                connection.environment,
-                charge.id
-              );
-
-              for (const refund of refunds) {
-                const { date: refundDate } = convertToLocalDateTime(
-                  refund.created,
-                  restaurantTimezone
-                );
-
-                await supabase.from('shift4_refunds').upsert({
-                  restaurant_id: restaurantId,
-                  refund_id: refund.id,
-                  charge_id: charge.id,
-                  merchant_id: connection.merchant_id,
-                  amount: refund.amount,
-                  currency: refund.currency || 'USD',
-                  status: refund.status,
-                  reason: refund.reason,
-                  created_at_ts: refund.created,
-                  created_time: new Date(refund.created * 1000).toISOString(),
-                  service_date: refundDate,
-                  raw_json: refund,
-                  synced_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                }, {
-                  onConflict: 'restaurant_id,refund_id',
-                });
-
-                results.refundsSynced++;
-              }
-            } catch (refundError: any) {
-              console.error(`Failed to fetch refunds for charge ${charge.id}:`, refundError);
-              results.errors.push(`Refunds for charge ${charge.id}: ${refundError.message}`);
-            }
-          }
-
-        } catch (chargeError: any) {
-          console.error(`Failed to process charge ${charge.id}:`, chargeError);
-          results.errors.push(`Charge ${charge.id}: ${chargeError.message}`);
         }
-      }
-
-      // Sync to unified_sales table
-      const { data: syncResult, error: syncError } = await supabase.rpc(
-        'sync_shift4_to_unified_sales',
-        { p_restaurant_id: restaurantId }
-      );
-
-      if (syncError) {
-        console.error('Error syncing to unified_sales:', syncError);
-        results.errors.push(`Unified sync error: ${syncError.message}`);
-      } else {
-        console.log(`Synced ${syncResult} items to unified_sales`);
       }
 
       // Update last sync timestamp
@@ -405,7 +371,7 @@ Deno.serve(async (req) => {
         .eq('id', connection.id);
 
     } catch (syncError: any) {
-      console.error('Sync error:', syncError);
+      console.error('Lighthouse sync error:', syncError);
       results.errors.push(syncError.message);
     }
 

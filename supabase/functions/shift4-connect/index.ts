@@ -11,6 +11,8 @@ interface Shift4ConnectRequest {
   secretKey: string;
   merchantId?: string; // Optional - can be provided for tracking purposes
   environment?: 'production' | 'sandbox';
+  email?: string;
+  password?: string;
 }
 
 /**
@@ -72,13 +74,16 @@ Deno.serve(async (req) => {
     }
 
     const body: Shift4ConnectRequest = await req.json();
-    const { restaurantId, secretKey, merchantId, environment = 'production' } = body;
+    const { restaurantId, secretKey, merchantId, environment = 'production', email, password } = body;
 
     if (!restaurantId || !secretKey) {
       throw new Error('Restaurant ID and Secret Key are required');
     }
+    if (!email || !password) {
+      throw new Error('Lighthouse email and password are required');
+    }
 
-    console.log('Shift4 connection request:', { restaurantId, environment, hasMerchantId: !!merchantId });
+    console.log('Shift4 connection request:', { restaurantId, environment, hasMerchantId: !!merchantId, hasEmail: !!email });
 
     // Verify user has access to this restaurant
     const { data: userRestaurant, error: restaurantError } = await supabase
@@ -108,9 +113,11 @@ Deno.serve(async (req) => {
       merchantId: actualMerchantId,
     });
 
-    // Encrypt the secret key before storing
+    // Encrypt the secret key, email, and password before storing
     const encryption = await getEncryptionService();
     const encryptedSecretKey = await encryption.encrypt(secretKey);
+    const encryptedEmail = await encryption.encrypt(email);
+    const encryptedPassword = await encryption.encrypt(password);
 
     // Store or update the connection (one connection per restaurant+merchant)
     const { data: connection, error: connectionError } = await supabase
@@ -119,6 +126,8 @@ Deno.serve(async (req) => {
         restaurant_id: restaurantId,
         merchant_id: actualMerchantId,
         secret_key: encryptedSecretKey,
+        email: encryptedEmail,
+        password: encryptedPassword,
         environment,
         connected_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

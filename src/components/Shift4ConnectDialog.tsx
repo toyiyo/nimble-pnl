@@ -10,7 +10,13 @@ import { AlertCircle, Key, ShieldCheck } from 'lucide-react';
 interface Shift4ConnectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConnect: (secretKey: string, merchantId: string | undefined, environment: 'production' | 'sandbox') => Promise<void>;
+  onConnect: (
+    secretKey: string,
+    merchantId: string | undefined,
+    environment: 'production' | 'sandbox',
+    email: string,
+    password: string
+  ) => Promise<void>;
   isLoading: boolean;
 }
 
@@ -18,29 +24,37 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
   const [secretKey, setSecretKey] = useState('');
   const [merchantId, setMerchantId] = useState('');
   const [environment, setEnvironment] = useState<'production' | 'sandbox'>('production');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!secretKey.trim()) {
       setError('Please enter your Shift4 Secret Key');
       return;
     }
-
     if (!secretKey.startsWith('sk_')) {
       setError('Invalid Secret Key format. Shift4 Secret Keys start with "sk_"');
       return;
     }
-
+    if (!email.trim()) {
+      setError('Please enter your Lighthouse username/email');
+      return;
+    }
+    if (!password.trim()) {
+      setError('Please enter your Lighthouse password');
+      return;
+    }
     setError('');
-
     try {
-      await onConnect(secretKey, merchantId.trim() || undefined, environment);
+      await onConnect(secretKey, merchantId.trim() || undefined, environment, email.trim(), password.trim());
       // Reset form on success
       setSecretKey('');
       setMerchantId('');
       setEnvironment('production');
+      setEmail('');
+      setPassword('');
     } catch (err: any) {
       setError(err.message || 'Failed to connect to Shift4');
     }
@@ -50,6 +64,8 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
     setSecretKey('');
     setMerchantId('');
     setEnvironment('production');
+    setEmail('');
+    setPassword('');
     setError('');
     onOpenChange(false);
   };
@@ -68,19 +84,35 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* API Key input removed for Lighthouse-only flow */}
+
           <div className="space-y-2">
-            <Label htmlFor="secretKey">Secret Key</Label>
+            <Label htmlFor="email">Lighthouse Username/Email</Label>
             <Input
-              id="secretKey"
-              type="password"
-              placeholder="sk_live_..."
-              value={secretKey}
-              onChange={(e) => setSecretKey(e.target.value)}
+              id="email"
+              type="email"
+              placeholder="user@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               disabled={isLoading}
-              className="font-mono"
             />
             <p className="text-xs text-muted-foreground">
-              Your Secret Key starts with "sk_live_" (production) or "sk_test_" (sandbox)
+              Enter your Lighthouse account email (used for authentication)
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="password">Lighthouse Password</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isLoading}
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter your Lighthouse account password (stored encrypted)
             </p>
           </div>
 

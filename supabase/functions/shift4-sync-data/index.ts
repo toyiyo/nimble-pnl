@@ -499,12 +499,12 @@ Deno.serve(async (req) => {
           }
 
           // Remove any prior rows for this charge to avoid partial-index conflict issues
-          await supabase
-            .from('unified_sales')
-            .delete()
-            .eq('restaurant_id', restaurantId)
-            .eq('pos_system', 'lighthouse')
-            .eq('external_order_id', chargeId);
+          // await supabase
+          //   .from('unified_sales')
+          //   .delete()
+          //   .eq('restaurant_id', restaurantId)
+          //   .eq('pos_system', 'lighthouse')
+          //   .eq('external_order_id', chargeId);
 
           let lineIndex = 0;
 

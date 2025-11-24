@@ -101,17 +101,9 @@ Deno.serve(async (req) => {
       throw new Error('Access denied: Only owners and managers can connect POS systems');
     }
 
-    // Validate the API key
-    console.log('Validating Shift4 API key...');
-    await validateShift4Key(secretKey, environment);
-    
-    // Use provided merchantId or generate one from the secret key for tracking
-    // The API key itself identifies the merchant account
-    const actualMerchantId = merchantId || `shift4_${secretKey.substring(0, 12)}`;
 
-    console.log('Shift4 API key validated successfully:', { 
-      merchantId: actualMerchantId,
-    });
+    // Use provided merchantId or generate one for tracking
+    const actualMerchantId = merchantId || `lighthouse_${email?.substring(0, 8)}`;
 
     // Encrypt the secret key, email, and password before storing
     const encryption = await getEncryptionService();

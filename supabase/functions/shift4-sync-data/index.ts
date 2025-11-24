@@ -400,8 +400,10 @@ Deno.serve(async (req) => {
           const netSales = parseCurrency(row[10]);
 
           const locationId = locations[0] ?? null;
-          const chargeId = `${item}-${locationId ?? 'loc'}-${startIso}`;
+          const merchantId = locationId !== null ? String(locationId) : 'unknown';
+          const chargeId = `${item}-${merchantId}-${startIso}`;
           const chargeAmount = netSales || grossSales || 0;
+          const chargeAmountCents = Math.round(chargeAmount * 100);
 
           const rawData = {
             item,
@@ -419,8 +421,8 @@ Deno.serve(async (req) => {
           const { error: chargeError } = await supabase.from('shift4_charges').upsert({
             restaurant_id: restaurantId,
             charge_id: chargeId,
-            merchant_id: locationId,
-            amount: chargeAmount,
+            merchant_id: merchantId,
+            amount: chargeAmountCents,
             currency: 'USD',
             status: 'completed',
             refunded: false,

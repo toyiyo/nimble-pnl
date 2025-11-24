@@ -374,24 +374,49 @@ Deno.serve(async (req) => {
         'en-US'
       );
 
-      // Store each row as a charge (minimal example)
+      // Store each row as a charge (aggregated per item)
       if (Array.isArray(salesSummary.rows)) {
-        for (const row of salesSummary.rows) {
-          // Map row to fields (example: item, qty, gross sales, net sales, discount)
-          const item = row[0];
-          const qty = parseFloat(row[4]);
-          const grossSales = parseFloat(row[9].replace(/[^ -\d.]/g, ''));
-          const netSales = parseFloat(row[10].replace(/[^ -\d.]/g, ''));
-          const discount = parseFloat(row[7].replace(/[^ -\d.\-]/g, ''));
+        const parseCurrency = (value: string): number => {
+          if (!value) return 0;
+          const cleaned = value.replace(/[^0-9.-]/g, '');
+          const parsed = parseFloat(cleaned);
+          return Number.isFinite(parsed) ? parsed : 0;
+        };
 
-          // Use first location id for merchant_id (or null if not available)
+        for (const row of salesSummary.rows) {
+          const item = row[0];
+          const revenueClass = row[1];
+          const department = row[2];
+          const defaultPrice = parseCurrency(row[3]);
+          const qty = parseFloat(row[4]) || 0;
+          const totalCost = parseCurrency(row[5]);
+          const discount = parseCurrency(row[7]); // reported as positive in Lighthouse
+          const avgSalePrice = parseCurrency(row[8]);
+          const grossSales = parseCurrency(row[9]);
+          const netSales = parseCurrency(row[10]);
+
           const locationId = locations[0] ?? null;
+          const chargeId = `${item}-${locationId ?? 'loc'}-${startIso}`;
+          const chargeAmount = netSales || grossSales || 0;
+
+          const rawData = {
+            item,
+            revenueClass,
+            department,
+            defaultPrice,
+            qty,
+            totalCost,
+            discount,
+            avgSalePrice,
+            grossSales,
+            netSales,
+          };
 
           const { error: chargeError } = await supabase.from('shift4_charges').upsert({
             restaurant_id: restaurantId,
-            charge_id: `${item}-${startIso}`,
+            charge_id: chargeId,
             merchant_id: locationId,
-            amount: grossSales,
+            amount: chargeAmount,
             currency: 'USD',
             status: 'completed',
             refunded: false,
@@ -402,7 +427,7 @@ Deno.serve(async (req) => {
             service_time: startIso.split('T')[1]?.substring(0,8) || '',
             description: item,
             tip_amount: 0,
-            raw_json: row,
+            raw_json: rawData,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }, {
@@ -415,22 +440,21 @@ Deno.serve(async (req) => {
             results.chargesSynced++;
           }
 
-          // Store main sales row in unified_sales
           const { error: saleError } = await supabase.from('unified_sales').upsert({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             merchant_id: locationId,
-            external_order_id: `${item}-${startIso}`,
-            external_item_id: `${item}-${startIso}-sale`,
+            external_order_id: chargeId,
+            external_item_id: `${chargeId}-sale`,
             item_name: item,
             item_type: 'sale',
             adjustment_type: 'sale',
             quantity: qty,
             total_price: grossSales,
-            net_price: netSales,
+            net_price: netSales || grossSales,
             sale_date: startIso.split('T')[0],
             sale_time: startIso.split('T')[1]?.substring(0,8) || '',
-            raw_data: { row },
+            raw_data: rawData,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }, {
@@ -441,19 +465,17 @@ Deno.serve(async (req) => {
             results.errors.push(`Sale upsert failed for ${item}: ${saleError.message}`);
           }
 
-          // Store discount as negative adjustment in unified_sales (if non-zero)
           if (discount && Math.abs(discount) > 0.0001) {
-            console.log(`[Lighthouse Sync] Parsed discount for ${item}:`, discount);
             const { error: discountError } = await supabase.from('unified_sales').upsert({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               merchant_id: locationId,
-              external_order_id: `${item}-${startIso}`,
-              external_item_id: `${item}-${startIso}-discount`,
+              external_order_id: chargeId,
+              external_item_id: `${chargeId}-discount`,
               item_name: `${item} Discount`,
               item_type: 'discount',
               adjustment_type: 'discount',
-              total_price: -discount, // negative for discounts
+              total_price: -discount,
               sale_date: startIso.split('T')[0],
               sale_time: startIso.split('T')[1]?.substring(0,8) || '',
               raw_data: { discount, row },

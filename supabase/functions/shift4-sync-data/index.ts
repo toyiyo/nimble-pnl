@@ -259,10 +259,10 @@ Deno.serve(async (req) => {
       startDate = new Date(dateRange.startDate);
       endDate = new Date(dateRange.endDate);
     } else if (action === 'initial_sync') {
-      // Last 90 days for initial sync
+      // Last 7 days for initial sync
       endDate = new Date();
       startDate = new Date();
-      startDate.setDate(endDate.getDate() - 90);
+      startDate.setDate(endDate.getDate() - 7);
     } else if (action === 'daily_sync') {
       // Previous business day
       endDate = new Date();
@@ -275,15 +275,9 @@ Deno.serve(async (req) => {
       startDate.setDate(endDate.getDate() - 2);
     }
 
-    // Convert to UTC Unix timestamps (seconds, not milliseconds)
-    const startTimestamp = Math.floor(startDate.getTime() / 1000);
-    const endTimestamp = Math.floor(endDate.getTime() / 1000);
-
     console.log('Syncing Shift4 data:', {
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
-      startTimestamp,
-      endTimestamp,
       timezone: restaurantTimezone,
     });
 
@@ -347,8 +341,10 @@ Deno.serve(async (req) => {
       if (!lighthouseToken) throw new Error('No Lighthouse token available');
 
       // Prepare request params
-      const startIso = new Date(startTimestamp * 1000).toISOString();
-      const endIso = new Date(endTimestamp * 1000).toISOString();
+      const startDay = new Date(startDate);
+      startDay.setUTCHours(0, 0, 0, 0);
+      const endDay = new Date(endDate);
+      endDay.setUTCHours(0, 0, 0, 0);
       let locations: number[] = [];
       if (connection.lighthouse_location_ids) {
         try {
@@ -365,17 +361,33 @@ Deno.serve(async (req) => {
         throw new Error('No valid Lighthouse location IDs found for sync');
       }
 
-      // Fetch sales summary
-      const salesSummary = await fetchLighthouseSalesSummary(
-        lighthouseToken,
-        startIso,
-        endIso,
-        locations,
-        'en-US'
-      );
+      // Build list of days to sync (inclusive)
+      const daysToSync: Date[] = [];
+      for (let cursor = new Date(startDay); cursor <= endDay; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+        daysToSync.push(new Date(cursor));
+      }
 
-      // Store each row as a charge (aggregated per item)
-      if (Array.isArray(salesSummary.rows)) {
+      for (const syncDate of daysToSync) {
+        const dayStart = new Date(syncDate);
+        dayStart.setUTCHours(0, 0, 0, 0);
+        const dayEnd = new Date(syncDate);
+        dayEnd.setUTCHours(23, 59, 59, 999);
+        const dayStartIso = dayStart.toISOString();
+        const dayEndIso = dayEnd.toISOString();
+        const dayDateString = dayStartIso.split('T')[0];
+
+        const salesSummary = await fetchLighthouseSalesSummary(
+          lighthouseToken,
+          dayStartIso,
+          dayEndIso,
+          locations,
+          'en-US'
+        );
+
+        if (!Array.isArray(salesSummary.rows)) {
+          continue;
+        }
+
         const parseCurrency = (value: string): number => {
           if (!value) return 0;
           const cleaned = value.replace(/[^0-9.-]/g, '');
@@ -401,7 +413,7 @@ Deno.serve(async (req) => {
 
           const locationId = locations[0] ?? null;
           const merchantId = locationId !== null ? String(locationId) : 'unknown';
-          const chargeId = `${item}-${merchantId}-${startIso}`;
+          const chargeId = `${item}-${merchantId}-${dayDateString}`;
           const chargeAmount = netSales || grossSales || 0;
           const chargeAmountCents = Math.round(chargeAmount * 100);
 
@@ -427,10 +439,10 @@ Deno.serve(async (req) => {
             status: 'completed',
             refunded: false,
             captured: true,
-            created_at_ts: startTimestamp,
-            created_time: startIso,
-            service_date: startIso.split('T')[0],
-            service_time: startIso.split('T')[1]?.substring(0,8) || '',
+            created_at_ts: Math.floor(dayStart.getTime() / 1000),
+            created_time: dayStartIso,
+            service_date: dayDateString,
+            service_time: '00:00:00',
             description: item,
             tip_amount: 0,
             raw_json: rawData,
@@ -440,8 +452,8 @@ Deno.serve(async (req) => {
             onConflict: 'restaurant_id,charge_id',
           });
           if (chargeError) {
-            console.error('[Lighthouse Sync] shift4_charges upsert error:', chargeError);
-            results.errors.push(`Charge upsert failed for ${item}: ${chargeError.message}`);
+            console.error(`[${dayDateString}] [Lighthouse Sync] shift4_charges upsert error:`, chargeError);
+            results.errors.push(`[${dayDateString}] Charge upsert failed for ${item}: ${chargeError.message}`);
           } else {
             results.chargesSynced++;
           }
@@ -465,15 +477,15 @@ Deno.serve(async (req) => {
             quantity: qty,
             total_price: grossSales,
             unit_price: grossSales && qty ? grossSales / qty : null,
-            sale_date: startIso.split('T')[0],
-            sale_time: startIso.split('T')[1]?.substring(0,8) || '',
+            sale_date: dayDateString,
+            sale_time: '00:00:00',
             raw_data: rawData,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
           if (saleError) {
-            console.error('[Lighthouse Sync] unified_sales sale upsert error:', saleError);
-            results.errors.push(`Sale upsert failed for ${item}: ${saleError.message}`);
+            console.error(`[${dayDateString}] [Lighthouse Sync] unified_sales sale insert error:`, saleError);
+            results.errors.push(`[${dayDateString}] Sale insert failed for ${item}: ${saleError.message}`);
           }
 
           if (discount && Math.abs(discount) > 0.0001) {
@@ -486,20 +498,21 @@ Deno.serve(async (req) => {
               item_type: 'discount',
               adjustment_type: 'discount',
               total_price: -discount,
-              sale_date: startIso.split('T')[0],
-              sale_time: startIso.split('T')[1]?.substring(0,8) || '',
+              sale_date: dayDateString,
+              sale_time: '00:00:00',
               raw_data: { discount, row },
               synced_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
-            }, {
-              onConflict: 'restaurant_id,pos_system,external_order_id,external_item_id',
             });
             if (discountError) {
-              console.error(`[Lighthouse Sync] Discount upsert error for ${item}:`, discountError);
-              results.errors.push(`Discount upsert failed for ${item}: ${discountError.message}`);
+              console.error(`[${dayDateString}] [Lighthouse Sync] Discount insert error for ${item}:`, discountError);
+              results.errors.push(`[${dayDateString}] Discount insert failed for ${item}: ${discountError.message}`);
             }
           }
         }
+
+        // Small delay to avoid hammering the API
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
       // Update last sync timestamp

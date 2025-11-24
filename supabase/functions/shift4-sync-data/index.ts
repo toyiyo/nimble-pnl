@@ -380,9 +380,9 @@ Deno.serve(async (req) => {
           // Map row to fields (example: item, qty, gross sales, net sales, discount)
           const item = row[0];
           const qty = parseFloat(row[4]);
-          const grossSales = parseFloat(row[9].replace(/[^ -\d.]/g, ''));
-          const netSales = parseFloat(row[10].replace(/[^ -\d.]/g, ''));
-          const discount = parseFloat(row[7].replace(/[^ -\d.\-]/g, ''));
+          const grossSales = parseFloat(row[9].replace(/[^ -\d.]/g, ''));
+          const netSales = parseFloat(row[10].replace(/[^ -\d.]/g, ''));
+          const discount = parseFloat(row[7].replace(/[^ -\d.\-]/g, ''));
 
           // Use first location id for merchant_id (or null if not available)
           const locationId = locations[0] ?? null;
@@ -410,9 +410,32 @@ Deno.serve(async (req) => {
           });
           results.chargesSynced++;
 
+          // Store main sales row in unified_sales
+          await supabase.from('unified_sales').upsert({
+            restaurant_id: restaurantId,
+            pos_system: 'lighthouse',
+            merchant_id: locationId,
+            external_order_id: `${item}-${startIso}`,
+            external_item_id: `${item}-${startIso}-sale`,
+            item_name: item,
+            item_type: 'sale',
+            adjustment_type: 'sale',
+            quantity: qty,
+            total_price: grossSales,
+            net_price: netSales,
+            sale_date: startIso.split('T')[0],
+            sale_time: startIso.split('T')[1]?.substring(0,8) || '',
+            raw_data: { row },
+            synced_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'restaurant_id,external_order_id,external_item_id',
+          });
+
           // Store discount as negative adjustment in unified_sales (if non-zero)
           if (discount && Math.abs(discount) > 0.0001) {
-            await supabase.from('unified_sales').upsert({
+            console.log(`[Lighthouse Sync] Parsed discount for ${item}:`, discount);
+            const { error: discountError, data: discountResult } = await supabase.from('unified_sales').upsert({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               merchant_id: locationId,
@@ -430,6 +453,11 @@ Deno.serve(async (req) => {
             }, {
               onConflict: 'restaurant_id,external_order_id,external_item_id',
             });
+            if (discountError) {
+              console.error(`[Lighthouse Sync] Discount upsert error for ${item}:`, discountError);
+            } else {
+              console.log(`[Lighthouse Sync] Discount upsert result for ${item}:`, discountResult);
+            }
           }
         }
       }

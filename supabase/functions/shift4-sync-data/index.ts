@@ -387,7 +387,7 @@ Deno.serve(async (req) => {
           // Use first location id for merchant_id (or null if not available)
           const locationId = locations[0] ?? null;
 
-          await supabase.from('shift4_charges').upsert({
+          const { error: chargeError } = await supabase.from('shift4_charges').upsert({
             restaurant_id: restaurantId,
             charge_id: `${item}-${startIso}`,
             merchant_id: locationId,
@@ -408,10 +408,15 @@ Deno.serve(async (req) => {
           }, {
             onConflict: 'restaurant_id,charge_id',
           });
-          results.chargesSynced++;
+          if (chargeError) {
+            console.error('[Lighthouse Sync] shift4_charges upsert error:', chargeError);
+            results.errors.push(`Charge upsert failed for ${item}: ${chargeError.message}`);
+          } else {
+            results.chargesSynced++;
+          }
 
           // Store main sales row in unified_sales
-          await supabase.from('unified_sales').upsert({
+          const { error: saleError } = await supabase.from('unified_sales').upsert({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             merchant_id: locationId,
@@ -431,11 +436,15 @@ Deno.serve(async (req) => {
           }, {
             onConflict: 'restaurant_id,external_order_id,external_item_id',
           });
+          if (saleError) {
+            console.error('[Lighthouse Sync] unified_sales sale upsert error:', saleError);
+            results.errors.push(`Sale upsert failed for ${item}: ${saleError.message}`);
+          }
 
           // Store discount as negative adjustment in unified_sales (if non-zero)
           if (discount && Math.abs(discount) > 0.0001) {
             console.log(`[Lighthouse Sync] Parsed discount for ${item}:`, discount);
-            const { error: discountError, data: discountResult } = await supabase.from('unified_sales').upsert({
+            const { error: discountError } = await supabase.from('unified_sales').upsert({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               merchant_id: locationId,
@@ -455,8 +464,7 @@ Deno.serve(async (req) => {
             });
             if (discountError) {
               console.error(`[Lighthouse Sync] Discount upsert error for ${item}:`, discountError);
-            } else {
-              console.log(`[Lighthouse Sync] Discount upsert result for ${item}:`, discountResult);
+              results.errors.push(`Discount upsert failed for ${item}: ${discountError.message}`);
             }
           }
         }
@@ -473,12 +481,14 @@ Deno.serve(async (req) => {
       results.errors.push(syncError.message);
     }
 
+    const success = results.errors.length === 0;
     return new Response(
       JSON.stringify({
-        success: true,
+        success,
         results,
       }),
       {
+        status: success ? 200 : 207,
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/json',

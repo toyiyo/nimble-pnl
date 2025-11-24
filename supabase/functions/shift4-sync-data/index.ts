@@ -527,7 +527,7 @@ Deno.serve(async (req) => {
               external_item_id: `${chargeId}-item-${lineIndex}`,
               item_name: itemName,
               item_type: 'sale',
-              adjustment_type: 'sale',
+              adjustment_type: null,
               quantity: qty || 1,
               total_price: itemSubtotal,
               unit_price: itemSubtotal && qty ? itemSubtotal / qty : null,

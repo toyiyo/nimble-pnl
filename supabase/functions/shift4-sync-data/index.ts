@@ -443,7 +443,6 @@ Deno.serve(async (req) => {
           const { error: saleError } = await supabase.from('unified_sales').upsert({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
-            merchant_id: locationId,
             external_order_id: chargeId,
             external_item_id: `${chargeId}-sale`,
             item_name: item,
@@ -469,7 +468,6 @@ Deno.serve(async (req) => {
             const { error: discountError } = await supabase.from('unified_sales').upsert({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
-              merchant_id: locationId,
               external_order_id: chargeId,
               external_item_id: `${chargeId}-discount`,
               item_name: `${item} Discount`,

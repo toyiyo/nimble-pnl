@@ -225,9 +225,9 @@ Deno.serve(async (req) => {
 
     const restaurantTimezone = restaurant?.timezone || 'America/Chicago';
 
-    // Decrypt the secret key
-    const encryption = await getEncryptionService();
-    const secretKey = await encryption.decrypt(connection.secret_key);
+  // Decrypt the secret key only if present
+  const encryption = await getEncryptionService();
+  const secretKey = connection.secret_key ? await encryption.decrypt(connection.secret_key) : null;
 
     // (Authentication handled later when token is actually needed)
 

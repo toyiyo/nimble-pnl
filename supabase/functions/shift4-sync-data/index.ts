@@ -446,7 +446,7 @@ Deno.serve(async (req) => {
 
         const upsertUnifiedSale = (payload: any) =>
           supabase.from('unified_sales').upsert(payload, {
-            onConflict: 'unified_sales_unique_square',
+            onConflict: 'restaurant_id,pos_system,external_order_id,external_item_id',
           });
 
         const tickets = Array.isArray(salesSummary.rows) ? salesSummary.rows : [];

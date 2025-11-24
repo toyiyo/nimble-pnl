@@ -349,7 +349,21 @@ Deno.serve(async (req) => {
       // Prepare request params
       const startIso = new Date(startTimestamp * 1000).toISOString();
       const endIso = new Date(endTimestamp * 1000).toISOString();
-      const locations = connection.lighthouse_location_ids || [connection.merchant_id];
+      let locations: number[] = [];
+      if (connection.lighthouse_location_ids) {
+        try {
+          const parsed = JSON.parse(connection.lighthouse_location_ids);
+          if (Array.isArray(parsed)) {
+            locations = parsed.filter((l) => typeof l === 'number');
+          }
+        } catch (e) {
+          console.error('Failed to parse lighthouse_location_ids:', connection.lighthouse_location_ids, e);
+        }
+      }
+      // If no valid location IDs, throw error
+      if (!locations.length) {
+        throw new Error('No valid Lighthouse location IDs found for sync');
+      }
 
       // Fetch sales summary
       const salesSummary = await fetchLighthouseSalesSummary(

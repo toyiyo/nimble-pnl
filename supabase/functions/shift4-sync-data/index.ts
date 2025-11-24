@@ -440,7 +440,15 @@ Deno.serve(async (req) => {
             results.chargesSynced++;
           }
 
-          const { error: saleError } = await supabase.from('unified_sales').upsert({
+          // Remove any prior rows for this charge to avoid partial-index conflict issues
+          await supabase
+            .from('unified_sales')
+            .delete()
+            .eq('restaurant_id', restaurantId)
+            .eq('pos_system', 'lighthouse')
+            .eq('external_order_id', chargeId);
+
+          const { error: saleError } = await supabase.from('unified_sales').insert({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             external_order_id: chargeId,
@@ -456,8 +464,6 @@ Deno.serve(async (req) => {
             raw_data: rawData,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          }, {
-            onConflict: 'restaurant_id,pos_system,external_order_id,external_item_id',
           });
           if (saleError) {
             console.error('[Lighthouse Sync] unified_sales sale upsert error:', saleError);
@@ -465,7 +471,7 @@ Deno.serve(async (req) => {
           }
 
           if (discount && Math.abs(discount) > 0.0001) {
-            const { error: discountError } = await supabase.from('unified_sales').upsert({
+            const { error: discountError } = await supabase.from('unified_sales').insert({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               external_order_id: chargeId,

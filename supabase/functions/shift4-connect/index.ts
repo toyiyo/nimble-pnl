@@ -105,25 +105,33 @@ Deno.serve(async (req) => {
     // Use provided merchantId or generate one for tracking
     const actualMerchantId = merchantId || `lighthouse_${email?.substring(0, 8)}`;
 
-    // Encrypt the secret key, email, and password before storing
+    // Encrypt email and password before storing
     const encryption = await getEncryptionService();
-    const encryptedSecretKey = await encryption.encrypt(secretKey);
     const encryptedEmail = await encryption.encrypt(email);
     const encryptedPassword = await encryption.encrypt(password);
 
+    // Only encrypt and store secret_key if present
+    let encryptedSecretKey: string | undefined = undefined;
+    if (secretKey && secretKey.trim()) {
+      encryptedSecretKey = await encryption.encrypt(secretKey);
+    }
+
     // Store or update the connection (one connection per restaurant+merchant)
+    const upsertData: Record<string, any> = {
+      restaurant_id: restaurantId,
+      merchant_id: actualMerchantId,
+      email: encryptedEmail,
+      password: encryptedPassword,
+      environment,
+      connected_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (encryptedSecretKey) {
+      upsertData.secret_key = encryptedSecretKey;
+    }
     const { data: connection, error: connectionError } = await supabase
       .from('shift4_connections')
-      .upsert({
-        restaurant_id: restaurantId,
-        merchant_id: actualMerchantId,
-        secret_key: encryptedSecretKey,
-        email: encryptedEmail,
-        password: encryptedPassword,
-        environment,
-        connected_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }, {
+      .upsert(upsertData, {
         onConflict: 'restaurant_id,merchant_id',
       })
       .select()

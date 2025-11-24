@@ -37,6 +37,39 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const getLocalYMD = (date: Date, timeZone: string) => {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(date).reduce((acc: any, part) => {
+    if (part.type === 'year') acc.year = parseInt(part.value, 10);
+    if (part.type === 'month') acc.month = parseInt(part.value, 10);
+    if (part.type === 'day') acc.day = parseInt(part.value, 10);
+    return acc;
+  }, { year: 0, month: 0, day: 0 });
+  return parts as { year: number; month: number; day: number };
+};
+
+const getLocalDateRangeDays = (startDate: Date, endDate: Date, timeZone: string) => {
+  const days: { year: number; month: number; day: number }[] = [];
+  const start = getLocalYMD(startDate, timeZone);
+  const end = getLocalYMD(endDate, timeZone);
+
+  const startValue = Date.UTC(start.year, start.month - 1, start.day);
+  const endValue = Date.UTC(end.year, end.month - 1, end.day);
+
+  for (let ts = startValue; ts <= endValue; ts += 24 * 60 * 60 * 1000) {
+    const d = new Date(ts);
+    const local = getLocalYMD(d, timeZone);
+    days.push(local);
+  }
+
+  return days;
+};
+
 interface Shift4SyncRequest {
   restaurantId: string;
   action: 'initial_sync' | 'daily_sync' | 'hourly_sync';
@@ -340,11 +373,9 @@ Deno.serve(async (req) => {
       }
       if (!lighthouseToken) throw new Error('No Lighthouse token available');
 
-      // Prepare request params
+      // Prepare request params (align days to restaurant timezone)
       const startDay = new Date(startDate);
-      startDay.setUTCHours(0, 0, 0, 0);
       const endDay = new Date(endDate);
-      endDay.setUTCHours(0, 0, 0, 0);
       let locations: number[] = [];
       if (connection.lighthouse_location_ids) {
         try {
@@ -361,20 +392,15 @@ Deno.serve(async (req) => {
         throw new Error('No valid Lighthouse location IDs found for sync');
       }
 
-      // Build list of days to sync (inclusive)
-      const daysToSync: Date[] = [];
-      for (let cursor = new Date(startDay); cursor <= endDay; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
-        daysToSync.push(new Date(cursor));
-      }
+      // Build list of days to sync (inclusive) in restaurant timezone
+      const daysToSync = getLocalDateRangeDays(startDay, endDay, restaurantTimezone);
 
       for (const syncDate of daysToSync) {
-        const dayStart = new Date(syncDate);
-        dayStart.setUTCHours(0, 0, 0, 0);
-        const dayEnd = new Date(syncDate);
-        dayEnd.setUTCHours(23, 59, 59, 999);
+        const dayStart = new Date(Date.UTC(syncDate.year, syncDate.month - 1, syncDate.day, 0, 0, 0));
+        const dayEnd = new Date(Date.UTC(syncDate.year, syncDate.month - 1, syncDate.day, 23, 59, 59, 999));
         const dayStartIso = dayStart.toISOString();
         const dayEndIso = dayEnd.toISOString();
-        const dayDateString = dayStartIso.split('T')[0];
+        const dayDateString = `${syncDate.year}-${String(syncDate.month).padStart(2, '0')}-${String(syncDate.day).padStart(2, '0')}`;
 
         const salesSummary = await fetchLighthouseSalesSummary(
           lighthouseToken,

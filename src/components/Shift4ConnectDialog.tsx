@@ -30,14 +30,6 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!secretKey.trim()) {
-      setError('Please enter your Shift4 Secret Key');
-      return;
-    }
-    if (!secretKey.startsWith('sk_')) {
-      setError('Invalid Secret Key format. Shift4 Secret Keys start with "sk_"');
-      return;
-    }
     if (!email.trim()) {
       setError('Please enter your Lighthouse username/email');
       return;
@@ -46,6 +38,7 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
       setError('Please enter your Lighthouse password');
       return;
     }
+    // Secret key validation removed for Lighthouse-only flow
     setError('');
     try {
       await onConnect(secretKey, merchantId.trim() || undefined, environment, email.trim(), password.trim());
@@ -164,10 +157,10 @@ export const Shift4ConnectDialog = ({ open, onOpenChange, onConnect, isLoading }
               <div className="space-y-1">
                 <div className="font-medium">Security Information</div>
                 <ul className="list-disc list-inside space-y-0.5">
-                  <li>Your Secret Key is encrypted before storage</li>
+                  <li>Your Lighthouse username/email and password are encrypted before storage</li>
                   <li>We never store credentials in plain text</li>
-                  <li>You can rotate your keys at any time</li>
-                  <li>Find your keys in Shift4 Dashboard → Developers → API Keys</li>
+                  <li>You can update or rotate your credentials at any time</li>
+                  <li>Credentials are only used for secure authentication to Lighthouse API</li>
                 </ul>
               </div>
             </AlertDescription>

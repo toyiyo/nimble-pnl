@@ -53,6 +53,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
     squareAdapter.isConnected,
     cloverAdapter.isConnected,
     toastAdapter.isConnected,
+    shift4Adapter.isConnected,
     manualAdapter
   ]);
 

@@ -1,5 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { zonedTimeToUtc } from "https://esm.sh/date-fns-tz@2.0.0";
 import { getEncryptionService, logSecurityEvent } from "../_shared/encryption.ts";
 
 const corsHeaders = {
@@ -53,6 +52,45 @@ const withRetry = async <T>(fn: () => Promise<T>, attempts = 3, delayMs = 500): 
     }
   }
   throw lastError;
+};
+
+// Build a formatter cache for timezone-aware conversions
+const formatterCache = new Map<string, Intl.DateTimeFormat>();
+const getFormatter = (timeZone: string) => {
+  if (!formatterCache.has(timeZone)) {
+    formatterCache.set(
+      timeZone,
+      new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      })
+    );
+  }
+  return formatterCache.get(timeZone)!;
+};
+
+// Convert a local date/time in a specific timezone to a UTC Date
+const localTimeToUtc = (year: number, month: number, day: number, hour: number, minute: number, timeZone: string): Date => {
+  const formatter = getFormatter(timeZone);
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute, 0);
+  const parts = formatter.formatToParts(new Date(utcGuess));
+  const read = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? '0', 10);
+  const correctedUtc = Date.UTC(
+    read('year'),
+    read('month') - 1,
+    read('day'),
+    read('hour'),
+    read('minute'),
+    read('second')
+  );
+  const offset = correctedUtc - utcGuess;
+  return new Date(utcGuess - offset);
 };
 
 // Deterministic stringify to build stable hashes/ids
@@ -368,8 +406,7 @@ Deno.serve(async (req) => {
         if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0;
         const dateStr = `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
         const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
-        const localIso = `${dateStr}T${timeStr}`;
-        const utcDate = zonedTimeToUtc(localIso, timezone);
+        const utcDate = localTimeToUtc(yyyy, mm, dd, hour, minute, timezone);
         return { dateStr, timeStr, utcDate };
       };
 

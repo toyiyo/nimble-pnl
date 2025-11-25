@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { zonedTimeToUtc } from "https://esm.sh/date-fns-tz@2.0.0";
 import { getEncryptionService, logSecurityEvent } from "../_shared/encryption.ts";
 
 const corsHeaders = {
@@ -353,7 +354,7 @@ Deno.serve(async (req) => {
       const rangeEndIso = rangeEnd.toISOString();
       const fallbackDateString = `${startParts.year}-${String(startParts.month).padStart(2, '0')}-${String(startParts.day).padStart(2, '0')}`;
 
-      const parseTicketDateTime = (value: string | undefined | null) => {
+      const parseTicketDateTime = (value: string | undefined | null, timezone: string) => {
         if (!value || typeof value !== 'string') return null;
         const [mdy, timeRaw] = value.trim().split(/\s+/);
         if (!mdy || !timeRaw) return null;
@@ -367,8 +368,9 @@ Deno.serve(async (req) => {
         if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0;
         const dateStr = `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
         const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
-        const jsDate = new Date(Date.UTC(yyyy, mm - 1, dd, hour, minute, 0));
-        return { dateStr, timeStr, jsDate };
+        const localIso = `${dateStr}T${timeStr}`;
+        const utcDate = zonedTimeToUtc(localIso, timezone);
+        return { dateStr, timeStr, utcDate };
       };
 
       let salesSummary;
@@ -410,11 +412,11 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const parsedCompleted = parseTicketDateTime(ticket.completed || ticket.opened);
+        const parsedCompleted = parseTicketDateTime(ticket.completed || ticket.opened, restaurantTimezone);
         const saleDateString = parsedCompleted?.dateStr || fallbackDateString;
         const saleTimeString = parsedCompleted?.timeStr || '00:00:00';
         const saleTimeCompact = saleTimeString.replace(/:/g, '');
-        const createdDate = parsedCompleted?.jsDate || rangeStart;
+        const createdDate = parsedCompleted?.utcDate || rangeStart;
 
         const locationId = locations[0] ?? null;
         const merchantId = locationId !== null ? String(locationId) : 'unknown';

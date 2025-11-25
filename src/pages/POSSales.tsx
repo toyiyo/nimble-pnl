@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle, ChefHat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,6 +88,9 @@ export default function POSSales() {
   const [mapPOSItemDialogOpen, setMapPOSItemDialogOpen] = useState(false);
   const [selectedPOSItemForMapping, setSelectedPOSItemForMapping] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [contextCueVisible, setContextCueVisible] = useState(false);
+  const [cuePinned, setCuePinned] = useState(false);
+  const [highlightToken, setHighlightToken] = useState(0);
   const { toast } = useToast();
   const { mutate: categorizePosSales, isPending: isCategorizingPending } = useCategorizePosSales();
   const { mutate: categorizePosSale } = useCategorizePosSale(selectedRestaurant?.restaurant_id || null);
@@ -332,6 +335,100 @@ export default function POSSales() {
       autoApply: true,
     };
   };
+
+  const filtersSignature = useMemo(
+    () =>
+      JSON.stringify({
+        startDate,
+        endDate,
+        searchTerm,
+        recipeFilter,
+        selectedView,
+        sortBy,
+        sortDirection,
+      }),
+    [startDate, endDate, searchTerm, recipeFilter, selectedView, sortBy, sortDirection],
+  );
+
+  const filterSignatureRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!filtersSignature) return;
+    if (filterSignatureRef.current === null) {
+      filterSignatureRef.current = filtersSignature;
+      return;
+    }
+    if (filterSignatureRef.current !== filtersSignature) {
+      filterSignatureRef.current = filtersSignature;
+      setContextCueVisible(true);
+      setHighlightToken((prev) => prev + 1);
+    }
+  }, [filtersSignature]);
+
+  useEffect(() => {
+    setContextCueVisible(true);
+    const timeout = setTimeout(() => setContextCueVisible(false), 3000);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    if (!contextCueVisible || cuePinned) return;
+    const timeout = setTimeout(() => setContextCueVisible(false), 3500);
+    return () => clearTimeout(timeout);
+  }, [contextCueVisible, cuePinned]);
+
+  const handleToggleCuePin = () => {
+    setCuePinned((prev) => {
+      const next = !prev;
+      if (next) {
+        setContextCueVisible(true);
+      }
+      return next;
+    });
+  };
+
+  const formatShortDate = (value: string) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return format(parsed, "MMM d");
+  };
+
+  const contextDescription = useMemo(() => {
+    if (startDate && endDate) {
+      return `Totals for ${formatShortDate(startDate)} - ${formatShortDate(endDate)}`;
+    }
+    if (startDate) {
+      return `Totals since ${formatShortDate(startDate)}`;
+    }
+    if (endDate) {
+      return `Totals through ${formatShortDate(endDate)}`;
+    }
+    if (searchTerm) {
+      return `Matching "${searchTerm}"`;
+    }
+    if (recipeFilter === "with-recipe") {
+      return "Totals for mapped recipes";
+    }
+    if (recipeFilter === "without-recipe") {
+      return "Totals for items without recipes";
+    }
+    if (selectedView === "grouped") {
+      return "Totals by item grouping";
+    }
+    return "Totals reflect visible transactions";
+  }, [startDate, endDate, searchTerm, recipeFilter, selectedView]);
+
+  const latestSyncTime = useMemo(() => {
+    if (!integrationStatuses || integrationStatuses.length === 0) return undefined;
+    return integrationStatuses.reduce<string | undefined>((latest, status) => {
+      if (!status.lastSyncAt) return latest;
+      if (!latest) return status.lastSyncAt;
+      return new Date(status.lastSyncAt) > new Date(latest) ? status.lastSyncAt : latest;
+    }, undefined);
+  }, [integrationStatuses]);
 
   // Calculate dashboard metrics - MUST be before conditional return to follow Rules of Hooks
   const dashboardMetrics = useMemo(() => {
@@ -624,6 +721,12 @@ export default function POSSales() {
         collectedAtPOS={dashboardMetrics.collectedAtPOS}
         uniqueItems={dashboardMetrics.uniqueItems}
         unmappedCount={dashboardMetrics.unmappedCount}
+        lastSyncTime={latestSyncTime}
+        contextCueVisible={contextCueVisible}
+        cuePinned={cuePinned}
+        onToggleCuePin={handleToggleCuePin}
+        contextDescription={contextDescription}
+        highlightToken={highlightToken}
       />
 
       {/* AI Categorization Section */}

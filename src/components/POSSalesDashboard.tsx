@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { TrendingUp, DollarSign, Package, AlertCircle, Clock, TrendingDown } from "lucide-react";
 import { format } from "date-fns";
@@ -19,6 +20,11 @@ interface POSSalesDashboardProps {
   uniqueItems: number;
   unmappedCount: number;
   lastSyncTime?: string;
+  contextCueVisible: boolean;
+  cuePinned: boolean;
+  onToggleCuePin: () => void;
+  contextDescription: string;
+  highlightToken: number;
 }
 
 export const POSSalesDashboard = ({
@@ -30,7 +36,22 @@ export const POSSalesDashboard = ({
   uniqueItems,
   unmappedCount,
   lastSyncTime,
+  contextCueVisible,
+  cuePinned,
+  onToggleCuePin,
+  contextDescription,
+  highlightToken,
 }: POSSalesDashboardProps) => {
+  const [valueWashActive, setValueWashActive] = useState(false);
+  const showFilteredContext = contextCueVisible || cuePinned;
+
+  useEffect(() => {
+    if (!highlightToken) return;
+    setValueWashActive(true);
+    const timeout = setTimeout(() => setValueWashActive(false), 600);
+    return () => clearTimeout(timeout);
+  }, [highlightToken]);
+
   const metrics: DashboardMetric[] = [
     {
       label: "Collected at POS",
@@ -66,18 +87,45 @@ export const POSSalesDashboard = ({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="relative">
+        <button
+          type="button"
+          aria-pressed={cuePinned}
+          onClick={onToggleCuePin}
+          className={`absolute right-0 -top-3 z-10 px-3 py-1.5 rounded-full border border-border/60 text-sm font-medium tracking-tight shadow-sm transition-all duration-500 ${
+            showFilteredContext ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
+          } ${cuePinned ? "bg-background/80 text-foreground/80" : "bg-muted/70 text-muted-foreground"}`}
+        >
+          <span className="block">Showing current view only</span>
+        </button>
+
+        <div
+          className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 transition-all duration-300 ${
+            showFilteredContext ? "mt-6" : "mt-0"
+          }`}
+        >
         {metrics.map((metric, index) => (
           <Card
             key={index}
-            className={`bg-gradient-to-br ${metric.gradient} border-none shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105 animate-fade-in`}
+            className={`bg-gradient-to-br ${metric.gradient} border-none shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105 animate-fade-in ${
+              contextCueVisible ? "shadow-lg translate-y-1" : ""
+            }`}
             style={{ animationDelay: `${index * 100}ms` }}
           >
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-muted-foreground">{metric.label}</p>
-                  <p className="text-2xl font-bold tracking-tight">{metric.value}</p>
+                  {showFilteredContext && (
+                    <p className="text-[11px] font-light text-muted-foreground/80">Filtered totals</p>
+                  )}
+                  <p
+                    className={`text-2xl font-bold tracking-tight ${
+                      valueWashActive ? "cue-value-wash" : ""
+                    }`}
+                  >
+                    {metric.value}
+                  </p>
                   {metric.trend && (
                     <p className="text-xs text-muted-foreground">{metric.trend}</p>
                   )}
@@ -89,7 +137,13 @@ export const POSSalesDashboard = ({
             </CardContent>
           </Card>
         ))}
+        </div>
       </div>
+      {cuePinned && (
+        <div className="flex items-center justify-end text-xs text-muted-foreground/80">
+          {contextDescription}
+        </div>
+      )}
       
       {lastSyncTime && (
         <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">

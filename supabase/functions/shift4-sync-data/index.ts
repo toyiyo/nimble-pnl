@@ -253,6 +253,15 @@ Deno.serve(async (req) => {
       refundsSynced: 0,
       errors: [] as string[],
     };
+    const stats = {
+      ticketsReceived: 0,
+      ticketsProcessed: 0,
+      ticketsVoided: 0,
+      ticketsMissingOrder: 0,
+      rowsQueued: 0,
+      rowsInserted: 0,
+      duplicatesSkipped: 0,
+    };
 
 
     // Fetch and store Lighthouse sales summary
@@ -386,13 +395,18 @@ Deno.serve(async (req) => {
       console.log(`[Lighthouse Sync] Tickets fetched: ${tickets.length} in range ${rangeStartIso} -> ${rangeEndIso} (locs: ${locations.join(',')})`);
 
       for (const ticket of tickets) {
+        stats.ticketsReceived++;
         // Skip voided tickets
         if (ticket.status && typeof ticket.status === 'string' && ticket.status.toLowerCase().includes('void')) {
+          stats.ticketsVoided++;
+          console.log(`[Lighthouse Sync] Skipping voided ticket`, { ticketStatus: ticket.status, orderNumber: ticket.orderNumber || ticket.ticket || ticket.ticketNumber });
           continue;
         }
 
         const orderNumber = ticket.orderNumber || ticket.order || ticket.ticket || ticket.ticketNumber;
         if (!orderNumber) {
+          stats.ticketsMissingOrder++;
+          console.warn(`[Lighthouse Sync] Skipping ticket without order number`, { ticket });
           continue;
         }
 
@@ -438,7 +452,6 @@ Deno.serve(async (req) => {
           continue;
         } else {
           results.chargesSynced++;
-          console.log(`[Lighthouse Sync] charge stored`, { chargeId, grandTotal });
         }
 
         // Fetch existing item ids for this charge to avoid deleting rows and prevent duplicates on re-sync
@@ -455,6 +468,7 @@ Deno.serve(async (req) => {
 
         const unifiedRows: any[] = [];
         let lineIndex = 0;
+        let duplicatesThisTicket = 0;
 
         // Items
         const items = Array.isArray(ticket.items) ? ticket.items : [];
@@ -503,6 +517,8 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
             });
             existingIds.add(baseId);
+          } else {
+            duplicatesThisTicket++;
           }
 
           if (discount && Math.abs(discount) > 0.0001) {
@@ -528,6 +544,8 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
               });
               existingIds.add(discountId);
+            } else {
+              duplicatesThisTicket++;
             }
           }
 
@@ -554,6 +572,8 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
               });
               existingIds.add(feeId);
+            } else {
+              duplicatesThisTicket++;
             }
           }
 
@@ -585,6 +605,8 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
             });
             existingIds.add(discountId);
+          } else {
+            duplicatesThisTicket++;
           }
         }
 
@@ -613,6 +635,8 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
             });
             existingIds.add(feeId);
+          } else {
+            duplicatesThisTicket++;
           }
         }
 
@@ -641,6 +665,8 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
             });
             existingIds.add(taxId);
+          } else {
+            duplicatesThisTicket++;
           }
         }
 
@@ -669,18 +695,28 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
             });
             existingIds.add(tipId);
+          } else {
+            duplicatesThisTicket++;
           }
         }
 
         if (unifiedRows.length) {
+          stats.rowsQueued += unifiedRows.length;
           const { error: insertError } = await supabase.from('unified_sales').insert(unifiedRows);
           if (insertError) {
             console.error(`[${saleDateString}] [Lighthouse Sync] Bulk unified_sales insert error:`, insertError);
             results.errors.push(`[${saleDateString}] Bulk insert failed for ticket ${orderNumber}: ${insertError.message}`);
           } else {
-            console.log(`[Lighthouse Sync] unified_sales inserted`, { count: unifiedRows.length, chargeId, orderNumber });
+            stats.rowsInserted += unifiedRows.length;
           }
         }
+
+        if (duplicatesThisTicket > 0) {
+          stats.duplicatesSkipped += duplicatesThisTicket;
+          console.warn(`[Lighthouse Sync] Skipped duplicates for ticket`, { orderNumber, chargeId, duplicatesThisTicket });
+        }
+
+        stats.ticketsProcessed++;
       }
 
       // Update last sync timestamp
@@ -695,6 +731,10 @@ Deno.serve(async (req) => {
     }
 
     const success = results.errors.length === 0;
+    console.log('[Lighthouse Sync] Summary', {
+      ...results,
+      stats,
+    });
     return new Response(
       JSON.stringify({
         success,

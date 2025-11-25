@@ -44,8 +44,17 @@ export default function POSSales() {
     loading: restaurantsLoading,
     createRestaurant,
   } = useRestaurantContext();
-  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, deleteManualSale, fetchUnifiedSales } =
-    useUnifiedSales(selectedRestaurant?.restaurant_id || null);
+  const {
+    sales,
+    loading,
+    loadingMore,
+    hasMore,
+    loadMoreSales,
+    getSalesByDateRange,
+    getSalesGroupedByItem,
+    unmappedItems,
+    deleteManualSale,
+  } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(
     selectedRestaurant?.restaurant_id || null,
   );
@@ -830,6 +839,17 @@ export default function POSSales() {
                   </div>
                 ) : (
                   <div className="space-y-3">
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>
+                        Loaded {sales.length} record{sales.length === 1 ? '' : 's'}
+                        {filteredSales.length !== sales.length ? ` • ${filteredSales.length} match filters` : ''}
+                      </span>
+                      {hasMore && (
+                        <Button variant="outline" size="sm" onClick={loadMoreSales} disabled={loadingMore}>
+                          {loadingMore ? "Loading..." : "Load more sales"}
+                        </Button>
+                      )}
+                    </div>
                     {dateFilteredSales.map((sale, index) => {
                       // If sale is split, show the SplitSaleView component
                       if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
@@ -1127,6 +1147,17 @@ export default function POSSales() {
                   <div className="text-center py-8 text-muted-foreground">No sales data available.</div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2 flex items-center justify-between text-sm text-muted-foreground">
+                      <span>
+                        Loaded {sales.length} record{sales.length === 1 ? '' : 's'}
+                        {groupedSales.length !== sales.length ? ` • ${groupedSales.length} grouped items` : ''}
+                      </span>
+                      {hasMore && (
+                        <Button variant="outline" size="sm" onClick={loadMoreSales} disabled={loadingMore}>
+                          {loadingMore ? "Loading..." : "Load more sales"}
+                        </Button>
+                      )}
+                    </div>
                     {groupedSales.map(
                       (item: {
                         item_name: string;

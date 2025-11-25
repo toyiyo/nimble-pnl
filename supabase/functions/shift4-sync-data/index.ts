@@ -408,6 +408,14 @@ Deno.serve(async (req) => {
       }
 
       // Build list of days to sync (inclusive) in restaurant timezone
+      // Shared currency parser for all days
+      const parseCurrency = (value: string | number | null | undefined): number => {
+        if (value === null || value === undefined) return 0;
+        if (typeof value === 'number') return value;
+        const cleaned = String(value).replace(/[^0-9.-]/g, '');
+        const parsed = parseFloat(cleaned);
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
       const daysToSync = getLocalDateRangeDays(startDay, endDay, restaurantTimezone);
 
       for (const syncDate of daysToSync) {
@@ -436,18 +444,19 @@ Deno.serve(async (req) => {
           continue; // proceed to next day
         }
 
-        const parseCurrency = (value: string | number | null | undefined): number => {
-          if (value === null || value === undefined) return 0;
-          if (typeof value === 'number') return value;
-          const cleaned = value.replace(/[^0-9.-]/g, '');
-          const parsed = parseFloat(cleaned);
-          return Number.isFinite(parsed) ? parsed : 0;
-        };
 
-        const upsertUnifiedSale = (payload: any) =>
-          supabase.from('unified_sales').upsert(payload, {
-            onConflict: 'restaurant_id,pos_system,external_order_id,external_item_id',
-          });
+        // Table lacks a matching unique constraint for column-based upsert, so delete+insert to keep rows idempotent.
+        const replaceUnifiedSale = async (payload: any) => {
+          await supabase
+            .from('unified_sales')
+            .delete()
+            .eq('restaurant_id', payload.restaurant_id)
+            .eq('pos_system', payload.pos_system)
+            .eq('external_order_id', payload.external_order_id)
+            .eq('external_item_id', payload.external_item_id);
+
+          return supabase.from('unified_sales').insert(payload);
+        };
 
         const tickets = Array.isArray(salesSummary.rows) ? salesSummary.rows : [];
 
@@ -517,7 +526,7 @@ Deno.serve(async (req) => {
             const discount = parseCurrency(item.discountTotal);
             const sur = parseCurrency(item.surTotal);
 
-            const { error: saleError } = await upsertUnifiedSale({
+            const { error: saleError } = await replaceUnifiedSale({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               external_order_id: chargeId,
@@ -541,7 +550,7 @@ Deno.serve(async (req) => {
 
             // Item-level discount
             if (discount && Math.abs(discount) > 0.0001) {
-              const { error: discountError } = await upsertUnifiedSale({
+              const { error: discountError } = await replaceUnifiedSale({
                 restaurant_id: restaurantId,
                 pos_system: 'lighthouse',
                 external_order_id: chargeId,
@@ -564,7 +573,7 @@ Deno.serve(async (req) => {
 
             // Item-level surcharge
             if (sur && Math.abs(sur) > 0.0001) {
-              const { error: feeError } = await upsertUnifiedSale({
+              const { error: feeError } = await replaceUnifiedSale({
                 restaurant_id: restaurantId,
                 pos_system: 'lighthouse',
                 external_order_id: chargeId,
@@ -594,7 +603,7 @@ Deno.serve(async (req) => {
             const name = Array.isArray(d) ? d[0] : (d?.name || 'Ticket Discount');
             const amount = Array.isArray(d) ? parseCurrency(d[1]) : parseCurrency(d?.amount);
             if (!amount) continue;
-            const { error } = await upsertUnifiedSale({
+            const { error } = await replaceUnifiedSale({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               external_order_id: chargeId,
@@ -621,7 +630,7 @@ Deno.serve(async (req) => {
             const name = Array.isArray(f) ? f[0] : (f?.name || 'Fee');
             const amount = Array.isArray(f) ? parseCurrency(f[4] ?? f[1]) : parseCurrency(f?.grandTotal || f?.amount);
             if (!amount) continue;
-            const { error } = await upsertUnifiedSale({
+            const { error } = await replaceUnifiedSale({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               external_order_id: chargeId,
@@ -648,7 +657,7 @@ Deno.serve(async (req) => {
             const name = Array.isArray(t) ? t[0] : (t?.name || 'Tax');
             const amount = Array.isArray(t) ? parseCurrency(t[1]) : parseCurrency(t?.amount);
             if (!amount) continue;
-            const { error } = await upsertUnifiedSale({
+            const { error } = await replaceUnifiedSale({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               external_order_id: chargeId,
@@ -675,7 +684,7 @@ Deno.serve(async (req) => {
             const tipAmount = Array.isArray(p) ? parseCurrency(p[3]) : parseCurrency(p?.tip);
             if (!tipAmount) continue;
             const tenderType = Array.isArray(p) ? p[0] : (p?.tenderType || 'Tip');
-            const { error } = await upsertUnifiedSale({
+            const { error } = await replaceUnifiedSale({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               external_order_id: chargeId,

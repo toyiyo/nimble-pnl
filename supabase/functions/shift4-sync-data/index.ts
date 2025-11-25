@@ -491,7 +491,7 @@ Deno.serve(async (req) => {
           const discount = parseCurrency(item.discountTotal);
           const sur = parseCurrency(item.surTotal);
 
-          const baseId = await makeHashId(`${chargeId}-item`, {
+          const baseId = await makeHashId(`${chargeId}-item-${lineIndex}`, {
             name: itemName,
             qty,
             subtotal: itemSubtotal,
@@ -522,7 +522,7 @@ Deno.serve(async (req) => {
           }
 
           if (discount && Math.abs(discount) > 0.0001) {
-            const discountId = await makeHashId(`${chargeId}-item-discount`, {
+            const discountId = await makeHashId(`${chargeId}-item-discount-${lineIndex}`, {
               name: itemName,
               discount,
             });
@@ -550,7 +550,7 @@ Deno.serve(async (req) => {
           }
 
           if (sur && Math.abs(sur) > 0.0001) {
-            const feeId = await makeHashId(`${chargeId}-item-fee`, {
+            const feeId = await makeHashId(`${chargeId}-item-fee-${lineIndex}`, {
               name: itemName,
               surcharge: sur,
             });
@@ -586,7 +586,7 @@ Deno.serve(async (req) => {
           const name = Array.isArray(d) ? d[0] : (d?.name || 'Ticket Discount');
           const amount = Array.isArray(d) ? parseCurrency(d[1]) : parseCurrency(d?.amount);
           if (!amount) continue;
-          const discountId = await makeHashId(`${chargeId}-discount`, d);
+          const discountId = await makeHashId(`${chargeId}-discount-${idx}`, d);
           if (!existingIds.has(discountId)) {
             unifiedRows.push({
             restaurant_id: restaurantId,
@@ -616,7 +616,7 @@ Deno.serve(async (req) => {
           const name = Array.isArray(f) ? f[0] : (f?.name || 'Fee');
           const amount = Array.isArray(f) ? parseCurrency(f[4] ?? f[1]) : parseCurrency(f?.grandTotal || f?.amount);
           if (!amount) continue;
-          const feeId = await makeHashId(`${chargeId}-fee`, f);
+          const feeId = await makeHashId(`${chargeId}-fee-${idx}`, f);
           if (!existingIds.has(feeId)) {
             unifiedRows.push({
             restaurant_id: restaurantId,
@@ -646,7 +646,7 @@ Deno.serve(async (req) => {
           const name = Array.isArray(t) ? t[0] : (t?.name || 'Tax');
           const amount = Array.isArray(t) ? parseCurrency(t[1]) : parseCurrency(t?.amount);
           if (!amount) continue;
-          const taxId = await makeHashId(`${chargeId}-tax`, t);
+          const taxId = await makeHashId(`${chargeId}-tax-${idx}`, t);
           if (!existingIds.has(taxId)) {
             unifiedRows.push({
             restaurant_id: restaurantId,
@@ -676,7 +676,7 @@ Deno.serve(async (req) => {
           const tipAmount = Array.isArray(p) ? parseCurrency(p[3]) : parseCurrency(p?.tip);
           if (!tipAmount) continue;
           const tenderType = Array.isArray(p) ? p[0] : (p?.tenderType || 'Tip');
-          const tipId = await makeHashId(`${chargeId}-tip`, p);
+          const tipId = await makeHashId(`${chargeId}-tip-${idx}`, p);
           if (!existingIds.has(tipId)) {
             unifiedRows.push({
             restaurant_id: restaurantId,

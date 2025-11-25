@@ -476,15 +476,6 @@ Deno.serve(async (req) => {
           if (item.status && typeof item.status === 'string' && item.status.toLowerCase().includes('void')) {
             continue;
           }
-          console.log(`[Lighthouse Sync] Item:`, {
-            orderNumber,
-            name: item.name,
-            qty: item.qty,
-            subtotal: item.subtotal,
-            discount: item.discountTotal,
-            surcharge: item.surTotal,
-            added: item.added,
-          });
           const qty = Number(item.qty) || 0;
           const itemSubtotal = parseCurrency(item.subtotal);
           const itemName = item.name || 'Item';

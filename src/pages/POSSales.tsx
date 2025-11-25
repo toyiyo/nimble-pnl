@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle, ChefHat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,8 +44,17 @@ export default function POSSales() {
     loading: restaurantsLoading,
     createRestaurant,
   } = useRestaurantContext();
-  const { sales, loading, getSalesByDateRange, getSalesGroupedByItem, unmappedItems, deleteManualSale, fetchUnifiedSales } =
-    useUnifiedSales(selectedRestaurant?.restaurant_id || null);
+  const {
+    sales,
+    loading,
+    loadingMore,
+    hasMore,
+    loadMoreSales,
+    getSalesByDateRange,
+    getSalesGroupedByItem,
+    unmappedItems,
+    deleteManualSale,
+  } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(
     selectedRestaurant?.restaurant_id || null,
   );
@@ -79,8 +88,16 @@ export default function POSSales() {
   const [mapPOSItemDialogOpen, setMapPOSItemDialogOpen] = useState(false);
   const [selectedPOSItemForMapping, setSelectedPOSItemForMapping] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [contextCueVisible, setContextCueVisible] = useState(false);
+  const [cuePinned, setCuePinned] = useState(false);
+  const [highlightToken, setHighlightToken] = useState(0);
   const { toast } = useToast();
-  const { mutate: categorizePosSales, isPending: isCategorizingPending } = useCategorizePosSales();
+  const {
+    mutate: categorizePosSales,
+    isPending: isCategorizingPending,
+    error: categorizeError,
+    reset: resetCategorizeError,
+  } = useCategorizePosSales();
   const { mutate: categorizePosSale } = useCategorizePosSale(selectedRestaurant?.restaurant_id || null);
   const { mutate: splitPosSale } = useSplitPosSale();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
@@ -88,6 +105,7 @@ export default function POSSales() {
   const [editingCategoryForSale, setEditingCategoryForSale] = useState<string | null>(null);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [saleForRuleSuggestion, setSaleForRuleSuggestion] = useState<UnifiedSaleItem | null>(null);
+  const [aiCategorizationError, setAiCategorizationError] = useState<string | null>(null);
 
   // Filter revenue and liability accounts for categorization (matching split dialog)
   const categoryAccounts = useMemo(() => {
@@ -324,6 +342,118 @@ export default function POSSales() {
     };
   };
 
+  const filtersSignature = useMemo(
+    () =>
+      JSON.stringify({
+        startDate,
+        endDate,
+        searchTerm,
+        recipeFilter,
+        selectedView,
+        sortBy,
+        sortDirection,
+      }),
+    [startDate, endDate, searchTerm, recipeFilter, selectedView, sortBy, sortDirection],
+  );
+
+  const filterSignatureRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!filtersSignature) return;
+    if (filterSignatureRef.current === null) {
+      filterSignatureRef.current = filtersSignature;
+      return;
+    }
+    if (filterSignatureRef.current !== filtersSignature) {
+      filterSignatureRef.current = filtersSignature;
+      setContextCueVisible(true);
+      setHighlightToken((prev) => prev + 1);
+    }
+  }, [filtersSignature]);
+
+  useEffect(() => {
+    setContextCueVisible(true);
+    const timeout = setTimeout(() => setContextCueVisible(false), 3000);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    if (!contextCueVisible || cuePinned) return;
+    const timeout = setTimeout(() => setContextCueVisible(false), 3500);
+    return () => clearTimeout(timeout);
+  }, [contextCueVisible, cuePinned]);
+
+  useEffect(() => {
+    if (categorizeError instanceof Error) {
+      setAiCategorizationError(categorizeError.message);
+    }
+  }, [categorizeError]);
+
+  const handleToggleCuePin = () => {
+    setCuePinned((prev) => {
+      const next = !prev;
+      if (next) {
+        setContextCueVisible(true);
+      }
+      return next;
+    });
+  };
+
+  const formatShortDate = (value: string) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return format(parsed, "MMM d");
+  };
+
+  const contextDescription = useMemo(() => {
+    if (startDate && endDate) {
+      return `Totals for ${formatShortDate(startDate)} - ${formatShortDate(endDate)}`;
+    }
+    if (startDate) {
+      return `Totals since ${formatShortDate(startDate)}`;
+    }
+    if (endDate) {
+      return `Totals through ${formatShortDate(endDate)}`;
+    }
+    if (searchTerm) {
+      return `Matching "${searchTerm}"`;
+    }
+    if (recipeFilter === "with-recipe") {
+      return "Totals for mapped recipes";
+    }
+    if (recipeFilter === "without-recipe") {
+      return "Totals for items without recipes";
+    }
+    if (selectedView === "grouped") {
+      return "Totals by item grouping";
+    }
+    return "Totals reflect visible transactions";
+  }, [startDate, endDate, searchTerm, recipeFilter, selectedView]);
+
+  const latestSyncTime = useMemo(() => {
+    if (!integrationStatuses || integrationStatuses.length === 0) return undefined;
+    return integrationStatuses.reduce<string | undefined>((latest, status) => {
+      if (!status.lastSyncAt) return latest;
+      if (!latest) return status.lastSyncAt;
+      return new Date(status.lastSyncAt) > new Date(latest) ? status.lastSyncAt : latest;
+    }, undefined);
+  }, [integrationStatuses]);
+
+  const handleCategorizeClick = () => {
+    if (!selectedRestaurant?.restaurant_id) return;
+    setAiCategorizationError(null);
+    resetCategorizeError();
+    categorizePosSales(selectedRestaurant.restaurant_id);
+  };
+
+  const handleDismissAiError = () => {
+    setAiCategorizationError(null);
+    resetCategorizeError();
+  };
+
   // Calculate dashboard metrics - MUST be before conditional return to follow Rules of Hooks
   const dashboardMetrics = useMemo(() => {
     const totalSales = filteredSales.length;
@@ -381,6 +511,8 @@ export default function POSSales() {
     recipeFilter !== 'all' ? 'recipe' : '',
     sortBy !== 'date' || sortDirection !== 'desc' ? 'sort' : ''
   ].filter(Boolean).length;
+
+  const filtersActive = activeFiltersCount > 0 || selectedView === "grouped";
 
   const handleExportCSV = async () => {
     setIsExporting(true);
@@ -615,6 +747,13 @@ export default function POSSales() {
         collectedAtPOS={dashboardMetrics.collectedAtPOS}
         uniqueItems={dashboardMetrics.uniqueItems}
         unmappedCount={dashboardMetrics.unmappedCount}
+        lastSyncTime={latestSyncTime}
+        contextCueVisible={contextCueVisible}
+        cuePinned={cuePinned}
+        onToggleCuePin={handleToggleCuePin}
+        contextDescription={contextDescription}
+        highlightToken={highlightToken}
+        filtersActive={filtersActive}
       />
 
       {/* AI Categorization Section */}
@@ -631,7 +770,7 @@ export default function POSSales() {
               </p>
             </div>
             <Button 
-              onClick={() => categorizePosSales(selectedRestaurant.restaurant_id)}
+              onClick={handleCategorizeClick}
               disabled={isCategorizingPending || uncategorizedSalesCount === 0}
               className="gap-2"
             >
@@ -652,6 +791,31 @@ export default function POSSales() {
               </Badge>
             )}
           </div>
+        {aiCategorizationError && (
+          <div className="mt-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
+            <div className="flex items-start gap-3 text-destructive">
+              <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+              <div className="space-y-2">
+                <div className="font-semibold">AI categorization isn&apos;t available yet</div>
+                <p className="text-destructive/80">{aiCategorizationError}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                    onClick={() => navigate("/chart-of-accounts")}
+                  >
+                    Go to Accounting
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={handleDismissAiError}>
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         </CardContent>
       </Card>
 
@@ -830,6 +994,17 @@ export default function POSSales() {
                   </div>
                 ) : (
                   <div className="space-y-3">
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>
+                        Loaded {sales.length} record{sales.length === 1 ? '' : 's'}
+                        {filteredSales.length !== sales.length ? ` • ${filteredSales.length} match filters` : ''}
+                      </span>
+                      {hasMore && (
+                        <Button variant="outline" size="sm" onClick={loadMoreSales} disabled={loadingMore}>
+                          {loadingMore ? "Loading..." : "Load more sales"}
+                        </Button>
+                      )}
+                    </div>
                     {dateFilteredSales.map((sale, index) => {
                       // If sale is split, show the SplitSaleView component
                       if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
@@ -848,7 +1023,7 @@ export default function POSSales() {
                           </div>
                         );
                       }
-                      
+
                       // Regular sale card (non-split)
                       const posSystemColors: Record<string, string> = {
                         "Square": "border-l-blue-500",
@@ -1113,6 +1288,13 @@ export default function POSSales() {
                         </div>
                       );
                     })}
+                    {hasMore && (
+                      <div className="flex justify-center pt-2">
+                        <Button variant="outline" onClick={loadMoreSales} disabled={loadingMore}>
+                          {loadingMore ? "Loading..." : "Load more sales"}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -1127,6 +1309,17 @@ export default function POSSales() {
                   <div className="text-center py-8 text-muted-foreground">No sales data available.</div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2 flex items-center justify-between text-sm text-muted-foreground">
+                      <span>
+                        Loaded {sales.length} record{sales.length === 1 ? '' : 's'}
+                        {groupedSales.length !== sales.length ? ` • ${groupedSales.length} grouped items` : ''}
+                      </span>
+                      {hasMore && (
+                        <Button variant="outline" size="sm" onClick={loadMoreSales} disabled={loadingMore}>
+                          {loadingMore ? "Loading..." : "Load more sales"}
+                        </Button>
+                      )}
+                    </div>
                     {groupedSales.map(
                       (item: {
                         item_name: string;
@@ -1222,6 +1415,13 @@ export default function POSSales() {
                           </Card>
                         );
                       },
+                    )}
+                    {hasMore && (
+                      <div className="md:col-span-2 flex justify-center">
+                        <Button variant="outline" onClick={loadMoreSales} disabled={loadingMore}>
+                          {loadingMore ? "Loading..." : "Load more sales"}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}

@@ -92,7 +92,12 @@ export default function POSSales() {
   const [cuePinned, setCuePinned] = useState(false);
   const [highlightToken, setHighlightToken] = useState(0);
   const { toast } = useToast();
-  const { mutate: categorizePosSales, isPending: isCategorizingPending } = useCategorizePosSales();
+  const {
+    mutate: categorizePosSales,
+    isPending: isCategorizingPending,
+    error: categorizeError,
+    reset: resetCategorizeError,
+  } = useCategorizePosSales();
   const { mutate: categorizePosSale } = useCategorizePosSale(selectedRestaurant?.restaurant_id || null);
   const { mutate: splitPosSale } = useSplitPosSale();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
@@ -100,6 +105,7 @@ export default function POSSales() {
   const [editingCategoryForSale, setEditingCategoryForSale] = useState<string | null>(null);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [saleForRuleSuggestion, setSaleForRuleSuggestion] = useState<UnifiedSaleItem | null>(null);
+  const [aiCategorizationError, setAiCategorizationError] = useState<string | null>(null);
 
   // Filter revenue and liability accounts for categorization (matching split dialog)
   const categoryAccounts = useMemo(() => {
@@ -377,6 +383,12 @@ export default function POSSales() {
     return () => clearTimeout(timeout);
   }, [contextCueVisible, cuePinned]);
 
+  useEffect(() => {
+    if (categorizeError instanceof Error) {
+      setAiCategorizationError(categorizeError.message);
+    }
+  }, [categorizeError]);
+
   const handleToggleCuePin = () => {
     setCuePinned((prev) => {
       const next = !prev;
@@ -429,6 +441,18 @@ export default function POSSales() {
       return new Date(status.lastSyncAt) > new Date(latest) ? status.lastSyncAt : latest;
     }, undefined);
   }, [integrationStatuses]);
+
+  const handleCategorizeClick = () => {
+    if (!selectedRestaurant?.restaurant_id) return;
+    setAiCategorizationError(null);
+    resetCategorizeError();
+    categorizePosSales(selectedRestaurant.restaurant_id);
+  };
+
+  const handleDismissAiError = () => {
+    setAiCategorizationError(null);
+    resetCategorizeError();
+  };
 
   // Calculate dashboard metrics - MUST be before conditional return to follow Rules of Hooks
   const dashboardMetrics = useMemo(() => {
@@ -487,6 +511,8 @@ export default function POSSales() {
     recipeFilter !== 'all' ? 'recipe' : '',
     sortBy !== 'date' || sortDirection !== 'desc' ? 'sort' : ''
   ].filter(Boolean).length;
+
+  const filtersActive = activeFiltersCount > 0 || selectedView === "grouped";
 
   const handleExportCSV = async () => {
     setIsExporting(true);
@@ -727,6 +753,7 @@ export default function POSSales() {
         onToggleCuePin={handleToggleCuePin}
         contextDescription={contextDescription}
         highlightToken={highlightToken}
+        filtersActive={filtersActive}
       />
 
       {/* AI Categorization Section */}
@@ -743,7 +770,7 @@ export default function POSSales() {
               </p>
             </div>
             <Button 
-              onClick={() => categorizePosSales(selectedRestaurant.restaurant_id)}
+              onClick={handleCategorizeClick}
               disabled={isCategorizingPending || uncategorizedSalesCount === 0}
               className="gap-2"
             >
@@ -764,6 +791,31 @@ export default function POSSales() {
               </Badge>
             )}
           </div>
+        {aiCategorizationError && (
+          <div className="mt-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
+            <div className="flex items-start gap-3 text-destructive">
+              <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+              <div className="space-y-2">
+                <div className="font-semibold">AI categorization isn&apos;t available yet</div>
+                <p className="text-destructive/80">{aiCategorizationError}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                    onClick={() => navigate("/accounting")}
+                  >
+                    Go to Accounting
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={handleDismissAiError}>
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         </CardContent>
       </Card>
 

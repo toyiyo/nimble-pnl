@@ -25,6 +25,7 @@ interface POSSalesDashboardProps {
   onToggleCuePin: () => void;
   contextDescription: string;
   highlightToken: number;
+  filtersActive: boolean;
 }
 
 export const POSSalesDashboard = ({
@@ -41,9 +42,10 @@ export const POSSalesDashboard = ({
   onToggleCuePin,
   contextDescription,
   highlightToken,
+  filtersActive,
 }: POSSalesDashboardProps) => {
   const [valueWashActive, setValueWashActive] = useState(false);
-  const showFilteredContext = contextCueVisible || cuePinned;
+  const showFilteredContext = filtersActive || contextCueVisible || cuePinned;
 
   useEffect(() => {
     if (!highlightToken) return;

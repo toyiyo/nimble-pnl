@@ -337,10 +337,10 @@ Deno.serve(async (req) => {
 
       const parseTicketDateTime = (value: string | undefined | null) => {
         if (!value || typeof value !== 'string') return null;
-        const [mdy, timeRaw] = value.trim().split(/\\s+/);
+        const [mdy, timeRaw] = value.trim().split(/\s+/);
         if (!mdy || !timeRaw) return null;
         const [mm, dd, yyyy] = mdy.split('/').map((n) => parseInt(n, 10));
-        const timeMatch = timeRaw.match(/(\\d{1,2}):(\\d{2})(AM|PM)/i);
+        const timeMatch = timeRaw.match(/(\d{1,2}):(\d{2})(AM|PM)/i);
         if (!mm || !dd || !yyyy || !timeMatch) return null;
         let [, hh, min, ampm] = timeMatch;
         let hour = parseInt(hh, 10);

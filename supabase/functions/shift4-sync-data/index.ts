@@ -475,10 +475,7 @@ Deno.serve(async (req) => {
           const merchantId = locationId !== null ? String(locationId) : 'unknown';
           const chargeId = `${orderNumber}-${merchantId}-${dayDateString}`;
 
-          const subtotal = parseCurrency(ticket.subtotal);
-          const discountTotal = parseCurrency(ticket.discountTotal);
-          const surchargeTotal = parseCurrency(ticket.surchargeTotal);
-          const taxTotal = parseCurrency(ticket.taxTotal);
+          // Only grandTotal is required for charge upsert
           const grandTotal = parseCurrency(ticket.grandTotal);
 
           const rawData = ticket;

@@ -383,6 +383,8 @@ Deno.serve(async (req) => {
 
       const tickets = Array.isArray(salesSummary.rows) ? salesSummary.rows : [];
 
+      console.log(`[Lighthouse Sync] Tickets fetched: ${tickets.length} in range ${rangeStartIso} -> ${rangeEndIso} (locs: ${locations.join(',')})`);
+
       for (const ticket of tickets) {
         // Skip voided tickets
         if (ticket.status && typeof ticket.status === 'string' && ticket.status.toLowerCase().includes('void')) {
@@ -436,6 +438,7 @@ Deno.serve(async (req) => {
           continue;
         } else {
           results.chargesSynced++;
+          console.log(`[Lighthouse Sync] charge stored`, { chargeId, grandTotal });
         }
 
         // Fetch existing item ids for this charge to avoid deleting rows and prevent duplicates on re-sync
@@ -459,6 +462,15 @@ Deno.serve(async (req) => {
           if (item.status && typeof item.status === 'string' && item.status.toLowerCase().includes('void')) {
             continue;
           }
+          console.log(`[Lighthouse Sync] Item:`, {
+            orderNumber,
+            name: item.name,
+            qty: item.qty,
+            subtotal: item.subtotal,
+            discount: item.discountTotal,
+            surcharge: item.surTotal,
+            added: item.added,
+          });
           const qty = Number(item.qty) || 0;
           const itemSubtotal = parseCurrency(item.subtotal);
           const itemName = item.name || 'Item';
@@ -665,6 +677,8 @@ Deno.serve(async (req) => {
           if (insertError) {
             console.error(`[${saleDateString}] [Lighthouse Sync] Bulk unified_sales insert error:`, insertError);
             results.errors.push(`[${saleDateString}] Bulk insert failed for ticket ${orderNumber}: ${insertError.message}`);
+          } else {
+            console.log(`[Lighthouse Sync] unified_sales inserted`, { count: unifiedRows.length, chargeId, orderNumber });
           }
         }
       }

@@ -1,37 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { getEncryptionService, logSecurityEvent } from "../_shared/encryption.ts";
 
-/**
- * Authenticate with Lighthouse API and return token
- */
-async function authenticateWithLighthouse(email: string, password: string): Promise<string> {
-  const response = await fetch('https://lighthouse-api.harbortouch.com/api/v1/auth/authenticate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Lighthouse authentication failed: ${errorText}`);
-  }
-  const data = await response.json();
-  if (!data.token) throw new Error('No token returned from Lighthouse');
-  return data.token;
-}
-
-/**
- * Store Lighthouse token in shift4_connections (encrypted)
- */
-async function storeLighthouseToken(supabase: any, connectionId: string, token: string) {
-  const encryption = await getEncryptionService();
-  const encryptedToken = await encryption.encrypt(token);
-  await supabase.from('shift4_connections').update({
-    lighthouse_token: encryptedToken,
-    lighthouse_token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(), // 1hr expiry (adjust if needed)
-    updated_at: new Date().toISOString(),
-  }).eq('id', connectionId);
-}
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -137,79 +106,7 @@ async function fetchLighthouseTicketDetails(token: string, start: string, end: s
   return await response.json();
 }
 
-/**
- * Fetch refunds for a specific charge
- * Note: Shift4 uses the same URL for both test and production.
- */
-async function fetchRefundsForCharge(
-  secretKey: string,
-  environment: string,
-  chargeId: string
-): Promise<any[]> {
-  // Shift4 uses the same base URL for both test and production environments
-  const baseUrl = 'https://api.shift4.com';
 
-  const authHeader = 'Basic ' + btoa(secretKey + ':');
-
-  const url = `${baseUrl}/charges/${chargeId}/refunds?limit=100`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': authHeader,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    console.warn(`Failed to fetch refunds for charge ${chargeId}`);
-    return [];
-  }
-
-  const data = await response.json();
-  return data.list || [];
-}
-
-/**
- * Extract tip amount from charge splits (if Platform Split is used)
- */
-function extractTipAmount(charge: any): number {
-  if (!charge.splits || !Array.isArray(charge.splits)) {
-    return 0;
-  }
-
-  const tipSplit = charge.splits.find((split: any) => split.type === 'tip');
-  return tipSplit?.amount || 0;
-}
-
-/**
- * Convert UTC timestamp to restaurant's local date/time
- */
-function convertToLocalDateTime(
-  utcTimestamp: number,
-  timezone: string
-): { date: string; time: string } {
-  const utcDate = new Date(utcTimestamp * 1000); // Convert seconds to milliseconds
-
-  // Get local date in YYYY-MM-DD format
-  const localDateStr = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(utcDate);
-
-  // Get local time in HH:MM:SS format
-  const localTimeStr = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).format(utcDate);
-
-  return { date: localDateStr, time: localTimeStr };
-}
 
 Deno.serve(async (req) => {
   // Handle CORS preflight

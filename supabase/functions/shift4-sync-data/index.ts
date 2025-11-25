@@ -54,6 +54,28 @@ const withRetry = async <T>(fn: () => Promise<T>, attempts = 3, delayMs = 500): 
   throw lastError;
 };
 
+// Deterministic stringify to build stable hashes/ids
+const stableStringify = (obj: any): string => {
+  if (obj === null || typeof obj !== 'object') {
+    return JSON.stringify(obj);
+  }
+  if (Array.isArray(obj)) {
+    return `[${obj.map(stableStringify).join(',')}]`;
+  }
+  const keys = Object.keys(obj).sort();
+  const entries = keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`);
+  return `{${entries.join(',')}}`;
+};
+
+const makeHashId = async (base: string, payload: any) => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`${base}|${stableStringify(payload)}`);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${base}-${hashHex.slice(0, 12)}`;
+};
+
 interface Shift4SyncRequest {
   restaurantId: string;
   action: 'initial_sync' | 'daily_sync' | 'hourly_sync';
@@ -416,6 +438,18 @@ Deno.serve(async (req) => {
           results.chargesSynced++;
         }
 
+        // Fetch existing item ids for this charge to avoid deleting rows and prevent duplicates on re-sync
+        const { data: existingRows, error: existingErr } = await supabase
+          .from('unified_sales')
+          .select('external_item_id')
+          .eq('restaurant_id', restaurantId)
+          .eq('pos_system', 'lighthouse')
+          .eq('external_order_id', chargeId);
+        if (existingErr) {
+          console.error(`[${saleDateString}] [Lighthouse Sync] Failed to fetch existing unified_sales rows:`, existingErr);
+        }
+        const existingIds = new Set((existingRows || []).map((r: any) => r.external_item_id));
+
         const unifiedRows: any[] = [];
         let lineIndex = 0;
 
@@ -431,11 +465,19 @@ Deno.serve(async (req) => {
           const discount = parseCurrency(item.discountTotal);
           const sur = parseCurrency(item.surTotal);
 
-          unifiedRows.push({
+          const baseId = await makeHashId(`${chargeId}-item`, {
+            name: itemName,
+            qty,
+            subtotal: itemSubtotal,
+            discount,
+            sur,
+          });
+          if (!existingIds.has(baseId)) {
+            unifiedRows.push({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             external_order_id: chargeId,
-            external_item_id: `${chargeId}-item-${lineIndex}`,
+            external_item_id: baseId,
             item_name: itemName,
             item_type: 'sale',
             adjustment_type: null,
@@ -447,14 +489,21 @@ Deno.serve(async (req) => {
             raw_data: item,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          });
+            });
+            existingIds.add(baseId);
+          }
 
           if (discount && Math.abs(discount) > 0.0001) {
-            unifiedRows.push({
+            const discountId = await makeHashId(`${chargeId}-item-discount`, {
+              name: itemName,
+              discount,
+            });
+            if (!existingIds.has(discountId)) {
+              unifiedRows.push({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               external_order_id: chargeId,
-            external_item_id: `${chargeId}-item-discount-${lineIndex}`,
+                external_item_id: discountId,
             item_name: `${itemName} Discount`,
             item_type: 'discount',
             adjustment_type: 'discount',
@@ -465,15 +514,22 @@ Deno.serve(async (req) => {
             raw_data: item,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            });
+              });
+              existingIds.add(discountId);
+            }
           }
 
           if (sur && Math.abs(sur) > 0.0001) {
-            unifiedRows.push({
+            const feeId = await makeHashId(`${chargeId}-item-fee`, {
+              name: itemName,
+              surcharge: sur,
+            });
+            if (!existingIds.has(feeId)) {
+              unifiedRows.push({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               external_order_id: chargeId,
-            external_item_id: `${chargeId}-item-fee-${lineIndex}`,
+                external_item_id: feeId,
             item_name: `${itemName} Surcharge`,
             item_type: 'service_charge',
             adjustment_type: 'service_charge',
@@ -484,7 +540,9 @@ Deno.serve(async (req) => {
             raw_data: item,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            });
+              });
+              existingIds.add(feeId);
+            }
           }
 
           lineIndex++;
@@ -496,11 +554,13 @@ Deno.serve(async (req) => {
           const name = Array.isArray(d) ? d[0] : (d?.name || 'Ticket Discount');
           const amount = Array.isArray(d) ? parseCurrency(d[1]) : parseCurrency(d?.amount);
           if (!amount) continue;
-          unifiedRows.push({
+          const discountId = await makeHashId(`${chargeId}-discount`, d);
+          if (!existingIds.has(discountId)) {
+            unifiedRows.push({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             external_order_id: chargeId,
-            external_item_id: `${chargeId}-discount-${idx}`,
+              external_item_id: discountId,
             item_name: name,
             item_type: 'discount',
             adjustment_type: 'discount',
@@ -511,7 +571,9 @@ Deno.serve(async (req) => {
             raw_data: d,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          });
+            });
+            existingIds.add(discountId);
+          }
         }
 
         // Ticket-level fees/surcharges
@@ -520,11 +582,13 @@ Deno.serve(async (req) => {
           const name = Array.isArray(f) ? f[0] : (f?.name || 'Fee');
           const amount = Array.isArray(f) ? parseCurrency(f[4] ?? f[1]) : parseCurrency(f?.grandTotal || f?.amount);
           if (!amount) continue;
-          unifiedRows.push({
+          const feeId = await makeHashId(`${chargeId}-fee`, f);
+          if (!existingIds.has(feeId)) {
+            unifiedRows.push({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             external_order_id: chargeId,
-            external_item_id: `${chargeId}-fee-${idx}`,
+              external_item_id: feeId,
             item_name: name,
             item_type: 'service_charge',
             adjustment_type: 'service_charge',
@@ -535,7 +599,9 @@ Deno.serve(async (req) => {
             raw_data: f,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          });
+            });
+            existingIds.add(feeId);
+          }
         }
 
         // Ticket-level taxes
@@ -544,11 +610,13 @@ Deno.serve(async (req) => {
           const name = Array.isArray(t) ? t[0] : (t?.name || 'Tax');
           const amount = Array.isArray(t) ? parseCurrency(t[1]) : parseCurrency(t?.amount);
           if (!amount) continue;
-          unifiedRows.push({
+          const taxId = await makeHashId(`${chargeId}-tax`, t);
+          if (!existingIds.has(taxId)) {
+            unifiedRows.push({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             external_order_id: chargeId,
-            external_item_id: `${chargeId}-tax-${idx}`,
+              external_item_id: taxId,
             item_name: name,
             item_type: 'tax',
             adjustment_type: 'tax',
@@ -559,7 +627,9 @@ Deno.serve(async (req) => {
             raw_data: t,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          });
+            });
+            existingIds.add(taxId);
+          }
         }
 
         // Ticket-level tips from payments
@@ -568,11 +638,13 @@ Deno.serve(async (req) => {
           const tipAmount = Array.isArray(p) ? parseCurrency(p[3]) : parseCurrency(p?.tip);
           if (!tipAmount) continue;
           const tenderType = Array.isArray(p) ? p[0] : (p?.tenderType || 'Tip');
-          unifiedRows.push({
+          const tipId = await makeHashId(`${chargeId}-tip`, p);
+          if (!existingIds.has(tipId)) {
+            unifiedRows.push({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             external_order_id: chargeId,
-            external_item_id: `${chargeId}-tip-${idx}`,
+              external_item_id: tipId,
             item_name: `${tenderType} Tip`,
             item_type: 'tip',
             adjustment_type: 'tip',
@@ -583,17 +655,12 @@ Deno.serve(async (req) => {
             raw_data: p,
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          });
+            });
+            existingIds.add(tipId);
+          }
         }
 
         if (unifiedRows.length) {
-          await supabase
-            .from('unified_sales')
-            .delete()
-            .eq('restaurant_id', restaurantId)
-            .eq('pos_system', 'lighthouse')
-            .eq('external_order_id', chargeId);
-
           const { error: insertError } = await supabase.from('unified_sales').insert(unifiedRows);
           if (insertError) {
             console.error(`[${saleDateString}] [Lighthouse Sync] Bulk unified_sales insert error:`, insertError);

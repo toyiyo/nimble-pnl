@@ -804,7 +804,7 @@ export default function POSSales() {
                     size="sm"
                     variant="outline"
                     className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                    onClick={() => navigate("/accounting")}
+                    onClick={() => navigate("/chart-of-accounts")}
                   >
                     Go to Accounting
                   </Button>

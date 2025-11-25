@@ -868,7 +868,7 @@ export default function POSSales() {
                           </div>
                         );
                       }
-                      
+
                       // Regular sale card (non-split)
                       const posSystemColors: Record<string, string> = {
                         "Square": "border-l-blue-500",
@@ -1133,6 +1133,13 @@ export default function POSSales() {
                         </div>
                       );
                     })}
+                    {hasMore && (
+                      <div className="flex justify-center pt-2">
+                        <Button variant="outline" onClick={loadMoreSales} disabled={loadingMore}>
+                          {loadingMore ? "Loading..." : "Load more sales"}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -1253,6 +1260,13 @@ export default function POSSales() {
                           </Card>
                         );
                       },
+                    )}
+                    {hasMore && (
+                      <div className="md:col-span-2 flex justify-center">
+                        <Button variant="outline" onClick={loadMoreSales} disabled={loadingMore}>
+                          {loadingMore ? "Loading..." : "Load more sales"}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}

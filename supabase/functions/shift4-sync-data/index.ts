@@ -115,6 +115,54 @@ const makeHashId = async (base: string, payload: any) => {
   return `${base}-${hashHex.slice(0, 12)}`;
 };
 
+const getLocalYMD = (date: Date, timeZone: string) => {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(date).reduce((acc: any, part) => {
+    if (part.type === 'year') acc.year = parseInt(part.value, 10);
+    if (part.type === 'month') acc.month = parseInt(part.value, 10);
+    if (part.type === 'day') acc.day = parseInt(part.value, 10);
+    return acc;
+  }, { year: 0, month: 0, day: 0 });
+  return parts as { year: number; month: number; day: number };
+};
+
+const getLocalDateRangeDays = (startDate: Date, endDate: Date, timeZone: string) => {
+  const days: { year: number; month: number; day: number }[] = [];
+  const start = getLocalYMD(startDate, timeZone);
+  const end = getLocalYMD(endDate, timeZone);
+
+  const startValue = Date.UTC(start.year, start.month - 1, start.day);
+  const endValue = Date.UTC(end.year, end.month - 1, end.day);
+
+  for (let ts = startValue; ts <= endValue; ts += 24 * 60 * 60 * 1000) {
+    const d = new Date(ts);
+    const local = getLocalYMD(d, timeZone);
+    days.push(local);
+  }
+
+  return days;
+};
+
+const withRetry = async <T>(fn: () => Promise<T>, attempts = 3, delayMs = 500): Promise<T> => {
+  let lastError: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastError;
+};
+
 interface Shift4SyncRequest {
   restaurantId: string;
   action: 'initial_sync' | 'daily_sync' | 'hourly_sync';

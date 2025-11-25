@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { usePostHog } from 'posthog-js/react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, Send, Plus, Trash2, Search, AlertCircle, Package, Download, FileText, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, Save, Send, Plus, Trash2, Search, AlertCircle, Package, Download, FileText, FileSpreadsheet, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -36,21 +38,26 @@ import { usePurchaseOrders } from '@/hooks/usePurchaseOrders';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useProducts, Product } from '@/hooks/useProducts';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useHighUsageItems } from '@/hooks/useHighUsageItems';
 import {
   PurchaseOrderViewModel,
   PurchaseOrderLine,
   CreatePurchaseOrderLineData,
 } from '@/types/purchaseOrder';
 import { cn } from '@/lib/utils';
+import { calculateRecommendation } from '@/lib/poRecommendations';
 import {
   exportPurchaseOrderToPDF,
   exportPurchaseOrderToCSV,
   exportPurchaseOrderToText,
 } from '@/utils/purchaseOrderExport';
 
+const USAGE_SUGGESTION_LIMIT = 5;
+
 export const PurchaseOrderEditor: React.FC = () => {
   const navigate = useNavigate();
   const { id: poId } = useParams<{ id: string }>();
+  const posthog = usePostHog();
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
@@ -75,6 +82,17 @@ export const PurchaseOrderEditor: React.FC = () => {
   const [lines, setLines] = useState<PurchaseOrderLine[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [suggestingOrder, setSuggestingOrder] = useState(false);
+  const [suggestionSummary, setSuggestionSummary] = useState<{ applied: number; estimatedTotal: number } | null>(null);
+  const [includeUsageSuggestions, setIncludeUsageSuggestions] = useState(false);
+  const [activeAddItemsTab, setActiveAddItemsTab] = useState<'search' | 'suggestions'>('search');
+
+  const usageInsightsEnabled = includeUsageSuggestions || activeAddItemsTab === 'suggestions';
+  const {
+    usageItems,
+    loading: usageLoading,
+    error: usageError,
+  } = useHighUsageItems(restaurantId, { enabled: usageInsightsEnabled });
 
   const isNew = poId === 'new';
   const isEditing = !isNew;
@@ -121,6 +139,102 @@ export const PurchaseOrderEditor: React.FC = () => {
     return supplier?.name || 'Unknown';
   };
 
+  const productLookup = useMemo(() => {
+    const map = new Map<string, Product>();
+    products.forEach((product) => {
+      map.set(product.id, product);
+    });
+    return map;
+  }, [products]);
+
+  type LineTemplate = {
+    product_id: string;
+    supplier_id?: string | null;
+    item_name: string;
+    sku?: string | null;
+    unit_label?: string | null;
+    unit_cost: number;
+    quantity: number;
+  };
+
+  const buildLineTemplate = (product: Product, quantity: number): LineTemplate => ({
+    product_id: product.id,
+    supplier_id: product.supplier_id || supplierId || null,
+    item_name: product.name,
+    sku: product.sku,
+    unit_label: product.uom_purchase || null,
+    unit_cost: product.cost_per_unit || 0,
+    quantity,
+  });
+
+  const createTempLineFromTemplate = (template: LineTemplate): PurchaseOrderLine => ({
+    id: `temp-${Date.now()}-${template.product_id}-${Math.random().toString(36).slice(2, 6)}`,
+    purchase_order_id: '',
+    product_id: template.product_id,
+    supplier_id: template.supplier_id ?? '',
+    item_name: template.item_name,
+    sku: template.sku ?? null,
+    unit_label: template.unit_label ?? 'Unit',
+    unit_cost: template.unit_cost,
+    quantity: template.quantity,
+    line_total: template.unit_cost * template.quantity,
+    received_quantity: 0,
+    notes: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+
+  interface LineRecommendationContext {
+    product: Product | null;
+    recommendation: ReturnType<typeof calculateRecommendation> | null;
+    onHand: number | null;
+    parMin: number | null;
+    parMax: number | null;
+  }
+
+  const lineRecommendations = useMemo<Record<string, LineRecommendationContext>>(() => {
+    const map: Record<string, LineRecommendationContext> = {};
+
+    const asNumber = (value?: number | null) =>
+      typeof value === 'number' && !Number.isNaN(value) ? value : null;
+
+    lines.forEach((line) => {
+      const productDetails = line.product_id ? productLookup.get(line.product_id) ?? null : null;
+      const onHand = asNumber(productDetails?.current_stock);
+      const parMin = asNumber(productDetails?.par_level_min);
+      const parMax = asNumber(productDetails?.par_level_max);
+
+      const recommendation = productDetails
+        ? calculateRecommendation({
+            onHand,
+            parLevelMin: parMin,
+            parLevelMax: parMax,
+            reorderPoint: productDetails?.reorder_point,
+            defaultOrderQuantity: productDetails?.package_qty,
+            minOrderMultiple: productDetails?.package_qty,
+          })
+        : null;
+
+      map[line.id] = {
+        product: productDetails,
+        recommendation,
+        onHand,
+        parMin,
+        parMax,
+      };
+    });
+
+    return map;
+  }, [lines, productLookup]);
+
+  const hasRecommendations = useMemo(() => {
+    return (Object.values(lineRecommendations) as LineRecommendationContext[]).some(
+      (context) => context.recommendation && context.recommendation.recommendedQuantity > 0,
+    );
+  }, [lineRecommendations]);
+
+  const canSuggestOrder = hasRecommendations || (includeUsageSuggestions && usageItems.length > 0);
+
   // Filter products by search term and category
   const availableProducts = useMemo(() => {
     let filtered = products;
@@ -156,7 +270,7 @@ export const PurchaseOrderEditor: React.FC = () => {
   };
 
   // Add item to PO
-  const handleAddItem = async (product: Product) => {
+  const handleAddItem = async (product: Product, quantity = 1) => {
     if (!restaurantId) return;
 
     // Check if item already exists
@@ -169,31 +283,16 @@ export const PurchaseOrderEditor: React.FC = () => {
       return;
     }
 
-    // Get supplier from the product (can be null)
-    const itemSupplierId = product.supplier_id || null;
-
-    const newLine: Partial<PurchaseOrderLine> = {
-      product_id: product.id,
-      supplier_id: itemSupplierId,
-      item_name: product.name,
-      sku: product.sku,
-      unit_label: product.uom_purchase || 'Unit',
-      unit_cost: product.cost_per_unit || 0,
-      quantity: 1,
-      line_total: product.cost_per_unit || 0,
-    };
+    const template = buildLineTemplate(product, quantity);
 
     if (isEditing && po) {
       // Add to database
       const lineData: CreatePurchaseOrderLineData = {
         purchase_order_id: po.id,
-        product_id: product.id,
-        supplier_id: itemSupplierId,
-        item_name: product.name,
-        sku: product.sku,
-        unit_label: product.uom_purchase || 'Unit',
-        unit_cost: product.cost_per_unit || 0,
-        quantity: 1,
+        ...template,
+        supplier_id: template.supplier_id ?? '',
+        unit_label: template.unit_label ?? 'Unit',
+        sku: template.sku ?? null,
       };
 
       try {
@@ -204,17 +303,61 @@ export const PurchaseOrderEditor: React.FC = () => {
       }
     } else {
       // Add to local state (for new PO)
-      const tempLine: PurchaseOrderLine = {
-        id: `temp-${Date.now()}`,
-        purchase_order_id: '',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        received_quantity: 0,
-        notes: null,
-        ...newLine,
-      } as PurchaseOrderLine;
+      const tempLine = createTempLineFromTemplate(template);
       setLines([...lines, tempLine]);
     }
+  };
+
+  const getUsageCandidates = (currentLines: PurchaseOrderLine[]) => {
+    if (!includeUsageSuggestions) return [];
+    const existingProductIds = new Set(currentLines.map((line) => line.product_id).filter(Boolean));
+    return usageItems
+      .filter((item) => !existingProductIds.has(item.productId))
+      .slice(0, USAGE_SUGGESTION_LIMIT);
+  };
+
+  const applyUsageSuggestions = async (
+    currentLines: PurchaseOrderLine[],
+  ): Promise<{ lines: PurchaseOrderLine[]; addedCount: number }> => {
+    const candidates = getUsageCandidates(currentLines);
+    if (candidates.length === 0) {
+      return { lines: currentLines, addedCount: 0 };
+    }
+
+    let updatedLines = [...currentLines];
+    let addedCount = 0;
+
+    for (const candidate of candidates) {
+      const product = productLookup.get(candidate.productId);
+      if (!product) continue;
+
+      const quantity = candidate.suggestedQuantity > 0 ? candidate.suggestedQuantity : candidate.totalUsage;
+      if (!quantity || quantity <= 0) continue;
+
+      const template = buildLineTemplate(product, quantity);
+
+      if (isEditing && po) {
+        try {
+          const createdLine = await addLineItem({
+            purchase_order_id: po.id,
+            ...template,
+            supplier_id: template.supplier_id ?? '',
+            unit_label: template.unit_label ?? 'Unit',
+            sku: template.sku ?? null,
+          });
+          updatedLines = [...updatedLines, createdLine];
+        } catch (error) {
+          console.error('Error adding usage-based suggestion:', error);
+          continue;
+        }
+      } else {
+        updatedLines = [...updatedLines, createTempLineFromTemplate(template)];
+      }
+
+      addedCount += 1;
+    }
+
+    return { lines: updatedLines, addedCount };
   };
 
   // Update line item
@@ -254,6 +397,99 @@ export const PurchaseOrderEditor: React.FC = () => {
       } catch (error) {
         console.error('Error removing line:', error);
       }
+    }
+  };
+
+  const handleSuggestOrder = async () => {
+    if (suggestingOrder) return;
+
+    const usageCandidatesAvailable = includeUsageSuggestions && getUsageCandidates(lines).length > 0;
+    const updates: { lineId: string; nextQuantity: number }[] = [];
+
+    const updatedLines = lines.map((line) => {
+      const lineContext = lineRecommendations[line.id];
+      const recommendedQty = lineContext?.recommendation?.recommendedQuantity;
+
+      if (recommendedQty === undefined || recommendedQty === null) {
+        return line;
+      }
+
+      if (recommendedQty === line.quantity) {
+        return line;
+      }
+
+      updates.push({ lineId: line.id, nextQuantity: recommendedQty });
+      return {
+        ...line,
+        quantity: recommendedQty,
+        line_total: recommendedQty * (line.unit_cost || 0),
+      };
+    });
+
+    if (updates.length === 0 && !usageCandidatesAvailable) {
+      toast({
+        title: 'No suggestions available',
+        description: 'Add items with par levels or enable high-usage suggestions to see recommendations.',
+      });
+      return;
+    }
+
+    setSuggestingOrder(true);
+    setLines(updatedLines);
+
+    try {
+      if (updates.length > 0 && isEditing && po) {
+        const persistenceUpdates = updates.filter((update) => !update.lineId.startsWith('temp-'));
+        await Promise.all(
+          persistenceUpdates.map((update) => updateLineItem(update.lineId, { quantity: update.nextQuantity })),
+        );
+      }
+
+      let workingLines = updatedLines;
+      let addedCount = 0;
+
+      if (usageCandidatesAvailable) {
+        const usageResult = await applyUsageSuggestions(workingLines);
+        workingLines = usageResult.lines;
+        addedCount = usageResult.addedCount;
+      }
+
+      if (addedCount > 0 || updates.length > 0) {
+        setLines(workingLines);
+      }
+
+      const estimatedTotal = workingLines.reduce((sum, line) => sum + (line.unit_cost || 0) * line.quantity, 0);
+      const totalAdjustments = updates.length + addedCount;
+
+      if (totalAdjustments > 0) {
+        setSuggestionSummary({
+          applied: totalAdjustments,
+          estimatedTotal,
+        });
+      }
+
+      posthog?.capture('purchase_order_suggest_order', {
+        restaurantId,
+        updatedCount: updates.length,
+        usageItemsAdded: addedCount,
+        totalAdjustments,
+        includeUsage: includeUsageSuggestions,
+        budgetValue,
+      });
+
+      toast({
+        title: 'Suggestions applied',
+        description: `Applied suggestions to ${totalAdjustments} item${totalAdjustments === 1 ? '' : 's'}.`,
+      });
+    } catch (error) {
+      console.error('Error applying suggestions:', error);
+      toast({
+        title: 'Suggestion failed',
+        description: 'Unable to apply all recommended quantities. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSuggestingOrder(false);
     }
   };
 
@@ -542,6 +778,75 @@ export const PurchaseOrderEditor: React.FC = () => {
               />
             </div>
           )}
+
+          <div className="mt-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Use your current inventory levels and par targets to pre-fill this purchase order automatically.
+              </p>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Switch
+                  id="usage-suggestions"
+                  checked={includeUsageSuggestions}
+                  onCheckedChange={setIncludeUsageSuggestions}
+                  aria-label="Include high-usage items"
+                />
+                <Label htmlFor="usage-suggestions" className="text-sm text-muted-foreground cursor-pointer">
+                  Include high-usage items
+                </Label>
+              </div>
+            </div>
+            <Button
+              className="gap-2"
+              onClick={handleSuggestOrder}
+              disabled={suggestingOrder || !canSuggestOrder}
+            >
+              <Sparkles className="h-4 w-4" />
+              {suggestingOrder ? 'Applying...' : 'Suggest Order'}
+            </Button>
+          </div>
+
+          {suggestionSummary && (
+            <div className="mt-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm space-y-2">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-2 text-foreground">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span>
+                    Applied suggestions to {suggestionSummary.applied} item
+                    {suggestionSummary.applied === 1 ? '' : 's'}.
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-muted-foreground">
+                  <span>
+                    Projected total:{' '}
+                    <span className="font-semibold text-foreground">
+                      ${suggestionSummary.estimatedTotal.toFixed(2)}
+                    </span>
+                  </span>
+                  {budgetValue && (
+                    <span
+                      className={cn(
+                        'font-medium',
+                        suggestionSummary.estimatedTotal > budgetValue ? 'text-destructive' : 'text-foreground',
+                      )}
+                    >
+                      {suggestionSummary.estimatedTotal > budgetValue
+                        ? `Over by $${(suggestionSummary.estimatedTotal - budgetValue).toFixed(2)}`
+                        : `Under by $${(budgetValue - suggestionSummary.estimatedTotal).toFixed(2)}`}
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-muted-foreground"
+                    onClick={() => setSuggestionSummary(null)}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </CardHeader>
       </Card>
 
@@ -570,6 +875,9 @@ export const PurchaseOrderEditor: React.FC = () => {
                       <TableHead className="w-8">#</TableHead>
                       <TableHead>Item</TableHead>
                       <TableHead>Supplier</TableHead>
+                      <TableHead className="w-28 text-center">On Hand</TableHead>
+                      <TableHead className="w-36 text-center">Par / Min</TableHead>
+                      <TableHead className="w-32 text-center">Recommended</TableHead>
                       <TableHead>Unit</TableHead>
                       <TableHead className="w-32">Unit Cost</TableHead>
                       <TableHead className="w-32">Quantity</TableHead>
@@ -578,67 +886,106 @@ export const PurchaseOrderEditor: React.FC = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {lines.map((line, index) => (
-                      <TableRow key={line.id}>
-                        <TableCell className="text-muted-foreground">{index + 1}</TableCell>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{line.item_name}</div>
-                            {line.sku && <div className="text-sm text-muted-foreground">SKU: {line.sku}</div>}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {line.supplier_id ? (
-                            <Badge variant="outline" className="text-xs">
-                              {getSupplierName(line.supplier_id)}
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs text-muted-foreground">
-                              No supplier
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>{line.unit_label}</TableCell>
-                        <TableCell>
-                          <div className="relative">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                              $
-                            </span>
+                    {lines.map((line, index) => {
+                      const lineContext = lineRecommendations[line.id];
+                      const productDetails = lineContext?.product ?? null;
+                      const onHand = lineContext?.onHand ?? null;
+                      const parMin = lineContext?.parMin ?? null;
+                      const parMax = lineContext?.parMax ?? null;
+                      const recommendedQty = lineContext?.recommendation?.recommendedQuantity ?? null;
+
+                      return (
+                        <TableRow key={line.id}>
+                          <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{line.item_name}</div>
+                              {line.sku && <div className="text-sm text-muted-foreground">SKU: {line.sku}</div>}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {line.supplier_id ? (
+                              <Badge variant="outline" className="text-xs">
+                                {getSupplierName(line.supplier_id)}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">
+                                No supplier
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {onHand !== null ? (
+                              <span className="font-medium">{onHand}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">N/A</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {parMin !== null || parMax !== null ? (
+                              <div className="flex flex-col text-xs">
+                                {parMax !== null && <span className="font-medium">{parMax}</span>}
+                                {parMin !== null && (
+                                  <span className="text-muted-foreground">
+                                    Min {parMin}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">N/A</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {recommendedQty !== null ? (
+                              <span className="font-medium">{recommendedQty}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>{line.unit_label}</TableCell>
+                          <TableCell>
+                            <div className="relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                                $
+                              </span>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={line.unit_cost}
+                                onChange={(e) =>
+                                  handleUpdateLine(line.id, 'unit_cost', parseFloat(e.target.value) || 0)
+                                }
+                                className="pl-6 text-sm"
+                                aria-label={`Unit cost for ${line.item_name}`}
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell>
                             <Input
                               type="number"
                               step="0.01"
                               min="0"
-                              value={line.unit_cost}
-                              onChange={(e) => handleUpdateLine(line.id, 'unit_cost', parseFloat(e.target.value) || 0)}
-                              className="pl-6 text-sm"
-                              aria-label={`Unit cost for ${line.item_name}`}
+                              value={line.quantity}
+                              onChange={(e) => handleUpdateLine(line.id, 'quantity', parseFloat(e.target.value) || 0)}
+                              className="text-sm"
+                              aria-label={`Quantity for ${line.item_name}`}
                             />
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={line.quantity}
-                            onChange={(e) => handleUpdateLine(line.id, 'quantity', parseFloat(e.target.value) || 0)}
-                            className="text-sm"
-                            aria-label={`Quantity for ${line.item_name}`}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right font-medium">${line.line_total.toFixed(2)}</TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveLine(line.id)}
-                            aria-label={`Remove ${line.item_name}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">${line.line_total.toFixed(2)}</TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveLine(line.id)}
+                              aria-label={`Remove ${line.item_name}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
@@ -663,21 +1010,23 @@ export const PurchaseOrderEditor: React.FC = () => {
 
         {/* Right: Item Picker */}
         <div className="lg:col-span-1">
-          <Card className="sticky top-6">
+            <Card className="sticky top-6">
             <CardHeader>
               <CardTitle>Add Items</CardTitle>
               <CardDescription>Search and add products from any supplier</CardDescription>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="search" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="search">Search Inventory</TabsTrigger>
-                  <TabsTrigger value="suggestions" disabled>
-                    Smart Suggestions
-                  </TabsTrigger>
-                </TabsList>
+                <Tabs
+                  value={activeAddItemsTab}
+                  onValueChange={(value) => setActiveAddItemsTab(value as 'search' | 'suggestions')}
+                  className="w-full"
+                >
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="search">Search Inventory</TabsTrigger>
+                    <TabsTrigger value="suggestions">Smart Suggestions</TabsTrigger>
+                  </TabsList>
 
-                <TabsContent value="search" className="space-y-4">
+                  <TabsContent value="search" className="space-y-4">
                   {/* Search */}
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -780,20 +1129,72 @@ export const PurchaseOrderEditor: React.FC = () => {
                           })
                         )}
                       </div>
-                </TabsContent>
+                  </TabsContent>
 
-                <TabsContent value="suggestions" className="space-y-4">
-                  <div className="p-6 border rounded-lg bg-muted/30 text-center space-y-4">
-                    <AlertCircle className="h-10 w-10 mx-auto text-muted-foreground" />
-                    <div>
-                      <p className="font-medium mb-2">AI-Powered Suggestions Coming Soon</p>
+                  <TabsContent value="suggestions" className="space-y-4">
+                    <div className="flex flex-col gap-1">
+                      <p className="font-medium">High-usage items</p>
                       <p className="text-sm text-muted-foreground">
-                        In the future, this tab will suggest an order based on your recent usage and budget.
+                        Ranked by usage over the past 14 days. Add them directly or let “Suggest Order” include them
+                        automatically.
                       </p>
                     </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
+                    {usageLoading ? (
+                      <div className="space-y-2">
+                        {[...Array(4)].map((_, i) => (
+                          <Skeleton key={i} className="h-20 w-full" />
+                        ))}
+                      </div>
+                    ) : usageError ? (
+                      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                        {usageError}
+                      </div>
+                    ) : usageItems.length === 0 ? (
+                      <div className="text-center py-10 text-sm text-muted-foreground">
+                        <Package className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+                        No recent usage yet. Log inventory usage to unlock recommendations.
+                      </div>
+                    ) : (
+                      usageItems.map((item) => {
+                        const product = productLookup.get(item.productId) || null;
+                        const isAdded = lines.some((line) => line.product_id === item.productId);
+                        const onHand = typeof product?.current_stock === 'number' ? product.current_stock : null;
+                        const suggestedQuantity = Math.max(1, Math.round(item.suggestedQuantity || 0));
+
+                        return (
+                          <div
+                            key={item.productId}
+                            className="p-3 border rounded-lg space-y-2 hover:bg-muted/50 transition-colors"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 space-y-1">
+                                <p className="font-medium">{item.productName}</p>
+                                {item.sku && (
+                                  <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
+                                )}
+                                <p className="text-xs text-muted-foreground">
+                                  Used {item.totalUsage} units in last 14 days · Suggest {suggestedQuantity}
+                                </p>
+                                {onHand !== null && (
+                                  <p className="text-xs text-muted-foreground">On hand: {onHand}</p>
+                                )}
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => product && handleAddItem(product, suggestedQuantity)}
+                                disabled={!product || isAdded}
+                                aria-label={`Add ${item.productName} suggestion`}
+                              >
+                                <Plus className="h-4 w-4 mr-1" />
+                                {isAdded ? 'Added' : 'Add'}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </TabsContent>
+                </Tabs>
             </CardContent>
           </Card>
         </div>

@@ -375,11 +375,12 @@ Deno.serve(async (req) => {
         const parsedCompleted = parseTicketDateTime(ticket.completed || ticket.opened);
         const saleDateString = parsedCompleted?.dateStr || fallbackDateString;
         const saleTimeString = parsedCompleted?.timeStr || '00:00:00';
+        const saleTimeCompact = saleTimeString.replace(/:/g, '');
         const createdDate = parsedCompleted?.jsDate || rangeStart;
 
         const locationId = locations[0] ?? null;
         const merchantId = locationId !== null ? String(locationId) : 'unknown';
-        const chargeId = `${orderNumber}-${merchantId}-${saleDateString}`;
+        const chargeId = `${orderNumber}-${merchantId}-${saleDateString}-${saleTimeCompact}`;
 
         // Only grandTotal is required for charge upsert
         const grandTotal = parseCurrency(ticket.grandTotal);

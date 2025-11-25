@@ -322,19 +322,6 @@ Deno.serve(async (req) => {
       const rangeEndIso = rangeEnd.toISOString();
       const fallbackDateString = `${startParts.year}-${String(startParts.month).padStart(2, '0')}-${String(startParts.day).padStart(2, '0')}`;
 
-      // Table lacks a matching unique constraint for column-based upsert, so delete+insert to keep rows idempotent.
-      const replaceUnifiedSale = async (payload: any) => {
-        await supabase
-          .from('unified_sales')
-          .delete()
-          .eq('restaurant_id', payload.restaurant_id)
-          .eq('pos_system', payload.pos_system)
-          .eq('external_order_id', payload.external_order_id)
-          .eq('external_item_id', payload.external_item_id);
-
-        return supabase.from('unified_sales').insert(payload);
-      };
-
       const parseTicketDateTime = (value: string | undefined | null) => {
         if (!value || typeof value !== 'string') return null;
         const [mdy, timeRaw] = value.trim().split(/\s+/);
@@ -428,6 +415,7 @@ Deno.serve(async (req) => {
           results.chargesSynced++;
         }
 
+        const unifiedRows: any[] = [];
         let lineIndex = 0;
 
         // Items
@@ -442,7 +430,7 @@ Deno.serve(async (req) => {
           const discount = parseCurrency(item.discountTotal);
           const sur = parseCurrency(item.surTotal);
 
-          const { error: saleError } = await replaceUnifiedSale({
+          unifiedRows.push({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             external_order_id: chargeId,
@@ -459,14 +447,9 @@ Deno.serve(async (req) => {
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-          if (saleError) {
-            console.error(`[${saleDateString}] [Lighthouse Sync] unified_sales item insert error:`, saleError);
-            results.errors.push(`[${saleDateString}] Item insert failed for ${itemName}: ${saleError.message}`);
-          }
 
-          // Item-level discount
           if (discount && Math.abs(discount) > 0.0001) {
-            const { error: discountError } = await replaceUnifiedSale({
+            unifiedRows.push({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               external_order_id: chargeId,
@@ -481,15 +464,10 @@ Deno.serve(async (req) => {
               synced_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             });
-            if (discountError) {
-              console.error(`[${saleDateString}] [Lighthouse Sync] Item discount insert error for ${itemName}:`, discountError);
-              results.errors.push(`[${saleDateString}] Item discount insert failed for ${itemName}: ${discountError.message}`);
-            }
           }
 
-          // Item-level surcharge
           if (sur && Math.abs(sur) > 0.0001) {
-            const { error: feeError } = await replaceUnifiedSale({
+            unifiedRows.push({
               restaurant_id: restaurantId,
               pos_system: 'lighthouse',
               external_order_id: chargeId,
@@ -504,10 +482,6 @@ Deno.serve(async (req) => {
               synced_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             });
-            if (feeError) {
-              console.error(`[${saleDateString}] [Lighthouse Sync] Item surcharge insert error for ${itemName}:`, feeError);
-              results.errors.push(`[${saleDateString}] Item surcharge insert failed for ${itemName}: ${feeError.message}`);
-            }
           }
 
           lineIndex++;
@@ -519,7 +493,7 @@ Deno.serve(async (req) => {
           const name = Array.isArray(d) ? d[0] : (d?.name || 'Ticket Discount');
           const amount = Array.isArray(d) ? parseCurrency(d[1]) : parseCurrency(d?.amount);
           if (!amount) continue;
-          const { error } = await replaceUnifiedSale({
+          unifiedRows.push({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             external_order_id: chargeId,
@@ -534,10 +508,6 @@ Deno.serve(async (req) => {
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-          if (error) {
-            console.error(`[${saleDateString}] [Lighthouse Sync] Ticket discount insert error for ${name}:`, error);
-            results.errors.push(`[${saleDateString}] Ticket discount insert failed for ${name}: ${error.message}`);
-          }
         }
 
         // Ticket-level fees/surcharges
@@ -546,7 +516,7 @@ Deno.serve(async (req) => {
           const name = Array.isArray(f) ? f[0] : (f?.name || 'Fee');
           const amount = Array.isArray(f) ? parseCurrency(f[4] ?? f[1]) : parseCurrency(f?.grandTotal || f?.amount);
           if (!amount) continue;
-          const { error } = await replaceUnifiedSale({
+          unifiedRows.push({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             external_order_id: chargeId,
@@ -561,10 +531,6 @@ Deno.serve(async (req) => {
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-          if (error) {
-            console.error(`[${saleDateString}] [Lighthouse Sync] Fee insert error for ${name}:`, error);
-            results.errors.push(`[${saleDateString}] Fee insert failed for ${name}: ${error.message}`);
-          }
         }
 
         // Ticket-level taxes
@@ -573,7 +539,7 @@ Deno.serve(async (req) => {
           const name = Array.isArray(t) ? t[0] : (t?.name || 'Tax');
           const amount = Array.isArray(t) ? parseCurrency(t[1]) : parseCurrency(t?.amount);
           if (!amount) continue;
-          const { error } = await replaceUnifiedSale({
+          unifiedRows.push({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             external_order_id: chargeId,
@@ -588,10 +554,6 @@ Deno.serve(async (req) => {
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-          if (error) {
-            console.error(`[${saleDateString}] [Lighthouse Sync] Tax insert error for ${name}:`, error);
-            results.errors.push(`[${saleDateString}] Tax insert failed for ${name}: ${error.message}`);
-          }
         }
 
         // Ticket-level tips from payments
@@ -600,7 +562,7 @@ Deno.serve(async (req) => {
           const tipAmount = Array.isArray(p) ? parseCurrency(p[3]) : parseCurrency(p?.tip);
           if (!tipAmount) continue;
           const tenderType = Array.isArray(p) ? p[0] : (p?.tenderType || 'Tip');
-          const { error } = await replaceUnifiedSale({
+          unifiedRows.push({
             restaurant_id: restaurantId,
             pos_system: 'lighthouse',
             external_order_id: chargeId,
@@ -615,9 +577,20 @@ Deno.serve(async (req) => {
             synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-          if (error) {
-            console.error(`[${saleDateString}] [Lighthouse Sync] Tip insert error for ${tenderType}:`, error);
-            results.errors.push(`[${saleDateString}] Tip insert failed for ${tenderType}: ${error.message}`);
+        }
+
+        if (unifiedRows.length) {
+          await supabase
+            .from('unified_sales')
+            .delete()
+            .eq('restaurant_id', restaurantId)
+            .eq('pos_system', 'lighthouse')
+            .eq('external_order_id', chargeId);
+
+          const { error: insertError } = await supabase.from('unified_sales').insert(unifiedRows);
+          if (insertError) {
+            console.error(`[${saleDateString}] [Lighthouse Sync] Bulk unified_sales insert error:`, insertError);
+            results.errors.push(`[${saleDateString}] Bulk insert failed for ticket ${orderNumber}: ${insertError.message}`);
           }
         }
       }

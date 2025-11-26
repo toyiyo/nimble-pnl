@@ -57,6 +57,95 @@ export function RestaurantSelector({
     );
   }
 
+  const renderAddDialog = () => (
+    <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+      <DialogTrigger asChild>
+        <Button>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Restaurant
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add New Restaurant</DialogTitle>
+          <DialogDescription>
+            Create a new restaurant location to start tracking your operations.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Restaurant Name *</Label>
+            <Input
+              id="name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="Mario's Pizza"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="address">Address</Label>
+            <Input
+              id="address"
+              value={formData.address}
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              placeholder="123 Main St, City, State"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="phone">Phone</Label>
+            <Input
+              id="phone"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              placeholder="(555) 123-4567"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="cuisine_type">Cuisine Type</Label>
+            <Select onValueChange={(value) => setFormData({ ...formData, cuisine_type: value })}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select cuisine type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="italian">Italian</SelectItem>
+                <SelectItem value="mexican">Mexican</SelectItem>
+                <SelectItem value="american">American</SelectItem>
+                <SelectItem value="chinese">Chinese</SelectItem>
+                <SelectItem value="japanese">Japanese</SelectItem>
+                <SelectItem value="indian">Indian</SelectItem>
+                <SelectItem value="thai">Thai</SelectItem>
+                <SelectItem value="mediterranean">Mediterranean</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="timezone">Timezone *</Label>
+            <TimezoneSelector
+              value={formData.timezone}
+              onValueChange={(value) => setFormData({ ...formData, timezone: value })}
+            />
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? 'Creating...' : 'Create Restaurant'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (!restaurants || restaurants.length === 0) {
     return (
       <div className="p-6 text-center">
@@ -66,93 +155,9 @@ export function RestaurantSelector({
           Get started by adding your first restaurant location.
         </p>
         
-        {canCreate ? (
-          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Restaurant
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Restaurant</DialogTitle>
-              <DialogDescription>
-                Create a new restaurant location to start tracking your operations.
-              </DialogDescription>
-            </DialogHeader>
-            
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Restaurant Name *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Mario's Pizza"
-                  required
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
-                <Input
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="123 Main St, City, State"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="(555) 123-4567"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="cuisine_type">Cuisine Type</Label>
-                <Select onValueChange={(value) => setFormData({ ...formData, cuisine_type: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select cuisine type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="italian">Italian</SelectItem>
-                    <SelectItem value="mexican">Mexican</SelectItem>
-                    <SelectItem value="american">American</SelectItem>
-                    <SelectItem value="chinese">Chinese</SelectItem>
-                    <SelectItem value="japanese">Japanese</SelectItem>
-                    <SelectItem value="indian">Indian</SelectItem>
-                    <SelectItem value="thai">Thai</SelectItem>
-                    <SelectItem value="mediterranean">Mediterranean</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="timezone">Timezone *</Label>
-                <TimezoneSelector
-                  value={formData.timezone}
-                  onValueChange={(value) => setFormData({ ...formData, timezone: value })}
-                />
-              </div>
-              
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={creating}>
-                  {creating ? "Creating..." : "Create Restaurant"}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {canCreate ? renderAddDialog() : (
+          <div className="p-4 text-sm text-muted-foreground">Contact your manager or owner to add a restaurant.</div>
+        )}
       </div>
     );
   }
@@ -162,94 +167,7 @@ export function RestaurantSelector({
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">Select Restaurant</h2>
         
-        {canCreate ? (
-          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Restaurant
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-              <DialogTitle>Add New Restaurant</DialogTitle>
-              <DialogDescription>
-                Create a new restaurant location to start tracking your operations.
-              </DialogDescription>
-            </DialogHeader>
-            
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Restaurant Name *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Mario's Pizza"
-                  required
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
-                <Input
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="123 Main St, City, State"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="(555) 123-4567"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="cuisine_type">Cuisine Type</Label>
-                <Select onValueChange={(value) => setFormData({ ...formData, cuisine_type: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select cuisine type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="italian">Italian</SelectItem>
-                    <SelectItem value="mexican">Mexican</SelectItem>
-                    <SelectItem value="american">American</SelectItem>
-                    <SelectItem value="chinese">Chinese</SelectItem>
-                    <SelectItem value="japanese">Japanese</SelectItem>
-                    <SelectItem value="indian">Indian</SelectItem>
-                    <SelectItem value="thai">Thai</SelectItem>
-                    <SelectItem value="mediterranean">Mediterranean</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="timezone">Timezone *</Label>
-                <TimezoneSelector
-                  value={formData.timezone}
-                  onValueChange={(value) => setFormData({ ...formData, timezone: value })}
-                />
-              </div>
-              
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={creating}>
-                  {creating ? "Creating..." : "Create Restaurant"}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-          </Dialog>
-        ) : null}
+        {canCreate ? renderAddDialog() : null}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

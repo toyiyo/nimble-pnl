@@ -290,7 +290,7 @@ export const PurchaseOrderEditor: React.FC = () => {
   };
 
   // Add item to PO
-  const handleAddItem = async (product: Product, quantity = 1) => {
+  const handleAddItem = async (product: Product, quantity = 1): Promise<PurchaseOrderLine | null> => {
     if (!restaurantId) return;
 
     // Check if item already exists
@@ -305,7 +305,7 @@ export const PurchaseOrderEditor: React.FC = () => {
 
     const template = buildLineTemplate(product, quantity);
 
-    if (isEditing && po) {
+  if (isEditing && po) {
       // Add to database
       const lineData: CreatePurchaseOrderLineData = {
         purchase_order_id: po.id,
@@ -316,8 +316,9 @@ export const PurchaseOrderEditor: React.FC = () => {
       };
 
       try {
-        const addedLine = await addLineItem(lineData);
-        setLines([...lines, addedLine]);
+  const addedLine = await addLineItem(lineData);
+  setLines([...lines, addedLine]);
+  return addedLine;
       } catch (error) {
         console.error('Error adding line:', error);
       }
@@ -325,7 +326,9 @@ export const PurchaseOrderEditor: React.FC = () => {
       // Add to local state (for new PO)
       const tempLine = createTempLineFromTemplate(template);
       setLines([...lines, tempLine]);
+      return tempLine;
     }
+    return null;
   };
 
   const getUsageCandidates = (currentLines: PurchaseOrderLine[]) => {
@@ -358,20 +361,19 @@ export const PurchaseOrderEditor: React.FC = () => {
 
       if (isEditing && po) {
         try {
-          const createdLine = await addLineItem({
-            purchase_order_id: po.id,
-            ...template,
-            supplier_id: template.supplier_id ?? '',
-            unit_label: template.unit_label ?? 'Unit',
-            sku: template.sku ?? null,
-          });
-          updatedLines = [...updatedLines, createdLine];
+          const createdLine = await handleAddItem(product, quantity);
+          if (createdLine) {
+            updatedLines = [...updatedLines, createdLine];
+          }
         } catch (error) {
           console.error('Error adding usage-based suggestion:', error);
           continue;
         }
       } else {
-        updatedLines = [...updatedLines, createTempLineFromTemplate(template)];
+        const createdTemp = await handleAddItem(product, quantity);
+        if (createdTemp) {
+          updatedLines = [...updatedLines, createdTemp];
+        }
       }
 
       addedCount += 1;
@@ -938,16 +940,25 @@ export const PurchaseOrderEditor: React.FC = () => {
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={async () => {
-                    setShowSuggestConfirm(false);
-                    if (pendingSuggestionPreview) {
-                      await handleSuggestOrder({
-                        updates: pendingSuggestionPreview.updates,
-                        usageCandidatesAvailable: pendingSuggestionPreview.addedCount > 0,
-                        updatedLines: pendingSuggestionPreview.updatedLines,
-                        usageCandidatesCount: pendingSuggestionPreview.addedCount,
-                        estimatedTotal: pendingSuggestionPreview.estimatedTotal,
-                      } as any);
-                      setPendingSuggestionPreview(null);
+                    try {
+                      setShowSuggestConfirm(false);
+                      if (pendingSuggestionPreview) {
+                        await handleSuggestOrder({
+                          updates: pendingSuggestionPreview.updates,
+                          usageCandidatesAvailable: pendingSuggestionPreview.addedCount > 0,
+                          updatedLines: pendingSuggestionPreview.updatedLines,
+                          usageCandidatesCount: pendingSuggestionPreview.addedCount,
+                          estimatedTotal: pendingSuggestionPreview.estimatedTotal,
+                        } as any);
+                        setPendingSuggestionPreview(null);
+                      }
+                    } catch (error) {
+                      console.error('Error applying suggestions from confirmation dialog', error);
+                      toast({
+                        title: 'Error applying suggestions',
+                        description: (error as any)?.message || 'An unexpected error occurred',
+                        variant: 'destructive',
+                      });
                     }
                   }}
                 >

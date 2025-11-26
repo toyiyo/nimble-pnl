@@ -655,7 +655,7 @@ const TimePunchesManager = () => {
                       <img 
                         src={photoUrl} 
                         alt="Employee verification photo" 
-                        className="w-full h-auto max-h-[70vh] object-contain"
+                        className="w-40 h-auto max-h-[70vh] object-contain"
                         loading="lazy"
                         decoding="async"
                         onError={() => {

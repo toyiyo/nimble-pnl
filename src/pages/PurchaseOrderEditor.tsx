@@ -233,7 +233,9 @@ export const PurchaseOrderEditor: React.FC = () => {
     );
   }, [lineRecommendations]);
 
-  const canSuggestOrder = hasRecommendations || (includeUsageSuggestions && usageItems.length > 0);
+  // Show the Suggest Order control enabled by default so users can try it even if there are no
+  // immediate recommendations. The handler will show a friendly toast if nothing actionable exists.
+  const canSuggestOrder = true;
 
   // Filter products by search term and category
   const availableProducts = useMemo(() => {
@@ -798,12 +800,20 @@ export const PurchaseOrderEditor: React.FC = () => {
             </div>
             <Button
               className="gap-2"
+              aria-label="Suggest order based on inventory par levels and usage suggestions"
               onClick={handleSuggestOrder}
               disabled={suggestingOrder || !canSuggestOrder}
             >
               <Sparkles className="h-4 w-4" />
               {suggestingOrder ? 'Applying...' : 'Suggest Order'}
             </Button>
+            {/* Helpful hint when there are no immediate par recommendations */}
+            {!hasRecommendations && !includeUsageSuggestions && (
+              <p className="text-xs text-muted-foreground mt-1">
+                No automatic par recommendations available — toggle "Include high-usage items" or add
+                items with par levels to get suggestions.
+              </p>
+            )}
           </div>
 
           {suggestionSummary && (
@@ -879,7 +889,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                       <TableHead className="w-36 text-center">Par / Min</TableHead>
                       <TableHead className="w-32 text-center">Recommended</TableHead>
                       <TableHead>Unit</TableHead>
-                      <TableHead className="w-32">Unit Cost</TableHead>
+                      <TableHead className="w-44">Unit Cost</TableHead>
                       <TableHead className="w-32">Quantity</TableHead>
                       <TableHead className="text-right w-32">Line Total</TableHead>
                       <TableHead className="w-16"></TableHead>
@@ -944,7 +954,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                           </TableCell>
                           <TableCell>{line.unit_label}</TableCell>
                           <TableCell>
-                            <div className="relative">
+                            <div className="relative min-w-[140px]">
                               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
                                 $
                               </span>
@@ -956,7 +966,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                                 onChange={(e) =>
                                   handleUpdateLine(line.id, 'unit_cost', parseFloat(e.target.value) || 0)
                                 }
-                                className="pl-6 text-sm"
+                                className="pl-6 text-sm w-full min-w-[140px]"
                                 aria-label={`Unit cost for ${line.item_name}`}
                               />
                             </div>

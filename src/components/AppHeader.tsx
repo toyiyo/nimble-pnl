@@ -30,6 +30,8 @@ import { SidebarTrigger } from '@/components/ui/sidebar';
 
 export const AppHeader = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, createRestaurant } = useRestaurantContext();
+  // Only allow creating restaurants for users who are owners of at least one restaurant
+  const canCreateRestaurant = restaurants.some(r => r.role === 'owner');
   const navigate = useNavigate();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [formData, setFormData] = useState({
@@ -112,15 +114,17 @@ export const AppHeader = () => {
                       </div>
                     </SelectItem>
                   ))}
-                  <SelectItem 
-                    value="create-new"
-                    className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 hover:from-emerald-500/20 hover:to-emerald-600/20 font-medium mt-1"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Plus className="w-4 h-4" />
-                      Create new restaurant
-                    </div>
-                  </SelectItem>
+                  {canCreateRestaurant && (
+                    <SelectItem 
+                      value="create-new"
+                      className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 hover:from-emerald-500/20 hover:to-emerald-600/20 font-medium mt-1"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Plus className="w-4 h-4" />
+                        Create new restaurant
+                      </div>
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>

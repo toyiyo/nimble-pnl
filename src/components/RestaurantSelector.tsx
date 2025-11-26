@@ -33,6 +33,8 @@ export function RestaurantSelector({
     timezone: 'America/Chicago',
   });
   const [creating, setCreating] = useState(false);
+  // Only owners should be allowed to create new restaurants
+  const canCreate = (restaurants || []).some(r => r.role === 'owner');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,14 +66,15 @@ export function RestaurantSelector({
           Get started by adding your first restaurant location.
         </p>
         
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Restaurant
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
+        {canCreate ? (
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Restaurant
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
             <DialogHeader>
               <DialogTitle>Add New Restaurant</DialogTitle>
               <DialogDescription>
@@ -159,14 +162,16 @@ export function RestaurantSelector({
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">Select Restaurant</h2>
         
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button variant="outline">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Restaurant
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
+        {canCreate ? (
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Restaurant
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+        ) : null}
             <DialogHeader>
               <DialogTitle>Add New Restaurant</DialogTitle>
               <DialogDescription>

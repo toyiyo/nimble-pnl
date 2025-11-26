@@ -513,7 +513,7 @@ export const PurchaseOrderEditor: React.FC = () => {
         title: 'Suggestions applied',
         description: `Applied suggestions to ${totalAdjustments} item${totalAdjustments === 1 ? '' : 's'}.`,
         action: (
-          <ToastAction onClick={() => safeSetLines(prevLines)}>
+          <ToastAction altText="Undo applied suggestions" onClick={() => safeSetLines(prevLines)}>
             Undo
           </ToastAction>
         ),

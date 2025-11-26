@@ -126,7 +126,7 @@ export const PurchaseOrderEditor: React.FC = () => {
             setSupplierId(data.supplier_id);
             setBudget(data.budget?.toString() || '');
             setNotes(data.notes || '');
-            setLines(data.lines || []);
+            safeSetLines(data.lines || []);
           }
         })
         .catch((error) => {
@@ -201,6 +201,28 @@ export const PurchaseOrderEditor: React.FC = () => {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });
+
+  const sanitizeLine = (line: PurchaseOrderLine): PurchaseOrderLine => ({
+    ...line,
+    item_name: line.item_name ?? '',
+    sku: line.sku ?? null,
+    unit_label: line.unit_label ?? 'Unit',
+    supplier_id: line.supplier_id ?? '',
+    quantity: typeof line.quantity === 'number' ? line.quantity : Number(line.quantity) || 0,
+    unit_cost: typeof line.unit_cost === 'number' ? line.unit_cost : Number(line.unit_cost) || 0,
+    line_total: typeof line.line_total === 'number' ? line.line_total : Number(line.line_total) || 0,
+  });
+
+  const sanitizeLines = (l: PurchaseOrderLine[]) => l.map(sanitizeLine);
+
+  const safeSetLines = (newLines: PurchaseOrderLine[]) => {
+    try {
+      setLines(sanitizeLines(newLines));
+    } catch (err) {
+      console.error('Failed to set lines (sanitization error)', err, newLines);
+      toast({ title: 'Error', description: 'Failed to update items', variant: 'destructive' });
+    }
+  };
 
   interface LineRecommendationContext {
     product: Product | null;
@@ -317,7 +339,7 @@ export const PurchaseOrderEditor: React.FC = () => {
 
       try {
   const addedLine = await addLineItem(lineData);
-  setLines([...lines, addedLine]);
+  safeSetLines([...lines, addedLine]);
   return addedLine;
       } catch (error) {
         console.error('Error adding line:', error);
@@ -325,7 +347,7 @@ export const PurchaseOrderEditor: React.FC = () => {
     } else {
       // Add to local state (for new PO)
       const tempLine = createTempLineFromTemplate(template);
-      setLines([...lines, tempLine]);
+  safeSetLines([...lines, tempLine]);
       return tempLine;
     }
     return null;
@@ -384,7 +406,7 @@ export const PurchaseOrderEditor: React.FC = () => {
 
   // Update line item
   const handleUpdateLine = async (lineId: string, field: 'quantity' | 'unit_cost', value: number) => {
-    const updatedLines = lines.map((line) => {
+  const updatedLines = lines.map((line) => {
       if (line.id === lineId) {
         const newLine = { ...line };
         if (field === 'quantity') {
@@ -398,7 +420,7 @@ export const PurchaseOrderEditor: React.FC = () => {
       return line;
     });
 
-    setLines(updatedLines);
+  safeSetLines(updatedLines);
 
     if (isEditing && po && !lineId.startsWith('temp-')) {
       try {
@@ -411,7 +433,7 @@ export const PurchaseOrderEditor: React.FC = () => {
 
   // Remove line item
   const handleRemoveLine = async (lineId: string) => {
-    setLines(lines.filter((line) => line.id !== lineId));
+  safeSetLines(lines.filter((line) => line.id !== lineId));
 
     if (isEditing && po && !lineId.startsWith('temp-')) {
       try {
@@ -441,8 +463,10 @@ export const PurchaseOrderEditor: React.FC = () => {
       };
     });
 
-    const estimatedTotal = updatedLines.reduce((sum, line) => sum + (line.unit_cost || 0) * line.quantity, 0);
-    return { updates, usageCandidatesAvailable, updatedLines, usageCandidatesCount: usageCandidates.length, estimatedTotal };
+  const estimatedTotal = updatedLines.reduce((sum, line) => sum + (line.unit_cost || 0) * line.quantity, 0);
+    const sanitized = sanitizeLines(updatedLines);
+    console.debug('PO Suggest Preview', { updates, usageCandidatesAvailable, usageCandidatesCount: usageCandidates.length, estimatedTotal, previewLines: sanitized });
+    return { updates, usageCandidatesAvailable, updatedLines: sanitized, usageCandidatesCount: usageCandidates.length, estimatedTotal };
   };
 
   const handleSuggestOrder = async (preview?: ReturnType<typeof computeSuggestionsPreview>) => {
@@ -460,7 +484,7 @@ export const PurchaseOrderEditor: React.FC = () => {
     }
 
   setSuggestingOrder(true);
-  setLines(updatedLines);
+  safeSetLines(updatedLines);
 
     try {
   if (updates.length > 0 && isEditing && po) {
@@ -480,7 +504,7 @@ export const PurchaseOrderEditor: React.FC = () => {
       }
 
       if (addedCount > 0 || updates.length > 0) {
-        setLines(workingLines);
+  safeSetLines(workingLines);
       }
 
       const estimatedTotal = workingLines.reduce((sum, line) => sum + (line.unit_cost || 0) * line.quantity, 0);
@@ -506,7 +530,7 @@ export const PurchaseOrderEditor: React.FC = () => {
         title: 'Suggestions applied',
         description: `Applied suggestions to ${totalAdjustments} item${totalAdjustments === 1 ? '' : 's'}.`,
         action: (
-          <ToastAction onClick={() => setLines(prevLines)}>
+          <ToastAction onClick={() => safeSetLines(prevLines)}>
             Undo
           </ToastAction>
         ),

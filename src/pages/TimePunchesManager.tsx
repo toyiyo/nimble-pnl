@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch } from '@/hooks/useTimePunches';
+import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch, useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useEmployees } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -97,6 +97,9 @@ const TimePunchesManager = () => {
   );
   const deletePunch = useDeleteTimePunch();
   const updatePunch = useUpdateTimePunch();
+  const createPunch = useCreateTimePunch();
+  const [forceSessionToClose, setForceSessionToClose] = useState<any | null>(null);
+  const [forceOutTime, setForceOutTime] = useState<string>(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
 
   // Filter punches by search term (memoized for performance)
   const filteredPunches = useMemo(() => {
@@ -111,6 +114,9 @@ const TimePunchesManager = () => {
   const processedData = useMemo(() => {
     return processPunchesForPeriod(filteredPunches);
   }, [filteredPunches]);
+
+  // Incomplete sessions that are missing a clock_out
+  const incompleteSessions = useMemo(() => processedData.sessions.filter(s => !s.is_complete), [processedData.sessions]);
 
   // Filter sessions for current day (for day view visualizations)
   const todaySessions = useMemo(() => {
@@ -612,6 +618,95 @@ const TimePunchesManager = () => {
           </CollapsibleContent>
         </Card>
       </Collapsible>
+
+      {/* Open / Incomplete Sessions (Managers only) */}
+      {selectedRestaurant?.role && ['owner', 'manager'].includes(selectedRestaurant.role) && incompleteSessions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Open / Incomplete Sessions</CardTitle>
+            <CardDescription>{incompleteSessions.length} session{incompleteSessions.length !== 1 ? 's' : ''} need attention</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {incompleteSessions.map((session) => (
+                <div key={session.sessionId} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                  <div>
+                    <div className="font-medium">{session.employee_name}</div>
+                    <div className="text-sm text-muted-foreground">Clocked in: {format(new Date(session.clock_in), 'MMM d, yyyy h:mm a')}</div>
+                    <div className="text-sm text-muted-foreground">Open for {Math.max(0, Math.round(differenceInMinutes(new Date(), new Date(session.clock_in)) / 60))}h {Math.max(0, differenceInMinutes(new Date(), new Date(session.clock_in)) % 60)}m</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setForceSessionToClose(session)}
+                    >
+                      Force Clock Out Now
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Force Clock Out Confirmation */}
+      <AlertDialog open={!!forceSessionToClose} onOpenChange={() => setForceSessionToClose(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Force Clock Out</AlertDialogTitle>
+                  <AlertDialogDescription>
+              Specify the date & time to record as the clock-out for <strong>{forceSessionToClose?.employee_name}</strong>. Default is the current time. This will close the open session and will be visible in payroll immediately.
+            </AlertDialogDescription>
+            <div className="py-3">
+              <Label htmlFor="force_out_time">Clock-out time</Label>
+              <Input
+                id="force_out_time"
+                type="datetime-local"
+                value={forceOutTime}
+                onChange={(e) => setForceOutTime(e.target.value)}
+                aria-label="Force clock out time"
+                className="mt-2"
+              />
+
+              {forceSessionToClose?.clock_in && forceOutTime && (
+                <div className="text-sm mt-2 text-muted-foreground">
+                  {new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime() ? (
+                    <span className="text-destructive">Selected time is before the session's clock-in — please pick a time after {format(new Date(forceSessionToClose.clock_in), 'MMM d, yyyy h:mm a')}.</span>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!forceSessionToClose || !restaurantId || !forceOutTime) return;
+                // Prevent creating a clock_out earlier than the session's clock_in
+                const chosen = new Date(forceOutTime).toISOString();
+                if (forceSessionToClose.clock_in && new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime()) return;
+
+                createPunch.mutate({
+                  restaurant_id: restaurantId,
+                  employee_id: forceSessionToClose.employee_id,
+                  punch_type: 'clock_out',
+                  punch_time: chosen,
+                  notes: 'Force clock out by manager',
+                });
+                setForceSessionToClose(null);
+                // reset default time
+                setForceOutTime(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+              }}
+              disabled={!!(forceSessionToClose?.clock_in && forceOutTime && new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime())}
+            >
+              Force Clock Out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Verification Details Dialog */}
       <Dialog open={!!viewingPunch} onOpenChange={() => setViewingPunch(null)}>

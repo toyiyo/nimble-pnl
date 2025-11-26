@@ -162,6 +162,34 @@ iframe[name^="__privateStripe"] {
   100% { background-position: 1000px 0; }
 }
 
+@keyframes cueValueWash {
+  0% {
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(226,232,240,0.6) 50%, rgba(255,255,255,0) 100%);
+    background-size: 200% 100%;
+    background-position: 0% 50%;
+    color: inherit;
+  }
+  50% {
+    background-position: 100% 50%;
+    color: rgba(148, 163, 184, 0.95);
+  }
+  100% {
+    background-position: 0% 50%;
+    color: inherit;
+  }
+}
+
+.cue-value-wash {
+  animation: cueValueWash 0.6s ease-in-out;
+  display: inline-block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cue-value-wash {
+    animation: none;
+  }
+}
+
 /* Prose styles for markdown in chat */
 .prose {
   @apply text-foreground max-w-full;

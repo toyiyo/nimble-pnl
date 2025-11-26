@@ -106,8 +106,14 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     }
   };
 
-  const handleShift4Connect = async (secretKey: string, environment: 'production' | 'sandbox') => {
-    await shift4Integration.connectShift4(secretKey, undefined, environment);
+  const handleShift4Connect = async (
+    secretKey: string,
+    merchantId: string | undefined,
+    environment: 'production' | 'sandbox',
+    email: string,
+    password: string
+  ) => {
+    await shift4Integration.connectShift4(secretKey, merchantId, environment, email, password);
     setShowShift4Dialog(false);
   };
 

@@ -284,9 +284,15 @@ export const PurchaseOrderEditor: React.FC = () => {
 
   // Get unique categories from all products
   const categories = useMemo(() => {
-    const filteredProducts = products.filter((p) => p.category);
-    const cats = new Set(filteredProducts.map((p) => p.category!));
-    return Array.from(cats).sort();
+    const cats = new Set<string>();
+    products.forEach((p) => {
+      const raw = p.category;
+      if (raw === null || raw === undefined) return;
+      const value = typeof raw === 'string' ? raw : String(raw);
+      const trimmed = value.trim();
+      if (trimmed) cats.add(trimmed);
+    });
+    return Array.from(cats).sort((a, b) => a.localeCompare(b));
   }, [products]);
 
   // Handle supplier change (simplified - no clearing of items)
@@ -1088,7 +1094,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All categories</SelectItem>
-                        {categories.filter(cat => cat && cat.trim() !== '').map((cat) => (
+                        {categories.map((cat) => (
                           <SelectItem key={cat} value={cat}>
                             {cat}
                           </SelectItem>

@@ -361,33 +361,27 @@ export const PurchaseOrderEditor: React.FC = () => {
     let updatedLines = [...currentLines];
     let addedCount = 0;
 
-    for (const candidate of candidates) {
-      const product = productLookup.get(candidate.productId);
-      if (!product) continue;
+    // Precompute valid additions to keep the loop simple
+    const additions = candidates
+      .map((candidate) => {
+        const product = productLookup.get(candidate.productId);
+        const quantity =
+          candidate.suggestedQuantity > 0 ? candidate.suggestedQuantity : candidate.totalUsage;
+        if (!product || !quantity || quantity <= 0) return null;
+        return { product, quantity };
+      })
+      .filter(Boolean) as { product: Product; quantity: number }[];
 
-      const quantity = candidate.suggestedQuantity > 0 ? candidate.suggestedQuantity : candidate.totalUsage;
-      if (!quantity || quantity <= 0) continue;
-
-      const template = buildLineTemplate(product, quantity);
-
-      if (isEditing && po) {
-        try {
-          const createdLine = await handleAddItem(product, quantity);
-          if (createdLine) {
-            updatedLines = [...updatedLines, createdLine];
-          }
-        } catch (error) {
-          console.error('Error adding usage-based suggestion:', error);
-          continue;
+    for (const addition of additions) {
+      try {
+        const created = await handleAddItem(addition.product, addition.quantity);
+        if (created) {
+          updatedLines = [...updatedLines, created];
+          addedCount += 1;
         }
-      } else {
-        const createdTemp = await handleAddItem(product, quantity);
-        if (createdTemp) {
-          updatedLines = [...updatedLines, createdTemp];
-        }
+      } catch (error) {
+        console.error('Error adding usage-based suggestion:', error);
       }
-
-      addedCount += 1;
     }
 
     return { lines: updatedLines, addedCount };

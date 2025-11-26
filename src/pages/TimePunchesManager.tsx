@@ -170,7 +170,7 @@ const TimePunchesManager = () => {
     };
 
     loadThumbnails();
-  }, [punches, photoThumbnails, signedUrlCache]);
+  }, [punches]);
 
   // Fetch photo URL when viewing a punch with photo_path
   useEffect(() => {

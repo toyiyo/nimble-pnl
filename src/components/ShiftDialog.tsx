@@ -5,9 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Shift, RecurrencePattern, RecurrenceType } from '@/types/scheduling';
 import { useCreateShift, useUpdateShift } from '@/hooks/useShifts';
 import { useEmployees } from '@/hooks/useEmployees';
+import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { format, getDay } from 'date-fns';
 import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
 import { getRecurrencePresetsForDate, getRecurrenceDescription } from '@/utils/recurrenceUtils';
@@ -15,6 +17,7 @@ import { useCheckShiftCompliance, useCreateComplianceViolation } from '@/hooks/u
 import { ComplianceWarnings } from '@/components/ComplianceWarnings';
 import { ComplianceCheckResult } from '@/types/compliance';
 import { useAuth } from '@/hooks/useAuth';
+import { AlertTriangle } from 'lucide-react';
 
 interface ShiftDialogProps {
   open: boolean;
@@ -58,6 +61,30 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
   const updateShift = useUpdateShift();
   const checkCompliance = useCheckShiftCompliance();
   const createViolation = useCreateComplianceViolation();
+
+  // Check for time-off and availability conflicts when employee and shift times are selected
+  // This provides real-time feedback before the user submits the form
+  const conflictParams = useMemo(() => {
+    if (!employeeId || !startDate || !startTime || !endDate || !endTime) {
+      return null;
+    }
+    
+    const startDateTime = new Date(`${startDate}T${startTime}`);
+    const endDateTime = new Date(`${endDate}T${endTime}`);
+    
+    if (endDateTime <= startDateTime) {
+      return null;
+    }
+
+    return {
+      employeeId,
+      restaurantId,
+      startTime: startDateTime.toISOString(),
+      endTime: endDateTime.toISOString(),
+    };
+  }, [employeeId, restaurantId, startDate, startTime, endDate, endTime]);
+
+  const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);
 
   useEffect(() => {
     if (shift) {
@@ -265,6 +292,35 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
+            {/* Lock Warning for Published Shifts */}
+            {shift?.locked && (
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <div>
+                    <div className="font-semibold text-sm">Shift is Locked</div>
+                    <div className="text-xs mt-1">
+                      This shift is part of a published schedule and cannot be edited.
+                      You must unpublish the schedule first to make changes.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="employee">
                 Employee <span className="text-destructive">*</span>
@@ -391,6 +447,26 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
               </div>
             </div>
 
+            {/* Conflict Warnings */}
+            {hasConflicts && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="space-y-1">
+                    <p className="font-semibold">Scheduling conflicts detected:</p>
+                    {conflicts.map((conflict) => {
+                      const conflictKey = conflict.time_off_id
+                        ? `timeoff-${conflict.time_off_id}`
+                        : `${conflict.conflict_type}-${conflict.message}`;
+                      return (
+                        <p key={conflictKey} className="text-sm">• {conflict.message}</p>
+                      );
+                    })}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Recurrence Selection - Only show for new shifts */}
             {!shift && (
               <div className="space-y-2">
@@ -444,36 +520,18 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            {showOverrideConfirm ? (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowOverrideConfirm(false)}
-                >
-                  Review
-                </Button>
-                <Button
-                  type="button"
-                  onClick={handleOverrideAndSave}
-                  disabled={createShift.isPending || updateShift.isPending}
-                  className="bg-orange-500 hover:bg-orange-600"
-                >
-                  Override & Save
-                </Button>
-              </>
-            ) : (
-              <Button
-                type="submit"
-                disabled={createShift.isPending || updateShift.isPending}
-              >
-                {createShift.isPending || updateShift.isPending
-                  ? 'Saving...'
-                  : shift
-                  ? 'Update Shift'
-                  : 'Create Shift'}
-              </Button>
-            )}
+            <Button
+              type="submit"
+              disabled={createShift.isPending || updateShift.isPending || shift?.locked}
+            >
+              {createShift.isPending || updateShift.isPending
+                ? 'Saving...'
+                : shift?.locked
+                ? 'Locked'
+                : shift
+                ? 'Update Shift'
+                : 'Create Shift'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

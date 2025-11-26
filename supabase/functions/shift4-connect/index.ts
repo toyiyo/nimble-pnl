@@ -11,6 +11,8 @@ interface Shift4ConnectRequest {
   secretKey: string;
   merchantId?: string; // Optional - can be provided for tracking purposes
   environment?: 'production' | 'sandbox';
+  email?: string;
+  password?: string;
 }
 
 /**
@@ -72,13 +74,16 @@ Deno.serve(async (req) => {
     }
 
     const body: Shift4ConnectRequest = await req.json();
-    const { restaurantId, secretKey, merchantId, environment = 'production' } = body;
+    const { restaurantId, secretKey, merchantId, environment = 'production', email, password } = body;
 
-    if (!restaurantId || !secretKey) {
-      throw new Error('Restaurant ID and Secret Key are required');
+    if (!restaurantId) {
+      throw new Error('Restaurant ID is required');
+    }
+    if (!email || !password) {
+      throw new Error('Lighthouse email and password are required');
     }
 
-    console.log('Shift4 connection request:', { restaurantId, environment, hasMerchantId: !!merchantId });
+    console.log('Shift4 connection request:', { restaurantId, environment, hasMerchantId: !!merchantId, hasEmail: !!email });
 
     // Verify user has access to this restaurant
     const { data: userRestaurant, error: restaurantError } = await supabase
@@ -96,33 +101,37 @@ Deno.serve(async (req) => {
       throw new Error('Access denied: Only owners and managers can connect POS systems');
     }
 
-    // Validate the API key
-    console.log('Validating Shift4 API key...');
-    await validateShift4Key(secretKey, environment);
-    
-    // Use provided merchantId or generate one from the secret key for tracking
-    // The API key itself identifies the merchant account
-    const actualMerchantId = merchantId || `shift4_${secretKey.substring(0, 12)}`;
 
-    console.log('Shift4 API key validated successfully:', { 
-      merchantId: actualMerchantId,
-    });
+    // Use provided merchantId or generate one for tracking
+    const actualMerchantId = merchantId || `lighthouse_${email?.substring(0, 8)}`;
 
-    // Encrypt the secret key before storing
+    // Encrypt email and password before storing
     const encryption = await getEncryptionService();
-    const encryptedSecretKey = await encryption.encrypt(secretKey);
+    const encryptedEmail = await encryption.encrypt(email);
+    const encryptedPassword = await encryption.encrypt(password);
+
+    // Only encrypt and store secret_key if present
+    let encryptedSecretKey: string | undefined = undefined;
+    if (secretKey && secretKey.trim()) {
+      encryptedSecretKey = await encryption.encrypt(secretKey);
+    }
 
     // Store or update the connection (one connection per restaurant+merchant)
+    const upsertData: Record<string, any> = {
+      restaurant_id: restaurantId,
+      merchant_id: actualMerchantId,
+      email: encryptedEmail,
+      password: encryptedPassword,
+      environment,
+      connected_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (encryptedSecretKey) {
+      upsertData.secret_key = encryptedSecretKey;
+    }
     const { data: connection, error: connectionError } = await supabase
       .from('shift4_connections')
-      .upsert({
-        restaurant_id: restaurantId,
-        merchant_id: actualMerchantId,
-        secret_key: encryptedSecretKey,
-        environment,
-        connected_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }, {
+      .upsert(upsertData, {
         onConflict: 'restaurant_id,merchant_id',
       })
       .select()

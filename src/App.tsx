@@ -39,6 +39,7 @@ import AiAssistant from "./pages/AiAssistant";
 import Scheduling from "./pages/Scheduling";
 import Compliance from "./pages/Compliance";
 import EmployeeClock from "./pages/EmployeeClock";
+import EmployeePortal from "./pages/EmployeePortal";
 import TimePunchesManager from "./pages/TimePunchesManager";
 import Payroll from "./pages/Payroll";
 import Expenses from "./pages/Expenses";
@@ -101,7 +102,7 @@ const StaffRoleChecker = ({
   const isStaff = selectedRestaurant?.role === 'staff';
   
   // Allowed paths for staff users
-  const staffAllowedPaths = ['/employee/clock', '/employee/timecard', '/employee/pay', '/employee/schedule', '/settings'];
+  const staffAllowedPaths = ['/employee/clock', '/employee/portal', '/employee/timecard', '/employee/pay', '/employee/schedule', '/settings'];
   const isStaffAllowedPath = staffAllowedPaths.some(path => currentPath.startsWith(path));
   
   // If user is staff and trying to access restricted route
@@ -141,6 +142,7 @@ const App = () => (
           <Route path="/scheduling" element={<ProtectedRoute><Scheduling /></ProtectedRoute>} />
           <Route path="/compliance" element={<ProtectedRoute><Compliance /></ProtectedRoute>} />
           <Route path="/employee/clock" element={<ProtectedRoute allowStaff={true}><EmployeeClock /></ProtectedRoute>} />
+          <Route path="/employee/portal" element={<ProtectedRoute allowStaff={true}><EmployeePortal /></ProtectedRoute>} />
           <Route path="/time-punches" element={<ProtectedRoute><TimePunchesManager /></ProtectedRoute>} />
           <Route path="/payroll" element={<ProtectedRoute><Payroll /></ProtectedRoute>} />
           <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />

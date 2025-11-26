@@ -10,6 +10,16 @@ This is a **real-time restaurant management system** handling inventory, recipes
 
 ## ⚠️ Critical Rules - READ FIRST
 
+# foundational rules that must always be followed.
+DRY Principle: No repeated code - shared logic must be abstracted
+Maintainability: Changes to business logic should be easy to implement
+Consistency: Follow existing project patterns and styles
+Accessibility: All UI components must be accessible (ARIA, keyboard)
+Type Safety: Use TypeScript types everywhere
+Performance: Optimize for speed and responsiveness
+Testability: Shared components can be tested once and reused
+
+
 ### 1. **NO Manual Caching**
 ```typescript
 // ❌ NEVER write code like this:

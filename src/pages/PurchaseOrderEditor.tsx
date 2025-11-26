@@ -129,10 +129,10 @@ export const PurchaseOrderEditor: React.FC = () => {
     return lines.reduce((sum, line) => sum + line.line_total, 0);
   }, [lines]);
 
-  const budgetValue = budget ? parseFloat(budget) : null;
-  const budgetRemaining = budgetValue ? Math.max(0, budgetValue - total) : null;
-  const budgetOverage = budgetValue && total > budgetValue ? total - budgetValue : null;
-  const budgetProgress = budgetValue ? Math.min(100, (total / budgetValue) * 100) : 0;
+  const budgetValue = budget ? Number.parseFloat(budget) : null;
+  const budgetRemaining = budgetValue != null ? Math.max(0, budgetValue - total) : null;
+  const budgetOverage = budgetValue != null && total > budgetValue ? total - budgetValue : null;
+  const budgetProgress = budgetValue != null && budgetValue !== 0 ? Math.min(100, (total / budgetValue) * 100) : 0;
 
   // Get supplier name by ID
   const getSupplierName = (supplierId: string) => {
@@ -449,7 +449,6 @@ export const PurchaseOrderEditor: React.FC = () => {
       };
     });
 
-    const estimatedTotal = updatedLines.reduce((sum, line) => sum + (line.unit_cost || 0) * line.quantity, 0);
     const sanitized = sanitizeLines(updatedLines);
 
     if (updates.length === 0 && !usageCandidatesAvailable) {
@@ -774,7 +773,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                   <span>Order Total:</span>
                   <span className="font-semibold">${total.toFixed(2)}</span>
                 </div>
-                {budgetValue && (
+                {budgetValue != null && (
                   <>
                     {budgetRemaining !== null && budgetRemaining > 0 && (
                       <div className="flex justify-between text-sm text-green-600">
@@ -795,7 +794,7 @@ export const PurchaseOrderEditor: React.FC = () => {
           </div>
 
           {/* Budget Progress Bar */}
-          {budgetValue && (
+          {budgetValue != null && (
             <div className="mt-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span>Budget Usage</span>
@@ -862,7 +861,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                       ${suggestionSummary.estimatedTotal.toFixed(2)}
                     </span>
                   </span>
-                  {budgetValue && (
+                  {budgetValue != null && (
                     <span
                       className={cn(
                         'font-medium',
@@ -929,7 +928,6 @@ export const PurchaseOrderEditor: React.FC = () => {
                   <TableBody>
                     {lines.map((line, index) => {
                       const lineContext = lineRecommendations[line.id];
-                      const productDetails = lineContext?.product ?? null;
                       const onHand = lineContext?.onHand ?? null;
                       const parMin = lineContext?.parMin ?? null;
                       const parMax = lineContext?.parMax ?? null;
@@ -996,7 +994,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                                 value={typeof line.unit_cost === 'number' && line.unit_cost > 0 ? line.unit_cost.toFixed(2) : ''}
                                 placeholder="0.00"
                                 onChange={(e) =>
-                                  handleUpdateLine(line.id, 'unit_cost', parseFloat(e.target.value) || 0)
+                                  handleUpdateLine(line.id, 'unit_cost', Number.parseFloat(e.target.value) || 0)
                                 }
                                 className="pl-6 text-sm w-full min-w-[140px]"
                                 aria-label={`Unit cost for ${line.item_name}`}
@@ -1009,7 +1007,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                               step="0.01"
                               min="0"
                               value={line.quantity}
-                              onChange={(e) => handleUpdateLine(line.id, 'quantity', parseFloat(e.target.value) || 0)}
+                              onChange={(e) => handleUpdateLine(line.id, 'quantity', Number.parseFloat(e.target.value) || 0)}
                               className="text-sm"
                               aria-label={`Quantity for ${line.item_name}`}
                             />
@@ -1183,8 +1181,8 @@ export const PurchaseOrderEditor: React.FC = () => {
                     </div>
                     {usageLoading ? (
                       <div className="space-y-2">
-                        {[...Array(4)].map((_, i) => (
-                          <Skeleton key={i} className="h-20 w-full" />
+                        {['s1', 's2', 's3', 's4'].map((key) => (
+                          <Skeleton key={key} className="h-20 w-full" />
                         ))}
                       </div>
                     ) : usageError ? (

@@ -110,7 +110,7 @@ describe('poRecommendations', () => {
   test('handles negative or NaN values safely', () => {
     const result = calculateRecommendation(
       buildContext({
-        onHand: NaN,
+        onHand: Number.NaN,
         parLevelMax: -5,
         parLevelMin: 6,
       }),
@@ -126,4 +126,3 @@ describe('poRecommendations', () => {
     expect(hasRecommendationSignal(buildContext({ defaultOrderQuantity: 6 }))).toBe(true);
   });
 });
-

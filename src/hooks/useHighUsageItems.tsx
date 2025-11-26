@@ -64,7 +64,8 @@ export const useHighUsageItems = (
           });
         }
 
-        const entry = usageByProduct.get(productId)!;
+        const entry = usageByProduct.get(productId);
+        if (!entry) return;
         entry.total += quantity;
         const transactionDate = transaction.transaction_date || transaction.created_at;
         if (transactionDate > entry.lastUsedAt) {
@@ -113,4 +114,3 @@ export const useHighUsageItems = (
     refetch: fetchUsage,
   };
 };
-

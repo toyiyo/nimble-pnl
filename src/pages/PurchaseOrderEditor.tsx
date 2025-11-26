@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePostHog } from 'posthog-js/react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, Send, Plus, Trash2, Search, AlertCircle, Package, Download, FileText, FileSpreadsheet, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, Send, Plus, Trash2, Search, Package, Download, FileText, FileSpreadsheet, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -251,7 +251,7 @@ export const PurchaseOrderEditor: React.FC = () => {
   }, [lines, productLookup]);
 
   const hasRecommendations = useMemo(() => {
-    return (Object.values(lineRecommendations) as LineRecommendationContext[]).some(
+    return Object.values(lineRecommendations).some(
       (context) => context.recommendation && context.recommendation.recommendedQuantity > 0,
     );
   }, [lineRecommendations]);
@@ -932,6 +932,8 @@ export const PurchaseOrderEditor: React.FC = () => {
                       const parMin = lineContext?.parMin ?? null;
                       const parMax = lineContext?.parMax ?? null;
                       const recommendedQty = lineContext?.recommendation?.recommendedQuantity ?? null;
+                      const hasParBounds = parMin !== null || parMax !== null;
+                      const hasRecommendedQty = recommendedQty !== null;
 
                       return (
                         <TableRow key={line.id}>
@@ -961,7 +963,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                             )}
                           </TableCell>
                           <TableCell className="text-center">
-                            {parMin !== null || parMax !== null ? (
+                            {hasParBounds ? (
                               <div className="flex flex-col text-xs">
                                 {parMax !== null && <span className="font-medium">{parMax}</span>}
                                 {parMin !== null && (
@@ -975,7 +977,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                             )}
                           </TableCell>
                           <TableCell className="text-center">
-                            {recommendedQty !== null ? (
+                            {hasRecommendedQty ? (
                               <span className="font-medium">{recommendedQty}</span>
                             ) : (
                               <span className="text-xs text-muted-foreground">—</span>
@@ -1099,8 +1101,8 @@ export const PurchaseOrderEditor: React.FC = () => {
                   <div className="space-y-2 max-h-[500px] overflow-y-auto">
                     {productsLoading ? (
                       <div className="space-y-2">
-                        {[...Array(5)].map((_, i) => (
-                          <Skeleton key={i} className="h-20 w-full" />
+                        {new Array(5).fill(null).map((_, i) => (
+                          <Skeleton key={`product-skel-${i}`} className="h-20 w-full" />
                         ))}
                       </div>
                     ) : availableProducts.length === 0 ? (
@@ -1222,7 +1224,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                               <Button
                                 size="sm"
                                 onClick={() => product && handleAddItem(product, suggestedQuantity)}
-                                disabled={!product || isAdded}
+                                disabled={isAdded || product == null}
                                 aria-label={`Add ${item.productName} suggestion`}
                               >
                                 <Plus className="h-4 w-4 mr-1" />

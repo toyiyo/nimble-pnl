@@ -532,13 +532,13 @@ const TimePunchesManager = () => {
                         className="w-12 h-12 rounded-lg overflow-hidden border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors"
                         onClick={() => setViewingPunch(punch)}
                       >
-                        <img 
-                          src={photoThumbnails[punch.id]} 
-                          alt="Employee photo" 
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                          decoding="async"
-                        />
+                            <img 
+                              src={photoThumbnails[punch.id]} 
+                              alt="Employee photo" 
+                              className="w-24 h-24 object-cover rounded-md border border-border"
+                              loading="lazy"
+                              decoding="async"
+                            />
                       </div>
                     )}
 

@@ -3432,34 +3432,49 @@ export type Database = {
         Row: {
           connected_at: string
           created_at: string
+          email: string | null
           environment: string
           id: string
           last_sync_at: string | null
+          lighthouse_location_ids: Json | null
+          lighthouse_token: string | null
+          lighthouse_token_expires_at: string | null
           merchant_id: string
+          password: string | null
           restaurant_id: string
-          secret_key: string
+          secret_key: string | null
           updated_at: string
         }
         Insert: {
           connected_at?: string
           created_at?: string
+          email?: string | null
           environment?: string
           id?: string
           last_sync_at?: string | null
+          lighthouse_location_ids?: Json | null
+          lighthouse_token?: string | null
+          lighthouse_token_expires_at?: string | null
           merchant_id: string
+          password?: string | null
           restaurant_id: string
-          secret_key: string
+          secret_key?: string | null
           updated_at?: string
         }
         Update: {
           connected_at?: string
           created_at?: string
+          email?: string | null
           environment?: string
           id?: string
           last_sync_at?: string | null
+          lighthouse_location_ids?: Json | null
+          lighthouse_token?: string | null
+          lighthouse_token_expires_at?: string | null
           merchant_id?: string
+          password?: string | null
           restaurant_id?: string
-          secret_key?: string
+          secret_key?: string | null
           updated_at?: string
         }
         Relationships: [

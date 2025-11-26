@@ -118,25 +118,6 @@ export const Shift4Sync = ({ restaurantId, isConnected }: Shift4SyncProps) => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Real-time Status */}
-        <div className="bg-muted/50 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-100 text-green-600">
-              <Zap className="h-4 w-4" />
-            </div>
-            <div className="flex-1">
-              <h4 className="font-medium text-sm">Webhook Updates Active</h4>
-              <p className="text-xs text-muted-foreground">
-                Your P&L dashboard updates automatically when charges or refunds are processed through Shift4
-              </p>
-            </div>
-            <Badge variant="secondary" className="bg-green-100 text-green-700">
-              <CheckCircle2 className="h-3 w-3 mr-1" />
-              Live
-            </Badge>
-          </div>
-        </div>
-
         {/* Primary Sync Action */}
         <div className="space-y-4">
           <div className="text-center">
@@ -147,15 +128,15 @@ export const Shift4Sync = ({ restaurantId, isConnected }: Shift4SyncProps) => {
               size="lg"
             >
               <Download className="h-4 w-4 mr-2" />
-              {isLoading && syncType === 'initial_sync' ? 'Importing Data...' : 'Import Last 90 Days'}
+              {isLoading && syncType === 'initial_sync' ? 'Importing Data...' : 'Sync Last 7 Days'}
             </Button>
             <p className="text-sm text-muted-foreground mt-2">
-              Import historical payment data to populate your P&L calculations
+              Pull the last week of payments from Shift4
             </p>
           </div>
 
           {/* Secondary Sync Options */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <Button
               onClick={handleDailySync}
               disabled={isLoading}
@@ -163,18 +144,6 @@ export const Shift4Sync = ({ restaurantId, isConnected }: Shift4SyncProps) => {
               size="sm"
             >
               {isLoading && syncType === 'daily_sync' ? 'Syncing...' : 'Sync Yesterday'}
-            </Button>
-            <Button
-              onClick={() => {
-                const endDate = new Date().toISOString().split('T')[0];
-                const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-                handleSync('initial_sync', { startDate, endDate });
-              }}
-              disabled={isLoading}
-              variant="outline"
-              size="sm"
-            >
-              {isLoading ? 'Syncing...' : 'Sync Last 7 Days'}
             </Button>
           </div>
         </div>

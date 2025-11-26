@@ -33,16 +33,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { usePurchaseOrders } from '@/hooks/usePurchaseOrders';
@@ -96,13 +86,6 @@ export const PurchaseOrderEditor: React.FC = () => {
   const [suggestingOrder, setSuggestingOrder] = useState(false);
   const [suggestionSummary, setSuggestionSummary] = useState<{ applied: number; estimatedTotal: number } | null>(null);
   const [includeUsageSuggestions, setIncludeUsageSuggestions] = useState(false);
-  const [showSuggestConfirm, setShowSuggestConfirm] = useState(false);
-  const [pendingSuggestionPreview, setPendingSuggestionPreview] = useState<{
-    updates: { lineId: string; nextQuantity: number }[];
-    addedCount: number;
-    estimatedTotal: number;
-    updatedLines: PurchaseOrderLine[];
-  } | null>(null);
   const [activeAddItemsTab, setActiveAddItemsTab] = useState<'search' | 'suggestions'>('search');
 
   const usageInsightsEnabled = includeUsageSuggestions || activeAddItemsTab === 'suggestions';
@@ -444,7 +427,10 @@ export const PurchaseOrderEditor: React.FC = () => {
     }
   };
 
-  const computeSuggestionsPreview = () => {
+  const handleSuggestOrder = async () => {
+    if (suggestingOrder) return;
+    const prevLines = lines;
+
     const usageCandidates = includeUsageSuggestions ? getUsageCandidates(lines) : [];
     const usageCandidatesAvailable = usageCandidates.length > 0;
     const updates: { lineId: string; nextQuantity: number }[] = [];
@@ -463,19 +449,10 @@ export const PurchaseOrderEditor: React.FC = () => {
       };
     });
 
-  const estimatedTotal = updatedLines.reduce((sum, line) => sum + (line.unit_cost || 0) * line.quantity, 0);
+    const estimatedTotal = updatedLines.reduce((sum, line) => sum + (line.unit_cost || 0) * line.quantity, 0);
     const sanitized = sanitizeLines(updatedLines);
-    console.debug('PO Suggest Preview', { updates, usageCandidatesAvailable, usageCandidatesCount: usageCandidates.length, estimatedTotal, previewLines: sanitized });
-    return { updates, usageCandidatesAvailable, updatedLines: sanitized, usageCandidatesCount: usageCandidates.length, estimatedTotal };
-  };
 
-  const handleSuggestOrder = async (preview?: ReturnType<typeof computeSuggestionsPreview>) => {
-    if (suggestingOrder) return;
-    const prevLines = lines;
-    const previewData = preview ?? computeSuggestionsPreview();
-    const { updates, usageCandidatesAvailable, updatedLines, usageCandidatesCount, estimatedTotal } = previewData;
-
-  if (updates.length === 0 && !usageCandidatesAvailable) {
+    if (updates.length === 0 && !usageCandidatesAvailable) {
       toast({
         title: 'No suggestions available',
         description: 'Add items with par levels or enable high-usage suggestions to see recommendations.',
@@ -483,19 +460,19 @@ export const PurchaseOrderEditor: React.FC = () => {
       return;
     }
 
-  setSuggestingOrder(true);
-  safeSetLines(updatedLines);
+    setSuggestingOrder(true);
+    safeSetLines(sanitized);
 
     try {
-  if (updates.length > 0 && isEditing && po) {
+      if (updates.length > 0 && isEditing && po) {
         const persistenceUpdates = updates.filter((update) => !update.lineId.startsWith('temp-'));
         await Promise.all(
           persistenceUpdates.map((update) => updateLineItem(update.lineId, { quantity: update.nextQuantity })),
         );
       }
 
-  let workingLines = updatedLines;
-  let addedCount = 0;
+      let workingLines = sanitized;
+      let addedCount = 0;
 
       if (usageCandidatesAvailable) {
         const usageResult = await applyUsageSuggestions(workingLines);
@@ -504,16 +481,16 @@ export const PurchaseOrderEditor: React.FC = () => {
       }
 
       if (addedCount > 0 || updates.length > 0) {
-  safeSetLines(workingLines);
+        safeSetLines(workingLines);
       }
 
-      const estimatedTotal = workingLines.reduce((sum, line) => sum + (line.unit_cost || 0) * line.quantity, 0);
+      const finalEstimatedTotal = workingLines.reduce((sum, line) => sum + (line.unit_cost || 0) * line.quantity, 0);
       const totalAdjustments = updates.length + addedCount;
 
       if (totalAdjustments > 0) {
         setSuggestionSummary({
           applied: totalAdjustments,
-          estimatedTotal,
+          estimatedTotal: finalEstimatedTotal,
         });
       }
 
@@ -853,23 +830,7 @@ export const PurchaseOrderEditor: React.FC = () => {
             <Button
               className="gap-2"
               aria-label="Suggest order based on inventory par levels and usage suggestions"
-              onClick={() => {
-                const preview = computeSuggestionsPreview();
-                if (preview.updates.length === 0 && !preview.usageCandidatesAvailable) {
-                  toast({
-                    title: 'No suggestions available',
-                    description: 'Add items with par levels or enable high-usage suggestions to see recommendations.',
-                  });
-                  return;
-                }
-                setPendingSuggestionPreview({
-                  updates: preview.updates,
-                  addedCount: preview.usageCandidatesCount,
-                  estimatedTotal: preview.estimatedTotal,
-                  updatedLines: preview.updatedLines,
-                });
-                setShowSuggestConfirm(true);
-              }}
+              onClick={handleSuggestOrder}
               disabled={suggestingOrder || !canSuggestOrder}
             >
               <Sparkles className="h-4 w-4" />
@@ -927,70 +888,6 @@ export const PurchaseOrderEditor: React.FC = () => {
           )}
 
           {/* Suggestions Confirmation Dialog */}
-          <AlertDialog open={showSuggestConfirm} onOpenChange={setShowSuggestConfirm}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Apply suggestions?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to apply suggested quantities to{' '}
-                  {pendingSuggestionPreview?.updates.length ?? 0} existing item(s) and add{' '}
-                  {pendingSuggestionPreview?.addedCount ?? 0} high-usage item(s)?
-                  {pendingSuggestionPreview?.estimatedTotal !== undefined && (
-                    <div className="mt-2 text-sm text-muted-foreground">
-                      Estimated total: ${pendingSuggestionPreview?.estimatedTotal.toFixed(2)}
-                    </div>
-                  )}
-
-                  {pendingSuggestionPreview?.updates.length > 0 && (
-                    <div className="mt-2">
-                      <div className="text-xs text-muted-foreground mb-1">Preview of changes:</div>
-                      <div className="space-y-1 max-h-32 overflow-y-auto">
-                        {pendingSuggestionPreview?.updates.slice(0, 5).map((u) => {
-                          const line = lines.find((l) => l.id === u.lineId);
-                          if (!line) return null;
-                          return (
-                            <div key={u.lineId} className="text-sm flex items-center gap-2">
-                              <span className="flex-1 truncate">{line.item_name}</span>
-                              <span className="text-muted-foreground">{line.quantity} → {u.nextQuantity}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={async () => {
-                    try {
-                      setShowSuggestConfirm(false);
-                      if (pendingSuggestionPreview) {
-                        await handleSuggestOrder({
-                          updates: pendingSuggestionPreview.updates,
-                          usageCandidatesAvailable: pendingSuggestionPreview.addedCount > 0,
-                          updatedLines: pendingSuggestionPreview.updatedLines,
-                          usageCandidatesCount: pendingSuggestionPreview.addedCount,
-                          estimatedTotal: pendingSuggestionPreview.estimatedTotal,
-                        } as any);
-                        setPendingSuggestionPreview(null);
-                      }
-                    } catch (error) {
-                      console.error('Error applying suggestions from confirmation dialog', error);
-                      toast({
-                        title: 'Error applying suggestions',
-                        description: (error as any)?.message || 'An unexpected error occurred',
-                        variant: 'destructive',
-                      });
-                    }
-                  }}
-                >
-                  Apply suggestions
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </CardHeader>
       </Card>
 

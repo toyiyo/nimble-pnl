@@ -22,6 +22,8 @@ const EmployeeClock = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
+  const MAX_PHOTO_WIDTH = 480;
+  const PHOTO_QUALITY = 0.6;
 
   const { employee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const { status, loading: statusLoading } = useEmployeePunchStatus(employee?.id || null);
@@ -75,12 +77,17 @@ const EmployeeClock = () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      const sourceWidth = video.videoWidth || 640;
+      const sourceHeight = video.videoHeight || 480;
+      const scale = Math.min(1, MAX_PHOTO_WIDTH / sourceWidth);
+      const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+      const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
       const context = canvas.getContext('2d');
       if (context) {
-        context.drawImage(video, 0, 0);
-        const photoData = canvas.toDataURL('image/jpeg', 0.8);
+        context.drawImage(video, 0, 0, targetWidth, targetHeight);
+        const photoData = canvas.toDataURL('image/jpeg', PHOTO_QUALITY);
         setCapturedPhoto(photoData);
       }
     }

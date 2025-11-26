@@ -45,6 +45,8 @@ import {
   ReceiptStyleView,
 } from '@/components/time-tracking';
 
+const SIGNED_URL_BUFFER_MS = 5 * 60 * 1000; // Refresh URLs a few minutes before expiry
+
 type ViewMode = 'day' | 'week' | 'month';
 type VisualizationMode = 'gantt' | 'cards' | 'barcode' | 'stream' | 'receipt';
 
@@ -62,9 +64,11 @@ const TimePunchesManager = () => {
   const [editingPunch, setEditingPunch] = useState<TimePunch | null>(null);
   const [editFormData, setEditFormData] = useState({ punch_time: '', notes: '' });
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   const [photoThumbnails, setPhotoThumbnails] = useState<Record<string, string>>({});
+  const [signedUrlCache, setSignedUrlCache] = useState<Record<string, { url: string; expiresAt: number }>>({});
 
   // Calculate date range based on view mode
   const dateRange = useMemo(() => {
@@ -120,58 +124,102 @@ const TimePunchesManager = () => {
   // Load photo thumbnails for punches with photos
   useEffect(() => {
     const loadThumbnails = async () => {
-      const punchesWithPhotos = punches.filter(p => p.photo_path && !photoThumbnails[p.id]);
+      const now = Date.now();
+      const punchesWithPhotos = punches.filter((punch) => {
+        if (!punch.photo_path) return false;
+        const cacheKey = `thumb:${punch.photo_path}`;
+        const cached = signedUrlCache[cacheKey];
+        return !photoThumbnails[punch.id] || !cached || cached.expiresAt <= now;
+      });
       if (punchesWithPhotos.length === 0) return;
 
       for (const punch of punchesWithPhotos) {
-        if (punch.photo_path) {
-          try {
-            const { data } = await supabase.storage
-              .from('time-clock-photos')
-              .createSignedUrl(punch.photo_path, 3600);
-            
-            if (data) {
-              setPhotoThumbnails(prev => ({ ...prev, [punch.id]: data.signedUrl }));
-            }
-          } catch (error) {
+        if (!punch.photo_path) continue;
+
+        const cacheKey = `thumb:${punch.photo_path}`;
+        const cached = signedUrlCache[cacheKey];
+        const now = Date.now();
+
+        if (cached && cached.expiresAt > now) {
+          setPhotoThumbnails(prev => ({ ...prev, [punch.id]: cached.url }));
+          continue;
+        }
+
+        try {
+          const expiresInSeconds = 7200; // 2 hours
+          const { data, error } = await supabase.storage
+            .from('time-clock-photos')
+            .createSignedUrl(punch.photo_path, expiresInSeconds, {
+              transform: { width: 200, height: 200, resize: 'contain' },
+            });
+
+          if (error) {
             console.error('Error loading thumbnail:', error);
+            continue;
           }
+
+          if (data?.signedUrl) {
+            const expiresAt = Date.now() + expiresInSeconds * 1000 - SIGNED_URL_BUFFER_MS;
+            setSignedUrlCache(prev => ({ ...prev, [cacheKey]: { url: data.signedUrl, expiresAt } }));
+            setPhotoThumbnails(prev => ({ ...prev, [punch.id]: data.signedUrl }));
+          }
+        } catch (error) {
+          console.error('Error loading thumbnail:', error);
         }
       }
     };
 
     loadThumbnails();
-  }, [punches]);
+  }, [punches, photoThumbnails, signedUrlCache]);
 
   // Fetch photo URL when viewing a punch with photo_path
   useEffect(() => {
     const fetchPhotoUrl = async () => {
       if (viewingPunch?.photo_path) {
+        setPhotoError(null);
         setLoadingPhoto(true);
+        const cacheKey = `detail:${viewingPunch.photo_path}`;
+        const cached = signedUrlCache[cacheKey];
+        const now = Date.now();
+
+        if (cached && cached.expiresAt > now) {
+          setPhotoUrl(cached.url);
+          setLoadingPhoto(false);
+          return;
+        }
+
         try {
+          const expiresInSeconds = 7200; // 2 hours
           const { data, error } = await supabase.storage
             .from('time-clock-photos')
-            .createSignedUrl(viewingPunch.photo_path, 3600);
+            .createSignedUrl(viewingPunch.photo_path, expiresInSeconds, {
+              transform: { width: 900, resize: 'contain' },
+            });
 
-          if (error) {
+          if (error || !data?.signedUrl) {
             console.error('Error fetching photo URL:', error);
+            setPhotoError('Photo unavailable');
             setPhotoUrl(null);
           } else {
+            const expiresAt = Date.now() + expiresInSeconds * 1000 - SIGNED_URL_BUFFER_MS;
+            setSignedUrlCache(prev => ({ ...prev, [cacheKey]: { url: data.signedUrl, expiresAt } }));
             setPhotoUrl(data.signedUrl);
           }
         } catch (error) {
           console.error('Exception fetching photo:', error);
+          setPhotoError('Photo unavailable');
           setPhotoUrl(null);
         } finally {
           setLoadingPhoto(false);
         }
       } else {
         setPhotoUrl(null);
+        setPhotoError(null);
       }
     };
 
     fetchPhotoUrl();
-  }, [viewingPunch]);
+  }, [viewingPunch, signedUrlCache]);
 
   const confirmDelete = () => {
     if (punchToDelete && restaurantId) {
@@ -480,17 +528,19 @@ const TimePunchesManager = () => {
                       <div className="flex items-center gap-4 flex-1">
                         {/* Photo thumbnail */}
                         {punch.photo_path && photoThumbnails[punch.id] && (
-                          <div 
-                            className="w-12 h-12 rounded-lg overflow-hidden border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors"
-                            onClick={() => setViewingPunch(punch)}
-                          >
-                            <img 
-                              src={photoThumbnails[punch.id]} 
-                              alt="Employee photo" 
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        )}
+                      <div 
+                        className="w-12 h-12 rounded-lg overflow-hidden border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors"
+                        onClick={() => setViewingPunch(punch)}
+                      >
+                        <img 
+                          src={photoThumbnails[punch.id]} 
+                          alt="Employee photo" 
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      </div>
+                    )}
 
                         <Badge variant="outline" className={getPunchTypeColor(punch.punch_type)}>
                           {getPunchTypeLabel(punch.punch_type)}
@@ -565,7 +615,7 @@ const TimePunchesManager = () => {
 
       {/* Verification Details Dialog */}
       <Dialog open={!!viewingPunch} onOpenChange={() => setViewingPunch(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Verification Details</DialogTitle>
           </DialogHeader>
@@ -596,20 +646,26 @@ const TimePunchesManager = () => {
                     <Camera className="h-4 w-4" />
                     Verification Photo
                   </div>
-                  <div className="rounded-lg overflow-hidden border">
+                  <div className="rounded-lg border bg-muted/50 max-h-[70vh] overflow-auto flex items-center justify-center">
                     {loadingPhoto ? (
-                      <div className="w-full h-64 flex items-center justify-center bg-muted">
-                        <p className="text-muted-foreground">Loading photo...</p>
+                      <div className="w-full h-72 flex items-center justify-center text-muted-foreground">
+                        <p>Loading photo...</p>
                       </div>
                     ) : photoUrl ? (
                       <img 
                         src={photoUrl} 
                         alt="Employee verification photo" 
-                        className="w-full h-auto"
+                        className="w-full h-auto max-h-[70vh] object-contain"
+                        loading="lazy"
+                        decoding="async"
+                        onError={() => {
+                          setPhotoError('Photo unavailable');
+                          setPhotoUrl(null);
+                        }}
                       />
                     ) : (
-                      <div className="w-full h-64 flex items-center justify-center bg-muted">
-                        <p className="text-muted-foreground">Photo unavailable</p>
+                      <div className="w-full h-72 flex items-center justify-center text-muted-foreground">
+                        <p>{photoError || 'Photo unavailable'}</p>
                       </div>
                     )}
                   </div>

@@ -171,8 +171,7 @@ export function RestaurantSelector({
               </Button>
             </DialogTrigger>
             <DialogContent>
-        ) : null}
-            <DialogHeader>
+              <DialogHeader>
               <DialogTitle>Add New Restaurant</DialogTitle>
               <DialogDescription>
                 Create a new restaurant location to start tracking your operations.
@@ -249,7 +248,8 @@ export function RestaurantSelector({
               </div>
             </form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

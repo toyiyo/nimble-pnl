@@ -277,6 +277,15 @@ Potential additions for future iterations:
 
 This implementation provides a production-ready solution for robust time punch processing and visualization. It handles real-world chaos (bad punches, network issues, user errors) while providing managers with excellent tools for quick review and anomaly detection.
 
+## Manager tools: Force Clock Out
+
+Managers and owners now have a safe, one-click way to close incomplete sessions when an employee forgets to clock out. The manager view lists "Open / Incomplete Sessions" and allows creating a managed `clock_out` on behalf of the employee (with a confirmation dialog). This action uses the existing `useCreateTimePunch` mutation and is guarded by RLS (managers/owners only) so that only authorized users can create punches for other employees.
+
+Notes:
+- The UI creates a `clock_out` record with the current timestamp and a short note indicating it was forced by a manager.
+- Managers may also pick a custom date/time for the clock-out when forcing the action (for example, to record a clock out that occurred on a previous day). The UI validates that the chosen clock-out time is not earlier than the session's clock-in time to avoid invalid sessions.
+- Because of the server-side RLS policies, managers are allowed to create punches for employees — no additional backend changes were required for permissions.
+
 The five visualization modes ensure that every use case is covered:
 - **Gantt** for daily manager review
 - **Cards** for quick approval

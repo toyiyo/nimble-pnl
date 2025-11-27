@@ -260,7 +260,24 @@ export function identifyWorkSessions(processedPunches: ProcessedPunch[]): WorkSe
             });
             currentBreakStart = null;
           } else if (nextPunch.punch_type === 'clock_in') {
-            // Next session started without clock out
+            // If we're currently tracking a break start, a subsequent 'clock_in'
+            // is often the break-ending action (some clients record break end as clock_in).
+            // Treat that as a break_end here rather than starting a new session.
+            if (currentBreakStart) {
+              const breakDuration = differenceInMinutes(nextPunch.punch_time, currentBreakStart);
+              session.breaks.push({
+                break_start: currentBreakStart,
+                break_end: nextPunch.punch_time,
+                duration_minutes: breakDuration,
+                is_complete: true,
+              });
+              currentBreakStart = null;
+              // continue scanning for a clock_out for the current session
+              j++;
+              continue;
+            }
+
+            // Otherwise this is a new clock_in and the previous session had no clock_out
             session.has_anomalies = true;
             session.anomalies.push('Missing clock out');
             break;

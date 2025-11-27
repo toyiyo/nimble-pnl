@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch } from '@/hooks/useTimePunches';
+import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch, useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useEmployees } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -45,6 +45,8 @@ import {
   ReceiptStyleView,
 } from '@/components/time-tracking';
 
+const SIGNED_URL_BUFFER_MS = 5 * 60 * 1000; // Refresh URLs a few minutes before expiry
+
 type ViewMode = 'day' | 'week' | 'month';
 type VisualizationMode = 'gantt' | 'cards' | 'barcode' | 'stream' | 'receipt';
 
@@ -62,9 +64,11 @@ const TimePunchesManager = () => {
   const [editingPunch, setEditingPunch] = useState<TimePunch | null>(null);
   const [editFormData, setEditFormData] = useState({ punch_time: '', notes: '' });
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   const [photoThumbnails, setPhotoThumbnails] = useState<Record<string, string>>({});
+  const [signedUrlCache, setSignedUrlCache] = useState<Record<string, { url: string; expiresAt: number }>>({});
 
   // Calculate date range based on view mode
   const dateRange = useMemo(() => {
@@ -93,6 +97,9 @@ const TimePunchesManager = () => {
   );
   const deletePunch = useDeleteTimePunch();
   const updatePunch = useUpdateTimePunch();
+  const createPunch = useCreateTimePunch();
+  const [forceSessionToClose, setForceSessionToClose] = useState<any | null>(null);
+  const [forceOutTime, setForceOutTime] = useState<string>(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
 
   // Filter punches by search term (memoized for performance)
   const filteredPunches = useMemo(() => {
@@ -108,6 +115,9 @@ const TimePunchesManager = () => {
     return processPunchesForPeriod(filteredPunches);
   }, [filteredPunches]);
 
+  // Incomplete sessions that are missing a clock_out
+  const incompleteSessions = useMemo(() => processedData.sessions.filter(s => !s.is_complete), [processedData.sessions]);
+
   // Filter sessions for current day (for day view visualizations)
   const todaySessions = useMemo(() => {
     if (viewMode !== 'day') return processedData.sessions;
@@ -120,22 +130,47 @@ const TimePunchesManager = () => {
   // Load photo thumbnails for punches with photos
   useEffect(() => {
     const loadThumbnails = async () => {
-      const punchesWithPhotos = punches.filter(p => p.photo_path && !photoThumbnails[p.id]);
+      const now = Date.now();
+      const punchesWithPhotos = punches.filter((punch) => {
+        if (!punch.photo_path) return false;
+        const cacheKey = `thumb:${punch.photo_path}`;
+        const cached = signedUrlCache[cacheKey];
+        return !photoThumbnails[punch.id] || !cached || cached.expiresAt <= now;
+      });
       if (punchesWithPhotos.length === 0) return;
 
       for (const punch of punchesWithPhotos) {
-        if (punch.photo_path) {
-          try {
-            const { data } = await supabase.storage
-              .from('time-clock-photos')
-              .createSignedUrl(punch.photo_path, 3600);
-            
-            if (data) {
-              setPhotoThumbnails(prev => ({ ...prev, [punch.id]: data.signedUrl }));
-            }
-          } catch (error) {
+        if (!punch.photo_path) continue;
+
+        const cacheKey = `thumb:${punch.photo_path}`;
+        const cached = signedUrlCache[cacheKey];
+        const now = Date.now();
+
+        if (cached && cached.expiresAt > now) {
+          setPhotoThumbnails(prev => ({ ...prev, [punch.id]: cached.url }));
+          continue;
+        }
+
+        try {
+          const expiresInSeconds = 7200; // 2 hours
+          const { data, error } = await supabase.storage
+            .from('time-clock-photos')
+            .createSignedUrl(punch.photo_path, expiresInSeconds, {
+              transform: { width: 200, height: 200, resize: 'contain' },
+            });
+
+          if (error) {
             console.error('Error loading thumbnail:', error);
+            continue;
           }
+
+          if (data?.signedUrl) {
+            const expiresAt = Date.now() + expiresInSeconds * 1000 - SIGNED_URL_BUFFER_MS;
+            setSignedUrlCache(prev => ({ ...prev, [cacheKey]: { url: data.signedUrl, expiresAt } }));
+            setPhotoThumbnails(prev => ({ ...prev, [punch.id]: data.signedUrl }));
+          }
+        } catch (error) {
+          console.error('Error loading thumbnail:', error);
         }
       }
     };
@@ -147,31 +182,50 @@ const TimePunchesManager = () => {
   useEffect(() => {
     const fetchPhotoUrl = async () => {
       if (viewingPunch?.photo_path) {
+        setPhotoError(null);
         setLoadingPhoto(true);
+        const cacheKey = `detail:${viewingPunch.photo_path}`;
+        const cached = signedUrlCache[cacheKey];
+        const now = Date.now();
+
+        if (cached && cached.expiresAt > now) {
+          setPhotoUrl(cached.url);
+          setLoadingPhoto(false);
+          return;
+        }
+
         try {
+          const expiresInSeconds = 7200; // 2 hours
           const { data, error } = await supabase.storage
             .from('time-clock-photos')
-            .createSignedUrl(viewingPunch.photo_path, 3600);
+            .createSignedUrl(viewingPunch.photo_path, expiresInSeconds, {
+              transform: { width: 900, resize: 'contain' },
+            });
 
-          if (error) {
+          if (error || !data?.signedUrl) {
             console.error('Error fetching photo URL:', error);
+            setPhotoError('Photo unavailable');
             setPhotoUrl(null);
           } else {
+            const expiresAt = Date.now() + expiresInSeconds * 1000 - SIGNED_URL_BUFFER_MS;
+            setSignedUrlCache(prev => ({ ...prev, [cacheKey]: { url: data.signedUrl, expiresAt } }));
             setPhotoUrl(data.signedUrl);
           }
         } catch (error) {
           console.error('Exception fetching photo:', error);
+          setPhotoError('Photo unavailable');
           setPhotoUrl(null);
         } finally {
           setLoadingPhoto(false);
         }
       } else {
         setPhotoUrl(null);
+        setPhotoError(null);
       }
     };
 
     fetchPhotoUrl();
-  }, [viewingPunch]);
+  }, [viewingPunch, signedUrlCache]);
 
   const confirmDelete = () => {
     if (punchToDelete && restaurantId) {
@@ -480,17 +534,19 @@ const TimePunchesManager = () => {
                       <div className="flex items-center gap-4 flex-1">
                         {/* Photo thumbnail */}
                         {punch.photo_path && photoThumbnails[punch.id] && (
-                          <div 
-                            className="w-12 h-12 rounded-lg overflow-hidden border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors"
-                            onClick={() => setViewingPunch(punch)}
-                          >
+                      <div 
+                        className="w-12 h-12 rounded-lg overflow-hidden border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors"
+                        onClick={() => setViewingPunch(punch)}
+                      >
                             <img 
                               src={photoThumbnails[punch.id]} 
                               alt="Employee photo" 
-                              className="w-full h-full object-cover"
+                              className="w-24 h-24 object-cover rounded-md border border-border"
+                              loading="lazy"
+                              decoding="async"
                             />
-                          </div>
-                        )}
+                      </div>
+                    )}
 
                         <Badge variant="outline" className={getPunchTypeColor(punch.punch_type)}>
                           {getPunchTypeLabel(punch.punch_type)}
@@ -563,9 +619,98 @@ const TimePunchesManager = () => {
         </Card>
       </Collapsible>
 
+      {/* Open / Incomplete Sessions (Managers only) */}
+      {selectedRestaurant?.role && ['owner', 'manager'].includes(selectedRestaurant.role) && incompleteSessions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Open / Incomplete Sessions</CardTitle>
+            <CardDescription>{incompleteSessions.length} session{incompleteSessions.length !== 1 ? 's' : ''} need attention</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {incompleteSessions.map((session) => (
+                <div key={session.sessionId} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                  <div>
+                    <div className="font-medium">{session.employee_name}</div>
+                    <div className="text-sm text-muted-foreground">Clocked in: {format(new Date(session.clock_in), 'MMM d, yyyy h:mm a')}</div>
+                    <div className="text-sm text-muted-foreground">Open for {Math.max(0, Math.round(differenceInMinutes(new Date(), new Date(session.clock_in)) / 60))}h {Math.max(0, differenceInMinutes(new Date(), new Date(session.clock_in)) % 60)}m</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setForceSessionToClose(session)}
+                    >
+                      Force Clock Out Now
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Force Clock Out Confirmation */}
+      <AlertDialog open={!!forceSessionToClose} onOpenChange={() => setForceSessionToClose(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Force Clock Out</AlertDialogTitle>
+                  <AlertDialogDescription>
+              Specify the date & time to record as the clock-out for <strong>{forceSessionToClose?.employee_name}</strong>. Default is the current time. This will close the open session and will be visible in payroll immediately.
+            </AlertDialogDescription>
+            <div className="py-3">
+              <Label htmlFor="force_out_time">Clock-out time</Label>
+              <Input
+                id="force_out_time"
+                type="datetime-local"
+                value={forceOutTime}
+                onChange={(e) => setForceOutTime(e.target.value)}
+                aria-label="Force clock out time"
+                className="mt-2"
+              />
+
+              {forceSessionToClose?.clock_in && forceOutTime && (
+                <div className="text-sm mt-2 text-muted-foreground">
+                  {new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime() ? (
+                    <span className="text-destructive">Selected time is before the session's clock-in — please pick a time after {format(new Date(forceSessionToClose.clock_in), 'MMM d, yyyy h:mm a')}.</span>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!forceSessionToClose || !restaurantId || !forceOutTime) return;
+                // Prevent creating a clock_out earlier than the session's clock_in
+                const chosen = new Date(forceOutTime).toISOString();
+                if (forceSessionToClose.clock_in && new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime()) return;
+
+                createPunch.mutate({
+                  restaurant_id: restaurantId,
+                  employee_id: forceSessionToClose.employee_id,
+                  punch_type: 'clock_out',
+                  punch_time: chosen,
+                  notes: 'Force clock out by manager',
+                });
+                setForceSessionToClose(null);
+                // reset default time
+                setForceOutTime(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+              }}
+              disabled={!!(forceSessionToClose?.clock_in && forceOutTime && new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime())}
+            >
+              Force Clock Out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Verification Details Dialog */}
       <Dialog open={!!viewingPunch} onOpenChange={() => setViewingPunch(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Verification Details</DialogTitle>
           </DialogHeader>
@@ -596,20 +741,26 @@ const TimePunchesManager = () => {
                     <Camera className="h-4 w-4" />
                     Verification Photo
                   </div>
-                  <div className="rounded-lg overflow-hidden border">
+                  <div className="rounded-lg border bg-muted/50 max-h-[70vh] overflow-auto flex items-center justify-center">
                     {loadingPhoto ? (
-                      <div className="w-full h-64 flex items-center justify-center bg-muted">
-                        <p className="text-muted-foreground">Loading photo...</p>
+                      <div className="w-full h-72 flex items-center justify-center text-muted-foreground">
+                        <p>Loading photo...</p>
                       </div>
                     ) : photoUrl ? (
                       <img 
                         src={photoUrl} 
                         alt="Employee verification photo" 
-                        className="w-full h-auto"
+                        className="w-40 h-auto max-h-[70vh] object-contain"
+                        loading="lazy"
+                        decoding="async"
+                        onError={() => {
+                          setPhotoError('Photo unavailable');
+                          setPhotoUrl(null);
+                        }}
                       />
                     ) : (
-                      <div className="w-full h-64 flex items-center justify-center bg-muted">
-                        <p className="text-muted-foreground">Photo unavailable</p>
+                      <div className="w-full h-72 flex items-center justify-center text-muted-foreground">
+                        <p>{photoError || 'Photo unavailable'}</p>
                       </div>
                     )}
                   </div>

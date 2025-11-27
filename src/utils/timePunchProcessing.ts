@@ -213,22 +213,40 @@ export function identifyWorkSessions(processedPunches: ProcessedPunch[]): WorkSe
         // Look for corresponding clock_out and breaks
         let j = i + 1;
         let currentBreakStart: Date | null = null;
-        
+        // foundClockOut ensures we only accept the first clock_out that closes this session
+        let foundClockOut = false;
+
         while (j < punches.length) {
           const nextPunch = punches[j];
-          
+
+          // If we've already closed the session with a clock_out, stop scanning —
+          // further clock_outs belong to either noise or a separate action and should not reopen this session.
+          if (foundClockOut) {
+            if (nextPunch.punch_type === 'clock_in') {
+              // next clock_in starts a new session — stop scanning for this one
+              break;
+            }
+            // ignore other punch types after a clock out for this session
+            j++;
+            continue;
+          }
+
           if (nextPunch.punch_type === 'clock_out') {
             session.clock_out = nextPunch.punch_time;
             session.is_complete = true;
-            
+            foundClockOut = true;
+
             // Check for very short sessions (< 3 minutes)
             const sessionMinutes = differenceInMinutes(session.clock_out, session.clock_in);
             if (sessionMinutes < 3 && sessions.length > 0) {
               session.has_anomalies = true;
               session.anomalies.push('Very short session (< 3 min) - possible error');
             }
-            
-            break;
+
+            // don't break immediately; keep loop semantics consistent — we will stop on next iteration
+            // or when a new clock_in is encountered (handled above)
+            j++;
+            continue;
           } else if (nextPunch.punch_type === 'break_start') {
             currentBreakStart = nextPunch.punch_time;
           } else if (nextPunch.punch_type === 'break_end' && currentBreakStart) {

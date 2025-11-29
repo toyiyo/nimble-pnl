@@ -1423,6 +1423,47 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+          referencedColumns: ["id"]
+        },
+      ]
+    }
+      manager_pins: {
+        Row: {
+          created_at: string
+          id: string
+          last_used_at: string | null
+          manager_user_id: string
+          min_length: number
+          pin_hash: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          manager_user_id: string
+          min_length?: number
+          pin_hash: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          manager_user_id?: string
+          min_length?: number
+          pin_hash?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manager_pins_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
         ]

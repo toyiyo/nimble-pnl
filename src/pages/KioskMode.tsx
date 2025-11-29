@@ -15,9 +15,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { collectPunchContext } from '@/utils/punchContext';
 import { addQueuedPunch, flushQueuedPunches, hasQueuedPunches, isLikelyOffline } from '@/utils/offlineQueue';
+import { verifyManagerPin } from '@/hooks/useManagerPins';
 import { format } from 'date-fns';
 import { ImageCapture } from '@/components/ImageCapture';
-import { Clock, Lock, LogIn, LogOut, Shield, WifiOff, KeyRound, X, Loader2 } from 'lucide-react';
+import { Clock, Lock, LogIn, LogOut, Shield, WifiOff, KeyRound, X, Loader2, CheckCircle } from 'lucide-react';
 
 const ATTEMPT_LIMIT = 5;
 const LOCKOUT_MS = 60_000;
@@ -230,17 +231,9 @@ const KioskMode = () => {
     }
   };
 
-  const handleManagerExit = async () => {
-    // Allow current authenticated manager to exit without password (covers Google auth)
-    if (selectedRestaurant?.role && selectedRestaurant.role !== 'staff') {
-      endSession();
-      navigate('/time-punches');
-      return;
-    }
-
+  const handleManagerExitPassword = async () => {
     if (!user?.email) {
-      endSession();
-      navigate('/time-punches');
+      setExitError('Password exit requires an email account.');
       return;
     }
     setExitError(null);
@@ -258,9 +251,9 @@ const KioskMode = () => {
     setExitPinError(null);
     setExitProcessing(true);
     try {
-      const result = await verifyPinForRestaurant(restaurantId, exitPin);
+      const result = await verifyManagerPin(restaurantId, exitPin);
       if (!result) {
-        setExitPinError('PIN not recognized for this location.');
+        setExitPinError('Manager PIN not recognized for this location.');
         return;
       }
       endSession();
@@ -463,20 +456,8 @@ const KioskMode = () => {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Managers can exit with their current session, manager PIN, or password.
+              Managers can exit with a manager PIN or password.
             </p>
-
-            {selectedRestaurant?.role && selectedRestaurant.role !== 'staff' && (
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
-                <div>
-                  <div className="font-medium text-sm">Use current session</div>
-                  <p className="text-xs text-muted-foreground">You’re already signed in.</p>
-                </div>
-                <Button size="sm" onClick={handleManagerExit} disabled={exitProcessing}>
-                  Exit now
-                </Button>
-              </div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="manager_pin">Manager PIN</Label>
@@ -504,7 +485,7 @@ const KioskMode = () => {
                 onChange={(e) => setExitPassword(e.target.value)}
               />
               {exitError && <p className="text-xs text-red-500">{exitError}</p>}
-              <Button onClick={handleManagerExit} disabled={exitProcessing}>
+              <Button onClick={handleManagerExitPassword} disabled={exitProcessing}>
                 {exitProcessing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                 Exit with password
               </Button>
@@ -531,9 +512,9 @@ const KioskMode = () => {
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Verification Photo</DialogTitle>
+            <DialogTitle>Verify Your Identity</DialogTitle>
             <p className="text-sm text-muted-foreground">
-              Capture a quick photo for this punch. You can skip if the camera is unavailable.
+              Take a quick selfie to confirm it's really you clocking in. This helps prevent time theft and ensures accurate payroll.
             </p>
           </DialogHeader>
           <div className="space-y-4">
@@ -543,6 +524,20 @@ const KioskMode = () => {
               disabled={processing}
             />
             {cameraError && <p className="text-xs text-destructive">{cameraError}</p>}
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <div className="flex items-start gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500 mt-0.5" />
+                <span><strong>Protects your earnings:</strong> Ensures only you can clock in with your account.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500 mt-0.5" />
+                <span><strong>Accurate hours:</strong> Helps resolve any disputes about work time.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500 mt-0.5" />
+                <span><strong>Fair for everyone:</strong> Prevents buddy punching and time theft.</span>
+              </div>
+            </div>
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button variant="outline" onClick={handleSkipPhoto} disabled={processing || !pendingAction}>

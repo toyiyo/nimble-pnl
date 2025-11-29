@@ -45,6 +45,7 @@ import { useEmployeePins, useUpsertEmployeePin, EmployeePinWithEmployee } from '
 import { KIOSK_POLICY_KEY, generateNumericPin, loadFromStorage, saveToStorage, isSimpleSequence } from '@/utils/kiosk';
 import { Switch } from '@/components/ui/switch';
 import { Employee } from '@/types/scheduling';
+import { useManagerPin, useUpsertManagerPin } from '@/hooks/useManagerPins';
 import {
   TimelineGanttView,
   EmployeeCardView,
@@ -67,6 +68,8 @@ const TimePunchesManager = () => {
   const { session: kioskSession, startSession, endSession } = useKioskSession();
   const { pins, loading: pinsLoading } = useEmployeePins(restaurantId);
   const upsertPin = useUpsertEmployeePin();
+  const { pin: managerPin } = useManagerPin(restaurantId, user?.id);
+  const upsertManagerPin = useUpsertManagerPin();
 
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const [visualizationMode, setVisualizationMode] = useState<VisualizationMode>('gantt');
@@ -87,6 +90,14 @@ const TimePunchesManager = () => {
   const [pinValue, setPinValue] = useState('');
   const [pinForceReset, setPinForceReset] = useState(false);
   const [lastSavedPin, setLastSavedPin] = useState<string | null>(null);
+  const [managerPinValue, setManagerPinValue] = useState('');
+  const [managerPinSaved, setManagerPinSaved] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (managerPin) {
+      setManagerPinSaved('PIN on file');
+    }
+  }, [managerPin]);
   const [pinPolicy, setPinPolicy] = useState({
     minLength: 4,
     forceResetOnNext: false,
@@ -655,6 +666,55 @@ const TimePunchesManager = () => {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="p-3 rounded-lg border bg-muted/30 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-primary" />
+                <div>
+                  <div className="font-medium text-sm">Manager PIN (kiosk lock/unlock)</div>
+                  <p className="text-xs text-muted-foreground">
+                    This PIN is only for entering or exiting kiosk mode on this device. It does not clock time.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <Input
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="Enter 4-6 digit PIN"
+                  value={managerPinValue}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    setManagerPinValue(digits);
+                    setManagerPinSaved(null);
+                  }}
+                  className="sm:max-w-xs"
+                />
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    if (!restaurantId || !user?.id) return;
+                    await upsertManagerPin.mutateAsync({
+                      restaurant_id: restaurantId,
+                      manager_user_id: user.id,
+                      pin: managerPinValue,
+                      min_length: pinPolicy.minLength,
+                    });
+                    setManagerPinSaved(managerPinValue);
+                    setManagerPinValue('');
+                  }}
+                  disabled={managerPinValue.length < pinPolicy.minLength || upsertManagerPin.isPending}
+                >
+                  Save Manager PIN
+                </Button>
+                {managerPinSaved && (
+                  <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
+                    Saved
+                  </Badge>
+                )}
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm text-muted-foreground">
                 Avoid duplicate identities by keeping PINs unique per location.

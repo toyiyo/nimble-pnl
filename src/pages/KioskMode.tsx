@@ -226,6 +226,10 @@ const KioskMode = () => {
         setCameraError(null);
       } else {
         setErrorMessage(error?.message || 'Unable to record punch.');
+        setCameraDialogOpen(false);
+        setCapturedPhotoBlob(null);
+        setPendingAction(null);
+        setCameraError(null);
       }
     } finally {
       setProcessing(false);
@@ -543,6 +547,9 @@ const KioskMode = () => {
             </div>
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setCameraDialogOpen(false)} disabled={processing}>
+              Close
+            </Button>
             <Button variant="outline" onClick={handleSkipPhoto} disabled={processing || !pendingAction}>
               Skip photo
             </Button>

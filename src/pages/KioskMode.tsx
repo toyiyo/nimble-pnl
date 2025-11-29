@@ -14,7 +14,9 @@ import { useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { collectPunchContext } from '@/utils/punchContext';
+import { addQueuedPunch, flushQueuedPunches, hasQueuedPunches, isLikelyOffline } from '@/utils/offlineQueue';
 import { format } from 'date-fns';
+import { ImageCapture } from '@/components/ImageCapture';
 import { Clock, Lock, LogIn, LogOut, Shield, WifiOff, KeyRound, X, Loader2 } from 'lucide-react';
 
 const ATTEMPT_LIMIT = 5;
@@ -48,11 +50,22 @@ const KioskMode = () => {
     timestamp: string;
     role?: string;
   } | null>(null);
+  const [pendingAction, setPendingAction] = useState<PunchAction | null>(null);
+  const [cameraDialogOpen, setCameraDialogOpen] = useState(false);
+  const [capturedPhotoBlob, setCapturedPhotoBlob] = useState<Blob | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [queuedCount, setQueuedCount] = useState<number>(hasQueuedPunches() ? 1 : 0);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    flushQueuedPunches(async (payload) => {
+      await createPunch.mutateAsync(payload);
+    }).then((result) => setQueuedCount(result.remaining));
+  }, [createPunch]);
 
   const lockSeconds = useMemo(() => {
     if (!lockUntil) return 0;
@@ -62,6 +75,19 @@ const KioskMode = () => {
   const resetAttempts = () => {
     setFailedAttempts(0);
     setLockUntil(null);
+  };
+
+  const startPunchFlow = (action: PunchAction) => {
+    setPendingAction(action);
+    setCameraDialogOpen(true);
+    setCapturedPhotoBlob(null);
+    setCameraError(null);
+  };
+
+  const handleSkipPhoto = () => {
+    if (pendingAction) {
+      handlePunch(pendingAction, null);
+    }
   };
 
   const handleDigit = (digit: string) => {
@@ -95,7 +121,7 @@ const KioskMode = () => {
     }
   };
 
-  const handlePunch = async (action: PunchAction) => {
+  const handlePunch = async (action: PunchAction, photoBlob?: Blob | null) => {
     if (!restaurantId) {
       setErrorMessage('Kiosk is not tied to a location. Ask a manager to relaunch from Time Punches.');
       return;
@@ -113,8 +139,11 @@ const KioskMode = () => {
     setErrorMessage(null);
     setStatusMessage(null);
 
+    let pinMatch: Awaited<ReturnType<typeof verifyPinForRestaurant>> = null;
+    let context: Awaited<ReturnType<typeof collectPunchContext>> | null = null;
+
     try {
-      const pinMatch = await verifyPinForRestaurant(restaurantId, pinInput);
+      pinMatch = await verifyPinForRestaurant(restaurantId, pinInput);
       if (!pinMatch) {
         registerFailure();
         return;
@@ -131,7 +160,7 @@ const KioskMode = () => {
         return;
       }
 
-      const context = await collectPunchContext(3000);
+      context = await collectPunchContext(3000);
 
       await createPunch.mutateAsync({
         restaurant_id: restaurantId,
@@ -141,6 +170,7 @@ const KioskMode = () => {
         notes: 'Kiosk PIN punch',
         location: context.location,
         device_info: context.device_info,
+        photoBlob: photoBlob || undefined,
       });
 
       const nowIso = new Date().toISOString();
@@ -158,8 +188,40 @@ const KioskMode = () => {
         role: pinMatch.employee?.position || undefined,
       });
       setStatusMessage(action === 'clock_in' ? 'Clocked in' : 'Clocked out');
+      setCameraDialogOpen(false);
+      setCapturedPhotoBlob(null);
+      setPendingAction(null);
+      setCameraError(null);
+      if (queuedCount > 0) {
+        flushQueuedPunches(async (payload) => {
+          await createPunch.mutateAsync(payload);
+        }).then((result) => setQueuedCount(result.remaining));
+      }
     } catch (error: any) {
-      setErrorMessage(error?.message || 'Unable to record punch.');
+      // Queue offline if network-related or offline detected
+      const offline = isLikelyOffline() || (error?.message || '').toLowerCase().includes('fetch');
+      if (offline && restaurantId && pinInput && pinMatch?.employee_id) {
+        await addQueuedPunch(
+          {
+            restaurant_id: restaurantId,
+            employee_id: pinMatch.employee_id,
+            punch_type: action,
+            punch_time: new Date().toISOString(),
+            notes: 'Queued offline (kiosk)',
+            location: context?.location,
+            device_info: context?.device_info,
+          },
+          photoBlob
+        );
+        setQueuedCount((c) => c + 1);
+        setStatusMessage('Saved offline — will sync when online.');
+        setCameraDialogOpen(false);
+        setCapturedPhotoBlob(null);
+        setPendingAction(null);
+        setCameraError(null);
+      } else {
+        setErrorMessage(error?.message || 'Unable to record punch.');
+      }
     } finally {
       setProcessing(false);
     }
@@ -331,7 +393,7 @@ const KioskMode = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Button
                 className="h-14 text-lg"
-                onClick={() => handlePunch('clock_in')}
+                onClick={() => startPunchFlow('clock_in')}
                 disabled={processing || (lockUntil && lockUntil > Date.now())}
               >
                 {processing ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <LogIn className="h-5 w-5 mr-2" />}
@@ -340,7 +402,7 @@ const KioskMode = () => {
               <Button
                 className="h-14 text-lg"
                 variant="destructive"
-                onClick={() => handlePunch('clock_out')}
+                onClick={() => startPunchFlow('clock_out')}
                 disabled={processing || (lockUntil && lockUntil > Date.now())}
               >
                 {processing ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <LogOut className="h-5 w-5 mr-2" />}
@@ -357,7 +419,10 @@ const KioskMode = () => {
           </div>
           <div className="flex items-center gap-2">
             <WifiOff className="h-4 w-4" />
-            <span>Offline punches queue and sync when online.</span>
+            <span>
+              Offline punches queue and sync when online
+              {queuedCount > 0 ? ` • queued: ${queuedCount}` : ''}
+            </span>
           </div>
         </div>
       </div>
@@ -387,6 +452,47 @@ const KioskMode = () => {
               Cancel
             </Button>
             <Button onClick={handleManagerExit}>Exit Kiosk</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={cameraDialogOpen}
+        onOpenChange={(open) => {
+          setCameraDialogOpen(open);
+          if (!open) {
+            setPendingAction(null);
+            setCapturedPhotoBlob(null);
+            setCameraError(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Verification Photo</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Capture a quick photo for this punch. You can skip if the camera is unavailable.
+            </p>
+          </DialogHeader>
+          <div className="space-y-4">
+            <ImageCapture
+              onImageCaptured={(blob) => setCapturedPhotoBlob(blob)}
+              onError={(err) => setCameraError(err)}
+              disabled={processing}
+            />
+            {cameraError && <p className="text-xs text-destructive">{cameraError}</p>}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={handleSkipPhoto} disabled={processing || !pendingAction}>
+              Skip photo
+            </Button>
+            <Button
+              onClick={() => pendingAction && handlePunch(pendingAction, capturedPhotoBlob)}
+              disabled={processing || !pendingAction}
+            >
+              {processing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Confirm punch
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

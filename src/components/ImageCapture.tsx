@@ -219,27 +219,35 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
                 playsInline
                 muted
               />
-              {isLoading ? (
-                <div className="w-full h-full flex items-center justify-center absolute inset-0">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-                    <p className="text-sm text-muted-foreground">Starting camera...</p>
-                  </div>
-                </div>
-              ) : !isStreaming ? (
-                <div className="w-full h-full flex items-center justify-center absolute inset-0">
-                  <div className="text-center">
-                    <Camera className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-                    <p className="text-sm text-muted-foreground">
-                      {hasPermission === false
-                        ? 'Camera access denied'
-                        : autoStart
-                        ? 'Starting camera...'
-                        : 'Ready to start camera'}
-                    </p>
-                  </div>
-                </div>
-              ) : null}
+              {(() => {
+                if (isLoading) {
+                  return (
+                    <div className="w-full h-full flex items-center justify-center absolute inset-0">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                        <p className="text-sm text-muted-foreground">Starting camera...</p>
+                      </div>
+                    </div>
+                  );
+                }
+                if (!isStreaming) {
+                  const statusText =
+                    hasPermission === false
+                      ? 'Camera access denied'
+                      : autoStart
+                      ? 'Starting camera...'
+                      : 'Ready to start camera';
+                  return (
+                    <div className="w-full h-full flex items-center justify-center absolute inset-0">
+                      <div className="text-center">
+                        <Camera className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                        <p className="text-sm text-muted-foreground">{statusText}</p>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
 
             <div className="grid grid-cols-2 gap-2">

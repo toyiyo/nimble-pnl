@@ -37,7 +37,7 @@ export const getQuickLocation = (timeoutMs = DEFAULT_LOCATION_TIMEOUT): Promise<
 };
 
 export const collectPunchContext = async (timeoutMs = DEFAULT_LOCATION_TIMEOUT) => {
-  const [location] = await Promise.all([getQuickLocation(timeoutMs)]);
+  const location = await getQuickLocation(timeoutMs);
   return {
     location,
     device_info: getDeviceInfo(),

@@ -684,7 +684,7 @@ const TimePunchesManager = () => {
                   placeholder="Enter 4-6 digit PIN"
                   value={managerPinValue}
                   onChange={(e) => {
-                    const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    const digits = e.target.value.replaceAll(/\D/g, '').slice(0, 6);
                     setManagerPinValue(digits);
                     setManagerPinSaved(null);
                   }}
@@ -738,62 +738,68 @@ const TimePunchesManager = () => {
               </div>
             </div>
 
-            {pinsLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-14 w-full" />
-                <Skeleton className="h-14 w-full" />
-              </div>
-            ) : employees.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Add employees to start assigning PINs.</p>
-            ) : (
-              <div className="space-y-2">
-                {employees.map((emp) => {
-                  const pinRecord = pinLookup.get(emp.id);
-                  return (
-                    <div
-                      key={emp.id}
-                      className="flex items-center justify-between p-3 rounded-lg border bg-card"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <div className="font-medium">{emp.name}</div>
-                          <div className="text-xs text-muted-foreground">{emp.position}</div>
-                          {pinRecord?.last_used_at && (
-                            <div className="text-[11px] text-muted-foreground">
-                              Last used {format(new Date(pinRecord.last_used_at), 'MMM d, h:mm a')}
-                            </div>
+            {(() => {
+              if (pinsLoading) {
+                return (
+                  <div className="space-y-2">
+                    <Skeleton className="h-14 w-full" />
+                    <Skeleton className="h-14 w-full" />
+                  </div>
+                );
+              }
+              if (employees.length === 0) {
+                return <p className="text-muted-foreground text-sm">Add employees to start assigning PINs.</p>;
+              }
+              return (
+                <div className="space-y-2">
+                  {employees.map((emp) => {
+                    const pinRecord = pinLookup.get(emp.id);
+                    return (
+                      <div
+                        key={emp.id}
+                        className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <div className="font-medium">{emp.name}</div>
+                            <div className="text-xs text-muted-foreground">{emp.position}</div>
+                            {pinRecord?.last_used_at && (
+                              <div className="text-[11px] text-muted-foreground">
+                                Last used {format(new Date(pinRecord.last_used_at), 'MMM d, h:mm a')}
+                              </div>
+                            )}
+                          </div>
+                          {pinRecord ? (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
+                              PIN set
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
+                              Not set
+                            </Badge>
+                          )}
+                          {pinRecord?.force_reset && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20">
+                              Force update
+                            </Badge>
                           )}
                         </div>
-                        {pinRecord ? (
-                          <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
-                            PIN set
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
-                            Not set
-                          </Badge>
-                        )}
-                        {pinRecord?.force_reset && (
-                          <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20">
-                            Force update
-                          </Badge>
-                        )}
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openPinDialog(emp)}
+                            disabled={upsertPin.isPending}
+                          >
+                            {pinRecord ? 'Reset PIN' : 'Set PIN'}
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openPinDialog(emp)}
-                          disabled={upsertPin.isPending}
-                        >
-                          {pinRecord ? 'Reset PIN' : 'Set PIN'}
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
       )}
@@ -816,7 +822,7 @@ const TimePunchesManager = () => {
                 maxLength={6}
                 value={pinValue}
                 onChange={(e) => {
-                  const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 6);
+                  const digitsOnly = e.target.value.replaceAll(/\D/g, '').slice(0, 6);
                   setPinValue(digitsOnly);
                   setLastSavedPin(null);
                 }}

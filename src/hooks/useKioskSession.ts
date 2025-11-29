@@ -25,8 +25,8 @@ export const useKioskSession = () => {
         setSession(event.newValue ? (JSON.parse(event.newValue) as KioskSessionToken) : null);
       }
     };
-    window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
+    globalThis?.addEventListener?.('storage', handler);
+    return () => globalThis?.removeEventListener?.('storage', handler);
   }, []);
 
   const startSession = async (

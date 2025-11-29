@@ -192,44 +192,19 @@ const KioskMode = () => {
         role: pinMatch.employee?.position || undefined,
       });
       setStatusMessage(action === 'clock_in' ? 'Clocked in' : 'Clocked out');
-      setCameraDialogOpen(false);
-      setCapturedPhotoBlob(null);
-      setPendingAction(null);
-      setCameraError(null);
+      resetCameraState();
       if (queuedCount > 0) {
         flushQueuedPunches(async (payload) => {
           await createPunch.mutateAsync(payload);
         }).then((result) => setQueuedCount(result.remaining));
       }
     } catch (error: any) {
-      // Queue offline if network-related or offline detected
       const offline = isLikelyOffline() || (error?.message || '').toLowerCase().includes('fetch');
-      if (offline && restaurantId && pinInput) {
-        await addQueuedPunch(
-          {
-            restaurant_id: restaurantId,
-            employee_id: pinMatch?.employee_id,
-            pin: pinInput,
-            punch_type: action,
-            punch_time: new Date().toISOString(),
-            notes: 'Queued offline (kiosk)',
-            location: context?.location,
-            device_info: context?.device_info,
-          },
-          photoBlob
-        );
-        setQueuedCount((c) => c + 1);
-        setStatusMessage('Saved offline — will sync when online.');
-        setCameraDialogOpen(false);
-        setCapturedPhotoBlob(null);
-        setPendingAction(null);
-        setCameraError(null);
+      if (offline && pinInput) {
+        await queuePunchOffline(action, pinInput, context, pinMatch?.employee_id);
       } else {
         setErrorMessage(error?.message || 'Unable to record punch.');
-        setCameraDialogOpen(false);
-        setCapturedPhotoBlob(null);
-        setPendingAction(null);
-        setCameraError(null);
+        resetCameraState();
       }
     } finally {
       setProcessing(false);
@@ -268,6 +243,39 @@ const KioskMode = () => {
     } finally {
       setExitProcessing(false);
     }
+  };
+
+  const resetCameraState = () => {
+    setCameraDialogOpen(false);
+    setCapturedPhotoBlob(null);
+    setPendingAction(null);
+    setCameraError(null);
+  };
+
+  const queuePunchOffline = async (
+    action: PunchAction,
+    pin: string,
+    context: Awaited<ReturnType<typeof collectPunchContext>> | null,
+    employeeId?: string
+  ) => {
+    if (!restaurantId) return false;
+    await addQueuedPunch(
+      {
+        restaurant_id: restaurantId,
+        employee_id: employeeId,
+        pin,
+        punch_type: action,
+        punch_time: new Date().toISOString(),
+        notes: 'Queued offline (kiosk)',
+        location: context?.location,
+        device_info: context?.device_info,
+      },
+      capturedPhotoBlob
+    );
+    setQueuedCount((c) => c + 1);
+    setStatusMessage('Saved offline — will sync when online.');
+    resetCameraState();
+    return true;
   };
 
   if (!restaurantId) {
@@ -364,7 +372,7 @@ const KioskMode = () => {
 
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <Input
-                value={pinInput.replace(/./g, '•')}
+                value={pinInput.replaceAll(/./g, '•')}
                 placeholder="PIN"
                 readOnly
                 className="text-2xl tracking-[0.3em] bg-white/10 border-white/20 text-center text-white"
@@ -472,7 +480,7 @@ const KioskMode = () => {
                 pattern="[0-9]*"
                 maxLength={6}
                 value={exitPin}
-                onChange={(e) => setExitPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onChange={(e) => setExitPin(e.target.value.replaceAll(/\D/g, '').slice(0, 6))}
               />
               {exitPinError && <p className="text-xs text-red-500">{exitPinError}</p>}
               <Button onClick={handleExitWithPin} disabled={exitProcessing || exitPin.length < 4}>

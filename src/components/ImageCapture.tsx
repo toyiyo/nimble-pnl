@@ -17,7 +17,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   onImageCaptured,
   onError,
   className,
-  disabled = false
+  disabled = false,
   autoStart = false,
   allowUpload = true
 }) => {

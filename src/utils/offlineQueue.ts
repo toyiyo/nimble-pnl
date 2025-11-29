@@ -1,10 +1,12 @@
 import { supabase } from '@/integrations/supabase/client';
+import { verifyPinForRestaurant } from '@/hooks/useKioskPins';
 
 export type QueuedKioskPunch = {
   id: string;
   payload: {
     restaurant_id: string;
-    employee_id: string;
+    employee_id?: string;
+    pin?: string;
     punch_type: 'clock_in' | 'clock_out';
     punch_time: string;
     notes?: string;
@@ -93,7 +95,21 @@ export const flushQueuedPunches = async (sendPunch: PunchSender) => {
     try {
       const photoBlob =
         entry.payload.photoDataUrl ? await dataUrlToBlob(entry.payload.photoDataUrl) : undefined;
-      await sendPunch({ ...entry.payload, photoBlob });
+
+      let payload = entry.payload;
+      if (!payload.employee_id && payload.pin) {
+        const match = await verifyPinForRestaurant(payload.restaurant_id, payload.pin);
+        if (!match?.employee_id) {
+          throw new Error('PIN not recognized during sync');
+        }
+        payload = { ...payload, employee_id: match.employee_id };
+      }
+
+      if (!payload.employee_id) {
+        throw new Error('Missing employee_id for queued punch');
+      }
+
+      await sendPunch({ ...payload, photoBlob });
       flushed += 1;
     } catch (error) {
       console.warn('Failed to flush kiosk punch, will retry later', error);

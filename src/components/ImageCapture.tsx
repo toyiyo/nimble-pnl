@@ -9,6 +9,8 @@ interface ImageCaptureProps {
   onError?: (error: string) => void;
   className?: string;
   disabled?: boolean;
+  autoStart?: boolean;
+  allowUpload?: boolean;
 }
 
 export const ImageCapture: React.FC<ImageCaptureProps> = ({
@@ -16,6 +18,8 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   onError,
   className,
   disabled = false
+  autoStart = false,
+  allowUpload = true
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -168,6 +172,13 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
     }
   }, [capturedImage]);
 
+  // Auto-start camera when requested
+  React.useEffect(() => {
+    if (autoStart && !isStreaming && hasPermission !== false && !isLoading) {
+      startCamera();
+    }
+  }, [autoStart, isStreaming, hasPermission, isLoading, startCamera]);
+
   return (
     <Card className={cn('w-full max-w-md mx-auto', className)}>
       <CardHeader className="text-center">
@@ -222,6 +233,8 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
                     <p className="text-sm text-muted-foreground">
                       {hasPermission === false
                         ? 'Camera access denied'
+                        : autoStart
+                        ? 'Starting camera...'
                         : 'Ready to start camera'}
                     </p>
                   </div>
@@ -232,35 +245,44 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
             <div className="grid grid-cols-2 gap-2">
               {!isStreaming ? (
                 <>
-                  <Button
-                    onClick={startCamera}
-                    disabled={disabled || hasPermission === false || isLoading}
-                    className="flex-1"
-                  >
-                    {isLoading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Starting...
-                      </>
-                    ) : (
-                      <>
-                        <Camera className="h-4 w-4 mr-2" />
-                        Camera
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      console.log('📁 Opening file picker...');
-                      fileInputRef.current?.click();
-                    }}
-                    disabled={disabled}
-                    className="flex-1"
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload
-                  </Button>
+                  {!autoStart && (
+                    <Button
+                      onClick={startCamera}
+                      disabled={disabled || hasPermission === false || isLoading}
+                      className="flex-1"
+                    >
+                      {isLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Starting...
+                        </>
+                      ) : (
+                        <>
+                          <Camera className="h-4 w-4 mr-2" />
+                          Camera
+                        </>
+                      )}
+                    </Button>
+                  )}
+                  {allowUpload && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        console.log('📁 Opening file picker...');
+                        fileInputRef.current?.click();
+                      }}
+                      disabled={disabled}
+                      className="flex-1"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload
+                    </Button>
+                  )}
+                  {autoStart && !allowUpload && (
+                    <div className="text-xs text-muted-foreground col-span-2 text-center">
+                      Waiting for camera...
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -287,16 +309,18 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
           </div>
         )}
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={(e) => {
-            console.log('📁 File selected:', e.target.files?.[0]?.name);
-            handleFileUpload(e);
-          }}
-          className="hidden"
-        />
+        {allowUpload && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              console.log('📁 File selected:', e.target.files?.[0]?.name);
+              handleFileUpload(e);
+            }}
+            className="hidden"
+          />
+        )}
 
         <canvas ref={canvasRef} className="hidden" />
       </CardContent>

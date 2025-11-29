@@ -204,11 +204,12 @@ const KioskMode = () => {
     } catch (error: any) {
       // Queue offline if network-related or offline detected
       const offline = isLikelyOffline() || (error?.message || '').toLowerCase().includes('fetch');
-      if (offline && restaurantId && pinInput && pinMatch?.employee_id) {
+      if (offline && restaurantId && pinInput) {
         await addQueuedPunch(
           {
             restaurant_id: restaurantId,
-            employee_id: pinMatch.employee_id,
+            employee_id: pinMatch?.employee_id,
+            pin: pinInput,
             punch_type: action,
             punch_time: new Date().toISOString(),
             notes: 'Queued offline (kiosk)',
@@ -314,8 +315,8 @@ const KioskMode = () => {
             </div>
             <div className="flex items-center gap-3">
               <div className="text-right">
-                <div className="text-3xl font-mono">{format(currentTime, 'h:mm:ss a')}</div>
-                <div className="text-xs text-slate-300">{format(currentTime, 'EEEE, MMM d')}</div>
+                <div className="text-3xl font-mono text-white">{format(currentTime, 'h:mm:ss a')}</div>
+                <div className="text-xs text-slate-200">{format(currentTime, 'EEEE, MMM d')}</div>
               </div>
             </div>
           </CardHeader>
@@ -522,6 +523,8 @@ const KioskMode = () => {
               onImageCaptured={(blob) => setCapturedPhotoBlob(blob)}
               onError={(err) => setCameraError(err)}
               disabled={processing}
+              autoStart
+              allowUpload={false}
             />
             {cameraError && <p className="text-xs text-destructive">{cameraError}</p>}
             <div className="space-y-2 text-sm text-muted-foreground">

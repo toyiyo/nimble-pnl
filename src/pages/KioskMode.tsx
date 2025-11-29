@@ -566,6 +566,7 @@ const KioskMode = () => {
             <Button
               onClick={async () => {
                 if (!pendingAction) return;
+                resetCameraState();
                 let blob = capturedPhotoBlob;
                 if (!blob && captureFn) {
                   blob = await captureFn();

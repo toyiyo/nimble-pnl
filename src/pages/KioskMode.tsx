@@ -44,6 +44,9 @@ const KioskMode = () => {
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
   const [exitPassword, setExitPassword] = useState('');
   const [exitError, setExitError] = useState<string | null>(null);
+  const [exitProcessing, setExitProcessing] = useState(false);
+  const [exitPin, setExitPin] = useState('');
+  const [exitPinError, setExitPinError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<{
     name: string;
     punchType: PunchAction;
@@ -228,6 +231,13 @@ const KioskMode = () => {
   };
 
   const handleManagerExit = async () => {
+    // Allow current authenticated manager to exit without password (covers Google auth)
+    if (selectedRestaurant?.role && selectedRestaurant.role !== 'staff') {
+      endSession();
+      navigate('/time-punches');
+      return;
+    }
+
     if (!user?.email) {
       endSession();
       navigate('/time-punches');
@@ -241,6 +251,25 @@ const KioskMode = () => {
     }
     endSession();
     navigate('/time-punches');
+  };
+
+  const handleExitWithPin = async () => {
+    if (!restaurantId) return;
+    setExitPinError(null);
+    setExitProcessing(true);
+    try {
+      const result = await verifyPinForRestaurant(restaurantId, exitPin);
+      if (!result) {
+        setExitPinError('PIN not recognized for this location.');
+        return;
+      }
+      endSession();
+      navigate('/time-punches');
+    } catch (error: any) {
+      setExitPinError(error?.message || 'Unable to validate PIN.');
+    } finally {
+      setExitProcessing(false);
+    }
   };
 
   if (!restaurantId) {
@@ -434,8 +463,38 @@ const KioskMode = () => {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Enter your account password to exit kiosk mode on this device.
+              Managers can exit with their current session, manager PIN, or password.
             </p>
+
+            {selectedRestaurant?.role && selectedRestaurant.role !== 'staff' && (
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                <div>
+                  <div className="font-medium text-sm">Use current session</div>
+                  <p className="text-xs text-muted-foreground">You’re already signed in.</p>
+                </div>
+                <Button size="sm" onClick={handleManagerExit} disabled={exitProcessing}>
+                  Exit now
+                </Button>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="manager_pin">Manager PIN</Label>
+              <Input
+                id="manager_pin"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={exitPin}
+                onChange={(e) => setExitPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              />
+              {exitPinError && <p className="text-xs text-red-500">{exitPinError}</p>}
+              <Button onClick={handleExitWithPin} disabled={exitProcessing || exitPin.length < 4}>
+                {exitProcessing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Exit with PIN
+              </Button>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="manager_password">Password</Label>
               <Input
@@ -445,13 +504,16 @@ const KioskMode = () => {
                 onChange={(e) => setExitPassword(e.target.value)}
               />
               {exitError && <p className="text-xs text-red-500">{exitError}</p>}
+              <Button onClick={handleManagerExit} disabled={exitProcessing}>
+                {exitProcessing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Exit with password
+              </Button>
             </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setExitDialogOpen(false)}>
-              Cancel
+              Close
             </Button>
-            <Button onClick={handleManagerExit}>Exit Kiosk</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

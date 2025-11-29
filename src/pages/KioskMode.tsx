@@ -59,6 +59,7 @@ const KioskMode = () => {
   const [capturedPhotoBlob, setCapturedPhotoBlob] = useState<Blob | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [queuedCount, setQueuedCount] = useState<number>(hasQueuedPunches() ? 1 : 0);
+  const [captureFn, setCaptureFn] = useState<(() => Promise<Blob | null>) | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -91,6 +92,8 @@ const KioskMode = () => {
   const handleSkipPhoto = () => {
     if (pendingAction) {
       handlePunch(pendingAction, null);
+    } else {
+      resetCameraState();
     }
   };
 
@@ -537,6 +540,8 @@ const KioskMode = () => {
               disabled={processing}
               autoStart
               allowUpload={false}
+              hideControls
+              onCaptureRef={(fn) => setCaptureFn(() => fn)}
             />
             {cameraError && <p className="text-xs text-destructive">{cameraError}</p>}
             <div className="space-y-2 text-sm text-muted-foreground">
@@ -555,14 +560,18 @@ const KioskMode = () => {
             </div>
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => setCameraDialogOpen(false)} disabled={processing}>
-              Close
-            </Button>
-            <Button variant="outline" onClick={handleSkipPhoto} disabled={processing || !pendingAction}>
+            <Button variant="outline" onClick={() => { resetCameraState(); }} disabled={processing}>
               Skip photo
             </Button>
             <Button
-              onClick={() => pendingAction && handlePunch(pendingAction, capturedPhotoBlob)}
+              onClick={async () => {
+                if (!pendingAction) return;
+                let blob = capturedPhotoBlob;
+                if (!blob && captureFn) {
+                  blob = await captureFn();
+                }
+                handlePunch(pendingAction, blob);
+              }}
               disabled={processing || !pendingAction}
             >
               {processing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}

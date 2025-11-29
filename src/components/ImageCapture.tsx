@@ -11,6 +11,8 @@ interface ImageCaptureProps {
   disabled?: boolean;
   autoStart?: boolean;
   allowUpload?: boolean;
+  hideControls?: boolean;
+  onCaptureRef?: (capture: () => Promise<Blob | null>) => void;
 }
 
 export const ImageCapture: React.FC<ImageCaptureProps> = ({
@@ -19,7 +21,9 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   className,
   disabled = false,
   autoStart = false,
-  allowUpload = true
+  allowUpload = true,
+  hideControls = false,
+  onCaptureRef,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -108,11 +112,11 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
     setIsLoading(false);
   }, []);
 
-  const capturePhoto = useCallback(() => {
+  const capturePhoto = useCallback(async () => {
     console.log('📸 Capturing photo...');
     if (!videoRef.current || !canvasRef.current) {
       console.error('❌ Missing video or canvas ref');
-      return;
+      return null;
     }
 
     const video = videoRef.current;
@@ -121,7 +125,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
 
     if (!context) {
       console.error('❌ Could not get canvas context');
-      return;
+      return null;
     }
 
     // Make sure video has dimensions
@@ -137,18 +141,22 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
 
     console.log(`📷 Photo captured: ${video.videoWidth}x${video.videoHeight}`);
 
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const imageUrl = URL.createObjectURL(blob);
-        setCapturedImage(imageUrl);
-        onImageCaptured(blob, imageUrl);
-        stopCamera();
-        console.log('✅ Photo processed and callback triggered');
-      } else {
-        console.error('❌ Failed to create blob from canvas');
-        onError?.('Failed to capture photo');
-      }
-    }, 'image/jpeg', 0.8);
+    return new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const imageUrl = URL.createObjectURL(blob);
+          setCapturedImage(imageUrl);
+          onImageCaptured(blob, imageUrl);
+          stopCamera();
+          console.log('✅ Photo processed and callback triggered');
+          resolve(blob);
+        } else {
+          console.error('❌ Failed to create blob from canvas');
+          onError?.('Failed to capture photo');
+          resolve(null);
+        }
+      }, 'image/jpeg', 0.8);
+    });
   }, [onImageCaptured, stopCamera, onError]);
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -178,6 +186,13 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
       startCamera();
     }
   }, [autoStart, isStreaming, hasPermission, isLoading, startCamera]);
+
+  // Expose capture function upward when requested
+  React.useEffect(() => {
+    if (onCaptureRef) {
+      onCaptureRef(capturePhoto);
+    }
+  }, [capturePhoto, onCaptureRef]);
 
   return (
     <Card className={cn('w-full max-w-md mx-auto', className)}>
@@ -250,70 +265,72 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
               })()}
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              {!isStreaming ? (
-                <>
-                  {!autoStart && (
+            {!hideControls && (
+              <div className="grid grid-cols-2 gap-2">
+                {!isStreaming ? (
+                  <>
+                    {!autoStart && (
+                      <Button
+                        onClick={startCamera}
+                        disabled={disabled || hasPermission === false || isLoading}
+                        className="flex-1"
+                      >
+                        {isLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            Starting...
+                          </>
+                        ) : (
+                          <>
+                            <Camera className="h-4 w-4 mr-2" />
+                            Camera
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    {allowUpload && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          console.log('📁 Opening file picker...');
+                          fileInputRef.current?.click();
+                        }}
+                        disabled={disabled}
+                        className="flex-1"
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload
+                      </Button>
+                    )}
+                    {autoStart && !allowUpload && (
+                      <div className="text-xs text-muted-foreground col-span-2 text-center">
+                        Waiting for camera...
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
                     <Button
-                      onClick={startCamera}
-                      disabled={disabled || hasPermission === false || isLoading}
-                      className="flex-1"
-                    >
-                      {isLoading ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                          Starting...
-                        </>
-                      ) : (
-                        <>
-                          <Camera className="h-4 w-4 mr-2" />
-                          Camera
-                        </>
-                      )}
-                    </Button>
-                  )}
-                  {allowUpload && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        console.log('📁 Opening file picker...');
-                        fileInputRef.current?.click();
-                      }}
+                      onClick={capturePhoto}
                       disabled={disabled}
                       className="flex-1"
                     >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload
+                      <Zap className="h-4 w-4 mr-2" />
+                      Capture
                     </Button>
-                  )}
-                  {autoStart && !allowUpload && (
-                    <div className="text-xs text-muted-foreground col-span-2 text-center">
-                      Waiting for camera...
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Button
-                    onClick={capturePhoto}
-                    disabled={disabled}
-                    className="flex-1"
-                  >
-                    <Zap className="h-4 w-4 mr-2" />
-                    Capture
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={stopCamera}
-                    disabled={disabled}
-                    className="flex-1"
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Cancel
-                  </Button>
-                </>
-              )}
-            </div>
+                    <Button
+                      variant="outline"
+                      onClick={stopCamera}
+                      disabled={disabled}
+                      className="flex-1"
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Cancel
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 

@@ -430,6 +430,7 @@ const KioskMode = () => {
                   className="h-16 text-2xl bg-white/10 border-white/10 text-white"
                   onClick={() => handleDigit(digit)}
                   disabled={processing || (lockUntil && lockUntil > Date.now())}
+                  aria-label={`Digit ${digit}`}
                 >
                   {digit}
                 </Button>
@@ -440,6 +441,7 @@ const KioskMode = () => {
                 className="h-16 bg-white/10 border-white/10 text-white"
                 onClick={() => setPinInput('')}
                 disabled={processing}
+                aria-label="Clear PIN"
               >
                 Clear
               </Button>
@@ -449,6 +451,7 @@ const KioskMode = () => {
                 className="h-16 text-2xl bg-white/10 border-white/10 text-white"
                 onClick={() => handleDigit('0')}
                 disabled={processing || (lockUntil && lockUntil > Date.now())}
+                aria-label="Digit 0"
               >
                 0
               </Button>
@@ -458,6 +461,7 @@ const KioskMode = () => {
                 className="h-16 bg-white/10 border-white/10 text-white"
                 onClick={handleBackspace}
                 disabled={processing}
+                aria-label="Backspace"
               >
                 <X className="h-5 w-5" />
               </Button>

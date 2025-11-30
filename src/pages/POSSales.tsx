@@ -1243,6 +1243,7 @@ export default function POSSales() {
                                        }}
                                        placeholder="Select category"
                                        filterByTypes={['revenue', 'liability']}
+                                       autoOpen
                                      />
                                   </div>
                                   <Button

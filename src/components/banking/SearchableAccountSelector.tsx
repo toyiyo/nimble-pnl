@@ -24,6 +24,7 @@ interface SearchableAccountSelectorProps {
   placeholder?: string;
   disabled?: boolean;
   filterByTypes?: string[];
+  autoOpen?: boolean;
 }
 
 export function SearchableAccountSelector({
@@ -32,8 +33,9 @@ export function SearchableAccountSelector({
   placeholder = "Select account",
   disabled = false,
   filterByTypes,
+  autoOpen = false,
 }: SearchableAccountSelectorProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   const { selectedRestaurant } = useRestaurantContext();
   const { accounts, loading } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
 
@@ -92,6 +94,13 @@ export function SearchableAccountSelector({
 
   const isEmpty = !loading && filteredAccounts.length === 0;
   const isDisabled = disabled || loading;
+
+  // Automatically open the popover when requested (e.g., after clicking "Categorize")
+  useEffect(() => {
+    if (autoOpen) {
+      setOpen(true);
+    }
+  }, [autoOpen]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

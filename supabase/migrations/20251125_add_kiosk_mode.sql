@@ -15,6 +15,32 @@ create table if not exists employee_pins (
   updated_at timestamptz not null default now()
 );
 
+-- Enable Row Level Security
+alter table employee_pins enable row level security;
+
+-- Policy: Allow SELECT if user is linked to restaurant
+create policy employee_pins_select on employee_pins
+  for select
+  using (
+    exists (
+      select 1 from user_restaurants ur
+      where ur.restaurant_id = employee_pins.restaurant_id
+        and ur.user_id = auth.uid()
+    )
+  );
+
+-- Policy: Allow INSERT/UPDATE/DELETE only for owners/managers
+create policy employee_pins_manage on employee_pins
+  for all
+  using (
+    exists (
+      select 1 from user_restaurants ur
+      where ur.restaurant_id = employee_pins.restaurant_id
+        and ur.user_id = auth.uid()
+        and ur.role in ('owner', 'manager')
+    )
+  );
+
 create unique index if not exists employee_pins_employee_unique on employee_pins (restaurant_id, employee_id);
 create unique index if not exists employee_pins_pin_unique on employee_pins (restaurant_id, pin_hash);
 create index if not exists employee_pins_last_used_idx on employee_pins (restaurant_id, last_used_at desc nulls last);

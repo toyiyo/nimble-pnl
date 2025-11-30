@@ -10,6 +10,39 @@ create table if not exists manager_pins (
   updated_at timestamptz not null default now()
 );
 
+-- Enable Row Level Security
+alter table manager_pins enable row level security;
+
+-- Policy: Allow SELECT if user is manager_user_id or member of restaurant
+create policy manager_pins_select on manager_pins
+  for select
+  using (
+    auth.uid() = manager_user_id
+    or exists (
+      select 1 from user_restaurants ur
+      where ur.restaurant_id = manager_pins.restaurant_id
+        and ur.user_id = auth.uid()
+    )
+  );
+
+-- Policy: Allow INSERT/UPDATE/DELETE if user is manager_user_id or owner/manager of restaurant
+create policy manager_pins_manage on manager_pins
+  for all
+  using (
+    auth.uid() = manager_user_id
+    or exists (
+      select 1 from user_restaurants ur
+      where ur.restaurant_id = manager_pins.restaurant_id
+        and ur.user_id = auth.uid()
+        and ur.role in ('owner', 'manager')
+    )
+  );
+
+-- Restrictive fallback: Deny all other access
+create policy manager_pins_deny_all on manager_pins
+  for all
+  using (false);
+
 create unique index if not exists manager_pins_user_unique on manager_pins (restaurant_id, manager_user_id);
 create unique index if not exists manager_pins_pin_unique on manager_pins (restaurant_id, pin_hash);
 create index if not exists manager_pins_last_used_idx on manager_pins (restaurant_id, last_used_at desc nulls last);

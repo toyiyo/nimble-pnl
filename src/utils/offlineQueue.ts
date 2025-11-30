@@ -112,7 +112,18 @@ export const flushQueuedPunches = async (sendPunch: PunchSender) => {
         throw new Error('Missing employee_id for queued punch');
       }
 
-      await sendPunch({ ...payload, photoBlob });
+      const { restaurant_id, employee_id, punch_type, punch_time, notes, location, device_info } = payload;
+
+      await sendPunch({
+        restaurant_id,
+        employee_id,
+        punch_type,
+        punch_time,
+        notes,
+        location,
+        device_info,
+        photoBlob,
+      });
       flushed += 1;
     } catch (error) {
       console.warn('Failed to flush kiosk punch, will retry later', error);

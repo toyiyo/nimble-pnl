@@ -66,11 +66,19 @@ const KioskMode = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Only run flushQueuedPunches on mount, but always use the latest mutateAsync
+  const mutateRef = useRef(createPunch.mutateAsync);
+  useEffect(() => {
+    mutateRef.current = createPunch.mutateAsync;
+  }, [createPunch.mutateAsync]);
+
   useEffect(() => {
     flushQueuedPunches(async (payload) => {
-      await createPunch.mutateAsync(payload);
+      await mutateRef.current(payload);
     }).then((result) => setQueuedCount(result.remaining));
-  }, [createPunch]);
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const lockSeconds = useMemo(() => {
     if (!lockUntil) return 0;

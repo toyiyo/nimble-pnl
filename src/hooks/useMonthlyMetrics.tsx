@@ -30,6 +30,66 @@ export interface MonthlyMetrics {
  * ✅ Use this hook for monthly performance tables
  * ❌ Don't use getMonthlyData() from useDailyPnL (incorrect/outdated)
  */
+ 
+
+// useMonthlyMetrics hook defined below
+
+export type MonthlyMapMonth = {
+  period: string;
+  gross_revenue: number; // cents
+  total_collected_at_pos: number; // cents
+  net_revenue: number; // cents
+  discounts: number; // cents
+  refunds: number; // cents
+  sales_tax: number; // cents
+  tips: number; // cents
+  other_liabilities: number; // cents
+  food_cost: number; // cents
+  labor_cost: number; // cents
+  pending_labor_cost: number; // cents
+  actual_labor_cost: number; // cents
+  has_data: boolean;
+};
+
+// Exported helper for classifying adjustments into a month object; used by unit tests
+export function classifyAdjustmentIntoMonth(month: MonthlyMapMonth, adjustment: any) {
+  const priceInCents = Math.round((adjustment.total_price || 0) * 100);
+  const chart = adjustment.chart_account;
+  const isCategorized = !!adjustment.is_categorized && !!chart;
+
+  if (isCategorized) {
+    const subtype = (chart.account_subtype || '').toLowerCase();
+    const accountName = (chart.account_name || '').toLowerCase();
+
+    if ((subtype.includes('sales') && subtype.includes('tax')) || accountName.includes('tax')) {
+      month.sales_tax += priceInCents;
+      return;
+    }
+    if (subtype.includes('tip') || accountName.includes('tip')) {
+      month.tips += priceInCents;
+      return;
+    }
+    month.other_liabilities += priceInCents;
+    return;
+  }
+
+  // Un-categorized: fall back to adjustment_type
+  switch (adjustment.adjustment_type) {
+    case 'tax':
+      month.sales_tax += priceInCents;
+      break;
+    case 'tip':
+      month.tips += priceInCents;
+      break;
+    case 'service_charge':
+    case 'fee':
+      month.other_liabilities += priceInCents;
+      break;
+    case 'discount':
+      month.discounts += Math.abs(priceInCents);
+      break;
+  }
+}  
 export function useMonthlyMetrics(
   restaurantId: string | null,
   dateFrom: Date,
@@ -85,9 +145,24 @@ export function useMonthlyMetrics(
       if (salesError) throw salesError;
 
       // Fetch adjustments separately (Square/Clover pass-through items)
+      // Include category/chart_account when present so categorized adjustments
+      // can be classified by their chart account (sales_tax/tips/other liabilities).
       const { data: adjustmentsData, error: adjustmentsError } = await supabase
         .from('unified_sales')
-        .select('sale_date, adjustment_type, total_price')
+        .select(`
+          sale_date,
+          adjustment_type,
+          total_price,
+          is_categorized,
+          category_id,
+          chart_account:chart_of_accounts!category_id(
+            id,
+            account_code,
+            account_name,
+            account_type,
+            account_subtype
+          )
+        `)
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
@@ -275,8 +350,8 @@ export function useMonthlyMetrics(
         console.groupEnd();
       }
 
-      // Process adjustments (Square/Clover pass-through items)
-      adjustmentsData?.forEach((adjustment) => {
+  // Process adjustments (Square/Clover pass-through items)
+  adjustmentsData?.forEach((adjustment) => {
         const adjustmentDate = normalizeToLocalDate(adjustment.sale_date, 'adjustment.sale_date');
         if (!adjustmentDate) {
           return;
@@ -305,24 +380,10 @@ export function useMonthlyMetrics(
         const month = monthlyMap.get(monthKey)!;
         month.has_data = true;
 
-        // Categorize based on adjustment_type
-        const priceInCents = Math.round(adjustment.total_price * 100);
-        
-        switch (adjustment.adjustment_type) {
-          case 'tax':
-            month.sales_tax += priceInCents;
-            break;
-          case 'tip':
-            month.tips += priceInCents;
-            break;
-          case 'service_charge':
-          case 'fee':
-            month.other_liabilities += priceInCents;
-            break;
-          case 'discount':
-            month.discounts += Math.abs(priceInCents);
-            break;
-        }
+
+
+          // Use shared helper to classify and add adjustment to the month object
+          classifyAdjustmentIntoMonth(month as any, adjustment as any);
       });
 
       // Fetch COGS (Cost of Goods Used) from inventory_transactions (source of truth)

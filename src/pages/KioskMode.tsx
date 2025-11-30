@@ -136,17 +136,50 @@ const KioskMode = () => {
     }
   };
 
-  const handlePunch = async (action: PunchAction, photoBlob?: Blob | null) => {
+  // Helper: Validate PIN and lock state
+  const validatePinInput = (): string | null => {
     if (!restaurantId) {
-      setErrorMessage('Kiosk is not tied to a location. Ask a manager to relaunch from Time Punches.');
-      return;
+      return 'Kiosk is not tied to a location. Ask a manager to relaunch from Time Punches.';
     }
     if (lockUntil && lockUntil > Date.now()) {
-      setErrorMessage('Locked due to failed attempts. Please wait a moment.');
-      return;
+      return 'Locked due to failed attempts. Please wait a moment.';
     }
     if (pinInput.length < minLength) {
-      setErrorMessage(`PIN must be at least ${minLength} digits.`);
+      return `PIN must be at least ${minLength} digits.`;
+    }
+    return null;
+  };
+
+  // Helper: Validate punch status
+  const validatePunchStatus = (status: any, action: PunchAction): string | null => {
+    if (action === 'clock_in' && status?.is_clocked_in) {
+      return 'You are already clocked in.';
+    }
+    if (action === 'clock_out' && !status?.is_clocked_in) {
+      return 'No open shift to clock out.';
+    }
+    return null;
+  };
+
+  // Helper: Handle offline queue
+  const handleOfflineQueue = async (
+    action: PunchAction,
+    pin: string,
+    context: Awaited<ReturnType<typeof collectPunchContext>> | null,
+    employeeId?: string
+  ) => {
+    const offline = isLikelyOffline();
+    if (offline && pin) {
+      await queuePunchOffline(action, pin, context, employeeId);
+      return true;
+    }
+    return false;
+  };
+
+  const handlePunch = async (action: PunchAction, photoBlob?: Blob | null) => {
+    const pinError = validatePinInput();
+    if (pinError) {
+      setErrorMessage(pinError);
       return;
     }
 
@@ -165,13 +198,9 @@ const KioskMode = () => {
       }
 
       const status = await fetchPunchStatus(pinMatch.employee_id);
-
-      if (action === 'clock_in' && status?.is_clocked_in) {
-        setErrorMessage('You are already clocked in.');
-        return;
-      }
-      if (action === 'clock_out' && !status?.is_clocked_in) {
-        setErrorMessage('No open shift to clock out.');
+      const statusError = validatePunchStatus(status, action);
+      if (statusError) {
+        setErrorMessage(statusError);
         return;
       }
 
@@ -210,10 +239,8 @@ const KioskMode = () => {
         }).then((result) => setQueuedCount(result.remaining));
       }
     } catch (error: any) {
-      const offline = isLikelyOffline() || (error?.message || '').toLowerCase().includes('fetch');
-      if (offline && pinInput) {
-        await queuePunchOffline(action, pinInput, context, pinMatch?.employee_id);
-      } else {
+      const handledOffline = await handleOfflineQueue(action, pinInput, context, pinMatch?.employee_id);
+      if (!handledOffline) {
         setErrorMessage(error?.message || 'Unable to record punch.');
         resetCameraState();
       }

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
+import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales } from './utils/passThroughAdjustments';
 
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'
@@ -170,17 +171,21 @@ export function useMonthlyMetrics(
 
       if (adjustmentsError) throw adjustmentsError;
 
+      // Split out pass-through rows that may have been ingested without adjustment_type
+      const { revenue: revenueSales, passThrough: passThroughSales } = splitPassThroughSales(salesData);
+
       // Filter out parent sales that have been split into children
       // Include: unsplit sales (no children) + all child splits
       const parentIdsWithChildren = new Set(
-        salesData
+        revenueSales
           ?.filter((s: any) => s.parent_sale_id !== null)
           .map((s: any) => s.parent_sale_id) || []
       );
 
-      const filteredSales = salesData?.filter((s: any) => 
+      const filteredSales = revenueSales?.filter((s: any) => 
         !parentIdsWithChildren.has(s.id)
       ) || [];
+      const allAdjustments = normalizeAdjustmentsWithPassThrough(adjustmentsData, passThroughSales);
 
       // Group sales by month and categorize
       const monthlyMap = new Map<string, MonthlyMetrics>();
@@ -351,7 +356,7 @@ export function useMonthlyMetrics(
       }
 
   // Process adjustments (Square/Clover pass-through items)
-  adjustmentsData?.forEach((adjustment) => {
+  allAdjustments?.forEach((adjustment) => {
         const adjustmentDate = normalizeToLocalDate(adjustment.sale_date, 'adjustment.sale_date');
         if (!adjustmentDate) {
           return;

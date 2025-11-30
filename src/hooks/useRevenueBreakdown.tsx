@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales } from './utils/passThroughAdjustments';
 
 export interface RevenueCategory {
   account_id: string;
@@ -140,17 +141,22 @@ export function useRevenueBreakdown(
 
       if (adjustmentsError) throw adjustmentsError;
 
+      // Split out pass-through rows that may have been ingested without adjustment_type
+      const { revenue: revenueSales, passThrough: passThroughSales } = splitPassThroughSales(sales);
+
       // Filter out parent sales that have been split into children
       // Include: unsplit sales (no children) + all child splits
       const parentIdsWithChildren = new Set(
-        sales
+        revenueSales
           ?.filter((s: any) => s.parent_sale_id !== null)
           .map((s: any) => s.parent_sale_id) || []
       );
 
-      const filteredSales = sales?.filter((s: any) => 
+      const filteredSales = revenueSales?.filter((s: any) => 
         !parentIdsWithChildren.has(s.id)
       ) || [];
+
+      const allAdjustments = normalizeAdjustmentsWithPassThrough(adjustments, passThroughSales);
 
       const totalCount = filteredSales.length;
 
@@ -245,7 +251,7 @@ export function useRevenueBreakdown(
       // Merge categorized adjustments into the categories map so they appear in
       // the categorized lists (tax, tips, other liabilities). This keeps totals
       // unchanged but improves visibility for categorized pass-through items.
-      mergeCategorizedAdjustments(categoryMap, adjustments);
+      mergeCategorizedAdjustments(categoryMap, allAdjustments);
 
       const categories = Array.from(categoryMap.values());
 
@@ -303,23 +309,23 @@ export function useRevenueBreakdown(
       const totalOtherLiabilitiesC = otherLiabilityCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
 
       // Add adjustments from adjustment_type column (Square, Clover pass-through items)
-      const adjustmentTaxC = (adjustments || [])
+      const adjustmentTaxC = (allAdjustments || [])
         .filter(a => a.adjustment_type === 'tax')
         .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
       
-      const adjustmentTipsC = (adjustments || [])
+      const adjustmentTipsC = (allAdjustments || [])
         .filter(a => a.adjustment_type === 'tip')
         .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
       
-      const adjustmentServiceChargeC = (adjustments || [])
+      const adjustmentServiceChargeC = (allAdjustments || [])
         .filter(a => a.adjustment_type === 'service_charge')
         .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
       
-      const adjustmentDiscountsC = (adjustments || [])
+      const adjustmentDiscountsC = (allAdjustments || [])
         .filter(a => a.adjustment_type === 'discount')
         .reduce((sum, a) => sum + Math.abs(toC(a.total_price || 0)), 0);
       
-      const adjustmentFeesC = (adjustments || [])
+      const adjustmentFeesC = (allAdjustments || [])
         .filter(a => a.adjustment_type === 'fee')
         .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
 
@@ -330,7 +336,7 @@ export function useRevenueBreakdown(
         adjustmentsBreakdown.push({
           adjustment_type: 'tax',
           total_amount: fromC(adjustmentTaxC),
-          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'tax').length,
+          transaction_count: (allAdjustments || []).filter(a => a.adjustment_type === 'tax').length,
         });
       }
       
@@ -338,7 +344,7 @@ export function useRevenueBreakdown(
         adjustmentsBreakdown.push({
           adjustment_type: 'tip',
           total_amount: fromC(adjustmentTipsC),
-          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'tip').length,
+          transaction_count: (allAdjustments || []).filter(a => a.adjustment_type === 'tip').length,
         });
       }
       
@@ -346,7 +352,7 @@ export function useRevenueBreakdown(
         adjustmentsBreakdown.push({
           adjustment_type: 'service_charge',
           total_amount: fromC(adjustmentServiceChargeC),
-          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'service_charge').length,
+          transaction_count: (allAdjustments || []).filter(a => a.adjustment_type === 'service_charge').length,
         });
       }
       
@@ -354,7 +360,7 @@ export function useRevenueBreakdown(
         adjustmentsBreakdown.push({
           adjustment_type: 'fee',
           total_amount: fromC(adjustmentFeesC),
-          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'fee').length,
+          transaction_count: (allAdjustments || []).filter(a => a.adjustment_type === 'fee').length,
         });
       }
       
@@ -362,7 +368,7 @@ export function useRevenueBreakdown(
         adjustmentsBreakdown.push({
           adjustment_type: 'discount',
           total_amount: fromC(adjustmentDiscountsC),
-          transaction_count: (adjustments || []).filter(a => a.adjustment_type === 'discount').length,
+          transaction_count: (allAdjustments || []).filter(a => a.adjustment_type === 'discount').length,
         });
       }
 

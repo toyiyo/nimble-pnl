@@ -42,6 +42,33 @@ export interface RevenueBreakdownData {
   categorization_rate: number;
 }
 
+// Helper: merge categorized adjustments into a category map (exported for tests)
+export function mergeCategorizedAdjustments(
+  categoryMap: Map<string, RevenueCategory>,
+  adjustments: any[] | null
+) {
+  const categorizedAdjustments = (adjustments || []).filter((a: any) => a.is_categorized && a.chart_account);
+  categorizedAdjustments.forEach((adj: any) => {
+    const key = `${adj.chart_account.id}-${adj.adjustment_type || 'adjustment'}`;
+    const existing = categoryMap.get(key);
+
+    if (existing) {
+      existing.total_amount += adj.total_price || 0;
+      existing.transaction_count += 1;
+    } else {
+      categoryMap.set(key, {
+        account_id: adj.chart_account.id,
+        account_code: adj.chart_account.account_code,
+        account_name: adj.chart_account.account_name,
+        account_type: adj.chart_account.account_type,
+        account_subtype: adj.chart_account.account_subtype,
+        total_amount: adj.total_price || 0,
+        transaction_count: 1,
+      });
+    }
+  });
+}
+
 export function useRevenueBreakdown(
   restaurantId: string | null, 
   dateFrom: Date, 
@@ -92,7 +119,20 @@ export function useRevenueBreakdown(
       // Query adjustments separately (tax, tips, service charges, discounts, fees)
       const { data: adjustments, error: adjustmentsError } = await supabase
         .from('unified_sales')
-        .select('adjustment_type, total_price')
+        .select(`
+          id,
+          adjustment_type,
+          total_price,
+          is_categorized,
+          category_id,
+          chart_account:chart_of_accounts!category_id (
+            id,
+            account_code,
+            account_name,
+            account_type,
+            account_subtype
+          )
+        `)
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', fromStr)
         .lte('sale_date', toStr)
@@ -177,7 +217,7 @@ export function useRevenueBreakdown(
         };
       }
 
-      // Group by account and item type (only categorized sales)
+  // Group by account and item type (only categorized sales + categorized adjustments merged)
       const categoryMap = new Map<string, RevenueCategory>();
 
       categorizedSales.forEach((sale: any) => {
@@ -201,6 +241,11 @@ export function useRevenueBreakdown(
           });
         }
       });
+
+      // Merge categorized adjustments into the categories map so they appear in
+      // the categorized lists (tax, tips, other liabilities). This keeps totals
+      // unchanged but improves visibility for categorized pass-through items.
+      mergeCategorizedAdjustments(categoryMap, adjustments);
 
       const categories = Array.from(categoryMap.values());
 

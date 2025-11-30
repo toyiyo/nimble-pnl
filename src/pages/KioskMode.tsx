@@ -568,7 +568,7 @@ const KioskMode = () => {
             </div>
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => { resetCameraState(); }} disabled={processing}>
+            <Button variant="outline" onClick={handleSkipPhoto} disabled={processing}>
               Skip photo
             </Button>
             <Button

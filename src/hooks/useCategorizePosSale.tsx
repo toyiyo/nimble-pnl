@@ -30,24 +30,32 @@ export const useCategorizePosSale = (restaurantId: string | null) => {
       // Snapshot the previous value
       const previousSales = queryClient.getQueryData(['unified-sales', restaurantId]);
 
-      // Optimistically update the cache
+      // Optimistically update the cache for the infinite query shape
       queryClient.setQueryData(['unified-sales', restaurantId], (old: any) => {
-        if (!old) return old;
-        
-        return old.map((sale: any) => {
-          if (sale.id === saleId) {
-            return {
-              ...sale,
-              category_id: categoryId,
-              is_categorized: true,
-              suggested_category_id: null,
-              ai_confidence: null,
-              ai_reasoning: null,
-              chart_account: accountInfo || sale.chart_account,
-            };
-          }
-          return sale;
-        });
+        if (!old?.pages) return old;
+
+        return {
+          ...old,
+          pages: old.pages.map((page: any) => ({
+            ...page,
+            sales: Array.isArray(page.sales)
+              ? page.sales.map((sale: any) => {
+                  if (sale.id === saleId) {
+                    return {
+                      ...sale,
+                      category_id: categoryId,
+                      is_categorized: true,
+                      suggested_category_id: null,
+                      ai_confidence: null,
+                      ai_reasoning: null,
+                      chart_account: accountInfo || sale.chart_account,
+                    };
+                  }
+                  return sale;
+                })
+              : page.sales,
+          })),
+        };
       });
 
       return { previousSales };

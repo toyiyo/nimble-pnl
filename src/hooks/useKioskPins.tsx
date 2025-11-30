@@ -145,7 +145,7 @@ export const useDeleteEmployeePin = () => {
 
   return useMutation({
     mutationFn: async ({ id, restaurant_id }: { id: string; restaurant_id: string }) => {
-      const { error } = await supabase.from('employee_pins').delete().eq('id', id);
+      const { error } = await supabase.from('employee_pins').delete().match({ id, restaurant_id });
       if (error) throw error;
       return { restaurant_id };
     },

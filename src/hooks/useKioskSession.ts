@@ -22,7 +22,16 @@ export const useKioskSession = () => {
   useEffect(() => {
     const handler = (event: StorageEvent) => {
       if (event.key === KIOSK_SESSION_KEY) {
-        setSession(event.newValue ? (JSON.parse(event.newValue) as KioskSessionToken) : null);
+        if (event.newValue) {
+          try {
+            setSession(JSON.parse(event.newValue) as KioskSessionToken);
+          } catch (err) {
+            console.warn('Failed to parse KioskSessionToken from storage event:', err);
+            setSession(null);
+          }
+        } else {
+          setSession(null);
+        }
       }
     };
     globalThis?.addEventListener?.('storage', handler);

@@ -6,7 +6,7 @@ export type QueuedKioskPunch = {
   payload: {
     restaurant_id: string;
     employee_id?: string;
-    pin?: string;
+    pin_hash?: string; // Store only hashed PIN, never raw PIN
     punch_type: 'clock_in' | 'clock_out';
     punch_time: string;
     notes?: string;
@@ -66,6 +66,10 @@ export const addQueuedPunch = async (
   payload: QueuedKioskPunch['payload'],
   photoBlob?: Blob | null
 ) => {
+  // Security: Never allow raw PIN in queue
+  if ('pin' in payload) {
+    throw new Error('Raw PIN must not be stored in offline queue. Hash PIN before queueing.');
+  }
   const queue = loadQueue();
   let photoDataUrl: string | null | undefined = payload.photoDataUrl ?? null;
   if (!photoDataUrl && photoBlob) {
@@ -99,15 +103,8 @@ export const flushQueuedPunches = async (sendPunch: PunchSender) => {
       const photoBlob =
         entry.payload.photoDataUrl ? await dataUrlToBlob(entry.payload.photoDataUrl) : undefined;
 
-      let payload = entry.payload;
-      if (!payload.employee_id && payload.pin) {
-        const match = await verifyPinForRestaurant(payload.restaurant_id, payload.pin);
-        if (!match?.employee_id) {
-          throw new Error('PIN not recognized during sync');
-        }
-        payload = { ...payload, employee_id: match.employee_id };
-      }
-
+      const payload = entry.payload;
+      // Security: PIN verification must happen before queueing, not during flush
       if (!payload.employee_id) {
         throw new Error('Missing employee_id for queued punch');
       }

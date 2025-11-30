@@ -54,7 +54,11 @@ export default function POSSales() {
     getSalesGroupedByItem,
     unmappedItems,
     deleteManualSale,
-  } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
+  } = useUnifiedSales(selectedRestaurant?.restaurant_id || null, {
+    searchTerm,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+  });
   const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(
     selectedRestaurant?.restaurant_id || null,
   );

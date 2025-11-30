@@ -80,6 +80,11 @@ BEGIN
 
       IF v_split_result.success THEN
         v_applied_count := v_applied_count + 1;
+        UPDATE categorization_rules
+        SET 
+          apply_count = apply_count + 1,
+          last_applied_at = now()
+        WHERE id = v_sale.rule_id;
       ELSE
         RAISE NOTICE 'Failed to split sale %: %', v_sale.id, v_split_result.message;
       END IF;
@@ -91,14 +96,12 @@ BEGIN
         updated_at = now()
       WHERE id = v_sale.id;
       v_applied_count := v_applied_count + 1;
+      UPDATE categorization_rules
+      SET 
+        apply_count = apply_count + 1,
+        last_applied_at = now()
+      WHERE id = v_sale.rule_id;
     END IF;
-
-    -- Update rule statistics
-    UPDATE categorization_rules
-    SET 
-      apply_count = apply_count + 1,
-      last_applied_at = now()
-    WHERE id = v_sale.rule_id;
   END LOOP;
   
   RETURN QUERY SELECT v_applied_count, v_total_count;
@@ -188,6 +191,11 @@ BEGIN
 
       IF v_split_result->>'success' = 'true' THEN
         v_applied_count := v_applied_count + 1;
+        UPDATE categorization_rules
+        SET 
+          apply_count = apply_count + 1,
+          last_applied_at = now()
+        WHERE id = v_transaction.rule_id;
       ELSE
         RAISE NOTICE 'Failed to split transaction %: %', v_transaction.id, v_split_result->>'message';
       END IF;
@@ -200,14 +208,12 @@ BEGIN
         v_transaction.supplier_id
       );
       v_applied_count := v_applied_count + 1;
+      UPDATE categorization_rules
+      SET 
+        apply_count = apply_count + 1,
+        last_applied_at = now()
+      WHERE id = v_transaction.rule_id;
     END IF;
-
-    -- Update rule statistics
-    UPDATE categorization_rules
-    SET 
-      apply_count = apply_count + 1,
-      last_applied_at = now()
-    WHERE id = v_transaction.rule_id;
   END LOOP;
   
   RETURN QUERY SELECT v_applied_count, v_total_count;

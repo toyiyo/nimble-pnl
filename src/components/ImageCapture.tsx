@@ -1,3 +1,10 @@
+declare global {
+  interface ImportMeta {
+    env: {
+      DEV?: boolean;
+    };
+  }
+}
 import React, { useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,7 +42,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   const [videoReady, setVideoReady] = useState(false);
 
   const startCamera = useCallback(async () => {
-    console.log('🎥 Starting camera...');
+  if (import.meta.env.DEV) { console.log('🎥 Starting camera...'); }
     setIsLoading(true);
 
     try {
@@ -47,22 +54,22 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
         }
       });
 
-      console.log('📹 Got media stream:', stream.id);
+  if (import.meta.env.DEV) { console.log('📹 Got media stream:', stream.id); }
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
         // Set up event handlers
         const handleLoadedMetadata = () => {
-          console.log('🎬 Video metadata loaded');
+          if (import.meta.env.DEV) { console.log('🎬 Video metadata loaded'); }
           if (videoRef.current) {
             videoRef.current.play().then(() => {
-              console.log('▶️ Video playing');
+              if (import.meta.env.DEV) { console.log('▶️ Video playing'); }
               setIsStreaming(true);
               setHasPermission(true);
               setIsLoading(false);
             }).catch((error) => {
-              console.error('❌ Video play error:', error);
+              if (import.meta.env.DEV) { console.error('❌ Video play error:', error); }
               onError?.(`Video play failed: ${error.message}`);
               setIsLoading(false);
             });
@@ -70,7 +77,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
         };
 
         const handleVideoError = (error: any) => {
-          console.error('❌ Video error:', error);
+          if (import.meta.env.DEV) { console.error('❌ Video error:', error); }
           onError?.('Video failed to load');
           setIsLoading(false);
         };
@@ -81,17 +88,17 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
         // Fallback timeout in case metadata never loads
         setTimeout(() => {
           if (videoRef.current && videoRef.current.readyState >= 1) {
-            console.log('🕒 Fallback: Video ready via timeout');
+            if (import.meta.env.DEV) { console.log('🕒 Fallback: Video ready via timeout'); }
             handleLoadedMetadata();
           } else if (isLoading) {
-            console.log('🕒 Timeout: Stopping loading spinner');
+            if (import.meta.env.DEV) { console.log('🕒 Timeout: Stopping loading spinner'); }
             setIsLoading(false);
             onError?.('Camera initialization timed out');
           }
         }, 5000);
       }
     } catch (error: any) {
-      console.error('❌ Camera access error:', error);
+  if (import.meta.env.DEV) { console.error('❌ Camera access error:', error); }
       setHasPermission(false);
       setIsLoading(false);
       onError?.(error.message);
@@ -99,12 +106,12 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   }, [onError]);
 
   const stopCamera = useCallback(() => {
-    console.log('🛑 Stopping camera...');
+  if (import.meta.env.DEV) { console.log('🛑 Stopping camera...'); }
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
       stream.getTracks().forEach(track => {
         track.stop();
-        console.log('📹 Stopped track:', track.kind);
+  if (import.meta.env.DEV) { console.log('📹 Stopped track:', track.kind); }
       });
       videoRef.current.srcObject = null;
     }
@@ -113,10 +120,10 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   }, []);
 
   const capturePhoto = useCallback(async () => {
-    console.log('📸 Capturing photo...');
+  if (import.meta.env.DEV) { console.log('📸 Capturing photo...'); }
     if (!videoRef.current || !canvasRef.current) {
-      console.error('❌ Missing video or canvas ref');
-      return null;
+  if (import.meta.env.DEV) { console.error('❌ Missing video or canvas ref'); }
+  return null;
     }
 
     const video = videoRef.current;
@@ -124,22 +131,22 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
     const context = canvas.getContext('2d');
 
     if (!context) {
-      console.error('❌ Could not get canvas context');
-      return null;
+  if (import.meta.env.DEV) { console.error('❌ Could not get canvas context'); }
+  return null;
     }
 
     // Make sure video has dimensions
     if (video.videoWidth === 0 || video.videoHeight === 0) {
-      console.error('❌ Video has no dimensions');
-      onError?.('Camera not ready. Please try again.');
-      return;
+  if (import.meta.env.DEV) { console.error('❌ Video has no dimensions'); }
+  onError?.('Camera not ready. Please try again.');
+  return null;
     }
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0);
 
-    console.log(`📷 Photo captured: ${video.videoWidth}x${video.videoHeight}`);
+  if (import.meta.env.DEV) { console.log(`📷 Photo captured: ${video.videoWidth}x${video.videoHeight}`); }
 
     return new Promise<Blob | null>((resolve) => {
       canvas.toBlob((blob) => {
@@ -148,10 +155,10 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
           setCapturedImage(imageUrl);
           onImageCaptured(blob, imageUrl);
           stopCamera();
-          console.log('✅ Photo processed and callback triggered');
+          if (import.meta.env.DEV) { console.log('✅ Photo processed and callback triggered'); }
           resolve(blob);
         } else {
-          console.error('❌ Failed to create blob from canvas');
+          if (import.meta.env.DEV) { console.error('❌ Failed to create blob from canvas'); }
           onError?.('Failed to capture photo');
           resolve(null);
         }
@@ -292,7 +299,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
                       <Button
                         variant="outline"
                         onClick={() => {
-                          console.log('📁 Opening file picker...');
+                          if (import.meta.env.DEV) { console.log('📁 Opening file picker...'); }
                           fileInputRef.current?.click();
                         }}
                         disabled={disabled}
@@ -340,7 +347,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
             type="file"
             accept="image/*"
             onChange={(e) => {
-              console.log('📁 File selected:', e.target.files?.[0]?.name);
+              if (import.meta.env.DEV) { console.log('📁 File selected:', e.target.files?.[0]?.name); }
               handleFileUpload(e);
             }}
             className="hidden"

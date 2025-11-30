@@ -1370,6 +1370,104 @@ export type Database = {
           },
         ]
       }
+      employee_pins: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          employee_id: string
+          force_reset: boolean
+          id: string
+          last_used_at: string | null
+          min_length: number
+          pin_hash: string
+          restaurant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          employee_id: string
+          force_reset?: boolean
+          id?: string
+          last_used_at?: string | null
+          min_length?: number
+          pin_hash: string
+          restaurant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          employee_id?: string
+          force_reset?: boolean
+          id?: string
+          last_used_at?: string | null
+          min_length?: number
+          pin_hash?: string
+          restaurant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_pins_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_pins_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+          referencedColumns: ["id"]
+        },
+      ]
+    }
+      manager_pins: {
+        Row: {
+          created_at: string
+          id: string
+          last_used_at: string | null
+          manager_user_id: string
+          min_length: number
+          pin_hash: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          manager_user_id: string
+          min_length?: number
+          pin_hash: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          manager_user_id?: string
+          min_length?: number
+          pin_hash?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manager_pins_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employees: {
         Row: {
           created_at: string | null

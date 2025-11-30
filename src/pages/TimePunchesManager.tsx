@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { 
   Clock, Trash2, Edit, Download, Search, Camera, MapPin, Eye,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table as TableIcon,
-  LayoutGrid, BarChart3, List, Code
+  LayoutGrid, BarChart3, List, Code, Shield, KeyRound, TabletSmartphone, Unlock
 } from 'lucide-react';
 import { 
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
@@ -37,6 +38,14 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { TimePunch } from '@/types/timeTracking';
 import { cn } from '@/lib/utils';
 import { processPunchesForPeriod } from '@/utils/timePunchProcessing';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { useKioskSession } from '@/hooks/useKioskSession';
+import { useEmployeePins, useUpsertEmployeePin, EmployeePinWithEmployee } from '@/hooks/useKioskPins';
+import { KIOSK_POLICY_KEY, generateNumericPin, loadFromStorage, saveToStorage, isSimpleSequence } from '@/utils/kiosk';
+import { Switch } from '@/components/ui/switch';
+import { Employee } from '@/types/scheduling';
+import { useManagerPin, useUpsertManagerPin } from '@/hooks/useManagerPins';
 import {
   TimelineGanttView,
   EmployeeCardView,
@@ -53,6 +62,14 @@ type VisualizationMode = 'gantt' | 'cards' | 'barcode' | 'stream' | 'receipt';
 const TimePunchesManager = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const { session: kioskSession, startSession, endSession } = useKioskSession();
+  const { pins, loading: pinsLoading } = useEmployeePins(restaurantId);
+  const upsertPin = useUpsertEmployeePin();
+  const { pin: managerPin } = useManagerPin(restaurantId, user?.id);
+  const upsertManagerPin = useUpsertManagerPin();
 
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const [visualizationMode, setVisualizationMode] = useState<VisualizationMode>('gantt');
@@ -69,6 +86,165 @@ const TimePunchesManager = () => {
   const [tableOpen, setTableOpen] = useState(false);
   const [photoThumbnails, setPhotoThumbnails] = useState<Record<string, string>>({});
   const [signedUrlCache, setSignedUrlCache] = useState<Record<string, { url: string; expiresAt: number }>>({});
+  const [pinDialogEmployee, setPinDialogEmployee] = useState<Employee | null>(null);
+  const [pinValue, setPinValue] = useState('');
+  const [pinForceReset, setPinForceReset] = useState(false);
+  const [lastSavedPin, setLastSavedPin] = useState<string | null>(null);
+  const [managerPinValue, setManagerPinValue] = useState('');
+  const [managerPinSaved, setManagerPinSaved] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (managerPin) {
+      setManagerPinSaved('PIN on file');
+    }
+  }, [managerPin]);
+  const [pinPolicy, setPinPolicy] = useState({
+    minLength: 4,
+    forceResetOnNext: false,
+    allowSimpleSequences: false,
+    requireManagerPin: true,
+  });
+  const kioskPolicyStorageKey = restaurantId ? `${KIOSK_POLICY_KEY}_${restaurantId}` : KIOSK_POLICY_KEY;
+  const kioskActiveForLocation = kioskSession?.kiosk_mode && kioskSession.location_id === restaurantId;
+  const isManager = selectedRestaurant?.role && selectedRestaurant.role !== 'staff';
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    const stored = loadFromStorage<typeof pinPolicy>(kioskPolicyStorageKey);
+    if (stored) {
+      setPinPolicy((prev) => ({ ...prev, ...stored }));
+    }
+  }, [restaurantId, kioskPolicyStorageKey]);
+
+  const persistPolicy = (updates: Partial<typeof pinPolicy>) => {
+    const nextPolicy = { ...pinPolicy, ...updates };
+    setPinPolicy(nextPolicy);
+    if (restaurantId) {
+      saveToStorage(kioskPolicyStorageKey, nextPolicy);
+    }
+  };
+
+  const pinLookup = useMemo(() => {
+    const map = new Map<string, EmployeePinWithEmployee>();
+    pins.forEach((pin) => map.set(pin.employee_id, pin));
+    return map;
+  }, [pins]);
+
+  const generatePolicyPin = () => {
+    let candidate = generateNumericPin(pinPolicy.minLength);
+    let attempts = 0;
+    while (!pinPolicy.allowSimpleSequences && isSimpleSequence(candidate) && attempts < 6) {
+      candidate = generateNumericPin(pinPolicy.minLength);
+      attempts++;
+    }
+    return candidate;
+  };
+
+  const openPinDialog = (employee: Employee) => {
+    setPinDialogEmployee(employee);
+    setPinForceReset(pinPolicy.forceResetOnNext);
+    setPinValue(generatePolicyPin());
+    setLastSavedPin(null);
+  };
+
+  const closePinDialog = () => {
+    setPinDialogEmployee(null);
+    setPinValue('');
+    setLastSavedPin(null);
+  };
+
+  const handleSavePin = async () => {
+    if (!restaurantId || !pinDialogEmployee) return;
+    try {
+      const result = await upsertPin.mutateAsync({
+        restaurant_id: restaurantId,
+        employee_id: pinDialogEmployee.id,
+        pin: pinValue,
+        min_length: pinPolicy.minLength,
+        force_reset: pinForceReset,
+        allowSimpleSequence: pinPolicy.allowSimpleSequences,
+      });
+      setLastSavedPin(result.pin);
+      toast({
+        title: 'PIN saved',
+        description: `Share this PIN with ${pinDialogEmployee.name} securely.`,
+      });
+    } catch (error) {
+      console.error('Error saving PIN', error);
+    }
+  };
+
+  const handleAutoGeneratePins = async () => {
+    if (!restaurantId) return;
+    const missing = employees.filter((emp) => !pinLookup.get(emp.id));
+    if (missing.length === 0) {
+      toast({
+        title: 'All employees covered',
+        description: 'Every active employee already has a PIN.',
+      });
+      return;
+    }
+
+    let generated = 0;
+    for (const emp of missing) {
+      const candidate = generatePolicyPin();
+      try {
+        await upsertPin.mutateAsync({
+          restaurant_id: restaurantId,
+          employee_id: emp.id,
+          pin: candidate,
+          min_length: pinPolicy.minLength,
+          force_reset: pinPolicy.forceResetOnNext,
+          allowSimpleSequence: pinPolicy.allowSimpleSequences,
+        });
+        generated += 1;
+      } catch (error) {
+        console.error('Error generating PIN', error);
+        break;
+      }
+    }
+
+    if (generated > 0) {
+      toast({
+        title: 'PINs generated',
+        description: `Created PINs for ${generated} employee${generated === 1 ? '' : 's'}.`,
+      });
+    }
+  };
+
+  const handleLaunchKiosk = async () => {
+    if (!restaurantId) return;
+    try {
+      await startSession(restaurantId, user?.id || 'manager', {
+        requireManagerPin: pinPolicy.requireManagerPin,
+        minLength: pinPolicy.minLength,
+      });
+      toast({
+        title: 'Kiosk ready',
+        description: 'This device is locked to PIN-only timeclock.',
+      });
+      navigate('/kiosk');
+    } catch (error: any) {
+      toast({
+        title: 'Could not launch kiosk',
+        description: error?.message || 'Check your connection and try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleExitKiosk = () => {
+    endSession();
+    toast({
+      title: 'Kiosk exited',
+      description: 'Navigation is unlocked for this device.',
+    });
+  };
+
+  const pinTooShort = pinDialogEmployee ? pinValue.length < pinPolicy.minLength : false;
+  const pinLooksSimple = pinDialogEmployee
+    ? isSimpleSequence(pinValue) && !pinPolicy.allowSimpleSequences
+    : false;
 
   // Calculate date range based on view mode
   const dateRange = useMemo(() => {
@@ -352,6 +528,345 @@ const TimePunchesManager = () => {
           </div>
         </CardHeader>
       </Card>
+
+      {isManager && (
+        <Card className="border-primary/20">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <TabletSmartphone className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Kiosk Mode (PIN clock)</CardTitle>
+                <CardDescription>Lock this device to PIN-only timeclock for {selectedRestaurant?.restaurant.name ?? 'this location'}.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="p-4 rounded-lg border bg-muted/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Status</span>
+                  <Badge variant={kioskActiveForLocation ? 'default' : 'outline'}>
+                    {kioskActiveForLocation ? 'Active on this device' : 'Not active'}
+                  </Badge>
+                </div>
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <div>
+                    Location locked:{' '}
+                    <span className="font-medium text-foreground">{selectedRestaurant?.restaurant.name}</span>
+                  </div>
+                  {kioskSession?.started_at && (
+                    <div>Started {format(new Date(kioskSession.started_at), 'MMM d, h:mm a')}</div>
+                  )}
+                  {kioskSession?.kiosk_instance_id && (
+                    <div className="text-xs text-muted-foreground">Instance: {kioskSession.kiosk_instance_id.slice(0, 8)}</div>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={handleLaunchKiosk}>
+                    <Shield className="h-4 w-4 mr-2" />
+                    Launch kiosk
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleExitKiosk}
+                    disabled={!kioskActiveForLocation}
+                  >
+                    <Unlock className="h-4 w-4 mr-2" />
+                    Exit kiosk
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg border bg-card space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-sm">PIN rules</div>
+                    <p className="text-xs text-muted-foreground">Enforce clean 4–6 digit PINs for fewer corrections.</p>
+                  </div>
+                  <Badge variant="outline">{pinPolicy.minLength}-6 digits</Badge>
+                </div>
+                <div className="space-y-2">
+                  <Label>Minimum digits</Label>
+                  <Select
+                    value={String(pinPolicy.minLength)}
+                    onValueChange={(value) => persistPolicy({ minLength: Number(value) })}
+                  >
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="4">4</SelectItem>
+                      <SelectItem value="5">5</SelectItem>
+                      <SelectItem value="6">6</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                  <div>
+                    <div className="font-medium text-sm">Require manager to exit</div>
+                    <p className="text-xs text-muted-foreground">Prevents staff from leaving kiosk mode.</p>
+                  </div>
+                  <Switch
+                    checked={pinPolicy.requireManagerPin}
+                    onCheckedChange={(checked) => persistPolicy({ requireManagerPin: checked })}
+                    aria-label="Require manager to exit kiosk"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                  <div>
+                    <div className="font-medium text-sm">Force update on next use</div>
+                    <p className="text-xs text-muted-foreground">Mark new PINs as temporary until the employee sets their own.</p>
+                  </div>
+                  <Switch
+                    checked={pinPolicy.forceResetOnNext}
+                    onCheckedChange={(checked) => persistPolicy({ forceResetOnNext: checked })}
+                    aria-label="Force employees to reset PIN"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg border bg-muted/30 space-y-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <KeyRound className="h-4 w-4 text-primary" />
+                  <span>Daily P&amp;L stays clean when every punch maps to a PIN.</span>
+                </div>
+                <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
+                  <li>Install as a PWA or use Guided Access/App Pinning on tablets.</li>
+                  <li>Offline punches queue locally and sync when back online.</li>
+                  <li>No navigation or shortcuts appear on the kiosk screen.</li>
+                </ul>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isManager && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <KeyRound className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <CardTitle>Employee PINs</CardTitle>
+                  <CardDescription>Manage PIN assignments for quick kiosk clock-ins.</CardDescription>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Badge variant="outline">{pinLookup.size} with PIN</Badge>
+                <Badge variant="outline" className="hidden md:inline-flex">
+                  Min length {pinPolicy.minLength}
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-3 rounded-lg border bg-muted/30 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-primary" />
+                <div>
+                  <div className="font-medium text-sm">Manager PIN (kiosk lock/unlock)</div>
+                  <p className="text-xs text-muted-foreground">
+                    This PIN is only for entering or exiting kiosk mode on this device. It does not clock time.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <Input
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="Enter 4-6 digit PIN"
+                  value={managerPinValue}
+                  onChange={(e) => {
+                    const digits = e.target.value.replaceAll(/\D/g, '').slice(0, 6);
+                    setManagerPinValue(digits);
+                    setManagerPinSaved(null);
+                  }}
+                  className="sm:max-w-xs"
+                />
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    if (!restaurantId || !user?.id) return;
+                    await upsertManagerPin.mutateAsync({
+                      restaurant_id: restaurantId,
+                      manager_user_id: user.id,
+                      pin: managerPinValue,
+                      min_length: pinPolicy.minLength,
+                    });
+                    setManagerPinSaved(managerPinValue);
+                    setManagerPinValue('');
+                  }}
+                  disabled={managerPinValue.length < pinPolicy.minLength || upsertManagerPin.isPending}
+                >
+                  Save Manager PIN
+                </Button>
+                {managerPinSaved && (
+                  <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
+                    Saved
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm text-muted-foreground">
+                Avoid duplicate identities by keeping PINs unique per location.
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => persistPolicy({ allowSimpleSequences: !pinPolicy.allowSimpleSequences })}
+                >
+                  {pinPolicy.allowSimpleSequences ? 'Disable sequence PINs' : 'Allow sequence PINs'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAutoGeneratePins}
+                  disabled={pinsLoading || upsertPin.isPending}
+                >
+                  Auto-generate missing PINs
+                </Button>
+              </div>
+            </div>
+
+            {(() => {
+              if (pinsLoading) {
+                return (
+                  <div className="space-y-2">
+                    <Skeleton className="h-14 w-full" />
+                    <Skeleton className="h-14 w-full" />
+                  </div>
+                );
+              }
+              if (employees.length === 0) {
+                return <p className="text-muted-foreground text-sm">Add employees to start assigning PINs.</p>;
+              }
+              return (
+                <div className="space-y-2">
+                  {employees.map((emp) => {
+                    const pinRecord = pinLookup.get(emp.id);
+                    return (
+                      <div
+                        key={emp.id}
+                        className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <div className="font-medium">{emp.name}</div>
+                            <div className="text-xs text-muted-foreground">{emp.position}</div>
+                            {pinRecord?.last_used_at && (
+                              <div className="text-[11px] text-muted-foreground">
+                                Last used {format(new Date(pinRecord.last_used_at), 'MMM d, h:mm a')}
+                              </div>
+                            )}
+                          </div>
+                          {pinRecord ? (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
+                              PIN set
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
+                              Not set
+                            </Badge>
+                          )}
+                          {pinRecord?.force_reset && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20">
+                              Force update
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openPinDialog(emp)}
+                            disabled={upsertPin.isPending}
+                          >
+                            {pinRecord ? 'Reset PIN' : 'Set PIN'}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={!!pinDialogEmployee} onOpenChange={(open) => !open && closePinDialog()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set PIN for {pinDialogEmployee?.name}</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              4–6 digit PINs reduce identity ambiguity and speed up rush-hour clock-ins.
+            </p>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="pin_value">PIN</Label>
+              <Input
+                id="pin_value"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={pinValue}
+                onChange={(e) => {
+                  const digitsOnly = e.target.value.replaceAll(/\D/g, '').slice(0, 6);
+                  setPinValue(digitsOnly);
+                  setLastSavedPin(null);
+                }}
+                aria-label="Employee PIN"
+              />
+              <div className="text-xs text-muted-foreground">
+                Must be at least {pinPolicy.minLength} digits. {pinLooksSimple ? 'Avoid simple sequences (1234).' : ''}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div>
+                <div className="font-medium text-sm">Force update on first use</div>
+                <p className="text-xs text-muted-foreground">Treat this as a temporary PIN.</p>
+              </div>
+              <Switch checked={pinForceReset} onCheckedChange={setPinForceReset} />
+            </div>
+
+            {lastSavedPin && (
+              <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 text-sm">
+                <div className="flex items-center gap-2 font-semibold text-primary">
+                  <KeyRound className="h-4 w-4" />
+                  New PIN: {lastSavedPin}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Share privately; the PIN is stored hashed.</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setPinValue(generatePolicyPin())}>
+              Regenerate
+            </Button>
+            <Button variant="outline" onClick={closePinDialog}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSavePin}
+              disabled={pinTooShort || pinLooksSimple || upsertPin.isPending}
+            >
+              Save PIN
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Filters & Navigation */}
       <Card>

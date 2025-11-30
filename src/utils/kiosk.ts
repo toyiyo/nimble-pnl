@@ -6,9 +6,20 @@ export const KIOSK_POLICY_KEY = 'kiosk_pin_policy';
 export function generateNumericPin(length = 4): string {
   const sanitizedLength = Math.min(6, Math.max(4, length));
   let pin = '';
-  for (let i = 0; i < sanitizedLength; i++) {
-    const idx = Math.floor(Math.random() * DIGITS.length);
-    pin += DIGITS[idx];
+  const randomValues = new Uint8Array(sanitizedLength);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(randomValues);
+    for (let i = 0; i < sanitizedLength; i++) {
+      // Use modulo to map random value to digit index
+      const idx = randomValues[i] % DIGITS.length;
+      pin += DIGITS[idx];
+    }
+  } else {
+    // Fallback to Math.random if crypto is unavailable (should not happen in modern browsers)
+    for (let i = 0; i < sanitizedLength; i++) {
+      const idx = Math.floor(Math.random() * DIGITS.length);
+      pin += DIGITS[idx];
+    }
   }
   return pin;
 }

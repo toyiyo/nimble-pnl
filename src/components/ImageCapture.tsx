@@ -20,6 +20,7 @@ interface ImageCaptureProps {
   allowUpload?: boolean;
   hideControls?: boolean;
   onCaptureRef?: (capture: () => Promise<Blob | null>) => void;
+  preferredFacingMode?: 'user' | 'environment';
 }
 
 export const ImageCapture: React.FC<ImageCaptureProps> = ({
@@ -31,6 +32,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   allowUpload = true,
   hideControls = false,
   onCaptureRef,
+  preferredFacingMode = 'environment',
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -48,7 +50,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
-          facingMode: 'environment',
+          facingMode: preferredFacingMode,
           width: { ideal: 1920, min: 640 },
           height: { ideal: 1080, min: 480 }
         }
@@ -103,7 +105,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
       setIsLoading(false);
       onError?.(error.message);
     }
-  }, [onError]);
+  }, [onError, preferredFacingMode]);
 
   const stopCamera = useCallback(() => {
   if (import.meta.env.DEV) { console.log('🛑 Stopping camera...'); }

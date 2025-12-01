@@ -96,8 +96,219 @@ export function useRevenueBreakdown(
       const fromStr = dateFrom.toISOString().split('T')[0];
       const toStr = dateTo.toISOString().split('T')[0];
 
-      // Query unified_sales excluding pass-through items (adjustment_type IS NOT NULL)
-      // Pass-through items include: tips, sales tax, service charges, discounts, fees
+      // Use database aggregation for efficient totals (no row limit issues)
+      // This replaces fetching individual records and processing in JavaScript
+      
+      // 1. Get pass-through totals using RPC (tax, tips, service_charge, discount, fee)
+      const { data: passThroughTotals, error: passThroughError } = await supabase
+        .rpc('get_pass_through_totals', {
+          p_restaurant_id: restaurantId,
+          p_date_from: fromStr,
+          p_date_to: toStr
+        });
+
+      if (passThroughError) {
+        console.warn('Failed to fetch pass-through totals via RPC, falling back to individual query:', passThroughError);
+        // Fall back to original query method if RPC not available
+      }
+
+      // 2. Get revenue by account using RPC (categorized and uncategorized)
+      const { data: revenueByAccount, error: revenueError } = await supabase
+        .rpc('get_revenue_by_account', {
+          p_restaurant_id: restaurantId,
+          p_date_from: fromStr,
+          p_date_to: toStr
+        });
+
+      if (revenueError) {
+        console.warn('Failed to fetch revenue by account via RPC, falling back to individual query:', revenueError);
+        // Fall back to original query method if RPC not available
+      }
+
+      // If RPC functions are available, use aggregated data
+      if (passThroughTotals && revenueByAccount) {
+        // Process pass-through totals
+        const passThroughMap = new Map<string, { total_amount: number; transaction_count: number }>();
+        (passThroughTotals as any[]).forEach((row: any) => {
+          passThroughMap.set(row.adjustment_type, {
+            total_amount: Number(row.total_amount) || 0,
+            transaction_count: Number(row.transaction_count) || 0
+          });
+        });
+
+        const adjustmentTaxC = toC(passThroughMap.get('tax')?.total_amount || 0);
+        const adjustmentTipsC = toC(passThroughMap.get('tip')?.total_amount || 0);
+        const adjustmentServiceChargeC = toC(passThroughMap.get('service_charge')?.total_amount || 0);
+        const adjustmentDiscountsC = toC(Math.abs(passThroughMap.get('discount')?.total_amount || 0));
+        const adjustmentFeesC = toC(passThroughMap.get('fee')?.total_amount || 0);
+
+        // Process revenue by account
+        const categories: RevenueCategory[] = [];
+        let uncategorizedRevenueC = 0;
+        let categorizedRevenueC = 0;
+
+        (revenueByAccount as any[]).forEach((row: any) => {
+          const amount = Number(row.total_amount) || 0;
+          const count = Number(row.transaction_count) || 0;
+
+          if (!row.is_categorized) {
+            // Uncategorized sales
+            uncategorizedRevenueC = toC(amount);
+          } else {
+            // Categorized sales
+            categories.push({
+              account_id: row.account_id,
+              account_code: row.account_code || '',
+              account_name: row.account_name || '',
+              account_type: row.account_type || '',
+              account_subtype: row.account_subtype || '',
+              total_amount: amount,
+              transaction_count: count
+            });
+          }
+        });
+
+        // Separate categories by type
+        const revenueCategories = categories.filter(c => 
+          c.account_type === 'revenue' && 
+          c.account_subtype !== 'discounts' &&
+          c.account_subtype !== 'sales_tax' &&
+          !c.account_name.toLowerCase().includes('discount') &&
+          !c.account_name.toLowerCase().includes('comp') &&
+          !c.account_name.toLowerCase().includes('refund') &&
+          !c.account_name.toLowerCase().includes('tax')
+        );
+
+        const discountCategories = categories.filter(c => 
+          c.account_subtype === 'discounts' || 
+          c.account_name.toLowerCase().includes('discount') ||
+          c.account_name.toLowerCase().includes('comp')
+        );
+
+        const refundCategories = categories.filter(c =>
+          c.account_name.toLowerCase().includes('refund') ||
+          c.account_name.toLowerCase().includes('return')
+        );
+
+        const taxCategories = categories.filter(c => 
+          c.account_type === 'liability' && (
+            c.account_subtype === 'sales_tax' ||
+            c.account_name.toLowerCase().includes('tax')
+          )
+        );
+
+        const tipCategories = categories.filter(c => 
+          c.account_type === 'liability' && (
+            c.account_subtype === 'tips' ||
+            c.account_name.toLowerCase().includes('tip')
+          )
+        );
+
+        const otherLiabilityCategories = categories.filter(c =>
+          c.account_type === 'liability' &&
+          c.account_subtype !== 'sales_tax' &&
+          c.account_subtype !== 'tips' &&
+          !c.account_name.toLowerCase().includes('tax') &&
+          !c.account_name.toLowerCase().includes('tip')
+        );
+
+        // Calculate totals
+        categorizedRevenueC = revenueCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
+        const totalDiscountsC = discountCategories.reduce((sum, c) => sum + Math.abs(toC(c.total_amount || 0)), 0);
+        const totalRefundsC = refundCategories.reduce((sum, c) => sum + Math.abs(toC(c.total_amount || 0)), 0);
+        const totalTaxC = taxCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
+        const totalTipsC = tipCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
+        const totalOtherLiabilitiesC = otherLiabilityCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
+
+        // Combine categorized amounts with adjustment amounts
+        const combinedTaxC = totalTaxC + adjustmentTaxC;
+        const combinedTipsC = totalTipsC + adjustmentTipsC;
+        const combinedOtherLiabilitiesC = totalOtherLiabilitiesC + adjustmentServiceChargeC + adjustmentFeesC;
+        const combinedDiscountsC = totalDiscountsC + adjustmentDiscountsC;
+
+        // Calculate final totals
+        const grossRevenueC = categorizedRevenueC + uncategorizedRevenueC;
+        const netRevenueC = grossRevenueC - combinedDiscountsC - totalRefundsC;
+        const totalCollectedAtPOSC = grossRevenueC + combinedTaxC + combinedTipsC + combinedOtherLiabilitiesC;
+
+        // Build adjustments breakdown array
+        const adjustmentsBreakdown: AdjustmentBreakdown[] = [];
+        
+        if (adjustmentTaxC > 0) {
+          adjustmentsBreakdown.push({
+            adjustment_type: 'tax',
+            total_amount: fromC(adjustmentTaxC),
+            transaction_count: passThroughMap.get('tax')?.transaction_count || 0
+          });
+        }
+        
+        if (adjustmentTipsC > 0) {
+          adjustmentsBreakdown.push({
+            adjustment_type: 'tip',
+            total_amount: fromC(adjustmentTipsC),
+            transaction_count: passThroughMap.get('tip')?.transaction_count || 0
+          });
+        }
+        
+        if (adjustmentServiceChargeC > 0) {
+          adjustmentsBreakdown.push({
+            adjustment_type: 'service_charge',
+            total_amount: fromC(adjustmentServiceChargeC),
+            transaction_count: passThroughMap.get('service_charge')?.transaction_count || 0
+          });
+        }
+        
+        if (adjustmentFeesC > 0) {
+          adjustmentsBreakdown.push({
+            adjustment_type: 'fee',
+            total_amount: fromC(adjustmentFeesC),
+            transaction_count: passThroughMap.get('fee')?.transaction_count || 0
+          });
+        }
+        
+        if (adjustmentDiscountsC > 0) {
+          adjustmentsBreakdown.push({
+            adjustment_type: 'discount',
+            total_amount: fromC(adjustmentDiscountsC),
+            transaction_count: passThroughMap.get('discount')?.transaction_count || 0
+          });
+        }
+
+        const hasCategorizationData = categorizedRevenueC > 0;
+        const categorizationRate = grossRevenueC > 0 ? (categorizedRevenueC / grossRevenueC) * 100 : 0;
+
+        return {
+          revenue_categories: revenueCategories.sort((a, b) => 
+            (a.account_code || '').localeCompare(b.account_code || '')
+          ),
+          discount_categories: discountCategories,
+          refund_categories: refundCategories,
+          tax_categories: taxCategories,
+          tip_categories: tipCategories,
+          other_liability_categories: otherLiabilityCategories.sort((a, b) => 
+            (a.account_code || '').localeCompare(b.account_code || '')
+          ),
+          adjustments: adjustmentsBreakdown,
+          uncategorized_revenue: fromC(uncategorizedRevenueC),
+          totals: {
+            total_collected_at_pos: fromC(totalCollectedAtPOSC),
+            gross_revenue: fromC(grossRevenueC),
+            categorized_revenue: fromC(categorizedRevenueC),
+            uncategorized_revenue: fromC(uncategorizedRevenueC),
+            total_discounts: fromC(combinedDiscountsC),
+            total_refunds: fromC(totalRefundsC),
+            net_revenue: fromC(netRevenueC),
+            sales_tax: fromC(combinedTaxC),
+            tips: fromC(combinedTipsC),
+            other_liabilities: fromC(combinedOtherLiabilitiesC),
+          },
+          has_categorization_data: hasCategorizationData,
+          categorization_rate: categorizationRate,
+        };
+      }
+
+      // FALLBACK: Original implementation if RPC functions are not available
+      // This will be used until the migration is applied
       // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
       const { data: sales, error } = await supabase
         .from('unified_sales')
@@ -171,101 +382,7 @@ export function useRevenueBreakdown(
 
       const allAdjustments = normalizeAdjustmentsWithPassThrough(adjustments, passThroughSales);
 
-      // Debug: Pass-through items
-      console.group('🧾 Pass-Through Debug (useRevenueBreakdown)');
-      console.log('Raw adjustments from DB (adjustment_type IS NOT NULL):', adjustments?.length || 0);
-      console.log('Pass-through from sales split:', passThroughSales?.length || 0);
-      console.log('Total allAdjustments:', allAdjustments?.length || 0);
-      
-      // Show unique adjustment_types in raw adjustments
-      if (adjustments && adjustments.length > 0) {
-        const uniqueTypes = new Set(adjustments.map((a: any) => a.adjustment_type));
-        console.log('Unique adjustment_types in DB:', Array.from(uniqueTypes));
-        
-        // Count by adjustment_type
-        const countByType: Record<string, number> = {};
-        adjustments.forEach((a: any) => {
-          const t = a.adjustment_type || 'null';
-          countByType[t] = (countByType[t] || 0) + 1;
-        });
-        console.log('Count by adjustment_type:', countByType);
-      }
-      
-      // Check if any tax-related items are in the FIRST query (sales with adjustment_type IS NULL)
-      const taxInSales = (sales || []).filter((s: any) => 
-        s.item_type === 'tax' || 
-        (s.item_name || '').toLowerCase().includes('tax')
-      );
-      if (taxInSales.length > 0) {
-        console.log('⚠️ Tax items found in sales query (adjustment_type IS NULL):', taxInSales.length);
-        taxInSales.slice(0, 5).forEach((s: any) => {
-          console.log(`  - ${s.item_name}: item_type=${s.item_type}, total=$${s.total_price}`);
-        });
-      }
-      
-      // Check if any tip-related items are in the FIRST query
-      const tipsInSales = (sales || []).filter((s: any) => 
-        s.item_type === 'tip' || 
-        (s.item_name || '').toLowerCase().includes('tip')
-      );
-      if (tipsInSales.length > 0) {
-        console.log('⚠️ Tip items found in sales query (adjustment_type IS NULL):', tipsInSales.length);
-        tipsInSales.slice(0, 5).forEach((s: any) => {
-          console.log(`  - ${s.item_name}: item_type=${s.item_type}, total=$${s.total_price}`);
-        });
-      }
-      
-      if (allAdjustments && allAdjustments.length > 0) {
-        // Group by classification
-        const byType: Record<string, any[]> = {};
-        allAdjustments.forEach((a: any) => {
-          const type = classifyPassThroughItem(a);
-          if (!byType[type]) byType[type] = [];
-          byType[type].push(a);
-        });
-        
-        console.log('Classified breakdown:');
-        Object.entries(byType).forEach(([type, items]) => {
-          const total = items.reduce((sum, i) => sum + (i.total_price || 0), 0);
-          console.log(`  ${type}: ${items.length} items, $${total.toFixed(2)}`);
-          // Show first 3 items of each type
-          items.slice(0, 3).forEach((i: any) => {
-            console.log(`    - ${i.item_name || 'N/A'}: adjustment_type=${i.adjustment_type}, total=$${i.total_price}`);
-          });
-        });
-      }
-      
-      // Show sample of raw adjustments
-      if (adjustments && adjustments.length > 0) {
-        console.log('Sample raw adjustments:');
-        adjustments.slice(0, 5).forEach((a: any) => {
-          console.log(`  - ${a.item_name || 'N/A'}: adjustment_type=${a.adjustment_type}, total=$${a.total_price}`);
-        });
-      }
-      console.groupEnd();
-
       const totalCount = filteredSales.length;
-
-      // Debug: Track alcohol sales
-      const alcoholSales = filteredSales?.filter((s: any) => 
-        s.chart_account?.account_code === '4020' || 
-        s.chart_account?.account_name?.toLowerCase().includes('alcohol')
-      ) || [];
-      
-      if (alcoholSales.length > 0) {
-        console.group('🍺 Alcohol Sales Debug (useRevenueBreakdown)');
-        console.table(alcoholSales.map((s: any) => ({
-          price: s.total_price,
-          is_categorized: s.is_categorized,
-          has_account: !!s.chart_account,
-          account_type: s.chart_account?.account_type,
-          account_code: s.chart_account?.account_code,
-          item_type: s.item_type,
-        })));
-        console.log('Total alcohol sales found:', alcoholSales.length);
-        console.log('Total alcohol revenue:', alcoholSales.reduce((sum: number, s: any) => sum + s.total_price, 0));
-        console.groupEnd();
-      }
 
       // Separate categorized and uncategorized sales
       const categorizedSales = filteredSales?.filter((s: any) => s.is_categorized && s.chart_account) || [];
@@ -386,56 +503,6 @@ export function useRevenueBreakdown(
         !c.account_name.toLowerCase().includes('tip')
       );
 
-      // Debug: Category breakdown
-      console.group('📊 Category Debug');
-      console.log('Total categories from categoryMap:', categories.length);
-      console.log('Liability categories:', categories.filter(c => c.account_type === 'liability').length);
-      console.log('Tax categories:', taxCategories.length);
-      if (taxCategories.length > 0) {
-        console.table(taxCategories.map(c => ({
-          name: c.account_name,
-          code: c.account_code,
-          type: c.account_type,
-          subtype: c.account_subtype,
-          amount: c.total_amount,
-        })));
-      }
-      console.log('Tip categories:', tipCategories.length);
-      if (tipCategories.length > 0) {
-        console.table(tipCategories.map(c => ({
-          name: c.account_name,
-          code: c.account_code,
-          type: c.account_type,
-          subtype: c.account_subtype,
-          amount: c.total_amount,
-        })));
-      }
-      console.log('Other liability categories:', otherLiabilityCategories.length);
-      if (otherLiabilityCategories.length > 0) {
-        console.table(otherLiabilityCategories.map(c => ({
-          name: c.account_name,
-          code: c.account_code,
-          type: c.account_type,
-          subtype: c.account_subtype,
-          amount: c.total_amount,
-        })));
-      }
-      // Show all liability categories for debugging
-      const allLiabilities = categories.filter(c => c.account_type === 'liability');
-      if (allLiabilities.length > 0) {
-        console.log('ALL liability categories:');
-        console.table(allLiabilities.map(c => ({
-          name: c.account_name,
-          code: c.account_code,
-          type: c.account_type,
-          subtype: c.account_subtype,
-          amount: c.total_amount,
-          includesTax: c.account_name.toLowerCase().includes('tax'),
-          includesTip: c.account_name.toLowerCase().includes('tip'),
-        })));
-      }
-      console.groupEnd();
-
       // Calculate totals in cents (integers) to eliminate floating-point errors
       const categorizedRevenueC = revenueCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
       const totalDiscountsC = discountCategories.reduce((sum, c) => sum + Math.abs(toC(c.total_amount || 0)), 0);
@@ -473,20 +540,6 @@ export function useRevenueBreakdown(
 
       // Build adjustments breakdown array
       const adjustmentsBreakdown: AdjustmentBreakdown[] = [];
-      
-      // Debug: Show calculated pass-through amounts
-      console.group('💰 Pass-Through Calculations');
-      console.log('From categorized categories:');
-      console.log(`  totalTaxC: ${totalTaxC} cents ($${fromC(totalTaxC)})`);
-      console.log(`  totalTipsC: ${totalTipsC} cents ($${fromC(totalTipsC)})`);
-      console.log(`  totalOtherLiabilitiesC: ${totalOtherLiabilitiesC} cents ($${fromC(totalOtherLiabilitiesC)})`);
-      console.log('From adjustments:');
-      console.log(`  adjustmentTaxC: ${adjustmentTaxC} cents ($${fromC(adjustmentTaxC)})`);
-      console.log(`  adjustmentTipsC: ${adjustmentTipsC} cents ($${fromC(adjustmentTipsC)})`);
-      console.log(`  adjustmentServiceChargeC: ${adjustmentServiceChargeC} cents ($${fromC(adjustmentServiceChargeC)})`);
-      console.log(`  adjustmentFeesC: ${adjustmentFeesC} cents ($${fromC(adjustmentFeesC)})`);
-      console.log(`  adjustmentOtherC: ${adjustmentOtherC} cents ($${fromC(adjustmentOtherC)})`);
-      console.groupEnd();
       
       if (adjustmentTaxC > 0) {
         adjustmentsBreakdown.push({

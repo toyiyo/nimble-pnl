@@ -98,7 +98,7 @@ export function AppSidebar() {
   const { selectedRestaurant } = useRestaurantContext();
 
   // Check if user is staff
-  const isStaff = selectedRestaurant?.role === 'staff';
+  const isStaff = selectedRestaurant?.role === 'staff' || selectedRestaurant?.role === 'kiosk';
 
   // Filter navigation groups for staff users
   const filteredNavigationGroups = isStaff

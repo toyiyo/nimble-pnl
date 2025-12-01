@@ -3,6 +3,7 @@ const PASS_THROUGH_TYPES = new Set(['tax', 'tip', 'service_charge', 'discount', 
 export interface PassThroughRow {
   item_type?: string | null;
   adjustment_type?: string | null;
+  is_categorized?: boolean;
   chart_account?: {
     account_type?: string | null;
     account_subtype?: string | null;
@@ -12,6 +13,52 @@ export interface PassThroughRow {
 
 function normalizeAdjustmentType(row: PassThroughRow) {
   return (row.adjustment_type || row.item_type || 'adjustment')?.toString().toLowerCase();
+}
+
+// Pass-through classification types
+export type PassThroughType = 'tax' | 'tip' | 'service_charge' | 'fee' | 'discount' | 'other';
+
+/**
+ * Classify a pass-through item as tax, tip, service_charge, fee, discount, or other.
+ * Uses chart_account properties for categorized liability items, falls back to adjustment_type.
+ * 
+ * This handles the case where sales tax items have item_type: 'sale' but are mapped
+ * to a liability account like "Sales Tax Payable" (account 2004).
+ */
+export function classifyPassThroughItem(item: PassThroughRow): PassThroughType {
+  const isCategorized = !!item.is_categorized && !!item.chart_account;
+  
+  if (isCategorized) {
+    const accountType = (item.chart_account?.account_type || '').toLowerCase();
+    const subtype = (item.chart_account?.account_subtype || '').toLowerCase();
+    const accountName = (item.chart_account?.account_name || '').toLowerCase();
+    
+    // Only classify liability accounts as pass-through
+    if (accountType === 'liability') {
+      // Check for tax
+      if ((subtype.includes('sales') && subtype.includes('tax')) ||
+          subtype === 'sales_tax' ||
+          accountName.includes('tax')) {
+        return 'tax';
+      }
+      // Check for tip
+      if (subtype.includes('tip') || subtype === 'tips' || accountName.includes('tip')) {
+        return 'tip';
+      }
+      // Other liabilities (service charges, fees, etc.)
+      return 'other';
+    }
+  }
+  
+  // Fall back to adjustment_type for uncategorized items or non-liability accounts
+  const adjustmentType = (item.adjustment_type || '').toLowerCase();
+  if (adjustmentType === 'tax') return 'tax';
+  if (adjustmentType === 'tip') return 'tip';
+  if (adjustmentType === 'service_charge') return 'service_charge';
+  if (adjustmentType === 'fee') return 'fee';
+  if (adjustmentType === 'discount') return 'discount';
+  
+  return 'other';
 }
 
 /**

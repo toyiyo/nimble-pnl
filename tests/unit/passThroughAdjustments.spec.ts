@@ -188,4 +188,47 @@ test.describe('classifyPassThroughItem helper', () => {
 
     expect(classifyPassThroughItem(item)).toBe('other');
   });
+
+  test('classifies items by item_name when adjustment_type is not set', () => {
+    // This is the key scenario from the bug report: items with item_name like 
+    // "MB Sales Tax" or "Sales Tax" that haven't been categorized yet
+    const salesTaxItem = {
+      total_price: 3.96,
+      is_categorized: false,
+      item_type: 'sale',
+      item_name: 'MB Sales Tax',
+    };
+
+    const tipItem = {
+      total_price: 2.00,
+      is_categorized: false,
+      item_type: 'sale',
+      item_name: 'Credit Tip',
+    };
+
+    const serviceChargeItem = {
+      total_price: 0.82,
+      is_categorized: false,
+      item_type: 'sale',
+      item_name: 'Dual Pricing Service Fee',
+    };
+
+    expect(classifyPassThroughItem(salesTaxItem)).toBe('tax');
+    expect(classifyPassThroughItem(tipItem)).toBe('tip');
+    expect(classifyPassThroughItem(serviceChargeItem)).toBe('service_charge');
+  });
+
+  test('splitPassThroughSales identifies items by item_name', () => {
+    const sales = [
+      { id: '1', item_type: 'sale', item_name: "Tito's" },
+      { id: '2', item_type: 'sale', item_name: 'MB Sales Tax' },
+      { id: '3', item_type: 'sale', item_name: 'Credit Tip' },
+      { id: '4', item_type: 'sale', item_name: 'Coors Banq' },
+    ];
+
+    const { revenue, passThrough } = splitPassThroughSales(sales);
+
+    expect(revenue.map(s => s.id)).toEqual(['1', '4']);
+    expect(passThrough.map(s => s.id)).toEqual(['2', '3']);
+  });
 });

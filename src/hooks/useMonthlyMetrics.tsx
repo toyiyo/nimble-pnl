@@ -130,6 +130,7 @@ export function useMonthlyMetrics(
           sale_date,
           total_price,
           item_type,
+          item_name,
           parent_sale_id,
           is_categorized,
           chart_account:chart_of_accounts!category_id(
@@ -154,6 +155,7 @@ export function useMonthlyMetrics(
           sale_date,
           adjustment_type,
           total_price,
+          item_name,
           is_categorized,
           category_id,
           chart_account:chart_of_accounts!category_id(

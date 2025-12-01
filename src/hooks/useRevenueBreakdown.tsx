@@ -104,6 +104,7 @@ export function useRevenueBreakdown(
           id,
           total_price,
           item_type,
+          item_name,
           category_id,
           is_categorized,
           parent_sale_id,
@@ -129,6 +130,7 @@ export function useRevenueBreakdown(
           id,
           adjustment_type,
           total_price,
+          item_name,
           is_categorized,
           category_id,
           chart_account:chart_of_accounts!category_id (

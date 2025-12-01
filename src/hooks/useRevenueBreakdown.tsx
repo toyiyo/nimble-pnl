@@ -105,6 +105,7 @@ export function useRevenueBreakdown(
           total_price,
           item_type,
           item_name,
+          adjustment_type,
           category_id,
           is_categorized,
           parent_sale_id,
@@ -170,6 +171,44 @@ export function useRevenueBreakdown(
       console.log('Raw adjustments from DB (adjustment_type IS NOT NULL):', adjustments?.length || 0);
       console.log('Pass-through from sales split:', passThroughSales?.length || 0);
       console.log('Total allAdjustments:', allAdjustments?.length || 0);
+      
+      // Show unique adjustment_types in raw adjustments
+      if (adjustments && adjustments.length > 0) {
+        const uniqueTypes = new Set(adjustments.map((a: any) => a.adjustment_type));
+        console.log('Unique adjustment_types in DB:', Array.from(uniqueTypes));
+        
+        // Count by adjustment_type
+        const countByType: Record<string, number> = {};
+        adjustments.forEach((a: any) => {
+          const t = a.adjustment_type || 'null';
+          countByType[t] = (countByType[t] || 0) + 1;
+        });
+        console.log('Count by adjustment_type:', countByType);
+      }
+      
+      // Check if any tax-related items are in the FIRST query (sales with adjustment_type IS NULL)
+      const taxInSales = (sales || []).filter((s: any) => 
+        s.item_type === 'tax' || 
+        (s.item_name || '').toLowerCase().includes('tax')
+      );
+      if (taxInSales.length > 0) {
+        console.log('⚠️ Tax items found in sales query (adjustment_type IS NULL):', taxInSales.length);
+        taxInSales.slice(0, 5).forEach((s: any) => {
+          console.log(`  - ${s.item_name}: item_type=${s.item_type}, total=$${s.total_price}`);
+        });
+      }
+      
+      // Check if any tip-related items are in the FIRST query
+      const tipsInSales = (sales || []).filter((s: any) => 
+        s.item_type === 'tip' || 
+        (s.item_name || '').toLowerCase().includes('tip')
+      );
+      if (tipsInSales.length > 0) {
+        console.log('⚠️ Tip items found in sales query (adjustment_type IS NULL):', tipsInSales.length);
+        tipsInSales.slice(0, 5).forEach((s: any) => {
+          console.log(`  - ${s.item_name}: item_type=${s.item_type}, total=$${s.total_price}`);
+        });
+      }
       
       if (allAdjustments && allAdjustments.length > 0) {
         // Group by classification

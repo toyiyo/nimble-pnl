@@ -580,6 +580,7 @@ const KioskMode = () => {
               autoStart
               allowUpload={false}
               hideControls
+              preferredFacingMode="user"
               onCaptureRef={(fn) => setCaptureFn(() => fn)}
             />
             {cameraError && <p className="text-xs text-destructive">{cameraError}</p>}

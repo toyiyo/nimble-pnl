@@ -98,6 +98,7 @@ export function useRevenueBreakdown(
 
       // Query unified_sales excluding pass-through items (adjustment_type IS NOT NULL)
       // Pass-through items include: tips, sales tax, service charges, discounts, fees
+      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
       const { data: sales, error } = await supabase
         .from('unified_sales')
         .select(`
@@ -120,11 +121,14 @@ export function useRevenueBreakdown(
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', fromStr)
         .lte('sale_date', toStr)
-        .is('adjustment_type', null);
+        .is('adjustment_type', null)
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (error) throw error;
 
       // Query adjustments separately (tax, tips, service charges, discounts, fees)
+      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
+      // to ensure we get all adjustment items including taxes, tips, etc.
       const { data: adjustments, error: adjustmentsError } = await supabase
         .from('unified_sales')
         .select(`
@@ -145,7 +149,8 @@ export function useRevenueBreakdown(
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', fromStr)
         .lte('sale_date', toStr)
-        .not('adjustment_type', 'is', null);
+        .not('adjustment_type', 'is', null)
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (adjustmentsError) throw adjustmentsError;
 

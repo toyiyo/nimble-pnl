@@ -123,6 +123,7 @@ export function useMonthlyMetrics(
 
       // Fetch sales excluding pass-through items (adjustment_type IS NOT NULL)
       // Pass-through items include: tips, sales tax, service charges, discounts, fees
+      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
       const { data: salesData, error: salesError } = await supabase
         .from('unified_sales')
         .select(`
@@ -142,13 +143,15 @@ export function useMonthlyMetrics(
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
-        .is('adjustment_type', null);
+        .is('adjustment_type', null)
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (salesError) throw salesError;
 
       // Fetch adjustments separately (Square/Clover pass-through items)
       // Include category/chart_account when present so categorized adjustments
       // can be classified by their chart account (sales_tax/tips/other liabilities).
+      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
       const { data: adjustmentsData, error: adjustmentsError } = await supabase
         .from('unified_sales')
         .select(`
@@ -169,7 +172,8 @@ export function useMonthlyMetrics(
         .eq('restaurant_id', restaurantId)
         .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
-        .not('adjustment_type', 'is', null);
+        .not('adjustment_type', 'is', null)
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (adjustmentsError) throw adjustmentsError;
 

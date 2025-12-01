@@ -165,6 +165,41 @@ export function useRevenueBreakdown(
 
       const allAdjustments = normalizeAdjustmentsWithPassThrough(adjustments, passThroughSales);
 
+      // Debug: Pass-through items
+      console.group('🧾 Pass-Through Debug (useRevenueBreakdown)');
+      console.log('Raw adjustments from DB (adjustment_type IS NOT NULL):', adjustments?.length || 0);
+      console.log('Pass-through from sales split:', passThroughSales?.length || 0);
+      console.log('Total allAdjustments:', allAdjustments?.length || 0);
+      
+      if (allAdjustments && allAdjustments.length > 0) {
+        // Group by classification
+        const byType: Record<string, any[]> = {};
+        allAdjustments.forEach((a: any) => {
+          const type = classifyPassThroughItem(a);
+          if (!byType[type]) byType[type] = [];
+          byType[type].push(a);
+        });
+        
+        console.log('Classified breakdown:');
+        Object.entries(byType).forEach(([type, items]) => {
+          const total = items.reduce((sum, i) => sum + (i.total_price || 0), 0);
+          console.log(`  ${type}: ${items.length} items, $${total.toFixed(2)}`);
+          // Show first 3 items of each type
+          items.slice(0, 3).forEach((i: any) => {
+            console.log(`    - ${i.item_name || 'N/A'}: adjustment_type=${i.adjustment_type}, total=$${i.total_price}`);
+          });
+        });
+      }
+      
+      // Show sample of raw adjustments
+      if (adjustments && adjustments.length > 0) {
+        console.log('Sample raw adjustments:');
+        adjustments.slice(0, 5).forEach((a: any) => {
+          console.log(`  - ${a.item_name || 'N/A'}: adjustment_type=${a.adjustment_type}, total=$${a.total_price}`);
+        });
+      }
+      console.groupEnd();
+
       const totalCount = filteredSales.length;
 
       // Debug: Track alcohol sales
@@ -307,6 +342,56 @@ export function useRevenueBreakdown(
         !c.account_name.toLowerCase().includes('tip')
       );
 
+      // Debug: Category breakdown
+      console.group('📊 Category Debug');
+      console.log('Total categories from categoryMap:', categories.length);
+      console.log('Liability categories:', categories.filter(c => c.account_type === 'liability').length);
+      console.log('Tax categories:', taxCategories.length);
+      if (taxCategories.length > 0) {
+        console.table(taxCategories.map(c => ({
+          name: c.account_name,
+          code: c.account_code,
+          type: c.account_type,
+          subtype: c.account_subtype,
+          amount: c.total_amount,
+        })));
+      }
+      console.log('Tip categories:', tipCategories.length);
+      if (tipCategories.length > 0) {
+        console.table(tipCategories.map(c => ({
+          name: c.account_name,
+          code: c.account_code,
+          type: c.account_type,
+          subtype: c.account_subtype,
+          amount: c.total_amount,
+        })));
+      }
+      console.log('Other liability categories:', otherLiabilityCategories.length);
+      if (otherLiabilityCategories.length > 0) {
+        console.table(otherLiabilityCategories.map(c => ({
+          name: c.account_name,
+          code: c.account_code,
+          type: c.account_type,
+          subtype: c.account_subtype,
+          amount: c.total_amount,
+        })));
+      }
+      // Show all liability categories for debugging
+      const allLiabilities = categories.filter(c => c.account_type === 'liability');
+      if (allLiabilities.length > 0) {
+        console.log('ALL liability categories:');
+        console.table(allLiabilities.map(c => ({
+          name: c.account_name,
+          code: c.account_code,
+          type: c.account_type,
+          subtype: c.account_subtype,
+          amount: c.total_amount,
+          includesTax: c.account_name.toLowerCase().includes('tax'),
+          includesTip: c.account_name.toLowerCase().includes('tip'),
+        })));
+      }
+      console.groupEnd();
+
       // Calculate totals in cents (integers) to eliminate floating-point errors
       const categorizedRevenueC = revenueCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
       const totalDiscountsC = discountCategories.reduce((sum, c) => sum + Math.abs(toC(c.total_amount || 0)), 0);
@@ -344,6 +429,20 @@ export function useRevenueBreakdown(
 
       // Build adjustments breakdown array
       const adjustmentsBreakdown: AdjustmentBreakdown[] = [];
+      
+      // Debug: Show calculated pass-through amounts
+      console.group('💰 Pass-Through Calculations');
+      console.log('From categorized categories:');
+      console.log(`  totalTaxC: ${totalTaxC} cents ($${fromC(totalTaxC)})`);
+      console.log(`  totalTipsC: ${totalTipsC} cents ($${fromC(totalTipsC)})`);
+      console.log(`  totalOtherLiabilitiesC: ${totalOtherLiabilitiesC} cents ($${fromC(totalOtherLiabilitiesC)})`);
+      console.log('From adjustments:');
+      console.log(`  adjustmentTaxC: ${adjustmentTaxC} cents ($${fromC(adjustmentTaxC)})`);
+      console.log(`  adjustmentTipsC: ${adjustmentTipsC} cents ($${fromC(adjustmentTipsC)})`);
+      console.log(`  adjustmentServiceChargeC: ${adjustmentServiceChargeC} cents ($${fromC(adjustmentServiceChargeC)})`);
+      console.log(`  adjustmentFeesC: ${adjustmentFeesC} cents ($${fromC(adjustmentFeesC)})`);
+      console.log(`  adjustmentOtherC: ${adjustmentOtherC} cents ($${fromC(adjustmentOtherC)})`);
+      console.groupEnd();
       
       if (adjustmentTaxC > 0) {
         adjustmentsBreakdown.push({

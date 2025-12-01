@@ -33,6 +33,7 @@ import {
   ClipboardList,
   DollarSign,
   ShoppingBag,
+  Shield,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -55,6 +56,7 @@ const navigationGroups = [
     label: 'Operations',
     items: [
       { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
+      { path: '/compliance', label: 'Compliance', icon: Shield },
       { path: '/employee/clock', label: 'Time Clock', icon: Clock },
       { path: '/time-punches', label: 'Time Punches', icon: ClipboardList },
       { path: '/payroll', label: 'Payroll', icon: Wallet },

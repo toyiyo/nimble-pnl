@@ -37,6 +37,7 @@ import Banking from "./pages/Banking";
 import FinancialIntelligence from "./pages/FinancialIntelligence";
 import AiAssistant from "./pages/AiAssistant";
 import Scheduling from "./pages/Scheduling";
+import Compliance from "./pages/Compliance";
 import EmployeeClock from "./pages/EmployeeClock";
 import EmployeePortal from "./pages/EmployeePortal";
 import TimePunchesManager from "./pages/TimePunchesManager";
@@ -144,6 +145,7 @@ const App = () => (
             <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
             <Route path="/purchase-orders/:id" element={<ProtectedRoute><PurchaseOrderEditor /></ProtectedRoute>} />
           <Route path="/scheduling" element={<ProtectedRoute><Scheduling /></ProtectedRoute>} />
+          <Route path="/compliance" element={<ProtectedRoute><Compliance /></ProtectedRoute>} />
           <Route path="/employee/clock" element={<ProtectedRoute allowStaff={true}><EmployeeClock /></ProtectedRoute>} />
           <Route path="/employee/portal" element={<ProtectedRoute allowStaff={true}><EmployeePortal /></ProtectedRoute>} />
           <Route path="/kiosk" element={<ProtectedRoute allowStaff={true} noChrome={true}><KioskMode /></ProtectedRoute>} />

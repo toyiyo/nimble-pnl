@@ -1,11 +1,12 @@
 const PASS_THROUGH_TYPES = new Set(['tax', 'tip', 'service_charge', 'discount', 'fee']);
 
 // Keywords to identify pass-through items by item_name
-const TAX_KEYWORDS = ['tax', 'sales tax', 'vat', 'gst', 'hst'];
-const TIP_KEYWORDS = ['tip', 'gratuity'];
-const SERVICE_CHARGE_KEYWORDS = ['service charge', 'service fee', 'surcharge'];
+// These are matched as whole words or at word boundaries to avoid false positives
+const TAX_KEYWORDS = ['sales tax', 'mb sales tax', 'state tax', 'local tax', 'vat', 'gst', 'hst'];
+const TIP_KEYWORDS = ['tip', 'credit tip', 'cash tip', 'gratuity'];
+const SERVICE_CHARGE_KEYWORDS = ['service charge', 'service fee', 'dual pricing'];
 const DISCOUNT_KEYWORDS = ['discount', 'comp', 'coupon', 'promo'];
-const FEE_KEYWORDS = ['fee', 'delivery fee', 'platform fee'];
+const FEE_KEYWORDS = ['delivery fee', 'platform fee', 'processing fee'];
 
 export interface PassThroughRow {
   item_type?: string | null;
@@ -24,12 +25,18 @@ function normalizeAdjustmentType(row: PassThroughRow) {
 }
 
 /**
- * Check if item_name contains any of the given keywords.
+ * Check if item_name contains any of the given keywords as whole words or at word boundaries.
+ * Uses word boundary matching to avoid false positives (e.g., 'taxation' matching 'tax').
  */
-function itemNameContains(itemName: string | null | undefined, keywords: string[]): boolean {
+function itemNameContainsKeyword(itemName: string | null | undefined, keywords: string[]): boolean {
   if (!itemName) return false;
   const lowerName = itemName.toLowerCase();
-  return keywords.some(keyword => lowerName.includes(keyword));
+  return keywords.some(keyword => {
+    // Create a regex that matches the keyword as a whole word (at word boundaries)
+    // or at the start/end of the string
+    const pattern = new RegExp(`(^|\\s|-)${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|\\s|-)`, 'i');
+    return pattern.test(lowerName);
+  });
 }
 
 /**
@@ -37,11 +44,11 @@ function itemNameContains(itemName: string | null | undefined, keywords: string[
  * Returns null if the item_name doesn't indicate a pass-through type.
  */
 function getPassThroughTypeFromItemName(itemName: string | null | undefined): PassThroughType | null {
-  if (itemNameContains(itemName, TAX_KEYWORDS)) return 'tax';
-  if (itemNameContains(itemName, TIP_KEYWORDS)) return 'tip';
-  if (itemNameContains(itemName, SERVICE_CHARGE_KEYWORDS)) return 'service_charge';
-  if (itemNameContains(itemName, DISCOUNT_KEYWORDS)) return 'discount';
-  if (itemNameContains(itemName, FEE_KEYWORDS)) return 'fee';
+  if (itemNameContainsKeyword(itemName, TAX_KEYWORDS)) return 'tax';
+  if (itemNameContainsKeyword(itemName, TIP_KEYWORDS)) return 'tip';
+  if (itemNameContainsKeyword(itemName, SERVICE_CHARGE_KEYWORDS)) return 'service_charge';
+  if (itemNameContainsKeyword(itemName, DISCOUNT_KEYWORDS)) return 'discount';
+  if (itemNameContainsKeyword(itemName, FEE_KEYWORDS)) return 'fee';
   return null;
 }
 

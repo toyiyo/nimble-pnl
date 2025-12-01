@@ -210,12 +210,33 @@ test.describe('classifyPassThroughItem helper', () => {
       total_price: 0.82,
       is_categorized: false,
       item_type: 'sale',
-      item_name: 'Dual Pricing Service Fee',
+      item_name: 'Dual Pricing',  // This is a service charge in the real data
     };
 
     expect(classifyPassThroughItem(salesTaxItem)).toBe('tax');
     expect(classifyPassThroughItem(tipItem)).toBe('tip');
     expect(classifyPassThroughItem(serviceChargeItem)).toBe('service_charge');
+  });
+
+  test('does not match false positives in item_name', () => {
+    // "Taxation" should NOT match as tax (contains 'tax' but not as a word boundary)
+    const notTaxItem = {
+      total_price: 10.00,
+      is_categorized: false,
+      item_type: 'sale',
+      item_name: 'Taxation Study Guide',
+    };
+
+    // "Tipping Point IPA" should NOT match as tip
+    const notTipItem = {
+      total_price: 8.00,
+      is_categorized: false,
+      item_type: 'sale',
+      item_name: 'Tipping Point IPA',
+    };
+
+    expect(classifyPassThroughItem(notTaxItem)).toBe('other');
+    expect(classifyPassThroughItem(notTipItem)).toBe('other');
   });
 
   test('splitPassThroughSales identifies items by item_name', () => {

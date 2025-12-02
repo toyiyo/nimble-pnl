@@ -997,7 +997,13 @@ async function executeGetSalesSummary(
   restaurantId: string,
   supabase: any
 ): Promise<any> {
-  const { period, compare_to_previous = true, include_items = false } = args;
+  const { 
+    period, 
+    start_date, 
+    end_date, 
+    compare_to_previous = true, 
+    include_items = false 
+  } = args;
 
   // Calculate date ranges
   const now = new Date();
@@ -1006,39 +1012,50 @@ async function executeGetSalesSummary(
   let prevStartDate: Date;
   let prevEndDate: Date;
 
-  switch (period) {
-    case 'today':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-      break;
-    case 'yesterday':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-      prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2);
-      prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2, 23, 59, 59);
-      break;
-    case 'week':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-      prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-      prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-      break;
-    case 'month':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      prevStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      prevEndDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-      break;
-    case 'quarter': {
-      const quarter = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), quarter * 3, 1);
-      prevStartDate = new Date(now.getFullYear(), (quarter - 1) * 3, 1);
-      prevEndDate = new Date(now.getFullYear(), quarter * 3, 0, 23, 59, 59);
-      break;
+  // If custom dates provided, use those
+  if (start_date && end_date) {
+    startDate = new Date(start_date);
+    endDate = new Date(end_date);
+    // Calculate previous period with same duration
+    const durationMs = endDate.getTime() - startDate.getTime();
+    prevEndDate = new Date(startDate.getTime() - 1);
+    prevStartDate = new Date(prevEndDate.getTime() - durationMs);
+  } else {
+    // Calculate based on period
+    switch (period) {
+      case 'today':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
+        break;
+      case 'yesterday':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
+        prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2);
+        prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2, 23, 59, 59);
+        break;
+      case 'week':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+        prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
+        prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+        break;
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        prevStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        prevEndDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+        break;
+      case 'quarter': {
+        const quarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), quarter * 3, 1);
+        prevStartDate = new Date(now.getFullYear(), (quarter - 1) * 3, 1);
+        prevEndDate = new Date(now.getFullYear(), quarter * 3, 0, 23, 59, 59);
+        break;
+      }
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        prevStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        prevEndDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
     }
-    default:
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      prevStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      prevEndDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
   }
 
   const startDateStr = startDate.toISOString().split('T')[0];

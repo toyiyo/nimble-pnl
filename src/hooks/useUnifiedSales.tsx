@@ -129,8 +129,9 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     hasNextPage,
   } = useInfiniteQuery({
     queryKey,
-    queryFn: ({ pageParam = 0 }) => fetchUnifiedSalesPage({ pageParam }),
-    getNextPageParam: (lastPage, pages) => (lastPage.hasMore ? pages.length * PAGE_SIZE : undefined),
+    queryFn: ({ pageParam = 0 }) => fetchUnifiedSalesPage({ pageParam: pageParam as number }),
+    getNextPageParam: (lastPage: any) => (lastPage?.hasMore ? (lastPage?.nextPage || 0) : undefined),
+    initialPageParam: 0,
     enabled: !!restaurantId && !!user,
     staleTime: 60000,
     gcTime: 300000,
@@ -140,7 +141,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
   });
 
   const flatSales = useMemo(() => {
-    const salesList = data?.pages.flatMap(page => page.sales) ?? [];
+    const salesList = data?.pages.flatMap((page: any) => page?.sales || []) ?? [];
     if (!salesList.length) return [];
 
     // Build child splits across pages to avoid missing links

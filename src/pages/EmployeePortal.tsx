@@ -148,7 +148,7 @@ const EmployeePortal = () => {
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const formatTimeInRestaurantTz = (time: string | null | undefined) => {
     if (!time) return '';
-    const converter = dateFnsTz.utcToZonedTime ?? ((date: Date) => date);
+    const converter = dateFnsTz.toZonedTime ?? ((date: Date) => date);
     const date = new Date(`1970-01-01T${time}Z`);
     const zoned = converter(date, restaurantTimezone);
     return format(zoned, 'HH:mm');

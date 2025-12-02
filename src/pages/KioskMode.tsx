@@ -73,7 +73,7 @@ const KioskMode = () => {
   }, [createPunch.mutateAsync]);
 
   useEffect(() => {
-    flushQueuedPunches(async (payload) => {
+    flushQueuedPunches(async (payload: any) => {
       await mutateRef.current(payload);
     }).then((result) => setQueuedCount(result.remaining));
     // Only run on mount
@@ -234,7 +234,7 @@ const KioskMode = () => {
       setStatusMessage(action === 'clock_in' ? 'Clocked in' : 'Clocked out');
       resetCameraState();
       if (queuedCount > 0) {
-        flushQueuedPunches(async (payload) => {
+        flushQueuedPunches(async (payload: any) => {
           await createPunch.mutateAsync(payload);
         }).then((result) => setQueuedCount(result.remaining));
       }
@@ -301,7 +301,6 @@ const KioskMode = () => {
       {
         restaurant_id: restaurantId,
         employee_id: employeeId,
-        pin,
         punch_type: action,
         punch_time: new Date().toISOString(),
         notes: 'Queued offline (kiosk)',
@@ -410,7 +409,7 @@ const KioskMode = () => {
 
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <Input
-                value={pinInput.replaceAll(/./g, '•')}
+                value={pinInput.replace(/./g, '•')}
                 placeholder="PIN"
                 readOnly
                 className="text-2xl tracking-[0.3em] bg-white/10 border-white/20 text-center text-white"
@@ -522,7 +521,7 @@ const KioskMode = () => {
                 pattern="[0-9]*"
                 maxLength={6}
                 value={exitPin}
-                onChange={(e) => setExitPin(e.target.value.replaceAll(/\D/g, '').slice(0, 6))}
+                onChange={(e) => setExitPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
               />
               {exitPinError && <p className="text-xs text-red-500">{exitPinError}</p>}
               <Button onClick={handleExitWithPin} disabled={exitProcessing || exitPin.length < 4}>

@@ -795,11 +795,11 @@ const TimePunchesManager = () => {
                   maxLength={6}
                   placeholder="Enter 4-6 digit PIN"
                   value={managerPinValue}
-                  onChange={(e) => {
-                    const digits = e.target.value.replaceAll(/\D/g, '').slice(0, 6);
-                    setManagerPinValue(digits);
-                    setManagerPinSaved(null);
-                  }}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+                  setManagerPinValue(digits);
+                  setManagerPinSaved(null);
+                }}
                   className="sm:max-w-xs"
                 />
                 <Button
@@ -934,7 +934,7 @@ const TimePunchesManager = () => {
                 maxLength={6}
                 value={pinValue}
                 onChange={(e) => {
-                  const digitsOnly = e.target.value.replaceAll(/\D/g, '').slice(0, 6);
+                  const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 6);
                   setPinValue(digitsOnly);
                   setLastSavedPin(null);
                 }}

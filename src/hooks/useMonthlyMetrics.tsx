@@ -264,7 +264,7 @@ export function useMonthlyMetrics(
       const filteredSales = revenueSales?.filter((s: any) => 
         !parentIdsWithChildren.has(s.id)
       ) || [];
-      const allAdjustments = normalizeAdjustmentsWithPassThrough(adjustmentsData, passThroughSales);
+      const allAdjustments = normalizeAdjustmentsWithPassThrough(adjustmentsData, passThroughSales as any);
 
       filteredSales?.forEach((sale) => {
         const saleDate = normalizeToLocalDate(sale.sale_date, 'sale_date');

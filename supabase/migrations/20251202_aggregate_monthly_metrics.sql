@@ -21,11 +21,12 @@ SET search_path TO 'public'
 AS $function$
 BEGIN
   RETURN QUERY
+  -- Use 'month_period' as internal column alias to avoid ambiguity with RETURNS TABLE column 'period'
   WITH monthly_revenue AS (
     -- Gross revenue: regular sales (adjustment_type IS NULL)
     -- Only count items with item_type = 'sale' or NULL (not refunds, voids, etc.)
     SELECT 
-      TO_CHAR(us.sale_date, 'YYYY-MM') as period,
+      TO_CHAR(us.sale_date, 'YYYY-MM') as month_period,
       COALESCE(SUM(us.total_price), 0)::DECIMAL as amount
     FROM unified_sales us
     WHERE us.restaurant_id = p_restaurant_id
@@ -43,7 +44,7 @@ BEGIN
   monthly_adjustments AS (
     -- Adjustments grouped by type and month
     SELECT 
-      TO_CHAR(us.sale_date, 'YYYY-MM') as period,
+      TO_CHAR(us.sale_date, 'YYYY-MM') as month_period,
       us.adjustment_type,
       COALESCE(SUM(us.total_price), 0)::DECIMAL as amount
     FROM unified_sales us
@@ -58,7 +59,7 @@ BEGIN
     -- These are items with adjustment_type IS NULL but mapped to liability chart accounts
     -- Note: account_subtype is an enum type, so we cast to TEXT before using COALESCE
     SELECT 
-      TO_CHAR(us.sale_date, 'YYYY-MM') as period,
+      TO_CHAR(us.sale_date, 'YYYY-MM') as month_period,
       CASE 
         WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tax%' 
           OR LOWER(COALESCE(coa.account_name, '')) LIKE '%tax%' 
@@ -95,29 +96,29 @@ BEGIN
   ),
   all_periods AS (
     -- Get all unique periods
-    SELECT DISTINCT period FROM monthly_revenue
+    SELECT DISTINCT month_period FROM monthly_revenue
     UNION
-    SELECT DISTINCT period FROM monthly_adjustments
+    SELECT DISTINCT month_period FROM monthly_adjustments
     UNION
-    SELECT DISTINCT period FROM monthly_categorized_liabilities
+    SELECT DISTINCT month_period FROM monthly_categorized_liabilities
   )
   SELECT 
-    p.period,
+    p.month_period as period,
     COALESCE(r.amount, 0) as gross_revenue,
     -- Sales tax: from adjustment_type='tax' + categorized tax liabilities
-    COALESCE((SELECT SUM(a.amount) FROM monthly_adjustments a WHERE a.period = p.period AND a.adjustment_type = 'tax'), 0) +
-    COALESCE((SELECT SUM(l.amount) FROM monthly_categorized_liabilities l WHERE l.period = p.period AND l.liability_type = 'tax'), 0) as sales_tax,
+    COALESCE((SELECT SUM(a.amount) FROM monthly_adjustments a WHERE a.month_period = p.month_period AND a.adjustment_type = 'tax'), 0) +
+    COALESCE((SELECT SUM(l.amount) FROM monthly_categorized_liabilities l WHERE l.month_period = p.month_period AND l.liability_type = 'tax'), 0) as sales_tax,
     -- Tips: from adjustment_type='tip' + categorized tip liabilities
-    COALESCE((SELECT SUM(a.amount) FROM monthly_adjustments a WHERE a.period = p.period AND a.adjustment_type = 'tip'), 0) +
-    COALESCE((SELECT SUM(l.amount) FROM monthly_categorized_liabilities l WHERE l.period = p.period AND l.liability_type = 'tip'), 0) as tips,
+    COALESCE((SELECT SUM(a.amount) FROM monthly_adjustments a WHERE a.month_period = p.month_period AND a.adjustment_type = 'tip'), 0) +
+    COALESCE((SELECT SUM(l.amount) FROM monthly_categorized_liabilities l WHERE l.month_period = p.month_period AND l.liability_type = 'tip'), 0) as tips,
     -- Other liabilities: service_charge, fee, and other categorized liabilities
-    COALESCE((SELECT SUM(a.amount) FROM monthly_adjustments a WHERE a.period = p.period AND a.adjustment_type IN ('service_charge', 'fee')), 0) +
-    COALESCE((SELECT SUM(l.amount) FROM monthly_categorized_liabilities l WHERE l.period = p.period AND l.liability_type = 'other_liability'), 0) as other_liabilities,
+    COALESCE((SELECT SUM(a.amount) FROM monthly_adjustments a WHERE a.month_period = p.month_period AND a.adjustment_type IN ('service_charge', 'fee')), 0) +
+    COALESCE((SELECT SUM(l.amount) FROM monthly_categorized_liabilities l WHERE l.month_period = p.month_period AND l.liability_type = 'other_liability'), 0) as other_liabilities,
     -- Discounts: from adjustment_type='discount'
-    COALESCE((SELECT SUM(ABS(a.amount)) FROM monthly_adjustments a WHERE a.period = p.period AND a.adjustment_type = 'discount'), 0) as discounts
+    COALESCE((SELECT SUM(ABS(a.amount)) FROM monthly_adjustments a WHERE a.month_period = p.month_period AND a.adjustment_type = 'discount'), 0) as discounts
   FROM all_periods p
-  LEFT JOIN monthly_revenue r ON r.period = p.period
-  ORDER BY p.period DESC;
+  LEFT JOIN monthly_revenue r ON r.month_period = p.month_period
+  ORDER BY p.month_period DESC;
 END;
 $function$;
 

@@ -1038,9 +1038,10 @@ async function executeGetSalesSummary(
   const endDateStr = endDate.toISOString().split('T')[0];
 
   // Fetch current period sales
+  // Include item_name and quantity for items breakdown when include_items is true
   const { data: currentSales, error: currentError } = await supabase
     .from('unified_sales')
-    .select('total_price, sale_date')
+    .select('total_price, sale_date, item_name, quantity')
     .eq('restaurant_id', restaurantId)
     .gte('sale_date', startDateStr)
     .lte('sale_date', endDateStr);
@@ -1055,14 +1056,15 @@ async function executeGetSalesSummary(
   // Get items breakdown if requested
   let itemsBreakdown = null;
   if (include_items) {
-    const itemsSummary: Record<string, { count: number; total: number }> = {};
+    const itemsSummary: Record<string, { quantity: number; total: number; sale_count: number }> = {};
     currentSales?.forEach((sale: any) => {
       const item = sale.item_name || 'Unknown';
       if (!itemsSummary[item]) {
-        itemsSummary[item] = { count: 0, total: 0 };
+        itemsSummary[item] = { quantity: 0, total: 0, sale_count: 0 };
       }
-      itemsSummary[item].count += 1;
+      itemsSummary[item].quantity += sale.quantity || 1;
       itemsSummary[item].total += sale.total_price || 0;
+      itemsSummary[item].sale_count += 1;
     });
     
     itemsBreakdown = Object.entries(itemsSummary)
@@ -1070,9 +1072,10 @@ async function executeGetSalesSummary(
       .slice(0, 20)
       .map(([name, data]) => ({
         item_name: name,
-        quantity_sold: data.count,
+        quantity_sold: data.quantity,
         total_sales: data.total,
-        avg_price: data.count > 0 ? data.total / data.count : 0,
+        sale_count: data.sale_count,
+        avg_price: data.quantity > 0 ? data.total / data.quantity : 0,
       }));
   }
 

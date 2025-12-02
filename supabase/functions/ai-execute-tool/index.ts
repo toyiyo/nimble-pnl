@@ -1062,7 +1062,9 @@ async function executeGetSalesSummary(
       if (!itemsSummary[item]) {
         itemsSummary[item] = { quantity: 0, total: 0, sale_count: 0 };
       }
-      itemsSummary[item].quantity += sale.quantity || 1;
+      // Use nullish coalescing to only fallback when quantity is null/undefined
+      // A quantity of 0 (e.g., for returns/voids) is a valid value and should not become 1
+      itemsSummary[item].quantity += sale.quantity ?? 1;
       itemsSummary[item].total += sale.total_price || 0;
       itemsSummary[item].sale_count += 1;
     });
@@ -1075,6 +1077,7 @@ async function executeGetSalesSummary(
         quantity_sold: data.quantity,
         total_sales: data.total,
         sale_count: data.sale_count,
+        // Average price per unit sold (e.g., average price per burger)
         avg_price: data.quantity > 0 ? data.total / data.quantity : 0,
       }));
   }

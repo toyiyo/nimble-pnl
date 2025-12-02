@@ -34,6 +34,8 @@ export function useFoodCosts(
     queryFn: async () => {
       if (!restaurantId) return null;
 
+      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
+      // to ensure we get all inventory usage transactions for accurate food cost calculations
       const { data, error } = await supabase
         .from('inventory_transactions')
         .select('created_at, transaction_date, total_cost, transaction_type')
@@ -41,7 +43,8 @@ export function useFoodCosts(
         .eq('transaction_type', 'usage')
         .or(`transaction_date.gte.${format(dateFrom, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${format(dateFrom, 'yyyy-MM-dd')})`)
         .or(`transaction_date.lte.${format(dateTo, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lte.${format(dateTo, 'yyyy-MM-dd')}T23:59:59.999Z)`)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (error) throw error;
 

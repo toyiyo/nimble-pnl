@@ -38,13 +38,16 @@ export function useLaborCosts(
     queryFn: async () => {
       if (!restaurantId) return null;
 
+      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
+      // to ensure we get all daily labor cost records for accurate labor cost calculations
       const { data, error } = await supabase
         .from('daily_labor_costs')
         .select('date, total_labor_cost, hourly_wages, salary_wages, benefits, total_hours')
         .eq('restaurant_id', restaurantId)
         .gte('date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('date', format(dateTo, 'yyyy-MM-dd'))
-        .order('date', { ascending: true });
+        .order('date', { ascending: true })
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (error) throw error;
 

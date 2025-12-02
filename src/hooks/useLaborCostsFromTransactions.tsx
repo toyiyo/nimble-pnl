@@ -39,6 +39,8 @@ export function useLaborCostsFromTransactions(
       if (!restaurantId) return null;
 
       // Fetch bank transactions categorized to labor accounts
+      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
+      // to ensure we get all labor-related transactions for accurate cost calculations
       const { data: bankTxns, error: bankError } = await supabase
         .from('bank_transactions')
         .select(`
@@ -53,11 +55,14 @@ export function useLaborCostsFromTransactions(
         .gte('transaction_date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('transaction_date', format(dateTo, 'yyyy-MM-dd'))
         .in('status', ['posted', 'pending'])
-        .lt('amount', 0); // Only outflows
+        .lt('amount', 0) // Only outflows
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (bankError) throw bankError;
 
       // Fetch pending outflows categorized to labor accounts
+      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
+      // to ensure we get all labor-related pending outflows for accurate cost calculations
       const { data: pendingTxns, error: pendingError } = await supabase
         .from('pending_outflows')
         .select(`
@@ -71,7 +76,8 @@ export function useLaborCostsFromTransactions(
         .eq('restaurant_id', restaurantId)
         .gte('issue_date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('issue_date', format(dateTo, 'yyyy-MM-dd'))
-        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90']);
+        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (pendingError) throw pendingError;
 

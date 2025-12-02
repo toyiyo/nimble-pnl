@@ -380,18 +380,21 @@ export function useMonthlyMetrics(
 
       // Fetch COGS (Cost of Goods Used) from inventory_transactions (source of truth)
       // Use 'usage' type to track actual product consumption when recipes are sold
+      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
       const { data: foodCostsData, error: foodCostsError } = await supabase
         .from('inventory_transactions')
         .select('created_at, transaction_date, total_cost')
         .eq('restaurant_id', restaurantId)
         .eq('transaction_type', 'usage')
         .or(`transaction_date.gte.${format(dateFrom, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${format(dateFrom, 'yyyy-MM-dd')})`)
-        .or(`transaction_date.lte.${format(dateTo, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lte.${format(dateTo, 'yyyy-MM-dd')}T23:59:59.999Z)`);
+        .or(`transaction_date.lte.${format(dateTo, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lte.${format(dateTo, 'yyyy-MM-dd')}T23:59:59.999Z)`)
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (foodCostsError) throw foodCostsError;
 
       // Fetch actual labor costs from bank transactions + pending outflows
       // Use same pattern as useLaborCostsFromTransactions (no alias)
+      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
       const { data: bankLabor, error: bankLaborError } = await supabase
         .from('bank_transactions')
         .select(`
@@ -406,7 +409,8 @@ export function useMonthlyMetrics(
         .gte('transaction_date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('transaction_date', format(dateTo, 'yyyy-MM-dd'))
         .in('status', ['posted', 'pending'])
-        .lt('amount', 0); // Only outflows
+        .lt('amount', 0) // Only outflows
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (bankLaborError) {
         console.warn('Failed to fetch bank labor costs:', bankLaborError);
@@ -425,19 +429,22 @@ export function useMonthlyMetrics(
         .eq('restaurant_id', restaurantId)
         .gte('issue_date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('issue_date', format(dateTo, 'yyyy-MM-dd'))
-        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90']);
+        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (pendingLaborError) {
         console.warn('Failed to fetch pending labor costs:', pendingLaborError);
       }
 
       // Fetch labor costs from daily_labor_costs (pending - from time punches)
+      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
       const { data: laborCostsData, error: laborCostsError } = await supabase
         .from('daily_labor_costs')
         .select('date, total_labor_cost')
         .eq('restaurant_id', restaurantId)
         .gte('date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('date', format(dateTo, 'yyyy-MM-dd'));
+        .lte('date', format(dateTo, 'yyyy-MM-dd'))
+        .limit(10000); // Override Supabase's default 1000 row limit
 
       if (laborCostsError) throw laborCostsError;
 

@@ -1014,8 +1014,12 @@ async function executeGetSalesSummary(
 
   // If custom dates provided, use those
   if (start_date && end_date) {
-    startDate = new Date(start_date);
-    endDate = new Date(end_date);
+    // Parse dates explicitly to avoid timezone issues
+    const [startYear, startMonth, startDay] = start_date.split('-').map(Number);
+    const [endYear, endMonth, endDay] = end_date.split('-').map(Number);
+    startDate = new Date(startYear, startMonth - 1, startDay);
+    endDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59);
+    
     // Calculate previous period with same duration
     const durationMs = endDate.getTime() - startDate.getTime();
     prevEndDate = new Date(startDate.getTime() - 1);

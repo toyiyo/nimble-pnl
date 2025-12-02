@@ -20,6 +20,16 @@ export interface MonthlyMetrics {
   has_data: boolean;
 }
 
+// RPC response type for get_monthly_sales_metrics
+interface MonthlySalesMetricsRow {
+  period: string;
+  gross_revenue: number;
+  sales_tax: number;
+  tips: number;
+  other_liabilities: number;
+  discounts: number;
+}
+
 /**
  * Hook to fetch monthly aggregated metrics from unified_sales (revenue + liabilities) 
  * and source tables (inventory_transactions + daily_labor_costs + bank transactions/pending outflows for costs).
@@ -101,6 +111,9 @@ export function useMonthlyMetrics(
     queryFn: async () => {
       if (!restaurantId) return [];
 
+      const fromStr = format(dateFrom, 'yyyy-MM-dd');
+      const toStr = format(dateTo, 'yyyy-MM-dd');
+
       const normalizeToLocalDate = (rawDate: string | null | undefined, fieldName: string) => {
         if (!rawDate) {
           return null;
@@ -121,55 +134,121 @@ export function useMonthlyMetrics(
         return null;
       };
 
-      // Fetch sales excluding pass-through items (adjustment_type IS NOT NULL)
-      // Pass-through items include: tips, sales tax, service charges, discounts, fees
-      const { data: salesData, error: salesError } = await supabase
-        .from('unified_sales')
-        .select(`
-          id,
-          sale_date,
-          total_price,
-          item_type,
-          parent_sale_id,
-          is_categorized,
-          chart_account:chart_of_accounts!category_id(
-            account_type,
-            account_subtype,
-            account_name
-          )
-        `)
-        .eq('restaurant_id', restaurantId)
-        .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
-        .is('adjustment_type', null);
+      // Try optimized RPC function first (no row limit issues)
+      const { data: rpcMetrics, error: rpcError } = await supabase
+        .rpc('get_monthly_sales_metrics', {
+          p_restaurant_id: restaurantId,
+          p_date_from: fromStr,
+          p_date_to: toStr
+        });
 
-      if (salesError) throw salesError;
+      // Build monthly map for combining with costs data
+      const monthlyMap = new Map<string, {
+        period: string;
+        gross_revenue: number; // in cents
+        total_collected_at_pos: number; // in cents
+        net_revenue: number; // in cents
+        discounts: number; // in cents
+        refunds: number; // in cents
+        sales_tax: number; // in cents
+        tips: number; // in cents
+        other_liabilities: number; // in cents
+        food_cost: number; // in cents
+        labor_cost: number; // in cents
+        pending_labor_cost: number; // in cents
+        actual_labor_cost: number; // in cents
+        has_data: boolean;
+      }>();
 
-      // Fetch adjustments separately (Square/Clover pass-through items)
-      // Include category/chart_account when present so categorized adjustments
-      // can be classified by their chart account (sales_tax/tips/other liabilities).
-      const { data: adjustmentsData, error: adjustmentsError } = await supabase
-        .from('unified_sales')
-        .select(`
-          sale_date,
-          adjustment_type,
-          total_price,
-          is_categorized,
-          category_id,
-          chart_account:chart_of_accounts!category_id(
+      if (!rpcError && rpcMetrics && rpcMetrics.length > 0) {
+        // Use RPC data - it's already aggregated correctly
+        // Values come in dollars, convert to cents for internal consistency
+        const typedMetrics = rpcMetrics as MonthlySalesMetricsRow[];
+        typedMetrics.forEach((row) => {
+          const grossRevenueC = Math.round((Number(row.gross_revenue) || 0) * 100);
+          const salesTaxC = Math.round((Number(row.sales_tax) || 0) * 100);
+          const tipsC = Math.round((Number(row.tips) || 0) * 100);
+          const otherLiabilitiesC = Math.round((Number(row.other_liabilities) || 0) * 100);
+          const discountsC = Math.round((Number(row.discounts) || 0) * 100);
+
+          monthlyMap.set(row.period, {
+            period: row.period,
+            gross_revenue: grossRevenueC,
+            total_collected_at_pos: grossRevenueC + salesTaxC + tipsC + otherLiabilitiesC,
+            net_revenue: grossRevenueC - discountsC,
+            discounts: discountsC,
+            refunds: 0, // Not tracked in RPC yet
+            sales_tax: salesTaxC,
+            tips: tipsC,
+            other_liabilities: otherLiabilitiesC,
+            food_cost: 0,
+            labor_cost: 0,
+            pending_labor_cost: 0,
+            actual_labor_cost: 0,
+            has_data: true,
+          });
+        });
+      } else {
+        // Fallback to original implementation if RPC not available
+        if (rpcError) {
+          console.warn('Failed to fetch monthly metrics via RPC, falling back to individual queries:', rpcError);
+        }
+
+        // Fetch sales excluding pass-through items (adjustment_type IS NOT NULL)
+        // Pass-through items include: tips, sales tax, service charges, discounts, fees
+        // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
+        const { data: salesData, error: salesError } = await supabase
+          .from('unified_sales')
+          .select(`
             id,
-            account_code,
-            account_name,
-            account_type,
-            account_subtype
-          )
-        `)
-        .eq('restaurant_id', restaurantId)
-        .gte('sale_date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('sale_date', format(dateTo, 'yyyy-MM-dd'))
-        .not('adjustment_type', 'is', null);
+            sale_date,
+            total_price,
+            item_type,
+            item_name,
+            parent_sale_id,
+            is_categorized,
+            chart_account:chart_of_accounts!category_id(
+              account_type,
+              account_subtype,
+              account_name
+            )
+          `)
+          .eq('restaurant_id', restaurantId)
+          .gte('sale_date', fromStr)
+          .lte('sale_date', toStr)
+          .is('adjustment_type', null)
+          .limit(10000); // Override Supabase's default 1000 row limit
 
-      if (adjustmentsError) throw adjustmentsError;
+        if (salesError) throw salesError;
+
+        // Fetch adjustments separately (Square/Clover pass-through items)
+        // Include category/chart_account when present so categorized adjustments
+        // can be classified by their chart account (sales_tax/tips/other liabilities).
+        // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
+        const { data: adjustmentsData, error: adjustmentsError } = await supabase
+          .from('unified_sales')
+          .select(`
+            sale_date,
+            adjustment_type,
+            total_price,
+            item_name,
+            is_categorized,
+            category_id,
+            chart_account:chart_of_accounts!category_id(
+              id,
+              account_code,
+              account_name,
+              account_type,
+              account_subtype
+            )
+          `)
+          .eq('restaurant_id', restaurantId)
+          .gte('sale_date', fromStr)
+          .lte('sale_date', toStr)
+          .not('adjustment_type', 'is', null)
+          .limit(10000); // Override Supabase's default 1000 row limit
+
+        if (adjustmentsError) throw adjustmentsError;
 
       // Split out pass-through rows that may have been ingested without adjustment_type
       const { revenue: revenueSales, passThrough: passThroughSales } = splitPassThroughSales(salesData);
@@ -187,30 +266,7 @@ export function useMonthlyMetrics(
       ) || [];
       const allAdjustments = normalizeAdjustmentsWithPassThrough(adjustmentsData, passThroughSales);
 
-      // Group sales by month and categorize
-      const monthlyMap = new Map<string, MonthlyMetrics>();
-      
-      // Debug: Track categorization for alcohol sales with detailed path tracking
-      const alcoholSales: any[] = [];
-      const alcoholSalesProcessing: any[] = [];
-
       filteredSales?.forEach((sale) => {
-        // Debug: Track alcohol sales
-        const isAlcohol = (sale.chart_account as any)?.account_code === '4020' || 
-                         sale.chart_account?.account_name?.toLowerCase().includes('alcohol');
-        
-        if (isAlcohol) {
-          alcoholSales.push({
-            price: sale.total_price,
-            is_categorized: sale.is_categorized,
-            has_account: !!sale.chart_account,
-            account_type: sale.chart_account?.account_type,
-            account_code: (sale.chart_account as any)?.account_code,
-            item_type: sale.item_type,
-            normalized_item_type: String(sale.item_type || 'sale').toLowerCase(),
-          });
-        }
-        
         const saleDate = normalizeToLocalDate(sale.sale_date, 'sale_date');
         if (!saleDate) {
           return;
@@ -245,19 +301,6 @@ export function useMonthlyMetrics(
           // Match useRevenueBreakdown logic: normalize item_type to lowercase for comparison
           if (String(sale.item_type || 'sale').toLowerCase() === 'sale') {
             month.gross_revenue += Math.round(sale.total_price * 100);
-            if (isAlcohol) {
-              alcoholSalesProcessing.push({
-                price: sale.total_price,
-                path: 'uncategorized -> gross_revenue',
-              });
-            }
-          } else {
-            if (isAlcohol) {
-              alcoholSalesProcessing.push({
-                price: sale.total_price,
-                path: 'uncategorized -> SKIPPED (not sale)',
-              });
-            }
           }
           return;
         }
@@ -270,23 +313,11 @@ export function useMonthlyMetrics(
         // Handle discounts and refunds first (regardless of account_type)
         if (normalizedItemType === 'discount') {
           month.discounts += Math.round(Math.abs(sale.total_price) * 100);
-          if (isAlcohol) {
-            alcoholSalesProcessing.push({
-              price: sale.total_price,
-              path: 'categorized -> discount',
-            });
-          }
           return;
         }
         
         if (normalizedItemType === 'refund') {
           month.refunds += Math.round(Math.abs(sale.total_price) * 100);
-          if (isAlcohol) {
-            alcoholSalesProcessing.push({
-              price: sale.total_price,
-              path: 'categorized -> refund',
-            });
-          }
           return;
         }
         
@@ -295,12 +326,6 @@ export function useMonthlyMetrics(
           // All revenue account items go to gross_revenue (regardless of item_type)
           // This matches useRevenueBreakdown which includes all categorized revenue
           month.gross_revenue += Math.round(sale.total_price * 100);
-          if (isAlcohol) {
-            alcoholSalesProcessing.push({
-              price: sale.total_price,
-              path: `categorized -> revenue -> gross_revenue (item_type='${normalizedItemType}')`,
-            });
-          }
         } else if (sale.chart_account.account_type === 'liability') {
           // Categorize liabilities by checking BOTH subtype and account_name
           const subtype = sale.chart_account.account_subtype?.toLowerCase() || '';
@@ -309,54 +334,17 @@ export function useMonthlyMetrics(
           if ((subtype.includes('sales') && subtype.includes('tax')) ||
               (accountName.includes('sales') && accountName.includes('tax'))) {
             month.sales_tax += Math.round(sale.total_price * 100);
-            if (isAlcohol) {
-              alcoholSalesProcessing.push({
-                price: sale.total_price,
-                path: 'categorized -> liability -> sales_tax',
-              });
-            }
           } else if (subtype.includes('tip') || accountName.includes('tip')) {
             month.tips += Math.round(sale.total_price * 100);
-            if (isAlcohol) {
-              alcoholSalesProcessing.push({
-                price: sale.total_price,
-                path: 'categorized -> liability -> tips',
-              });
-            }
           } else {
             month.other_liabilities += Math.round(sale.total_price * 100);
-            if (isAlcohol) {
-              alcoholSalesProcessing.push({
-                price: sale.total_price,
-                path: 'categorized -> liability -> other_liabilities',
-              });
-            }
-          }
-        } else {
-          // Account type is neither revenue nor liability - skip
-          if (isAlcohol) {
-            alcoholSalesProcessing.push({
-              price: sale.total_price,
-              path: `categorized -> SKIPPED (account_type='${sale.chart_account.account_type}')`,
-            });
           }
         }
+        // Account type is neither revenue nor liability - skip
       });
-      
-      // Debug: Log alcohol sales
-      if (alcoholSales.length > 0) {
-        console.group('🍺 Alcohol Sales Debug (useMonthlyMetrics)');
-        console.log('Raw alcohol sales found:');
-        console.table(alcoholSales);
-        console.log('Processing paths:');
-        console.table(alcoholSalesProcessing);
-        console.log('Total alcohol sales found:', alcoholSales.length);
-        console.log('Total alcohol revenue:', alcoholSales.reduce((sum, s) => sum + s.price, 0));
-        console.groupEnd();
-      }
 
-  // Process adjustments (Square/Clover pass-through items)
-  allAdjustments?.forEach((adjustment) => {
+      // Process adjustments (Square/Clover pass-through items)
+      allAdjustments?.forEach((adjustment) => {
         const adjustmentDate = normalizeToLocalDate(adjustment.sale_date, 'adjustment.sale_date');
         if (!adjustmentDate) {
           return;
@@ -385,11 +373,10 @@ export function useMonthlyMetrics(
         const month = monthlyMap.get(monthKey)!;
         month.has_data = true;
 
-
-
           // Use shared helper to classify and add adjustment to the month object
           classifyAdjustmentIntoMonth(month as any, adjustment as any);
       });
+      } // End of fallback else block
 
       // Fetch COGS (Cost of Goods Used) from inventory_transactions (source of truth)
       // Use 'usage' type to track actual product consumption when recipes are sold

@@ -56,13 +56,14 @@ BEGIN
   monthly_categorized_liabilities AS (
     -- Liabilities from categorized items (items mapped to liability accounts)
     -- These are items with adjustment_type IS NULL but mapped to liability chart accounts
+    -- Note: account_subtype is an enum type, so we cast to TEXT before using COALESCE
     SELECT 
       TO_CHAR(us.sale_date, 'YYYY-MM') as period,
       CASE 
-        WHEN LOWER(COALESCE(coa.account_subtype, '')) LIKE '%tax%' 
+        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tax%' 
           OR LOWER(COALESCE(coa.account_name, '')) LIKE '%tax%' 
         THEN 'tax'
-        WHEN LOWER(COALESCE(coa.account_subtype, '')) LIKE '%tip%' 
+        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tip%' 
           OR LOWER(COALESCE(coa.account_name, '')) LIKE '%tip%' 
         THEN 'tip'
         ELSE 'other_liability'
@@ -83,10 +84,10 @@ BEGIN
       )
     GROUP BY TO_CHAR(us.sale_date, 'YYYY-MM'),
       CASE 
-        WHEN LOWER(COALESCE(coa.account_subtype, '')) LIKE '%tax%' 
+        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tax%' 
           OR LOWER(COALESCE(coa.account_name, '')) LIKE '%tax%' 
         THEN 'tax'
-        WHEN LOWER(COALESCE(coa.account_subtype, '')) LIKE '%tip%' 
+        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tip%' 
           OR LOWER(COALESCE(coa.account_name, '')) LIKE '%tip%' 
         THEN 'tip'
         ELSE 'other_liability'

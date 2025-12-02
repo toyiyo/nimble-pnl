@@ -20,6 +20,16 @@ export interface MonthlyMetrics {
   has_data: boolean;
 }
 
+// RPC response type for get_monthly_sales_metrics
+interface MonthlySalesMetricsRow {
+  period: string;
+  gross_revenue: number;
+  sales_tax: number;
+  tips: number;
+  other_liabilities: number;
+  discounts: number;
+}
+
 /**
  * Hook to fetch monthly aggregated metrics from unified_sales (revenue + liabilities) 
  * and source tables (inventory_transactions + daily_labor_costs + bank transactions/pending outflows for costs).
@@ -153,7 +163,8 @@ export function useMonthlyMetrics(
       if (!rpcError && rpcMetrics && rpcMetrics.length > 0) {
         // Use RPC data - it's already aggregated correctly
         // Values come in dollars, convert to cents for internal consistency
-        (rpcMetrics as any[]).forEach((row: any) => {
+        const typedMetrics = rpcMetrics as MonthlySalesMetricsRow[];
+        typedMetrics.forEach((row) => {
           const grossRevenueC = Math.round((Number(row.gross_revenue) || 0) * 100);
           const salesTaxC = Math.round((Number(row.sales_tax) || 0) * 100);
           const tipsC = Math.round((Number(row.tips) || 0) * 100);

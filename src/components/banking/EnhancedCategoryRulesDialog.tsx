@@ -741,7 +741,7 @@ export const EnhancedCategoryRulesDialog = ({
                             
                             if ((isEmpty || isGeneric) && !hasOtherCriteria) {
                               return (
-                                <Alert variant="warning" className="mt-2">
+                                <Alert className="mt-2 bg-amber-500/10 text-amber-700 border-amber-500/20">
                                   <AlertTriangle className="h-4 w-4" />
                                   <AlertDescription>
                                     {isEmpty ? (

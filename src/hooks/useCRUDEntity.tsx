@@ -14,10 +14,10 @@ export function useCreateEntity<T>(config: CRUDHookConfig<T>) {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (entity: Omit<T, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase
+    mutationFn: async (entity: any) => {
+      const { data, error } = await (supabase as any)
         .from(config.tableName)
-        .insert(entity as any)
+        .insert(entity)
         .select()
         .single();
 
@@ -47,10 +47,11 @@ export function useUpdateEntity<T>(config: CRUDHookConfig<T>) {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<T> & { id: string }) => {
-      const { data, error } = await supabase
+    mutationFn: async (updates: any) => {
+      const { id, ...rest } = updates;
+      const { data, error } = await (supabase as any)
         .from(config.tableName)
-        .update(updates)
+        .update(rest)
         .eq('id', id)
         .select()
         .single();
@@ -81,8 +82,8 @@ export function useDeleteEntity<T>(config: CRUDHookConfig<T>) {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
-      const { error } = await supabase
+    mutationFn: async ({ id, restaurantId }: any) => {
+      const { error } = await (supabase as any)
         .from(config.tableName)
         .delete()
         .eq('id', id);

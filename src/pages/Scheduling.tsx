@@ -64,11 +64,11 @@ const buildConflictKey = (conflict: ConflictCheck) =>
 const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
-  const { zonedTimeToUtc } = dateFnsTz;
+  const { fromZonedTime } = dateFnsTz;
 
   const formatToUTC = (isoString: string) => {
     const date = new Date(isoString);
-    const converter = zonedTimeToUtc ?? ((value: Date) => value);
+    const converter = fromZonedTime ?? ((value: Date) => value);
     const utcDate = converter(date, restaurantTimezone);
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;

@@ -1306,6 +1306,63 @@ export type Database = {
           },
         ]
       }
+      employee_pins: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          employee_id: string
+          force_reset: boolean
+          id: string
+          last_used_at: string | null
+          min_length: number
+          pin_hash: string
+          restaurant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          employee_id: string
+          force_reset?: boolean
+          id?: string
+          last_used_at?: string | null
+          min_length?: number
+          pin_hash: string
+          restaurant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          employee_id?: string
+          force_reset?: boolean
+          id?: string
+          last_used_at?: string | null
+          min_length?: number
+          pin_hash?: string
+          restaurant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_pins_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_pins_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_tips: {
         Row: {
           created_at: string
@@ -1366,104 +1423,6 @@ export type Database = {
             columns: ["shift_id"]
             isOneToOne: false
             referencedRelation: "shifts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      employee_pins: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          employee_id: string
-          force_reset: boolean
-          id: string
-          last_used_at: string | null
-          min_length: number
-          pin_hash: string
-          restaurant_id: string
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          employee_id: string
-          force_reset?: boolean
-          id?: string
-          last_used_at?: string | null
-          min_length?: number
-          pin_hash: string
-          restaurant_id: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          employee_id?: string
-          force_reset?: boolean
-          id?: string
-          last_used_at?: string | null
-          min_length?: number
-          pin_hash?: string
-          restaurant_id?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "employee_pins_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "employee_pins_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
-            referencedRelation: "restaurants"
-          referencedColumns: ["id"]
-        },
-      ]
-    }
-      manager_pins: {
-        Row: {
-          created_at: string
-          id: string
-          last_used_at: string | null
-          manager_user_id: string
-          min_length: number
-          pin_hash: string
-          restaurant_id: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          last_used_at?: string | null
-          manager_user_id: string
-          min_length?: number
-          pin_hash: string
-          restaurant_id: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          last_used_at?: string | null
-          manager_user_id?: string
-          min_length?: number
-          pin_hash?: string
-          restaurant_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "manager_pins_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
-            referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
         ]
@@ -1964,6 +1923,82 @@ export type Database = {
             columns: ["journal_entry_id"]
             isOneToOne: false
             referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kiosk_service_accounts: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          email: string
+          id: string
+          restaurant_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          email: string
+          id?: string
+          restaurant_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          email?: string
+          id?: string
+          restaurant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kiosk_service_accounts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manager_pins: {
+        Row: {
+          created_at: string
+          id: string
+          last_used_at: string | null
+          manager_user_id: string
+          min_length: number
+          pin_hash: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          manager_user_id: string
+          min_length?: number
+          pin_hash: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          manager_user_id?: string
+          min_length?: number
+          pin_hash?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manager_pins_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
         ]
@@ -5560,9 +5595,53 @@ export type Database = {
           on_break: boolean
         }[]
       }
+      get_monthly_sales_metrics: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_restaurant_id: string
+        }
+        Returns: {
+          discounts: number
+          gross_revenue: number
+          other_liabilities: number
+          period: string
+          sales_tax: number
+          tips: number
+        }[]
+      }
+      get_pass_through_totals: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_restaurant_id: string
+        }
+        Returns: {
+          adjustment_type: string
+          total_amount: number
+          transaction_count: number
+        }[]
+      }
       get_product_cost_per_recipe_unit: {
         Args: { product_id: string }
         Returns: number
+      }
+      get_revenue_by_account: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_restaurant_id: string
+        }
+        Returns: {
+          account_code: string
+          account_id: string
+          account_name: string
+          account_subtype: string
+          account_type: string
+          is_categorized: boolean
+          total_amount: number
+          transaction_count: number
+        }[]
       }
       hash_invitation_token: { Args: { token: string }; Returns: string }
       is_restaurant_owner: {

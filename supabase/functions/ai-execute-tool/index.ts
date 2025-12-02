@@ -1028,6 +1028,13 @@ async function executeGetSalesSummary(
       prevStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       prevEndDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
       break;
+    case 'quarter': {
+      const quarter = Math.floor(now.getMonth() / 3);
+      startDate = new Date(now.getFullYear(), quarter * 3, 1);
+      prevStartDate = new Date(now.getFullYear(), (quarter - 1) * 3, 1);
+      prevEndDate = new Date(now.getFullYear(), quarter * 3, 0, 23, 59, 59);
+      break;
+    }
     default:
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       prevStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -1037,13 +1044,15 @@ async function executeGetSalesSummary(
   const startDateStr = startDate.toISOString().split('T')[0];
   const endDateStr = endDate.toISOString().split('T')[0];
 
-  // Fetch current period sales
+  // Fetch current period sales (excluding adjustments - only actual revenue)
   const { data: currentSales, error: currentError } = await supabase
     .from('unified_sales')
-    .select('total_price, sale_date')
+    .select('total_price, sale_date, item_name')
     .eq('restaurant_id', restaurantId)
     .gte('sale_date', startDateStr)
-    .lte('sale_date', endDateStr);
+    .lte('sale_date', endDateStr)
+    .is('adjustment_type', null)
+    .is('parent_sale_id', null);
 
   if (currentError) {
     throw new Error(`Failed to fetch sales: ${currentError.message}`);
@@ -1087,7 +1096,9 @@ async function executeGetSalesSummary(
       .select('total_price')
       .eq('restaurant_id', restaurantId)
       .gte('sale_date', prevStartDateStr)
-      .lte('sale_date', prevEndDateStr);
+      .lte('sale_date', prevEndDateStr)
+      .is('adjustment_type', null)
+      .is('parent_sale_id', null);
 
     if (!prevError) {
       const prevTotal = prevSales?.reduce((sum: number, sale: any) => sum + (sale.total_price || 0), 0) || 0;

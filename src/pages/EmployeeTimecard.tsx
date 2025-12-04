@@ -222,7 +222,7 @@ const EmployeeTimecard = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatHours(weeklyTotals.regularHours)}</div>
+            <div className="text-2xl font-bold">{formatHoursMinutes(weeklyTotals.regularHours)}</div>
             <p className="text-xs text-muted-foreground">Up to 40 hrs/week</p>
           </CardContent>
         </Card>
@@ -237,7 +237,7 @@ const EmployeeTimecard = () => {
           <CardContent>
             <div className="text-2xl font-bold">
               {weeklyTotals.overtimeHours > 0 ? (
-                <span className="text-amber-600">{formatHours(weeklyTotals.overtimeHours)}</span>
+                <span className="text-amber-600">{formatHoursMinutes(weeklyTotals.overtimeHours)}</span>
               ) : (
                 '0h 0m'
               )}
@@ -254,7 +254,7 @@ const EmployeeTimecard = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatHours(weeklyTotals.breakHours)}</div>
+            <div className="text-2xl font-bold">{formatHoursMinutes(weeklyTotals.breakHours)}</div>
             <p className="text-xs text-muted-foreground">Total breaks taken</p>
           </CardContent>
         </Card>
@@ -299,10 +299,10 @@ const EmployeeTimecard = () => {
                         )}
                       </div>
                       <div className="text-right">
-                        <div className="font-medium">{formatHours(dayStats.netHours)}</div>
+                        <div className="font-medium">{formatHoursMinutes(dayStats.netHours)}</div>
                         {dayStats.breakHours > 0 && (
                           <div className="text-xs text-muted-foreground">
-                            {formatHours(dayStats.breakHours)} break
+                            {formatHoursMinutes(dayStats.breakHours)} break
                           </div>
                         )}
                       </div>
@@ -339,13 +339,10 @@ const EmployeeTimecard = () => {
       </Card>
 
       {/* Info Alert */}
-      <Alert className="bg-primary/5 border-primary/20">
-        <AlertCircle className="h-4 w-4 text-primary" />
-        <AlertDescription>
-          <strong>Note:</strong> If you notice any discrepancies in your timecard, please contact
-          your manager for corrections. Only approved punches are included in payroll.
-        </AlertDescription>
-      </Alert>
+      <EmployeeInfoAlert>
+        <strong>Note:</strong> If you notice any discrepancies in your timecard, please contact
+        your manager for corrections. Only approved punches are included in payroll.
+      </EmployeeInfoAlert>
     </div>
   );
 };

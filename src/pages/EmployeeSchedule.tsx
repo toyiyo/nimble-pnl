@@ -3,16 +3,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useShifts } from '@/hooks/useShifts';
+import {
+  EmployeePageHeader,
+  NoRestaurantState,
+  EmployeePageSkeleton,
+  EmployeeNotLinkedState,
+  EmployeeInfoAlert,
+} from '@/components/employee';
 import {
   Calendar,
   Clock,
   ChevronLeft,
   ChevronRight,
-  AlertCircle,
   CalendarDays,
   MapPin,
   Coffee,
@@ -27,7 +32,6 @@ import {
   subWeeks,
   addWeeks,
   eachDayOfInterval,
-  isSameDay,
   parseISO,
   isToday,
   isFuture,
@@ -178,43 +182,15 @@ const EmployeeSchedule = () => {
   };
 
   if (!restaurantId) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-muted-foreground">Please select a restaurant.</p>
-      </div>
-    );
+    return <NoRestaurantState />;
   }
 
   if (employeeLoading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
+    return <EmployeePageSkeleton />;
   }
 
   if (!currentEmployee) {
-    return (
-      <Card className="bg-gradient-to-br from-destructive/5 via-destructive/5 to-transparent border-destructive/10">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-destructive" />
-            <div>
-              <CardTitle className="text-2xl">Access Required</CardTitle>
-              <CardDescription>
-                Your account is not linked to an employee record.
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Please contact your manager to link your account to your employee profile.
-          </p>
-        </CardContent>
-      </Card>
-    );
+    return <EmployeeNotLinkedState />;
   }
 
   const isLoading = shiftsLoading;
@@ -222,23 +198,11 @@ const EmployeeSchedule = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <CalendarDays className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                My Schedule
-              </CardTitle>
-              <CardDescription>
-                {currentEmployee.name} • {currentEmployee.position}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
+      <EmployeePageHeader
+        icon={CalendarDays}
+        title="My Schedule"
+        subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
+      />
 
       {/* Upcoming Shifts */}
       {upcomingShifts.length > 0 && (
@@ -441,13 +405,10 @@ const EmployeeSchedule = () => {
       </div>
 
       {/* Info Alert */}
-      <Alert className="bg-primary/5 border-primary/20">
-        <AlertCircle className="h-4 w-4 text-primary" />
-        <AlertDescription>
-          <strong>Note:</strong> Your schedule may change. Check back regularly or enable
-          notifications to stay updated. Contact your manager if you have any scheduling conflicts.
-        </AlertDescription>
-      </Alert>
+      <EmployeeInfoAlert>
+        <strong>Note:</strong> Your schedule may change. Check back regularly or enable
+        notifications to stay updated. Contact your manager if you have any scheduling conflicts.
+      </EmployeeInfoAlert>
     </div>
   );
 };

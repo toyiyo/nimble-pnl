@@ -29,7 +29,7 @@ import { QuickInventoryDialog } from './QuickInventoryDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { Product } from '@/hooks/useProducts';
 import { useToast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
+import { cn, sanitizeForOrFilter } from '@/lib/utils';
 
 interface ReconciliationSessionProps {
   restaurantId: string;
@@ -202,11 +202,13 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
   const handleBarcodeScan = async (barcode: string) => {
     try {
       // Look up product by GTIN, SKU, or barcode_data
+      // Sanitize input to prevent query injection
+      const sanitizedBarcode = sanitizeForOrFilter(barcode);
       const { data: products, error } = await supabase
         .from('products')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .or(`gtin.eq.${barcode},sku.eq.${barcode}`)
+        .or(`gtin.eq.${sanitizedBarcode},sku.eq.${sanitizedBarcode}`)
         .limit(1);
 
       if (error) throw error;

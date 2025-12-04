@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useInventoryAudit } from '@/hooks/useInventoryAudit';
+import { sanitizeForOrFilter } from '@/lib/utils';
 
 export interface Product {
   id: string;
@@ -283,11 +284,13 @@ export const useProducts = (restaurantId: string | null) => {
 
     try {
       // Search by both GTIN and SKU fields using the exact scanned barcode
+      // Sanitize input to prevent query injection
+      const sanitizedGtin = sanitizeForOrFilter(gtin);
       const { data, error } = await supabase
         .from('products')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .or(`gtin.eq.${gtin},sku.eq.${gtin}`)
+        .or(`gtin.eq.${sanitizedGtin},sku.eq.${sanitizedGtin}`)
         .limit(1);
 
       if (error) throw error;

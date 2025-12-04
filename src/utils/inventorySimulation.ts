@@ -28,6 +28,7 @@
 
 import { calculateInventoryImpact, getProductUnitInfo } from '@/lib/enhancedUnitConversion';
 import { supabase } from '@/integrations/supabase/client';
+import { sanitizeForOrFilter } from '@/lib/utils';
 
 export interface IngredientDeduction {
   product_name: string;
@@ -103,6 +104,7 @@ export async function simulateDeductionClientSide(
   };
 
   // 1. Find matching recipe by POS item name
+  const sanitizedName = sanitizeForOrFilter(posItemName);
   const { data: recipe, error: recipeError } = await supabase
     .from('recipes')
     .select(`
@@ -127,7 +129,7 @@ export async function simulateDeductionClientSide(
     `)
     .eq('restaurant_id', restaurantId)
     .eq('is_active', true)
-    .or(`pos_item_name.ilike.${posItemName},name.ilike.${posItemName}`)
+    .or(`pos_item_name.ilike.${sanitizedName},name.ilike.${sanitizedName}`)
     .single();
 
   if (recipeError || !recipe) {
@@ -227,12 +229,13 @@ export async function checkRecipeExists(
   restaurantId: string,
   posItemName: string
 ): Promise<{ exists: boolean; recipeId: string | null; recipeName: string | null }> {
+  const sanitizedName = sanitizeForOrFilter(posItemName);
   const { data: recipe } = await supabase
     .from('recipes')
     .select('id, name')
     .eq('restaurant_id', restaurantId)
     .eq('is_active', true)
-    .or(`pos_item_name.ilike.${posItemName},name.ilike.${posItemName}`)
+    .or(`pos_item_name.ilike.${sanitizedName},name.ilike.${sanitizedName}`)
     .single();
 
   if (recipe) {

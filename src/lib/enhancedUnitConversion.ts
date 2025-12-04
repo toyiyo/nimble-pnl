@@ -78,16 +78,17 @@ const STANDARD_CONVERSIONS: { [key: string]: { [key: string]: number } } = {
   'lb': { 'g': 453.592, 'oz': 16, 'kg': 0.453592 },
   'kg': { 'g': 1000, 'lb': 2.20462, 'oz': 35.274 },
   'g': { 'kg': 0.001, 'oz': 0.035274, 'lb': 0.00220462 },
+  'oz': { 'g': 28.3495, 'lb': 1/16, 'kg': 0.0283495 }, // Weight ounces
   
   // Volume conversions (all to ml)
   // Note: 'fl oz' for fluid ounces (volume), 'oz' in weight section for weight ounces
   'fl oz': { 'ml': 29.5735, 'L': 0.0295735, 'cup': 0.125, 'tbsp': 2, 'tsp': 6, 'gal': 1/128, 'qt': 1/32 },
-  'cup': { 'ml': 236.588, 'fl oz': 8, 'tbsp': 16, 'tsp': 48, 'L': 0.236588 },
+  'cup': { 'ml': 236.588, 'fl oz': 8, 'tbsp': 16, 'tsp': 48, 'L': 0.236588, 'gal': 1/16, 'qt': 1/4 },
   'tbsp': { 'ml': 14.7868, 'fl oz': 0.5, 'cup': 1/16, 'tsp': 3, 'L': 0.0147868 },
   'tsp': { 'ml': 4.92892, 'fl oz': 1/6, 'tbsp': 1/3, 'cup': 1/48, 'L': 0.00492892 },
-  'ml': { 'L': 0.001, 'cup': 1/236.588, 'tbsp': 1/14.7868, 'tsp': 1/4.92892, 'fl oz': 1/29.5735 },
+  'ml': { 'L': 0.001, 'cup': 1/236.588, 'tbsp': 1/14.7868, 'tsp': 1/4.92892, 'fl oz': 1/29.5735, 'gal': 1/3785.41 },
   'L': { 'ml': 1000, 'cup': 1/0.236588, 'gal': 1/3.78541, 'fl oz': 33.814, 'tbsp': 67.628, 'tsp': 202.884 },
-  'gal': { 'L': 3.78541, 'qt': 4, 'cup': 16, 'fl oz': 128 },
+  'gal': { 'L': 3.78541, 'qt': 4, 'cup': 16, 'fl oz': 128, 'ml': 3785.41 },
   'qt': { 'gal': 0.25, 'cup': 4, 'L': 0.946353, 'fl oz': 32 },
 };
 
@@ -95,10 +96,10 @@ const STANDARD_CONVERSIONS: { [key: string]: { [key: string]: number } } = {
 // Exported for use in UI components to show available conversions
 export const PRODUCT_CONVERSIONS: { [key: string]: { [key: string]: number } } = {
   'rice': {
-    'cup_to_g': 180,      // 1 cup uncooked rice = 180g
-    'cup_to_oz': 6.3,     // 1 cup uncooked rice = 6.3 oz weight
-    'g_to_cup': 1/180,    // reverse conversion
-    'oz_to_cup': 1/6.3,   // reverse conversion
+    'cup_to_g': 185,      // 1 cup uncooked rice = 185g (matches DB function)
+    'cup_to_oz': 6.5,     // 1 cup uncooked rice ≈ 6.5 oz weight (185g / 28.3495)
+    'g_to_cup': 1/185,    // reverse conversion
+    'oz_to_cup': 1/6.5,   // reverse conversion
   },
   'flour': {
     'cup_to_g': 120,      // 1 cup all-purpose flour = 120g

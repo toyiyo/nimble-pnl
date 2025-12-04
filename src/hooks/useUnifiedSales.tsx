@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { UnifiedSaleItem, POSSystemType } from '@/types/pos';
+import { createMappedItemNamesSet, hasRecipeMappingFromSet } from '@/utils/recipeMapping';
 
 const PAGE_SIZE = 200;
 
@@ -185,11 +186,14 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     refetchOnReconnect: false, // Disable automatic refetch
   });
 
-  // Compute unmapped items from sales data
+  // Compute unmapped items from sales data using tested utility functions
   const unmappedItems = useMemo(() => {
     if (!restaurantId || flatSales.length === 0) {
       return [];
     }
+    
+    // Create recipe mapping set for quick lookup (uses tested utility)
+    const mappedItemNames = createMappedItemNamesSet(recipes);
     
     // Get unique item names from sales (exclude child splits)
     const saleItemNames = new Set(
@@ -198,16 +202,9 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
         .map(sale => sale.itemName)
     );
     
-    // Get all mapped POS item names from recipes (case-insensitive)
-    const mappedItemNames = new Set(
-      recipes
-        .filter(recipe => recipe.pos_item_name)
-        .map(recipe => recipe.pos_item_name!.toLowerCase())
-    );
-    
-    // Return items that are NOT mapped to any recipe
+    // Return items that are NOT mapped to any recipe (uses tested utility)
     return Array.from(saleItemNames).filter(
-      itemName => !mappedItemNames.has(itemName.toLowerCase())
+      itemName => !hasRecipeMappingFromSet(itemName, mappedItemNames)
     );
   }, [restaurantId, flatSales, recipes]);
 

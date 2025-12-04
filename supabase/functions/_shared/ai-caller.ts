@@ -15,26 +15,21 @@ export const MODELS: ModelConfig[] = [
     id: "google/gemini-2.5-flash-lite",
     maxRetries: 2
   },
-  // Free models as fallback
+  // Secondary models
   {
-    name: "Llama 4 Maverick Free",
-    id: "meta-llama/llama-4-maverick:free",
+    name: "Llama 4 Maverick",
+    id: "meta-llama/llama-4-maverick",
     maxRetries: 2
   },
   {
-    name: "Gemma 3 27B Free",
-    id: "google/gemma-3-27b-it:free",
+    name: "Gemma 3 27B",
+    id: "google/gemma-3-27b-it",
     maxRetries: 2
   },
   // Paid models (final fallback)
   {
     name: "Claude Sonnet 4.5",
     id: "anthropic/claude-sonnet-4-5",
-    maxRetries: 1
-  },
-  {
-    name: "Llama 4 Maverick Paid",
-    id: "meta-llama/llama-4-maverick",
     maxRetries: 1
   }
 ];

@@ -18,6 +18,7 @@ import {
   Banknote,
   CreditCard,
   Wallet,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   format,
@@ -257,6 +258,31 @@ const EmployeePay = () => {
         </div>
       ) : myPayroll ? (
         <>
+          {/* Incomplete Shifts Warning */}
+          {myPayroll.incompleteShifts && myPayroll.incompleteShifts.length > 0 && (
+            <Alert className="bg-amber-500/10 border-amber-500/30">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription>
+                <div className="space-y-2">
+                  <p className="font-medium text-amber-700">
+                    {myPayroll.incompleteShifts.length} incomplete shift{myPayroll.incompleteShifts.length > 1 ? 's' : ''} detected
+                  </p>
+                  <ul className="text-sm text-amber-600 space-y-1">
+                    {myPayroll.incompleteShifts.slice(0, 3).map((shift, idx) => (
+                      <li key={idx}>• {shift.message}</li>
+                    ))}
+                    {myPayroll.incompleteShifts.length > 3 && (
+                      <li>• ...and {myPayroll.incompleteShifts.length - 3} more</li>
+                    )}
+                  </ul>
+                  <p className="text-xs text-amber-600">
+                    Contact your manager to fix these before payroll is processed.
+                  </p>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">

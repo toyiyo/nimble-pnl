@@ -3,6 +3,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePayroll } from '@/hooks/usePayroll';
 import {
@@ -18,6 +25,7 @@ import {
   RefreshCw,
   TrendingUp,
   Users,
+  AlertTriangle,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, subWeeks, addWeeks } from 'date-fns';
 import {
@@ -310,6 +318,39 @@ const Payroll = () => {
         </Card>
       )}
 
+      {/* Incomplete Shifts Warning */}
+      {payrollPeriod && payrollPeriod.employees.some(e => e.incompleteShifts && e.incompleteShifts.length > 0) && (
+        <Alert variant="destructive" className="border-amber-500/50 bg-amber-500/10">
+          <AlertTriangle className="h-4 w-4 text-amber-500" />
+          <AlertTitle className="text-amber-600">Incomplete Time Punches Detected</AlertTitle>
+          <AlertDescription className="text-amber-600/90">
+            <p className="mb-2">
+              The following employees have missing or problematic time punches that may affect payroll accuracy:
+            </p>
+            <ul className="list-disc pl-4 space-y-1 text-sm">
+              {payrollPeriod.employees
+                .filter(e => e.incompleteShifts && e.incompleteShifts.length > 0)
+                .map(e => (
+                  <li key={e.employeeId}>
+                    <span className="font-medium">{e.employeeName}</span>: {e.incompleteShifts!.length} issue(s)
+                    <ul className="list-none pl-4 text-xs text-amber-600/80">
+                      {e.incompleteShifts!.slice(0, 3).map((shift, idx) => (
+                        <li key={idx}>• {shift.message}</li>
+                      ))}
+                      {e.incompleteShifts!.length > 3 && (
+                        <li>• ...and {e.incompleteShifts!.length - 3} more</li>
+                      )}
+                    </ul>
+                  </li>
+                ))}
+            </ul>
+            <p className="mt-2 text-sm font-medium">
+              Please review and fix time punches before processing payroll.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Payroll Table */}
       <Card>
         <CardHeader>
@@ -349,8 +390,32 @@ const Payroll = () => {
                 </TableHeader>
                 <TableBody>
                   {payrollPeriod.employees.map((employee) => (
-                    <TableRow key={employee.employeeId}>
-                      <TableCell className="font-medium">{employee.employeeName}</TableCell>
+                    <TableRow key={employee.employeeId} className={employee.incompleteShifts?.length ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {employee.employeeName}
+                          {employee.incompleteShifts && employee.incompleteShifts.length > 0 && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <AlertTriangle className="h-4 w-4 text-amber-500" aria-label={`${employee.incompleteShifts.length} incomplete time punches`} />
+                                </TooltipTrigger>
+                                <TooltipContent side="right" className="max-w-xs">
+                                  <p className="font-medium mb-1">{employee.incompleteShifts.length} punch issue(s):</p>
+                                  <ul className="text-xs space-y-0.5">
+                                    {employee.incompleteShifts.slice(0, 5).map((shift, idx) => (
+                                      <li key={idx}>• {shift.message}</li>
+                                    ))}
+                                    {employee.incompleteShifts.length > 5 && (
+                                      <li>• ...and {employee.incompleteShifts.length - 5} more</li>
+                                    )}
+                                  </ul>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>{employee.position}</TableCell>
                       <TableCell className="text-right">
                         {formatCurrency(employee.hourlyRate)}

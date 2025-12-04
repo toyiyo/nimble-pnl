@@ -2,16 +2,15 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales } from './utils/passThroughAdjustments';
+import { classifyAdjustmentIntoMonth } from '../../supabase/functions/_shared/monthlyMetrics';
 
-// Import and re-export types/functions from shared module for backwards compatibility
-import { 
+// Re-export types/functions from shared module for backwards compatibility
+export { 
   classifyAdjustmentIntoMonth, 
   createEmptyMonth,
   type MonthlyMapMonth,
   type AdjustmentInput 
 } from '../../supabase/functions/_shared/monthlyMetrics';
-
-export { classifyAdjustmentIntoMonth, createEmptyMonth, type MonthlyMapMonth, type AdjustmentInput };
 
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'

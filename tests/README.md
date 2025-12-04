@@ -15,6 +15,131 @@ npm run test:watch
 npm run test:coverage
 ```
 
+---
+
+## 📊 Dashboard Calculations Explained
+
+This section documents how financial metrics are calculated on the dashboard. These formulas are validated by 170+ unit tests.
+
+### Revenue Calculations
+
+#### Data Sources
+- **Primary**: `unified_sales` table (aggregated POS data from Square, Clover, etc.)
+- **Split handling**: Parent sales with children are excluded to prevent double-counting
+
+#### Formulas
+
+| Metric | Formula | Description |
+|--------|---------|-------------|
+| **Gross Revenue** | Sum of all `sale` items where `account_type = 'revenue'` | Total food & beverage sales before deductions |
+| **Discounts** | Sum of `item_type = 'discount'` (absolute value) | Coupons, comps, employee discounts |
+| **Refunds** | Sum of `item_type = 'refund'` (absolute value) | Returned items, voided transactions |
+| **Net Revenue** | `gross_revenue - discounts - refunds` | Actual revenue earned |
+
+```
+Net Revenue = Gross Revenue - Discounts - Refunds
+```
+
+#### Pass-Through Items (NOT Revenue)
+
+These are collected at the POS but belong to others:
+
+| Type | Classification Logic | Destination |
+|------|---------------------|-------------|
+| **Sales Tax** | `account_subtype` contains "sales" AND "tax", OR `account_name` contains "tax" | `sales_tax` liability |
+| **Tips** | `account_subtype` contains "tip", OR `account_name` contains "tip" | `tips` liability |
+| **Service Charges** | Other liability subtypes (delivery fees, service fees) | `other_liabilities` |
+
+```
+Total Collected at POS = Gross Revenue + Sales Tax + Tips + Other Liabilities
+```
+
+### Cost Calculations
+
+#### Data Sources
+- **Food Cost**: `inventory_transactions` table (type = 'usage')
+- **Labor Cost**: 
+  - Pending: `daily_labor_costs` (from time punches)
+  - Actual: `bank_transactions` + `pending_outflows` (categorized as labor)
+
+#### Formulas
+
+| Metric | Formula | Industry Benchmark |
+|--------|---------|-------------------|
+| **Food Cost %** | `(food_cost / net_revenue) × 100` | 28-32% (good), 33-35% (caution), >35% (high) |
+| **Labor Cost %** | `(labor_cost / net_revenue) × 100` | 25-30% (good), 31-35% (caution), >35% (high) |
+| **Prime Cost** | `food_cost + labor_cost` | — |
+| **Prime Cost %** | `(prime_cost / net_revenue) × 100` | 55-60% (good), 61-65% (caution), >65% (high) |
+
+```
+Prime Cost = Food Cost + Labor Cost
+Prime Cost % = (Prime Cost / Net Revenue) × 100
+```
+
+### Profitability Calculations
+
+| Metric | Formula | What it Tells You |
+|--------|---------|-------------------|
+| **Gross Profit** | `net_revenue - prime_cost` | Money left after food & labor |
+| **Profit Margin** | `(gross_profit / net_revenue) × 100` | Percentage kept as profit |
+
+```
+Gross Profit = Net Revenue - Prime Cost
+Profit Margin = (Gross Profit / Net Revenue) × 100
+```
+
+### Example Calculation
+
+**Saturday Dinner Service:**
+```
+Sales:
+  Food Sales:          $5,000
+  Bar Sales:           $2,500
+  ─────────────────────────────
+  Gross Revenue:       $7,500
+
+Deductions:
+  Discounts:           -$100
+  Refunds:             -$150
+  ─────────────────────────────
+  Net Revenue:         $7,250
+
+Pass-Through (collected but not revenue):
+  Sales Tax (8.25%):   $618.75
+  Tips (15%):          $1,125.00
+  Service Charges:     $200.00
+  ─────────────────────────────
+  Total at POS:        $9,193.75
+
+Costs:
+  Food Cost:           $2,100 (29% of net)
+  Labor Cost:          $2,175 (30% of net)
+  ─────────────────────────────
+  Prime Cost:          $4,275 (59% of net)
+
+Profitability:
+  Gross Profit:        $2,975
+  Profit Margin:       41%
+```
+
+### Edge Cases Handled
+
+| Scenario | Behavior |
+|----------|----------|
+| **Zero revenue** | Cost percentages = 0% (not infinity) |
+| **Costs > Revenue** | Negative profit, percentages can exceed 100% |
+| **Split sales (combos)** | Parent excluded, only children counted |
+| **Uncategorized sales** | Treated as revenue (fallback) |
+| **Missing chart_account** | Falls back to `adjustment_type` |
+
+### Monthly Metrics
+
+Monthly aggregation uses the same formulas but:
+- **Amounts stored in cents** to avoid floating-point precision issues
+- **Classification priority**: Chart account → adjustment_type → skip
+
+---
+
 ## Project Structure
 
 ```

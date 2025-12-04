@@ -7,6 +7,10 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
+# Restrict GITHUB_TOKEN permissions to minimum required
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Unit Tests

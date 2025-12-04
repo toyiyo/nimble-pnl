@@ -150,7 +150,8 @@ tests/
 │   ├── periodMetrics.test.ts          # Core dashboard calculation functions
 │   ├── dashboardScenarios.test.ts     # Realistic restaurant scenario tests
 │   ├── monthlyMetrics.test.ts         # Monthly adjustment classification
-│   └── passThroughAdjustments.test.ts # POS pass-through classification
+│   ├── passThroughAdjustments.test.ts # POS pass-through classification
+│   └── inventoryConversion.test.ts    # Inventory unit conversion logic
 ├── setup.ts                           # Test setup file
 └── README.md                          # This file
 ```
@@ -164,6 +165,7 @@ tests/
 | `periodMetrics.ts` | Dashboard revenue, costs, profit calculations | ✅ 100% | 37 |
 | `monthlyMetrics.ts` | Monthly adjustment classification | ✅ 100% | 30 |
 | `passThroughAdjustments.ts` | POS tax/tip/fee classification | ✅ 100% | 33 |
+| `inventoryConversion.ts` | Unit conversions for inventory deductions | ✅ 100% | 67 |
 | `calculator.ts` | Inventory quantity expressions | ✅ 97% | 20 |
 | Dashboard Scenarios | End-to-end financial validation | N/A | 41 |
 
@@ -176,6 +178,45 @@ The `periodMetrics.test.ts` and `dashboardScenarios.test.ts` cover:
 - **Benchmarks**: industry standard comparisons (good/caution/high)
 - **Split sales handling**: prevents double-counting parent/child sales
 - **Real-world scenarios**: lunch service, busy Saturday, slow Monday (losses)
+
+### 📦 Inventory Conversion Logic
+
+The `inventoryConversion.test.ts` validates the critical unit conversion logic from the `process_unified_inventory_deduction` database function:
+
+#### Volume Conversions
+| Unit | Conversion to ml |
+|------|-----------------|
+| fl oz | × 29.5735 |
+| cup | × 236.588 |
+| tbsp | × 14.7868 |
+| tsp | × 4.92892 |
+| l | × 1000 |
+| gal | × 3785.41 |
+| qt | × 946.353 |
+
+#### Weight Conversions
+| Unit | Conversion to grams |
+|------|---------------------|
+| kg | × 1000 |
+| lb | × 453.592 |
+| oz | × 28.3495 |
+
+#### Density Conversions (Volume ↔ Weight)
+For volume-to-weight conversions (e.g., "1 cup flour" to grams), density constants are used:
+
+| Product | g/cup | Use Case |
+|---------|-------|----------|
+| Rice | 185 | Recipe calls for cups, purchased by lb |
+| Flour | 120 | Recipe calls for cups, purchased by kg |
+| Sugar | 200 | Recipe calls for cups, purchased by oz |
+| Butter | 227 | Recipe calls for cups, purchased by lb |
+
+#### Test Scenarios
+- **Volume-to-volume**: fl oz → gallon, tsp → liter, cups → ml
+- **Weight-to-weight**: oz → lb, g → kg, lb → oz
+- **Volume-to-weight with density**: cups rice → lb, cups flour → kg
+- **Fallback behavior**: Incompatible units, missing density data
+- **Edge cases**: Zero quantities, very small/large values
 
 ### 📅 Monthly Metrics
 

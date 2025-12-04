@@ -22,6 +22,7 @@ export default defineConfig({
         'src/hooks/useRevenueBreakdown.tsx',
         'supabase/functions/_shared/periodMetrics.ts',
         'supabase/functions/_shared/monthlyMetrics.ts',
+        'supabase/functions/_shared/inventoryConversion.ts',
       ],
       exclude: ['**/*.d.ts', '**/*.test.ts'],
       reportsDirectory: './coverage',

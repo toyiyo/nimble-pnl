@@ -18,6 +18,7 @@ export default defineConfig({
       reporter: ['text', 'json', 'html', 'lcov'],
       include: [
         'src/utils/**/*.ts',
+        'src/lib/utils.ts',
         'src/hooks/utils/**/*.ts',
         'src/hooks/useRevenueBreakdown.tsx',
         'supabase/functions/_shared/periodMetrics.ts',

@@ -1,5 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { calculateSaleImpact } from '@/utils/inventorySimulation';
+import { calculateSaleImpact, simulateDeductionClientSide, checkRecipeExists } from '@/utils/inventorySimulation';
+
+// Mock Supabase client
+vi.mock('@/integrations/supabase/client', () => ({
+  supabase: {
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            or: vi.fn(() => ({
+              single: vi.fn(),
+            })),
+          })),
+        })),
+      })),
+    })),
+  },
+}));
 
 // Mock the calculateInventoryImpact function to test the wrapper logic
 vi.mock('@/lib/enhancedUnitConversion', async () => {
@@ -452,6 +469,281 @@ describe('Inventory Simulation Utilities', () => {
         expect(result.ingredients[0].deductionAmount).toBe(6);
         expect(result.warnings.length).toBeGreaterThan(0);
       });
+    });
+  });
+});
+
+/**
+ * ASYNC FUNCTION TESTS
+ * 
+ * These tests verify the async functions that interact with Supabase.
+ * We mock the Supabase client to test the logic without hitting the database.
+ */
+describe('Async Supabase Functions', () => {
+  // Get access to the mocked Supabase module
+  let supabaseMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    // Import the mock
+    const { supabase } = await import('@/integrations/supabase/client');
+    supabaseMock = supabase.from as ReturnType<typeof vi.fn>;
+  });
+
+  describe('checkRecipeExists', () => {
+    it('returns exists: true when recipe is found', async () => {
+      const mockRecipe = { id: 'recipe-123', name: 'Margarita' };
+      
+      // Setup the mock chain
+      supabaseMock.mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              or: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: mockRecipe, error: null }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const result = await checkRecipeExists('restaurant-1', 'Margarita');
+
+      expect(result.exists).toBe(true);
+      expect(result.recipeId).toBe('recipe-123');
+      expect(result.recipeName).toBe('Margarita');
+    });
+
+    it('returns exists: false when recipe is not found', async () => {
+      supabaseMock.mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              or: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const result = await checkRecipeExists('restaurant-1', 'Unknown Item');
+
+      expect(result.exists).toBe(false);
+      expect(result.recipeId).toBeNull();
+      expect(result.recipeName).toBeNull();
+    });
+
+    it('sanitizes the POS item name for SQL safety', async () => {
+      let capturedFilter = '';
+      
+      supabaseMock.mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              or: vi.fn((filter: string) => {
+                capturedFilter = filter;
+                return {
+                  single: vi.fn().mockResolvedValue({ data: null, error: null }),
+                };
+              }),
+            }),
+          }),
+        }),
+      });
+
+      await checkRecipeExists('restaurant-1', "Item's (with) special, chars");
+
+      // Verify dangerous characters were sanitized
+      // The sanitized name should not contain these dangerous chars
+      // The comma between pos_item_name and name is the OR separator, which is expected
+      expect(capturedFilter).not.toContain("'"); // Apostrophes removed
+      expect(capturedFilter).not.toContain('('); // Parentheses removed
+      expect(capturedFilter).not.toContain(')'); // Parentheses removed
+      // The filter should contain the sanitized name "Items with special chars"
+      expect(capturedFilter).toContain('Items with special chars');
+    });
+  });
+
+  describe('simulateDeductionClientSide', () => {
+    it('returns empty result when no recipe is found', async () => {
+      supabaseMock.mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              or: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const result = await simulateDeductionClientSide('restaurant-1', 'Unknown Item', 5);
+
+      expect(result.has_recipe).toBe(false);
+      expect(result.recipe_name).toBe('');
+      expect(result.recipe_id).toBeNull();
+      expect(result.ingredients_deducted).toHaveLength(0);
+      expect(result.total_cost).toBe(0);
+    });
+
+    it('processes recipe with ingredients correctly', async () => {
+      const mockRecipe = {
+        id: 'recipe-123',
+        name: 'Margarita',
+        pos_item_name: 'Margarita',
+        ingredients: [
+          {
+            product_id: 'prod-1',
+            quantity: 1.5,
+            unit: 'fl oz',
+            product: {
+              id: 'prod-1',
+              name: 'Tequila',
+              current_stock: 10,
+              cost_per_unit: 25,
+              uom_purchase: 'bottle',
+              uom_recipe: 'fl oz',
+              size_value: 750,
+              size_unit: 'ml',
+            },
+          },
+        ],
+      };
+
+      supabaseMock.mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              or: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: mockRecipe, error: null }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const result = await simulateDeductionClientSide('restaurant-1', 'Margarita', 2);
+
+      expect(result.has_recipe).toBe(true);
+      expect(result.recipe_name).toBe('Margarita');
+      expect(result.recipe_id).toBe('recipe-123');
+      expect(result.ingredients_deducted).toHaveLength(1);
+      expect(result.ingredients_deducted[0].product_name).toBe('Tequila');
+      expect(result.total_cost).toBeGreaterThan(0);
+    });
+
+    it('skips ingredients with missing product data', async () => {
+      const mockRecipe = {
+        id: 'recipe-123',
+        name: 'Test Recipe',
+        pos_item_name: 'Test',
+        ingredients: [
+          {
+            product_id: 'prod-1',
+            quantity: 1,
+            unit: 'oz',
+            product: null, // Missing product data
+          },
+          {
+            product_id: 'prod-2',
+            quantity: 2,
+            unit: 'oz',
+            product: {
+              id: 'prod-2',
+              name: 'Valid Product',
+              current_stock: 5,
+              cost_per_unit: 10,
+              uom_purchase: 'oz',
+              uom_recipe: 'oz',
+              size_value: null,
+              size_unit: null,
+            },
+          },
+        ],
+      };
+
+      supabaseMock.mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              or: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: mockRecipe, error: null }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const result = await simulateDeductionClientSide('restaurant-1', 'Test', 1);
+
+      // Should only have 1 ingredient (the one with valid product data)
+      expect(result.ingredients_deducted).toHaveLength(1);
+      expect(result.ingredients_deducted[0].product_name).toBe('Valid Product');
+    });
+
+    it('handles multiple ingredients and calculates total cost', async () => {
+      const mockRecipe = {
+        id: 'recipe-123',
+        name: 'Cocktail',
+        pos_item_name: 'Cocktail',
+        ingredients: [
+          {
+            product_id: 'prod-1',
+            quantity: 2,
+            unit: 'fl oz',
+            product: {
+              id: 'prod-1',
+              name: 'Spirit',
+              current_stock: 10,
+              cost_per_unit: 30,
+              uom_purchase: 'bottle',
+              uom_recipe: 'fl oz',
+              size_value: 750,
+              size_unit: 'ml',
+            },
+          },
+          {
+            product_id: 'prod-2',
+            quantity: 1,
+            unit: 'fl oz',
+            product: {
+              id: 'prod-2',
+              name: 'Mixer',
+              current_stock: 5,
+              cost_per_unit: 10,
+              uom_purchase: 'bottle',
+              uom_recipe: 'fl oz',
+              size_value: 1000,
+              size_unit: 'ml',
+            },
+          },
+        ],
+      };
+
+      supabaseMock.mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              or: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: mockRecipe, error: null }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const result = await simulateDeductionClientSide('restaurant-1', 'Cocktail', 3);
+
+      expect(result.ingredients_deducted).toHaveLength(2);
+      expect(result.total_cost).toBeGreaterThan(0);
+      // Total cost should be sum of both ingredients' costs
+      const ingredientCosts = result.ingredients_deducted.reduce(
+        (sum: number, ing: { total_cost: number }) => sum + ing.total_cost,
+        0
+      );
+      expect(result.total_cost).toBeCloseTo(ingredientCosts, 2);
     });
   });
 });

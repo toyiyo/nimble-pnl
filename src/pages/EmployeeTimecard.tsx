@@ -1,18 +1,22 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useTimePunches } from '@/hooks/useTimePunches';
+import { usePeriodNavigation } from '@/hooks/usePeriodNavigation';
+import {
+  EmployeePageHeader,
+  NoRestaurantState,
+  EmployeePageSkeleton,
+  EmployeeNotLinkedState,
+  EmployeeInfoAlert,
+  PeriodSelector,
+  PeriodType,
+} from '@/components/employee';
 import {
   Clock,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  AlertCircle,
   LogIn,
   LogOut,
   Coffee,
@@ -21,24 +25,11 @@ import {
 } from 'lucide-react';
 import {
   format,
-  startOfWeek,
-  endOfWeek,
-  subWeeks,
-  addWeeks,
   eachDayOfInterval,
   isSameDay,
   parseISO,
 } from 'date-fns';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { TimePunch } from '@/types/timeTracking';
-
-type PeriodType = 'current_week' | 'last_week' | 'custom';
 
 // Calculate worked hours for a single day's punches
 const calculateDayHours = (punches: TimePunch[]) => {
@@ -84,7 +75,7 @@ const calculateDayHours = (punches: TimePunch[]) => {
   };
 };
 
-const formatHours = (hours: number) => {
+const formatHoursMinutes = (hours: number) => {
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   return `${h}h ${m}m`;
@@ -93,15 +84,15 @@ const formatHours = (hours: number) => {
 const getPunchIcon = (punchType: string) => {
   switch (punchType) {
     case 'clock_in':
-      return <LogIn className="h-4 w-4 text-green-600" />;
+      return <LogIn className="h-4 w-4 text-green-600" aria-hidden="true" />;
     case 'clock_out':
-      return <LogOut className="h-4 w-4 text-red-600" />;
+      return <LogOut className="h-4 w-4 text-red-600" aria-hidden="true" />;
     case 'break_start':
-      return <Coffee className="h-4 w-4 text-yellow-600" />;
+      return <Coffee className="h-4 w-4 text-yellow-600" aria-hidden="true" />;
     case 'break_end':
-      return <PlayCircle className="h-4 w-4 text-blue-600" />;
+      return <PlayCircle className="h-4 w-4 text-blue-600" aria-hidden="true" />;
     default:
-      return <Clock className="h-4 w-4" />;
+      return <Clock className="h-4 w-4" aria-hidden="true" />;
   }
 };
 
@@ -109,58 +100,33 @@ const EmployeeTimecard = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
-  const [periodType, setPeriodType] = useState<PeriodType>('current_week');
-  const [currentWeekStart, setCurrentWeekStart] = useState(
-    startOfWeek(new Date(), { weekStartsOn: 0 })
-  );
+  const {
+    periodType,
+    setPeriodType,
+    startDate,
+    endDate,
+    handlePreviousWeek,
+    handleNextWeek,
+    handleToday,
+  } = usePeriodNavigation();
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
 
-  // Get date range based on period type
-  const getDateRange = () => {
-    const today = new Date();
-    switch (periodType) {
-      case 'current_week':
-        return {
-          start: startOfWeek(today, { weekStartsOn: 0 }),
-          end: endOfWeek(today, { weekStartsOn: 0 }),
-        };
-      case 'last_week': {
-        const lastWeek = subWeeks(today, 1);
-        return {
-          start: startOfWeek(lastWeek, { weekStartsOn: 0 }),
-          end: endOfWeek(lastWeek, { weekStartsOn: 0 }),
-        };
-      }
-      case 'custom':
-        return {
-          start: currentWeekStart,
-          end: endOfWeek(currentWeekStart, { weekStartsOn: 0 }),
-        };
-      default:
-        return {
-          start: startOfWeek(today, { weekStartsOn: 0 }),
-          end: endOfWeek(today, { weekStartsOn: 0 }),
-        };
-    }
-  };
-
-  const { start, end } = getDateRange();
-  const weekDays = eachDayOfInterval({ start, end });
+  const weekDays = eachDayOfInterval({ start: startDate, end: endDate });
 
   const { punches, loading: punchesLoading } = useTimePunches(
     restaurantId,
     currentEmployee?.id,
-    start
+    startDate
   );
 
   // Filter punches to the current period
   const periodPunches = useMemo(() => {
     return punches.filter((punch) => {
       const punchDate = new Date(punch.punch_time);
-      return punchDate >= start && punchDate <= end;
+      return punchDate >= startDate && punchDate <= endDate;
     });
-  }, [punches, start, end]);
+  }, [punches, startDate, endDate]);
 
   // Group punches by day
   const punchesByDay = useMemo(() => {
@@ -201,144 +167,49 @@ const EmployeeTimecard = () => {
     return { totalHours, breakHours, netHours, regularHours, overtimeHours };
   }, [punchesByDay]);
 
-  const handlePreviousWeek = () => {
-    setCurrentWeekStart(subWeeks(currentWeekStart, 1));
-    setPeriodType('custom');
-  };
-
-  const handleNextWeek = () => {
-    setCurrentWeekStart(addWeeks(currentWeekStart, 1));
-    setPeriodType('custom');
-  };
-
-  const handleToday = () => {
-    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }));
-    setPeriodType('current_week');
-  };
-
   if (!restaurantId) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-muted-foreground">Please select a restaurant.</p>
-      </div>
-    );
+    return <NoRestaurantState />;
   }
 
   if (employeeLoading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
+    return <EmployeePageSkeleton />;
   }
 
   if (!currentEmployee) {
-    return (
-      <Card className="bg-gradient-to-br from-destructive/5 via-destructive/5 to-transparent border-destructive/10">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-destructive" />
-            <div>
-              <CardTitle className="text-2xl">Access Required</CardTitle>
-              <CardDescription>
-                Your account is not linked to an employee record.
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Please contact your manager to link your account to your employee profile.
-          </p>
-        </CardContent>
-      </Card>
-    );
+    return <EmployeeNotLinkedState />;
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <FileText className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                My Timecard
-              </CardTitle>
-              <CardDescription>
-                {currentEmployee.name} • {currentEmployee.position}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
+      <EmployeePageHeader
+        icon={FileText}
+        title="My Timecard"
+        subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
+      />
 
       {/* Period Selector */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-muted-foreground" />
-              <span className="font-medium">Period:</span>
-            </div>
-            <Select
-              value={periodType}
-              onValueChange={(value) => setPeriodType(value as PeriodType)}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current_week">Current Week</SelectItem>
-                <SelectItem value="last_week">Last Week</SelectItem>
-                <SelectItem value="custom">Custom Week</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handlePreviousWeek}
-                aria-label="Previous week"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleToday}>
-                Today
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleNextWeek}
-                aria-label="Next week"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <Badge variant="outline" className="px-3 py-1">
-              {format(start, 'MMM d')} - {format(end, 'MMM d, yyyy')}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
+      <PeriodSelector
+        periodType={periodType}
+        onPeriodTypeChange={setPeriodType}
+        startDate={startDate}
+        endDate={endDate}
+        onPrevious={handlePreviousWeek}
+        onNext={handleNextWeek}
+        onToday={handleToday}
+      />
 
       {/* Weekly Summary */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
+              <Clock className="h-4 w-4" aria-hidden="true" />
               Net Hours
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatHours(weeklyTotals.netHours)}</div>
+            <div className="text-2xl font-bold">{formatHoursMinutes(weeklyTotals.netHours)}</div>
             <p className="text-xs text-muted-foreground">After breaks</p>
           </CardContent>
         </Card>

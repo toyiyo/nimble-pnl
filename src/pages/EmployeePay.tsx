@@ -1,102 +1,47 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { usePayroll } from '@/hooks/usePayroll';
+import { usePeriodNavigation } from '@/hooks/usePeriodNavigation';
+import { formatCurrency, formatHours } from '@/utils/payrollCalculations';
+import {
+  EmployeePageHeader,
+  NoRestaurantState,
+  EmployeePageSkeleton,
+  EmployeeNotLinkedState,
+  EmployeeInfoAlert,
+  PeriodSelector,
+} from '@/components/employee';
 import {
   DollarSign,
   Clock,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  AlertCircle,
   TrendingUp,
   Banknote,
   CreditCard,
   Wallet,
   AlertTriangle,
 } from 'lucide-react';
-import {
-  format,
-  startOfWeek,
-  endOfWeek,
-  subWeeks,
-  addWeeks,
-} from 'date-fns';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-
-type PeriodType = 'current_week' | 'last_week' | 'last_2_weeks' | 'custom';
-
-const formatCurrency = (cents: number) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cents / 100);
-};
-
-const formatHours = (hours: number) => {
-  return hours.toFixed(2);
-};
 
 const EmployeePay = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
-  const [periodType, setPeriodType] = useState<PeriodType>('current_week');
-  const [customStartDate, setCustomStartDate] = useState<Date>(
-    startOfWeek(new Date(), { weekStartsOn: 0 })
-  );
+  const {
+    periodType,
+    setPeriodType,
+    startDate,
+    endDate,
+    handlePreviousWeek,
+    handleNextWeek,
+    handleToday,
+  } = usePeriodNavigation({ includeLast2Weeks: true });
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
-
-  // Calculate date range based on period type
-  const getDateRange = () => {
-    const today = new Date();
-    switch (periodType) {
-      case 'current_week':
-        return {
-          start: startOfWeek(today, { weekStartsOn: 0 }),
-          end: endOfWeek(today, { weekStartsOn: 0 }),
-        };
-      case 'last_week': {
-        const lastWeek = subWeeks(today, 1);
-        return {
-          start: startOfWeek(lastWeek, { weekStartsOn: 0 }),
-          end: endOfWeek(lastWeek, { weekStartsOn: 0 }),
-        };
-      }
-      case 'last_2_weeks': {
-        const lastWeek = subWeeks(today, 1);
-        return {
-          start: startOfWeek(subWeeks(lastWeek, 1), { weekStartsOn: 0 }),
-          end: endOfWeek(lastWeek, { weekStartsOn: 0 }),
-        };
-      }
-      case 'custom':
-        return {
-          start: customStartDate,
-          end: endOfWeek(customStartDate, { weekStartsOn: 0 }),
-        };
-      default:
-        return {
-          start: startOfWeek(today, { weekStartsOn: 0 }),
-          end: endOfWeek(today, { weekStartsOn: 0 }),
-        };
-    }
-  };
-
-  const { start, end } = getDateRange();
-  const { payrollPeriod, loading: payrollLoading, error } = usePayroll(restaurantId, start, end);
+  const { payrollPeriod, loading: payrollLoading, error } = usePayroll(restaurantId, startDate, endDate);
 
   // Find current employee's payroll data
   const myPayroll = useMemo(() => {
@@ -104,61 +49,16 @@ const EmployeePay = () => {
     return payrollPeriod.employees.find((e) => e.employeeId === currentEmployee.id);
   }, [payrollPeriod, currentEmployee]);
 
-  const handlePreviousWeek = () => {
-    const newDate = subWeeks(start, 1);
-    setCustomStartDate(startOfWeek(newDate, { weekStartsOn: 0 }));
-    setPeriodType('custom');
-  };
-
-  const handleNextWeek = () => {
-    const newDate = addWeeks(start, 1);
-    setCustomStartDate(startOfWeek(newDate, { weekStartsOn: 0 }));
-    setPeriodType('custom');
-  };
-
-  const handleToday = () => {
-    setCustomStartDate(startOfWeek(new Date(), { weekStartsOn: 0 }));
-    setPeriodType('current_week');
-  };
-
   if (!restaurantId) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-muted-foreground">Please select a restaurant.</p>
-      </div>
-    );
+    return <NoRestaurantState />;
   }
 
   if (employeeLoading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
+    return <EmployeePageSkeleton />;
   }
 
   if (!currentEmployee) {
-    return (
-      <Card className="bg-gradient-to-br from-destructive/5 via-destructive/5 to-transparent border-destructive/10">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-destructive" />
-            <div>
-              <CardTitle className="text-2xl">Access Required</CardTitle>
-              <CardDescription>
-                Your account is not linked to an employee record.
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Please contact your manager to link your account to your employee profile.
-          </p>
-        </CardContent>
-      </Card>
-    );
+    return <EmployeeNotLinkedState />;
   }
 
   const isLoading = payrollLoading;
@@ -166,75 +66,24 @@ const EmployeePay = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Wallet className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                My Pay
-              </CardTitle>
-              <CardDescription>
-                {currentEmployee.name} • ${(currentEmployee.hourly_rate / 100).toFixed(2)}/hr
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
+      <EmployeePageHeader
+        icon={Wallet}
+        title="My Pay"
+        subtitle={`${currentEmployee.name} • ${formatCurrency(currentEmployee.hourly_rate)}/hr`}
+      />
 
       {/* Period Selector */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-muted-foreground" />
-              <span className="font-medium">Pay Period:</span>
-            </div>
-            <Select
-              value={periodType}
-              onValueChange={(value) => setPeriodType(value as PeriodType)}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current_week">Current Week</SelectItem>
-                <SelectItem value="last_week">Last Week</SelectItem>
-                <SelectItem value="last_2_weeks">Last 2 Weeks</SelectItem>
-                <SelectItem value="custom">Custom Period</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handlePreviousWeek}
-                aria-label="Previous period"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleToday}>
-                Today
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleNextWeek}
-                aria-label="Next period"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <Badge variant="outline" className="px-3 py-1">
-              {format(start, 'MMM d')} - {format(end, 'MMM d, yyyy')}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
+      <PeriodSelector
+        periodType={periodType}
+        onPeriodTypeChange={setPeriodType}
+        startDate={startDate}
+        endDate={endDate}
+        onPrevious={handlePreviousWeek}
+        onNext={handleNextWeek}
+        onToday={handleToday}
+        label="Pay Period:"
+        showLast2Weeks
+      />
 
       {/* Error State */}
       {error && (
@@ -437,14 +286,11 @@ const EmployeePay = () => {
       )}
 
       {/* Info Alert */}
-      <Alert className="bg-primary/5 border-primary/20">
-        <AlertCircle className="h-4 w-4 text-primary" />
-        <AlertDescription>
-          <strong>Note:</strong> This is an estimate based on your time punches. Final pay may
-          differ based on manager adjustments, tax withholdings, and other deductions. If you have
-          questions, please contact your manager.
-        </AlertDescription>
-      </Alert>
+      <EmployeeInfoAlert>
+        <strong>Note:</strong> This is an estimate based on your time punches. Final pay may
+        differ based on manager adjustments, tax withholdings, and other deductions. If you have
+        questions, please contact your manager.
+      </EmployeeInfoAlert>
     </div>
   );
 };

@@ -98,7 +98,7 @@ const TimePunchesManager = () => {
   });
   const kioskPolicyStorageKey = restaurantId ? `${KIOSK_POLICY_KEY}_${restaurantId}` : KIOSK_POLICY_KEY;
   const kioskActiveForLocation = kioskSession?.kiosk_mode && kioskSession.location_id === restaurantId;
-  const isManager = ['owner', 'manager', 'chef'].includes(selectedRestaurant?.role || '');
+  const isManager = ['owner', 'manager'].includes(selectedRestaurant?.role || '');
 
   useEffect(() => {
     if (!restaurantId) return;

@@ -49,6 +49,164 @@ export interface PayrollPeriod {
 }
 
 /**
+ * Mutable state object used during shift parsing
+ */
+interface ShiftParsingState {
+  periods: WorkPeriod[];
+  incompleteShifts: IncompleteShift[];
+  currentClockIn: TimePunch | null;
+  currentBreakStart: TimePunch | null;
+}
+
+/**
+ * Handle a clock_in punch
+ */
+function handleClockIn(
+  punch: TimePunch,
+  punchTime: Date,
+  state: ShiftParsingState
+): void {
+  // If there's already an open clock_in, check if it's stale (gap too long)
+  if (state.currentClockIn) {
+    const gapHours = (punchTime.getTime() - new Date(state.currentClockIn.punch_time).getTime()) / (1000 * 60 * 60);
+    
+    // If gap is too long, the previous clock_in is incomplete (missing clock_out)
+    if (gapHours > MAX_SHIFT_GAP_HOURS) {
+      state.incompleteShifts.push({
+        type: 'missing_clock_out',
+        punchTime: new Date(state.currentClockIn.punch_time),
+        punchType: 'clock_in',
+        message: `Missing clock-out for shift started at ${format(new Date(state.currentClockIn.punch_time), 'MMM d, h:mm a')}`,
+      });
+    } else {
+      // Two clock_ins in a row within reasonable time - flag the first one
+      state.incompleteShifts.push({
+        type: 'missing_clock_out',
+        punchTime: new Date(state.currentClockIn.punch_time),
+        punchType: 'clock_in',
+        message: `Consecutive clock-in without clock-out at ${format(new Date(state.currentClockIn.punch_time), 'MMM d, h:mm a')}`,
+      });
+    }
+  }
+  state.currentClockIn = punch;
+  state.currentBreakStart = null; // Reset break state
+}
+
+/**
+ * Handle a clock_out punch
+ */
+function handleClockOut(
+  punchTime: Date,
+  state: ShiftParsingState
+): void {
+  if (state.currentClockIn) {
+    const startTime = new Date(state.currentClockIn.punch_time);
+    const endTime = punchTime;
+    const hours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+
+    // Check if shift gap is too long (indicates missing punches in between)
+    if (hours > MAX_SHIFT_GAP_HOURS) {
+      state.incompleteShifts.push({
+        type: 'missing_clock_out',
+        punchTime: startTime,
+        punchType: 'clock_in',
+        message: `Gap of ${hours.toFixed(1)} hours between clock-in (${format(startTime, 'MMM d, h:mm a')}) and clock-out (${format(endTime, 'MMM d, h:mm a')}) is too long - likely missing punches`,
+      });
+      // Don't count this shift - it needs manager review
+    } else if (hours > MAX_SHIFT_HOURS) {
+      // Valid gap but shift is too long - flag but still count it with warning
+      state.incompleteShifts.push({
+        type: 'shift_too_long',
+        punchTime: startTime,
+        punchType: 'clock_in',
+        message: `Shift of ${hours.toFixed(1)} hours exceeds maximum (${MAX_SHIFT_HOURS}h). Started ${format(startTime, 'MMM d, h:mm a')}, ended ${format(endTime, 'MMM d, h:mm a')}`,
+      });
+      // Still count the hours but flag for review
+      state.periods.push({
+        startTime,
+        endTime,
+        hours,
+        isBreak: false,
+      });
+    } else {
+      // Normal valid shift
+      state.periods.push({
+        startTime,
+        endTime,
+        hours,
+        isBreak: false,
+      });
+    }
+    state.currentClockIn = null;
+    state.currentBreakStart = null;
+  } else {
+    // Clock out without a clock in - orphan punch
+    state.incompleteShifts.push({
+      type: 'missing_clock_in',
+      punchTime,
+      punchType: 'clock_out',
+      message: `Clock-out at ${format(punchTime, 'MMM d, h:mm a')} has no matching clock-in`,
+    });
+  }
+}
+
+/**
+ * Handle a break_start punch
+ */
+function handleBreakStart(
+  punch: TimePunch,
+  punchTime: Date,
+  state: ShiftParsingState
+): void {
+  if (state.currentClockIn && !state.currentBreakStart) {
+    // Record the work period before break
+    const startTime = new Date(state.currentClockIn.punch_time);
+    const hours = (punchTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+    
+    if (hours > 0 && hours <= MAX_SHIFT_GAP_HOURS) {
+      state.periods.push({
+        startTime,
+        endTime: punchTime,
+        hours,
+        isBreak: false,
+      });
+    }
+    state.currentBreakStart = punch;
+  }
+}
+
+/**
+ * Handle a break_end punch
+ */
+function handleBreakEnd(
+  punch: TimePunch,
+  punchTime: Date,
+  state: ShiftParsingState
+): void {
+  if (state.currentBreakStart) {
+    const breakStartTime = new Date(state.currentBreakStart.punch_time);
+    const breakHours = (punchTime.getTime() - breakStartTime.getTime()) / (1000 * 60 * 60);
+
+    // Record the break period
+    state.periods.push({
+      startTime: breakStartTime,
+      endTime: punchTime,
+      hours: breakHours,
+      isBreak: true,
+    });
+
+    // Update clock_in to after break for next work period calculation
+    if (state.currentClockIn) {
+      state.currentClockIn = {
+        ...state.currentClockIn,
+        punch_time: punch.punch_time,
+      };
+    }
+    state.currentBreakStart = null;
+  }
+}
+
+/**
  * Parse time punches into work periods (clock_in → clock_out pairs)
  * 
  * CRITICAL SAFETY RULES:
@@ -75,150 +233,43 @@ export function parseWorkPeriods(punches: TimePunch[]): {
   // Remove duplicate consecutive punches of the same type (keep the last one)
   const dedupedPunches = deduplicatePunches(sortedPunches);
 
-  const periods: WorkPeriod[] = [];
-  const incompleteShifts: IncompleteShift[] = [];
-  
-  let currentClockIn: TimePunch | null = null;
-  let currentBreakStart: TimePunch | null = null;
+  const state: ShiftParsingState = {
+    periods: [],
+    incompleteShifts: [],
+    currentClockIn: null,
+    currentBreakStart: null,
+  };
 
   for (const punch of dedupedPunches) {
     const punchTime = new Date(punch.punch_time);
 
     switch (punch.punch_type) {
       case 'clock_in':
-        // If there's already an open clock_in, check if it's stale (gap too long)
-        if (currentClockIn) {
-          const gapHours = (punchTime.getTime() - new Date(currentClockIn.punch_time).getTime()) / (1000 * 60 * 60);
-          
-          // If gap is too long, the previous clock_in is incomplete (missing clock_out)
-          if (gapHours > MAX_SHIFT_GAP_HOURS) {
-            incompleteShifts.push({
-              type: 'missing_clock_out',
-              punchTime: new Date(currentClockIn.punch_time),
-              punchType: 'clock_in',
-              message: `Missing clock-out for shift started at ${format(new Date(currentClockIn.punch_time), 'MMM d, h:mm a')}`,
-            });
-          } else {
-            // Two clock_ins in a row within reasonable time - flag the first one
-            incompleteShifts.push({
-              type: 'missing_clock_out',
-              punchTime: new Date(currentClockIn.punch_time),
-              punchType: 'clock_in',
-              message: `Consecutive clock-in without clock-out at ${format(new Date(currentClockIn.punch_time), 'MMM d, h:mm a')}`,
-            });
-          }
-        }
-        currentClockIn = punch;
-        currentBreakStart = null; // Reset break state
+        handleClockIn(punch, punchTime, state);
         break;
-
       case 'clock_out':
-        if (currentClockIn) {
-          const startTime = new Date(currentClockIn.punch_time);
-          const endTime = punchTime;
-          const hours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-
-          // Check if shift gap is too long (indicates missing punches in between)
-          if (hours > MAX_SHIFT_GAP_HOURS) {
-            incompleteShifts.push({
-              type: 'missing_clock_out',
-              punchTime: startTime,
-              punchType: 'clock_in',
-              message: `Gap of ${hours.toFixed(1)} hours between clock-in (${format(startTime, 'MMM d, h:mm a')}) and clock-out (${format(endTime, 'MMM d, h:mm a')}) is too long - likely missing punches`,
-            });
-            // Don't count this shift - it needs manager review
-          } else if (hours > MAX_SHIFT_HOURS) {
-            // Valid gap but shift is too long - flag but still count it with warning
-            incompleteShifts.push({
-              type: 'shift_too_long',
-              punchTime: startTime,
-              punchType: 'clock_in',
-              message: `Shift of ${hours.toFixed(1)} hours exceeds maximum (${MAX_SHIFT_HOURS}h). Started ${format(startTime, 'MMM d, h:mm a')}, ended ${format(endTime, 'MMM d, h:mm a')}`,
-            });
-            // Still count the hours but flag for review
-            periods.push({
-              startTime,
-              endTime,
-              hours,
-              isBreak: false,
-            });
-          } else {
-            // Normal valid shift
-            periods.push({
-              startTime,
-              endTime,
-              hours,
-              isBreak: false,
-            });
-          }
-          currentClockIn = null;
-          currentBreakStart = null;
-        } else {
-          // Clock out without a clock in - orphan punch
-          incompleteShifts.push({
-            type: 'missing_clock_in',
-            punchTime,
-            punchType: 'clock_out',
-            message: `Clock-out at ${format(punchTime, 'MMM d, h:mm a')} has no matching clock-in`,
-          });
-        }
+        handleClockOut(punchTime, state);
         break;
-
       case 'break_start':
-        if (currentClockIn && !currentBreakStart) {
-          // Record the work period before break
-          const startTime = new Date(currentClockIn.punch_time);
-          const hours = (punchTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-          
-          if (hours > 0 && hours <= MAX_SHIFT_GAP_HOURS) {
-            periods.push({
-              startTime,
-              endTime: punchTime,
-              hours,
-              isBreak: false,
-            });
-          }
-          currentBreakStart = punch;
-        }
+        handleBreakStart(punch, punchTime, state);
         break;
-
       case 'break_end':
-        if (currentBreakStart) {
-          const breakStartTime = new Date(currentBreakStart.punch_time);
-          const breakHours = (punchTime.getTime() - breakStartTime.getTime()) / (1000 * 60 * 60);
-
-          // Record the break period
-          periods.push({
-            startTime: breakStartTime,
-            endTime: punchTime,
-            hours: breakHours,
-            isBreak: true,
-          });
-
-          // Update clock_in to after break for next work period calculation
-          if (currentClockIn) {
-            currentClockIn = {
-              ...currentClockIn,
-              punch_time: punch.punch_time,
-            };
-          }
-          currentBreakStart = null;
-        }
+        handleBreakEnd(punch, punchTime, state);
         break;
     }
   }
 
   // Check for unclosed shifts at end of punch list
-  if (currentClockIn) {
-    incompleteShifts.push({
+  if (state.currentClockIn) {
+    state.incompleteShifts.push({
       type: 'missing_clock_out',
-      punchTime: new Date(currentClockIn.punch_time),
+      punchTime: new Date(state.currentClockIn.punch_time),
       punchType: 'clock_in',
-      message: `Missing clock-out for shift started at ${format(new Date(currentClockIn.punch_time), 'MMM d, h:mm a')}`,
+      message: `Missing clock-out for shift started at ${format(new Date(state.currentClockIn.punch_time), 'MMM d, h:mm a')}`,
     });
   }
 
-  return { periods, incompleteShifts };
+  return { periods: state.periods, incompleteShifts: state.incompleteShifts };
 }
 
 /**

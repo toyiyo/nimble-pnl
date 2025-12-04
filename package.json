@@ -11,8 +11,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^7.2.0",

@@ -43,18 +43,18 @@ Please respond with a JSON object containing:
 
 Only suggest ingredients that are actually in the available ingredients list. Use realistic quantities and appropriate measurement units for cooking. If you cannot create a reasonable recipe with the available ingredients, set confidence to 0 and explain why in the reasoning.`;
 
-// Model configurations (free models first, then paid fallbacks)
+// Model configurations (prioritized by reliability)
 const MODELS = [
-  // Free models
+  // Primary models
   {
-    name: "Llama 4 Maverick Free",
-    id: "meta-llama/llama-4-maverick:free",
+    name: "Llama 4 Maverick",
+    id: "meta-llama/llama-4-maverick",
     systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
     maxRetries: 2
   },
   {
-    name: "Gemma 3 27B Free",
-    id: "google/gemma-3-27b-it:free",
+    name: "Gemma 3 27B",
+    id: "google/gemma-3-27b-it",
     systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
     maxRetries: 2
   },
@@ -68,12 +68,6 @@ const MODELS = [
   {
     name: "GPT-4.1 Nano",
     id: "openai/gpt-4.1-nano",
-    systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
-    maxRetries: 1
-  },
-  {
-    name: "Llama 4 Maverick Paid",
-    id: "meta-llama/llama-4-maverick",
     systemPrompt: "You are a professional chef and recipe consultant. Always respond with valid JSON only.",
     maxRetries: 1
   }

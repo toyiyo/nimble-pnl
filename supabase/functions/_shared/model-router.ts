@@ -47,20 +47,20 @@ export const MODELS = [
     reliableTools: true,
     cost: 4,
   },
-  // Free models - may have tool calling issues
+  // Additional models
   {
-    name: "Llama 4 Maverick Free",
-    id: "meta-llama/llama-4-maverick:free",
+    name: "Llama 4 Maverick",
+    id: "meta-llama/llama-4-maverick",
     supportsTools: true,
     reliableTools: false,
-    cost: 0,
+    cost: 5,
   },
   {
-    name: "Gemma 3 27B Free",
-    id: "google/gemma-3-27b-it:free",
+    name: "Gemma 3 27B",
+    id: "google/gemma-3-27b-it",
     supportsTools: true,
     reliableTools: false,
-    cost: 0,
+    cost: 5,
   },
 ];
 

@@ -176,14 +176,14 @@ const MODELS = [
     maxRetries: 2,
   },
   {
-    name: "Llama 4 Maverick Free",
-    id: "meta-llama/llama-4-maverick:free",
+    name: "Llama 4 Maverick",
+    id: "meta-llama/llama-4-maverick",
     systemPrompt: "You are an expert bank statement parser. Extract transaction data precisely and return valid JSON only.",
     maxRetries: 2,
   },
   {
-    name: "Gemma 3 27B Free",
-    id: "google/gemma-3-27b-it:free",
+    name: "Gemma 3 27B",
+    id: "google/gemma-3-27b-it",
     systemPrompt: "You are an expert bank statement parser. Extract transaction data precisely and return valid JSON only.",
     maxRetries: 2,
   },
@@ -191,8 +191,8 @@ const MODELS = [
 
 const MODEL_TOKEN_LIMITS: Record<string, number> = {
   "google/gemini-2.5-flash": 8192,
-  "meta-llama/llama-4-maverick:free": 4096,
-  "google/gemma-3-27b-it:free": 4096,
+  "meta-llama/llama-4-maverick": 4096,
+  "google/gemma-3-27b-it": 4096,
 };
 
 const DEFAULT_MAX_TOKENS = 4096;

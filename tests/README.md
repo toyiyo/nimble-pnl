@@ -151,7 +151,8 @@ tests/
 │   ├── dashboardScenarios.test.ts     # Realistic restaurant scenario tests
 │   ├── monthlyMetrics.test.ts         # Monthly adjustment classification
 │   ├── passThroughAdjustments.test.ts # POS pass-through classification
-│   └── inventoryConversion.test.ts    # Inventory unit conversion logic
+│   ├── inventoryConversion.test.ts    # Inventory unit conversion logic
+│   └── inventoryScenarios.test.ts     # Comprehensive inventory edge cases
 ├── setup.ts                           # Test setup file
 └── README.md                          # This file
 ```
@@ -165,9 +166,10 @@ tests/
 | `periodMetrics.ts` | Dashboard revenue, costs, profit calculations | ✅ 100% | 37 |
 | `monthlyMetrics.ts` | Monthly adjustment classification | ✅ 100% | 30 |
 | `passThroughAdjustments.ts` | POS tax/tip/fee classification | ✅ 100% | 33 |
-| `inventoryConversion.ts` | Unit conversions for inventory deductions | ✅ 100% | 67 |
+| `inventoryConversion.ts` | Unit conversions for inventory deductions | ✅ 100% | 67+53 |
 | `calculator.ts` | Inventory quantity expressions | ✅ 97% | 20 |
 | Dashboard Scenarios | End-to-end financial validation | N/A | 41 |
+| Inventory Scenarios | Real-world inventory edge cases | N/A | 53 |
 
 ### 📊 Dashboard Calculations
 
@@ -181,7 +183,7 @@ The `periodMetrics.test.ts` and `dashboardScenarios.test.ts` cover:
 
 ### 📦 Inventory Conversion Logic
 
-The `inventoryConversion.test.ts` validates the critical unit conversion logic from the `process_unified_inventory_deduction` database function:
+The `inventoryConversion.test.ts` and `inventoryScenarios.test.ts` validate the critical unit conversion logic from the `process_unified_inventory_deduction` database function:
 
 #### Volume Conversions
 | Unit | Conversion to ml |
@@ -217,6 +219,27 @@ For volume-to-weight conversions (e.g., "1 cup flour" to grams), density constan
 - **Volume-to-weight with density**: cups rice → lb, cups flour → kg
 - **Fallback behavior**: Incompatible units, missing density data
 - **Edge cases**: Zero quantities, very small/large values
+
+#### Inventory Scenarios (inventoryScenarios.test.ts)
+
+Real-world restaurant scenarios with 53 comprehensive tests:
+
+| Scenario | Tests | Description |
+|----------|-------|-------------|
+| **Bar Operations** | 7 | Cocktail production, wine service, high-volume nights |
+| **Kitchen Operations** | 10 | Protein portioning, bakery (density), sauce production |
+| **Edge Cases** | 10 | Tiny quantities, catering scale, zero/null values |
+| **Cost Accuracy** | 4 | Pour cost, food cost, batch validation |
+| **Reference IDs** | 6 | Duplicate detection, special characters |
+| **Math Consistency** | 10 | Inverse conversions, unit equivalencies, scaling |
+| **Reconciliation** | 3 | Weekly usage validation, waste factors |
+| **Multi-Location** | 1 | Batch vs incremental processing consistency |
+
+Example validations:
+- 100 Moscow Mules (2 oz vodka each) = 7.89 bottles (750ml)
+- 1000-person event (6 oz chicken) = 9.38 cases (40 lb)
+- 1 gallon = 4 quarts (mathematical identity)
+- Weekly vodka usage matches POS sales count
 
 ### 📅 Monthly Metrics
 

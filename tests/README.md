@@ -121,6 +121,53 @@ Profitability:
   Gross Profit:        $2,975
   Profit Margin:       41%
 ```
+Sales:
+  Food Sales:          $5,000
+  Bar Sales:           $2,500
+  ─────────────────────────────
+  Gross Revenue:       $7,500
+
+Deductions:
+  Discounts:           -$100
+  Refunds:             -$150
+  ─────────────────────────────
+  Net Revenue:         $7,250
+
+Pass-Through (collected but not revenue):
+  Sales Tax (8.25%):   $618.75
+  Tips (15%):          $1,125.00
+  Service Charges:     $200.00
+  ─────────────────────────────
+  Total at POS:        $9,193.75
+
+Costs:
+  Food Cost:           $2,100 (29% of net)
+  Labor Cost:          $2,175 (30% of net)
+  ─────────────────────────────
+  Prime Cost:          $4,275 (59% of net)
+
+Profitability:
+  Gross Profit:        $2,975
+  Profit Margin:       41%
+```
+
+### Edge Cases Handled
+
+| Scenario | Behavior |
+|----------|----------|
+| **Zero revenue** | Cost percentages = 0% (not infinity) |
+| **Costs > Revenue** | Negative profit, percentages can exceed 100% |
+| **Split sales (combos)** | Parent excluded, only children counted |
+| **Uncategorized sales** | Treated as revenue (fallback) |
+| **Missing chart_account** | Falls back to `adjustment_type` |
+
+### Monthly Metrics
+
+Monthly aggregation uses the same formulas but:
+- **Amounts stored in cents** to avoid floating-point precision issues
+- **Classification priority**: Chart account → adjustment_type → skip
+
+---
 
 ### Edge Cases Handled
 

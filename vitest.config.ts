@@ -15,9 +15,10 @@ export default defineConfig({
     exclude: ['node_modules', 'dist', 'tests/e2e/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: ['text', 'json', 'html', 'lcov'],
       include: ['src/utils/**/*.ts'],
       exclude: ['**/*.d.ts', '**/*.test.ts'],
+      reportsDirectory: './coverage',
     },
     testTimeout: 10000,
   },

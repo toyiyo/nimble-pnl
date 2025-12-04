@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for SonarQube
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -26,8 +28,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run unit tests
-        run: npm test
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
 
       - name: Upload coverage report
         if: always()
@@ -36,3 +38,8 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

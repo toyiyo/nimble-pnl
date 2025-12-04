@@ -16,6 +16,7 @@ This document describes the initial implementation of the Scheduling module for 
   - Hire date
   - Notes
 - Filter active employees for scheduling
+   - Filter by employee position (e.g. Bartender, Cashier) to narrow the schedule view when planning shifts
 
 ### 2. Shift Scheduling
 - Create, edit, and delete shifts

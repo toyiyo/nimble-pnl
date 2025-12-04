@@ -7,10 +7,24 @@ import { UnifiedSaleItem, POSSystemType } from '@/types/pos';
 
 const PAGE_SIZE = 200;
 
-export const useUnifiedSales = (restaurantId: string | null) => {
+type UseUnifiedSalesOptions = {
+  searchTerm?: string;
+  startDate?: string;
+  endDate?: string;
+};
+
+export const useUnifiedSales = (restaurantId: string | null, options: UseUnifiedSalesOptions = {}) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const normalizedSearchTerm = options.searchTerm?.trim();
+  const normalizedStartDate = options.startDate?.trim();
+  const normalizedEndDate = options.endDate?.trim();
+  const queryKey = useMemo(
+    () => ['unified-sales', restaurantId, normalizedSearchTerm || '', normalizedStartDate || '', normalizedEndDate || ''],
+    [restaurantId, normalizedSearchTerm, normalizedStartDate, normalizedEndDate]
+  );
 
   const fetchUnifiedSalesPage = useCallback(
     async ({ pageParam = 0 }: { pageParam?: number }) => {
@@ -21,7 +35,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
       const from = pageParam;
       const to = pageParam + PAGE_SIZE - 1;
 
-      const query = supabase
+      let query = supabase
         .from('unified_sales')
         .select(`
         *,
@@ -38,7 +52,21 @@ export const useUnifiedSales = (restaurantId: string | null) => {
           account_type
         )
         `)
-        .eq('restaurant_id', restaurantId)
+        .eq('restaurant_id', restaurantId);
+
+      if (normalizedSearchTerm) {
+        query = query.ilike('item_name', `%${normalizedSearchTerm}%`);
+      }
+
+      if (normalizedStartDate) {
+        query = query.gte('sale_date', normalizedStartDate);
+      }
+
+      if (normalizedEndDate) {
+        query = query.lte('sale_date', normalizedEndDate);
+      }
+
+      query = query
         .order('sale_date', { ascending: false })
         .order('created_at', { ascending: false })
         .range(from, to);
@@ -89,7 +117,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
 
       return { sales: salesWithSplits, hasMore: (data?.length ?? 0) === PAGE_SIZE };
     },
-    [restaurantId, user]
+    [restaurantId, user, normalizedSearchTerm, normalizedStartDate, normalizedEndDate]
   );
 
   const {
@@ -100,9 +128,10 @@ export const useUnifiedSales = (restaurantId: string | null) => {
     fetchNextPage,
     hasNextPage,
   } = useInfiniteQuery({
-    queryKey: ['unified-sales', restaurantId],
-    queryFn: ({ pageParam = 0 }) => fetchUnifiedSalesPage({ pageParam }),
-    getNextPageParam: (lastPage, pages) => (lastPage.hasMore ? pages.length * PAGE_SIZE : undefined),
+    queryKey,
+    queryFn: ({ pageParam = 0 }) => fetchUnifiedSalesPage({ pageParam: pageParam as number }),
+    getNextPageParam: (lastPage: any) => (lastPage?.hasMore ? (lastPage?.nextPage || 0) : undefined),
+    initialPageParam: 0,
     enabled: !!restaurantId && !!user,
     staleTime: 60000,
     gcTime: 300000,
@@ -112,7 +141,7 @@ export const useUnifiedSales = (restaurantId: string | null) => {
   });
 
   const flatSales = useMemo(() => {
-    const salesList = data?.pages.flatMap(page => page.sales) ?? [];
+    const salesList = data?.pages.flatMap((page: any) => page?.sales || []) ?? [];
     if (!salesList.length) return [];
 
     // Build child splits across pages to avoid missing links
@@ -239,8 +268,8 @@ export const useUnifiedSales = (restaurantId: string | null) => {
   }, [flatSales]);
 
   const refetchSales = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['unified-sales', restaurantId] });
-  }, [queryClient, restaurantId]);
+    queryClient.invalidateQueries({ queryKey });
+  }, [queryClient, queryKey]);
 
   const loadMoreSales = useCallback(() => {
     if (hasNextPage) {

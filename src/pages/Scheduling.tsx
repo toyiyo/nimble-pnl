@@ -12,6 +12,8 @@ import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useEmployeePositions } from '@/hooks/useEmployeePositions';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
 import { TimeOffList } from '@/components/TimeOffList';
@@ -71,11 +73,11 @@ const buildConflictKey = (conflict: ConflictCheck) =>
 const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
-  const { zonedTimeToUtc } = dateFnsTz;
+  const { fromZonedTime } = dateFnsTz;
 
   const formatToUTC = (isoString: string) => {
     const date = new Date(isoString);
-    const converter = zonedTimeToUtc ?? ((value: Date) => value);
+    const converter = fromZonedTime ?? ((value: Date) => value);
     const utcDate = converter(date, restaurantTimezone);
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;
@@ -210,6 +212,13 @@ const Scheduling = () => {
   
   // Get unique positions for open shift dialog
   const uniquePositions = [...new Set(employees.map(emp => emp.position))].filter(Boolean);
+  const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
+  const [positionFilter, setPositionFilter] = useState<string>('all');
+
+  // Apply position filter when present
+  const filteredEmployees = positionFilter && positionFilter !== 'all'
+    ? activeEmployees.filter(emp => emp.position === positionFilter)
+    : activeEmployees;
 
   // Calculate labor metrics
   const calculateShiftHours = (shift: Shift) => {
@@ -220,13 +229,17 @@ const Scheduling = () => {
     return netMinutes / 60;
   };
 
-  const totalScheduledHours = shifts.reduce((sum, shift) => sum + calculateShiftHours(shift), 0);
+  const totalScheduledHours = shifts
+    .filter(s => filteredEmployees.some(e => e.id === s.employee_id))
+    .reduce((sum, shift) => sum + calculateShiftHours(shift), 0);
   
-  const totalLaborCost = shifts.reduce((sum, shift) => {
-    const employee = employees.find(emp => emp.id === shift.employee_id);
-    const hours = calculateShiftHours(shift);
-    return sum + (employee ? (employee.hourly_rate / 100) * hours : 0);
-  }, 0);
+  const totalLaborCost = shifts
+    .filter(s => filteredEmployees.some(e => e.id === s.employee_id))
+    .reduce((sum, shift) => {
+      const employee = employees.find(emp => emp.id === shift.employee_id);
+      const hours = calculateShiftHours(shift);
+      return sum + (employee ? (employee.hourly_rate / 100) * hours : 0);
+    }, 0);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
@@ -325,8 +338,12 @@ const Scheduling = () => {
     }
   };
 
-  // Get unique employees scheduled this week
-  const scheduledEmployeeIds = new Set(shifts.map(shift => shift.employee_id));
+  // Get unique employees scheduled this week (respecting position filter)
+  const scheduledEmployeeIds = new Set(
+    shifts
+      .filter(s => filteredEmployees.some(e => e.id === s.employee_id))
+      .map(shift => shift.employee_id)
+  );
   const scheduledEmployeeCount = scheduledEmployeeIds.size;
 
   const getShiftsForDay = (day: Date) => {
@@ -401,7 +418,7 @@ const Scheduling = () => {
             {employeesLoading ? (
               <Skeleton className="h-8 w-20" />
             ) : (
-              <div className="text-2xl font-bold">{activeEmployees.length}</div>
+              <div className="text-2xl font-bold">{filteredEmployees.length}</div>
             )}
             <p className="text-xs text-muted-foreground">Ready to be scheduled</p>
           </CardContent>
@@ -483,7 +500,21 @@ const Scheduling = () => {
                 </div>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              {/* Position filter */}
+              <div className="w-48">
+                <Select value={positionFilter} onValueChange={(v) => setPositionFilter(v)}>
+                  <SelectTrigger id="position-filter" aria-label="Filter by position">
+                    <SelectValue placeholder={positionsLoading ? 'Loading positions...' : 'All Positions'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Positions</SelectItem>
+                    {positions.map((pos) => (
+                      <SelectItem key={pos} value={pos}>{pos}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               {/* Publishing buttons */}
               {isPublished ? (
                 <>
@@ -549,7 +580,14 @@ const Scheduling = () => {
                 Add Employee
               </Button>
             </div>
-          ) : (
+            ) : filteredEmployees.length === 0 ? (
+            <div className="text-center py-12">
+              <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No employees match filter</h3>
+              <p className="text-muted-foreground mb-4">Try clearing the position filter to see all employees.</p>
+              <Button variant="outline" onClick={() => setPositionFilter('all')}>Clear Filter</Button>
+            </div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
@@ -564,7 +602,7 @@ const Scheduling = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {activeEmployees.map((employee) => (
+                  {filteredEmployees.map((employee) => (
                     <tr key={employee.id} className="border-b hover:bg-muted/50 group">
                       <td className="p-2 sticky left-0 bg-background">
                         <div className="flex items-center gap-2 justify-between">

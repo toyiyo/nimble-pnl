@@ -207,3 +207,30 @@ export interface NotificationSettings {
   created_at: string;
   updated_at: string;
 }
+
+export type ChangeType = 'created' | 'updated' | 'deleted' | 'unpublished';
+
+export interface ScheduleChangeLog {
+  id: string;
+  restaurant_id: string;
+  shift_id: string | null;
+  employee_id: string | null;
+  change_type: ChangeType;
+  changed_by: string;
+  changed_at: string;
+  reason: string | null;
+  before_data: any;
+  after_data: any;
+  employee?: Employee;
+}
+
+export interface SchedulePublication {
+  id: string;
+  restaurant_id: string;
+  week_start_date: string;
+  week_end_date: string;
+  published_at: string;
+  published_by: string;
+  notes: string | null;
+  shift_count: number;
+}

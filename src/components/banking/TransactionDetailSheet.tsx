@@ -191,12 +191,12 @@ export function TransactionDetailSheet({
       ruleName: hasSpecificMerchant 
         ? `Auto-categorize ${merchantName.substring(0, RULE_NAME_MAX_LENGTH)}${merchantName.length > RULE_NAME_MAX_LENGTH ? '...' : ''}`
         : 'Transaction categorization rule',
-      appliesTo: 'bank_transactions' as const,
+      appliesTo: 'bank_transactions' as 'bank_transactions',
       // Only use merchant name if it's specific, not generic description
       descriptionPattern: hasSpecificMerchant ? merchantName : '',
-      descriptionMatchType: 'contains' as const,
+      descriptionMatchType: 'contains' as 'contains',
       supplierId: selectedSupplierId || '',
-      transactionType: (isExpense ? 'debit' : 'credit') as const,
+      transactionType: (isExpense ? 'debit' : 'credit') as 'debit' | 'credit',
       categoryId: selectedCategoryId,
       priority: '5',
       autoApply: true,

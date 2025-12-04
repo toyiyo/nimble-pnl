@@ -16,7 +16,7 @@ export const useSplitPosSale = () => {
     }) => {
       const { data, error } = await supabase.rpc('split_pos_sale', {
         p_sale_id: saleId,
-        p_splits: splits,
+        p_splits: splits as any,
       });
 
       if (error) throw error;
@@ -103,7 +103,7 @@ export const useUpdatePosSaleSplit = () => {
       // Then create new splits using the RPC function
       const { data, error } = await supabase.rpc('split_pos_sale', {
         p_sale_id: saleId,
-        p_splits: splits,
+        p_splits: splits as any,
       });
 
       if (error) throw error;

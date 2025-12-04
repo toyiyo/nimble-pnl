@@ -44,17 +44,6 @@ export default function POSSales() {
     loading: restaurantsLoading,
     createRestaurant,
   } = useRestaurantContext();
-  const {
-    sales,
-    loading,
-    loadingMore,
-    hasMore,
-    loadMoreSales,
-    getSalesByDateRange,
-    getSalesGroupedByItem,
-    unmappedItems,
-    deleteManualSale,
-  } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(
     selectedRestaurant?.restaurant_id || null,
   );
@@ -106,6 +95,22 @@ export default function POSSales() {
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [saleForRuleSuggestion, setSaleForRuleSuggestion] = useState<UnifiedSaleItem | null>(null);
   const [aiCategorizationError, setAiCategorizationError] = useState<string | null>(null);
+
+  const {
+    sales,
+    loading,
+    loadingMore,
+    hasMore,
+    loadMoreSales,
+    getSalesByDateRange,
+    getSalesGroupedByItem,
+    unmappedItems,
+    deleteManualSale,
+  } = useUnifiedSales(selectedRestaurant?.restaurant_id || null, {
+    searchTerm,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+  });
 
   // Filter revenue and liability accounts for categorization (matching split dialog)
   const categoryAccounts = useMemo(() => {
@@ -1239,6 +1244,7 @@ export default function POSSales() {
                                        }}
                                        placeholder="Select category"
                                        filterByTypes={['revenue', 'liability']}
+                                       autoOpen
                                      />
                                   </div>
                                   <Button

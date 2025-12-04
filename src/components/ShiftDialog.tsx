@@ -150,6 +150,8 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
       notes: notes || undefined,
       recurrence_pattern: recurrencePattern,
       is_recurring: recurrencePattern !== null,
+      is_published: false,
+      locked: false,
     };
 
     if (shift) {

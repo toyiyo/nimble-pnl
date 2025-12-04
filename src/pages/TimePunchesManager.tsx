@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,13 +10,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch } from '@/hooks/useTimePunches';
+import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch, useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useEmployees } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Clock, Trash2, Edit, Download, Search, Camera, MapPin, Eye,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table as TableIcon,
-  LayoutGrid, BarChart3, List, Code
+  LayoutGrid, BarChart3, List, Code, Shield, KeyRound, TabletSmartphone, Unlock, RefreshCcw, Copy, UserCog, Loader2
 } from 'lucide-react';
 import { 
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
@@ -37,6 +38,14 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { TimePunch } from '@/types/timeTracking';
 import { cn } from '@/lib/utils';
 import { processPunchesForPeriod } from '@/utils/timePunchProcessing';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { useKioskSession } from '@/hooks/useKioskSession';
+import { useEmployeePins, useUpsertEmployeePin, EmployeePinWithEmployee } from '@/hooks/useKioskPins';
+import { KIOSK_POLICY_KEY, generateNumericPin, loadFromStorage, saveToStorage, isSimpleSequence } from '@/utils/kiosk';
+import { Switch } from '@/components/ui/switch';
+import { Employee } from '@/types/scheduling';
+import { useKioskServiceAccount } from '@/hooks/useKioskServiceAccount';
 import {
   TimelineGanttView,
   EmployeeCardView,
@@ -45,12 +54,20 @@ import {
   ReceiptStyleView,
 } from '@/components/time-tracking';
 
+const SIGNED_URL_BUFFER_MS = 5 * 60 * 1000; // Refresh URLs a few minutes before expiry
+
 type ViewMode = 'day' | 'week' | 'month';
 type VisualizationMode = 'gantt' | 'cards' | 'barcode' | 'stream' | 'receipt';
 
 const TimePunchesManager = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const { session: kioskSession, startSession, endSession } = useKioskSession();
+  const { pins, loading: pinsLoading } = useEmployeePins(restaurantId);
+  const upsertPin = useUpsertEmployeePin();
 
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const [visualizationMode, setVisualizationMode] = useState<VisualizationMode>('gantt');
@@ -62,9 +79,163 @@ const TimePunchesManager = () => {
   const [editingPunch, setEditingPunch] = useState<TimePunch | null>(null);
   const [editFormData, setEditFormData] = useState({ punch_time: '', notes: '' });
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   const [photoThumbnails, setPhotoThumbnails] = useState<Record<string, string>>({});
+  const [signedUrlCache, setSignedUrlCache] = useState<Record<string, { url: string; expiresAt: number }>>({});
+  const [pinDialogEmployee, setPinDialogEmployee] = useState<Employee | null>(null);
+  const [pinValue, setPinValue] = useState('');
+  const [pinForceReset, setPinForceReset] = useState(false);
+  const [lastSavedPin, setLastSavedPin] = useState<string | null>(null);
+  const { account: kioskAccount, loading: kioskAccountLoading, createOrRotate } = useKioskServiceAccount(restaurantId);
+  const [generatedKioskCreds, setGeneratedKioskCreds] = useState<{ email: string; password: string } | null>(null);
+
+  const [pinPolicy, setPinPolicy] = useState({
+    minLength: 4,
+    forceResetOnNext: false,
+    allowSimpleSequences: false,
+  });
+  const kioskPolicyStorageKey = restaurantId ? `${KIOSK_POLICY_KEY}_${restaurantId}` : KIOSK_POLICY_KEY;
+  const kioskActiveForLocation = kioskSession?.kiosk_mode && kioskSession.location_id === restaurantId;
+  const isManager = ['owner', 'manager'].includes(selectedRestaurant?.role || '');
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    const stored = loadFromStorage<typeof pinPolicy>(kioskPolicyStorageKey);
+    if (stored) {
+      setPinPolicy((prev) => ({ ...prev, ...stored }));
+    }
+  }, [restaurantId, kioskPolicyStorageKey]);
+
+  const persistPolicy = (updates: Partial<typeof pinPolicy>) => {
+    const nextPolicy = { ...pinPolicy, ...updates };
+    setPinPolicy(nextPolicy);
+    if (restaurantId) {
+      saveToStorage(kioskPolicyStorageKey, nextPolicy);
+    }
+  };
+
+  const pinLookup = useMemo(() => {
+    const map = new Map<string, EmployeePinWithEmployee>();
+    pins.forEach((pin) => map.set(pin.employee_id, pin));
+    return map;
+  }, [pins]);
+
+  const generatePolicyPin = () => {
+    let candidate = generateNumericPin(pinPolicy.minLength);
+    let attempts = 0;
+    while (!pinPolicy.allowSimpleSequences && isSimpleSequence(candidate) && attempts < 6) {
+      candidate = generateNumericPin(pinPolicy.minLength);
+      attempts++;
+    }
+    return candidate;
+  };
+
+  const openPinDialog = (employee: Employee) => {
+    setPinDialogEmployee(employee);
+    setPinForceReset(pinPolicy.forceResetOnNext);
+    setPinValue(generatePolicyPin());
+    setLastSavedPin(null);
+  };
+
+  const closePinDialog = () => {
+    setPinDialogEmployee(null);
+    setPinValue('');
+    setLastSavedPin(null);
+  };
+
+  const handleSavePin = async () => {
+    if (!restaurantId || !pinDialogEmployee) return;
+    try {
+      const result = await upsertPin.mutateAsync({
+        restaurant_id: restaurantId,
+        employee_id: pinDialogEmployee.id,
+        pin: pinValue,
+        min_length: pinPolicy.minLength,
+        force_reset: pinForceReset,
+        allowSimpleSequence: pinPolicy.allowSimpleSequences,
+      });
+      setLastSavedPin(result.pin);
+      toast({
+        title: 'PIN saved',
+        description: `Share this PIN with ${pinDialogEmployee.name} securely.`,
+      });
+    } catch (error) {
+      console.error('Error saving PIN', error);
+    }
+  };
+
+  const handleAutoGeneratePins = async () => {
+    if (!restaurantId) return;
+    const missing = employees.filter((emp) => !pinLookup.get(emp.id));
+    if (missing.length === 0) {
+      toast({
+        title: 'All employees covered',
+        description: 'Every active employee already has a PIN.',
+      });
+      return;
+    }
+
+    let generated = 0;
+    for (const emp of missing) {
+      const candidate = generatePolicyPin();
+      try {
+        await upsertPin.mutateAsync({
+          restaurant_id: restaurantId,
+          employee_id: emp.id,
+          pin: candidate,
+          min_length: pinPolicy.minLength,
+          force_reset: pinPolicy.forceResetOnNext,
+          allowSimpleSequence: pinPolicy.allowSimpleSequences,
+        });
+        generated += 1;
+      } catch (error) {
+        console.error('Error generating PIN', error);
+        break;
+      }
+    }
+
+    if (generated > 0) {
+      toast({
+        title: 'PINs generated',
+        description: `Created PINs for ${generated} employee${generated === 1 ? '' : 's'}.`,
+      });
+    }
+  };
+
+  const handleLaunchKiosk = async () => {
+    if (!restaurantId) return;
+    try {
+      await startSession(restaurantId, user?.id || 'manager', {
+        minLength: pinPolicy.minLength,
+      });
+      toast({
+        title: 'Kiosk ready',
+        description: 'This device is locked to PIN-only timeclock.',
+      });
+      navigate('/kiosk');
+    } catch (error: any) {
+      toast({
+        title: 'Could not launch kiosk',
+        description: error?.message || 'Check your connection and try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleExitKiosk = () => {
+    endSession();
+    toast({
+      title: 'Kiosk exited',
+      description: 'Navigation is unlocked for this device.',
+    });
+  };
+
+  const pinTooShort = pinDialogEmployee ? pinValue.length < pinPolicy.minLength : false;
+  const pinLooksSimple = pinDialogEmployee
+    ? isSimpleSequence(pinValue) && !pinPolicy.allowSimpleSequences
+    : false;
 
   // Calculate date range based on view mode
   const dateRange = useMemo(() => {
@@ -93,6 +264,9 @@ const TimePunchesManager = () => {
   );
   const deletePunch = useDeleteTimePunch();
   const updatePunch = useUpdateTimePunch();
+  const createPunch = useCreateTimePunch();
+  const [forceSessionToClose, setForceSessionToClose] = useState<any | null>(null);
+  const [forceOutTime, setForceOutTime] = useState<string>(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
 
   // Filter punches by search term (memoized for performance)
   const filteredPunches = useMemo(() => {
@@ -108,6 +282,9 @@ const TimePunchesManager = () => {
     return processPunchesForPeriod(filteredPunches);
   }, [filteredPunches]);
 
+  // Incomplete sessions that are missing a clock_out
+  const incompleteSessions = useMemo(() => processedData.sessions.filter(s => !s.is_complete), [processedData.sessions]);
+
   // Filter sessions for current day (for day view visualizations)
   const todaySessions = useMemo(() => {
     if (viewMode !== 'day') return processedData.sessions;
@@ -120,22 +297,47 @@ const TimePunchesManager = () => {
   // Load photo thumbnails for punches with photos
   useEffect(() => {
     const loadThumbnails = async () => {
-      const punchesWithPhotos = punches.filter(p => p.photo_path && !photoThumbnails[p.id]);
+      const now = Date.now();
+      const punchesWithPhotos = punches.filter((punch) => {
+        if (!punch.photo_path) return false;
+        const cacheKey = `thumb:${punch.photo_path}`;
+        const cached = signedUrlCache[cacheKey];
+        return !photoThumbnails[punch.id] || !cached || cached.expiresAt <= now;
+      });
       if (punchesWithPhotos.length === 0) return;
 
       for (const punch of punchesWithPhotos) {
-        if (punch.photo_path) {
-          try {
-            const { data } = await supabase.storage
-              .from('time-clock-photos')
-              .createSignedUrl(punch.photo_path, 3600);
-            
-            if (data) {
-              setPhotoThumbnails(prev => ({ ...prev, [punch.id]: data.signedUrl }));
-            }
-          } catch (error) {
+        if (!punch.photo_path) continue;
+
+        const cacheKey = `thumb:${punch.photo_path}`;
+        const cached = signedUrlCache[cacheKey];
+        const now = Date.now();
+
+        if (cached && cached.expiresAt > now) {
+          setPhotoThumbnails(prev => ({ ...prev, [punch.id]: cached.url }));
+          continue;
+        }
+
+        try {
+          const expiresInSeconds = 7200; // 2 hours
+          const { data, error } = await supabase.storage
+            .from('time-clock-photos')
+            .createSignedUrl(punch.photo_path, expiresInSeconds, {
+              transform: { width: 200, height: 200, resize: 'contain' },
+            });
+
+          if (error) {
             console.error('Error loading thumbnail:', error);
+            continue;
           }
+
+          if (data?.signedUrl) {
+            const expiresAt = Date.now() + expiresInSeconds * 1000 - SIGNED_URL_BUFFER_MS;
+            setSignedUrlCache(prev => ({ ...prev, [cacheKey]: { url: data.signedUrl, expiresAt } }));
+            setPhotoThumbnails(prev => ({ ...prev, [punch.id]: data.signedUrl }));
+          }
+        } catch (error) {
+          console.error('Error loading thumbnail:', error);
         }
       }
     };
@@ -147,31 +349,50 @@ const TimePunchesManager = () => {
   useEffect(() => {
     const fetchPhotoUrl = async () => {
       if (viewingPunch?.photo_path) {
+        setPhotoError(null);
         setLoadingPhoto(true);
+        const cacheKey = `detail:${viewingPunch.photo_path}`;
+        const cached = signedUrlCache[cacheKey];
+        const now = Date.now();
+
+        if (cached && cached.expiresAt > now) {
+          setPhotoUrl(cached.url);
+          setLoadingPhoto(false);
+          return;
+        }
+
         try {
+          const expiresInSeconds = 7200; // 2 hours
           const { data, error } = await supabase.storage
             .from('time-clock-photos')
-            .createSignedUrl(viewingPunch.photo_path, 3600);
+            .createSignedUrl(viewingPunch.photo_path, expiresInSeconds, {
+              transform: { width: 900, resize: 'contain' },
+            });
 
-          if (error) {
+          if (error || !data?.signedUrl) {
             console.error('Error fetching photo URL:', error);
+            setPhotoError('Photo unavailable');
             setPhotoUrl(null);
           } else {
+            const expiresAt = Date.now() + expiresInSeconds * 1000 - SIGNED_URL_BUFFER_MS;
+            setSignedUrlCache(prev => ({ ...prev, [cacheKey]: { url: data.signedUrl, expiresAt } }));
             setPhotoUrl(data.signedUrl);
           }
         } catch (error) {
           console.error('Exception fetching photo:', error);
+          setPhotoError('Photo unavailable');
           setPhotoUrl(null);
         } finally {
           setLoadingPhoto(false);
         }
       } else {
         setPhotoUrl(null);
+        setPhotoError(null);
       }
     };
 
     fetchPhotoUrl();
-  }, [viewingPunch]);
+  }, [viewingPunch, signedUrlCache]);
 
   const confirmDelete = () => {
     if (punchToDelete && restaurantId) {
@@ -298,6 +519,394 @@ const TimePunchesManager = () => {
           </div>
         </CardHeader>
       </Card>
+
+      {isManager && (
+        <Card className="border-primary/20">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <TabletSmartphone className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Kiosk Mode (PIN clock)</CardTitle>
+                <CardDescription>Lock this device to PIN-only timeclock for {selectedRestaurant?.restaurant.name ?? 'this location'}.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="p-4 rounded-lg border bg-muted/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Status</span>
+                  <Badge variant={kioskActiveForLocation ? 'default' : 'outline'}>
+                    {kioskActiveForLocation ? 'Active on this device' : 'Not active'}
+                  </Badge>
+                </div>
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <div>
+                    Location locked:{' '}
+                    <span className="font-medium text-foreground">{selectedRestaurant?.restaurant.name}</span>
+                  </div>
+                  {kioskSession?.started_at && (
+                    <div>Started {format(new Date(kioskSession.started_at), 'MMM d, h:mm a')}</div>
+                  )}
+                  {kioskSession?.kiosk_instance_id && (
+                    <div className="text-xs text-muted-foreground">Instance: {kioskSession.kiosk_instance_id.slice(0, 8)}</div>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={handleLaunchKiosk}>
+                    <Shield className="h-4 w-4 mr-2" />
+                    Launch kiosk
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleExitKiosk}
+                    disabled={!kioskActiveForLocation}
+                  >
+                    <Unlock className="h-4 w-4 mr-2" />
+                    Exit kiosk
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg border bg-card space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-sm">PIN rules</div>
+                    <p className="text-xs text-muted-foreground">Enforce clean 4–6 digit PINs for fewer corrections.</p>
+                  </div>
+                  <Badge variant="outline">{pinPolicy.minLength}-6 digits</Badge>
+                </div>
+                <div className="space-y-2">
+                  <Label>Minimum digits</Label>
+                  <Select
+                    value={String(pinPolicy.minLength)}
+                    onValueChange={(value) => persistPolicy({ minLength: Number(value) })}
+                  >
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="4">4</SelectItem>
+                      <SelectItem value="5">5</SelectItem>
+                      <SelectItem value="6">6</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                  <div>
+                    <div className="font-medium text-sm">Force update on next use</div>
+                    <p className="text-xs text-muted-foreground">Mark new PINs as temporary until the employee sets their own.</p>
+                  </div>
+                  <Switch
+                    checked={pinPolicy.forceResetOnNext}
+                    onCheckedChange={(checked) => persistPolicy({ forceResetOnNext: checked })}
+                    aria-label="Force employees to reset PIN"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg border bg-muted/30 space-y-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <KeyRound className="h-4 w-4 text-primary" />
+                  <span>Daily P&amp;L stays clean when every punch maps to a PIN.</span>
+                </div>
+                <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
+                  <li>Install as a PWA or use Guided Access/App Pinning on tablets.</li>
+                  <li>Offline punches queue locally and sync when back online.</li>
+                  <li>No navigation or shortcuts appear on the kiosk screen.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="p-4 rounded-lg border bg-muted/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <UserCog className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <div className="font-medium text-sm">Dedicated kiosk login</div>
+                      <p className="text-xs text-muted-foreground">
+                        Generates a service account that only works on /kiosk for this location.
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="outline">{kioskAccount ? 'Ready' : 'Not created'}</Badge>
+                </div>
+
+                {kioskAccount && (
+                  <div className="text-sm space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Email</span>
+                      <span className="font-mono text-xs">{kioskAccount.email}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Use this to sign in on the tablet. Rotate to issue a new password.
+                    </p>
+                  </div>
+                )}
+
+                {generatedKioskCreds && (
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 space-y-2">
+                    <div className="font-medium text-emerald-900 text-sm">New kiosk credentials</div>
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span>Email:</span>
+                      <span>{generatedKioskCreds.email}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span>Password:</span>
+                      <span>{generatedKioskCreds.password}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            `Email: ${generatedKioskCreds.email}\nPassword: ${generatedKioskCreds.password}`
+                          );
+                        }}
+                      >
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copy both
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="flex-1"
+                        onClick={() => setGeneratedKioskCreds(null)}
+                      >
+                        Dismiss
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const result = await createOrRotate.mutateAsync({ rotate: true });
+                        setGeneratedKioskCreds(result);
+                      } catch {
+                        // Errors are handled via onError toast in the hook
+                      }
+                    }}
+                    disabled={createOrRotate.isPending || kioskAccountLoading}
+                  >
+                    {createOrRotate.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCcw className="h-4 w-4 mr-2" />
+                    )}
+                    {kioskAccount ? 'Rotate credentials' : 'Create kiosk login'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setGeneratedKioskCreds(null)}
+                    disabled={!generatedKioskCreds}
+                  >
+                    Clear shown password
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg border bg-muted/20 space-y-2">
+                <div className="font-medium text-sm">How to deploy</div>
+                <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
+                  <li>Sign out the manager on the tablet, then sign in with the kiosk email and one-time password.</li>
+                  <li>Use device pinning/Guided Access so the session stays on /kiosk.</li>
+                  <li>Rotate credentials after staff turnover or if the tablet is lost.</li>
+                </ul>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isManager && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <KeyRound className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <CardTitle>Employee PINs</CardTitle>
+                  <CardDescription>Manage PIN assignments for quick kiosk clock-ins.</CardDescription>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Badge variant="outline">{pinLookup.size} with PIN</Badge>
+                <Badge variant="outline" className="hidden md:inline-flex">
+                  Min length {pinPolicy.minLength}
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm text-muted-foreground">
+                Avoid duplicate identities by keeping PINs unique per location.
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => persistPolicy({ allowSimpleSequences: !pinPolicy.allowSimpleSequences })}
+                >
+                  {pinPolicy.allowSimpleSequences ? 'Disable sequence PINs' : 'Allow sequence PINs'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAutoGeneratePins}
+                  disabled={pinsLoading || upsertPin.isPending}
+                >
+                  Auto-generate missing PINs
+                </Button>
+              </div>
+            </div>
+
+            {(() => {
+              if (pinsLoading) {
+                return (
+                  <div className="space-y-2">
+                    <Skeleton className="h-14 w-full" />
+                    <Skeleton className="h-14 w-full" />
+                  </div>
+                );
+              }
+              if (employees.length === 0) {
+                return <p className="text-muted-foreground text-sm">Add employees to start assigning PINs.</p>;
+              }
+              return (
+                <div className="space-y-2">
+                  {employees.map((emp) => {
+                    const pinRecord = pinLookup.get(emp.id);
+                    return (
+                      <div
+                        key={emp.id}
+                        className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <div className="font-medium">{emp.name}</div>
+                            <div className="text-xs text-muted-foreground">{emp.position}</div>
+                            {pinRecord?.last_used_at && (
+                              <div className="text-[11px] text-muted-foreground">
+                                Last used {format(new Date(pinRecord.last_used_at), 'MMM d, h:mm a')}
+                              </div>
+                            )}
+                          </div>
+                          {pinRecord ? (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
+                              PIN set
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
+                              Not set
+                            </Badge>
+                          )}
+                          {pinRecord?.force_reset && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20">
+                              Force update
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openPinDialog(emp)}
+                            disabled={upsertPin.isPending}
+                          >
+                            {pinRecord ? 'Reset PIN' : 'Set PIN'}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={!!pinDialogEmployee} onOpenChange={(open) => !open && closePinDialog()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set PIN for {pinDialogEmployee?.name}</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              4–6 digit PINs reduce identity ambiguity and speed up rush-hour clock-ins.
+            </p>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="pin_value">PIN</Label>
+              <Input
+                id="pin_value"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={pinValue}
+                onChange={(e) => {
+                  const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 6);
+                  setPinValue(digitsOnly);
+                  setLastSavedPin(null);
+                }}
+                aria-label="Employee PIN"
+              />
+              <div className="text-xs text-muted-foreground">
+                Must be at least {pinPolicy.minLength} digits. {pinLooksSimple ? 'Avoid simple sequences (1234).' : ''}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div>
+                <div className="font-medium text-sm">Force update on first use</div>
+                <p className="text-xs text-muted-foreground">Treat this as a temporary PIN.</p>
+              </div>
+              <Switch checked={pinForceReset} onCheckedChange={setPinForceReset} />
+            </div>
+
+            {lastSavedPin && (
+              <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 text-sm">
+                <div className="flex items-center gap-2 font-semibold text-primary">
+                  <KeyRound className="h-4 w-4" />
+                  New PIN: {lastSavedPin}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Share privately; the PIN is stored hashed.</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setPinValue(generatePolicyPin())}>
+              Regenerate
+            </Button>
+            <Button variant="outline" onClick={closePinDialog}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSavePin}
+              disabled={pinTooShort || pinLooksSimple || upsertPin.isPending}
+            >
+              Save PIN
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Filters & Navigation */}
       <Card>
@@ -480,17 +1089,19 @@ const TimePunchesManager = () => {
                       <div className="flex items-center gap-4 flex-1">
                         {/* Photo thumbnail */}
                         {punch.photo_path && photoThumbnails[punch.id] && (
-                          <div 
-                            className="w-12 h-12 rounded-lg overflow-hidden border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors"
-                            onClick={() => setViewingPunch(punch)}
-                          >
+                      <div 
+                        className="w-12 h-12 rounded-lg overflow-hidden border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors"
+                        onClick={() => setViewingPunch(punch)}
+                      >
                             <img 
                               src={photoThumbnails[punch.id]} 
                               alt="Employee photo" 
-                              className="w-full h-full object-cover"
+                              className="w-24 h-24 object-cover rounded-md border border-border"
+                              loading="lazy"
+                              decoding="async"
                             />
-                          </div>
-                        )}
+                      </div>
+                    )}
 
                         <Badge variant="outline" className={getPunchTypeColor(punch.punch_type)}>
                           {getPunchTypeLabel(punch.punch_type)}
@@ -563,9 +1174,98 @@ const TimePunchesManager = () => {
         </Card>
       </Collapsible>
 
+      {/* Open / Incomplete Sessions (Managers only) */}
+      {selectedRestaurant?.role && ['owner', 'manager'].includes(selectedRestaurant.role) && incompleteSessions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Open / Incomplete Sessions</CardTitle>
+            <CardDescription>{incompleteSessions.length} session{incompleteSessions.length !== 1 ? 's' : ''} need attention</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {incompleteSessions.map((session) => (
+                <div key={session.sessionId} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                  <div>
+                    <div className="font-medium">{session.employee_name}</div>
+                    <div className="text-sm text-muted-foreground">Clocked in: {format(new Date(session.clock_in), 'MMM d, yyyy h:mm a')}</div>
+                    <div className="text-sm text-muted-foreground">Open for {Math.max(0, Math.round(differenceInMinutes(new Date(), new Date(session.clock_in)) / 60))}h {Math.max(0, differenceInMinutes(new Date(), new Date(session.clock_in)) % 60)}m</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setForceSessionToClose(session)}
+                    >
+                      Force Clock Out Now
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Force Clock Out Confirmation */}
+      <AlertDialog open={!!forceSessionToClose} onOpenChange={() => setForceSessionToClose(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Force Clock Out</AlertDialogTitle>
+                  <AlertDialogDescription>
+              Specify the date & time to record as the clock-out for <strong>{forceSessionToClose?.employee_name}</strong>. Default is the current time. This will close the open session and will be visible in payroll immediately.
+            </AlertDialogDescription>
+            <div className="py-3">
+              <Label htmlFor="force_out_time">Clock-out time</Label>
+              <Input
+                id="force_out_time"
+                type="datetime-local"
+                value={forceOutTime}
+                onChange={(e) => setForceOutTime(e.target.value)}
+                aria-label="Force clock out time"
+                className="mt-2"
+              />
+
+              {forceSessionToClose?.clock_in && forceOutTime && (
+                <div className="text-sm mt-2 text-muted-foreground">
+                  {new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime() ? (
+                    <span className="text-destructive">Selected time is before the session's clock-in — please pick a time after {format(new Date(forceSessionToClose.clock_in), 'MMM d, yyyy h:mm a')}.</span>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!forceSessionToClose || !restaurantId || !forceOutTime) return;
+                // Prevent creating a clock_out earlier than the session's clock_in
+                const chosen = new Date(forceOutTime).toISOString();
+                if (forceSessionToClose.clock_in && new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime()) return;
+
+                createPunch.mutate({
+                  restaurant_id: restaurantId,
+                  employee_id: forceSessionToClose.employee_id,
+                  punch_type: 'clock_out',
+                  punch_time: chosen,
+                  notes: 'Force clock out by manager',
+                });
+                setForceSessionToClose(null);
+                // reset default time
+                setForceOutTime(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+              }}
+              disabled={!!(forceSessionToClose?.clock_in && forceOutTime && new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime())}
+            >
+              Force Clock Out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Verification Details Dialog */}
       <Dialog open={!!viewingPunch} onOpenChange={() => setViewingPunch(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Verification Details</DialogTitle>
           </DialogHeader>
@@ -596,20 +1296,26 @@ const TimePunchesManager = () => {
                     <Camera className="h-4 w-4" />
                     Verification Photo
                   </div>
-                  <div className="rounded-lg overflow-hidden border">
+                  <div className="rounded-lg border bg-muted/50 max-h-[70vh] overflow-auto flex items-center justify-center">
                     {loadingPhoto ? (
-                      <div className="w-full h-64 flex items-center justify-center bg-muted">
-                        <p className="text-muted-foreground">Loading photo...</p>
+                      <div className="w-full h-72 flex items-center justify-center text-muted-foreground">
+                        <p>Loading photo...</p>
                       </div>
                     ) : photoUrl ? (
                       <img 
                         src={photoUrl} 
                         alt="Employee verification photo" 
-                        className="w-full h-auto"
+                        className="w-40 h-auto max-h-[70vh] object-contain"
+                        loading="lazy"
+                        decoding="async"
+                        onError={() => {
+                          setPhotoError('Photo unavailable');
+                          setPhotoUrl(null);
+                        }}
                       />
                     ) : (
-                      <div className="w-full h-64 flex items-center justify-center bg-muted">
-                        <p className="text-muted-foreground">Photo unavailable</p>
+                      <div className="w-full h-72 flex items-center justify-center text-muted-foreground">
+                        <p>{photoError || 'Photo unavailable'}</p>
                       </div>
                     )}
                   </div>

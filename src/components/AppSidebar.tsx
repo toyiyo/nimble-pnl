@@ -97,11 +97,17 @@ export function AppSidebar() {
   const { signOut, user } = useAuth();
   const { selectedRestaurant } = useRestaurantContext();
 
-  // Check if user is staff
-  const isStaff = selectedRestaurant?.role === 'staff';
+  // Check user role
+  const role = selectedRestaurant?.role;
+  const isStaff = role === 'staff';
+  const isKiosk = role === 'kiosk';
 
-  // Filter navigation groups for staff users
-  const filteredNavigationGroups = isStaff
+  // Kiosk users should never see the sidebar (they're on noChrome route)
+  // But as a safety measure, show nothing if somehow they do
+  // Staff users get limited navigation
+  const filteredNavigationGroups = isKiosk
+    ? [] // Kiosk: no navigation at all
+    : isStaff
     ? [
         {
           label: 'Employee',
@@ -117,7 +123,7 @@ export function AppSidebar() {
           ],
         },
       ]
-    : navigationGroups;
+    : navigationGroups; // Full access for owner/manager/chef
 
   const isActivePath = (path: string) => {
     if (path === '/') return location.pathname === '/';

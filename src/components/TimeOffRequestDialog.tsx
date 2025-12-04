@@ -36,7 +36,7 @@ export const TimeOffRequestDialog = ({
   const [reason, setReason] = useState('');
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
-  const { zonedTimeToUtc } = dateFnsTz;
+  const { fromZonedTime } = dateFnsTz;
 
   const createRequest = useCreateTimeOffRequest();
   const updateRequest = useUpdateTimeOffRequest();
@@ -60,7 +60,7 @@ export const TimeOffRequestDialog = ({
 
     // Convert start/end dates to UTC using provided timezone; fallback is identity
     const toUTCDate = (date: Date) => {
-      const converter = zonedTimeToUtc ?? ((value: Date) => value);
+      const converter = fromZonedTime ?? ((value: Date) => value);
       return converter(date, restaurantTimezone).toISOString().substring(0, 10);
     };
 
@@ -75,6 +75,7 @@ export const TimeOffRequestDialog = ({
       end_date: toUTCDate(endDate),
       reason: reason || undefined,
       status: 'pending' as const,
+      requested_at: new Date().toISOString(),
     };
 
     if (request) {

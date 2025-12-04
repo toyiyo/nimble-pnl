@@ -10,6 +10,7 @@ import { useCurrentEmployee, useEmployeePunchStatus, useCreateTimePunch, useTime
 import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, Shield, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { collectPunchContext } from '@/utils/punchContext';
 
 const EmployeeClock = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -22,6 +23,8 @@ const EmployeeClock = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
+  const MAX_PHOTO_WIDTH = 480;
+  const PHOTO_QUALITY = 0.6;
 
   const { employee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const { status, loading: statusLoading } = useEmployeePunchStatus(employee?.id || null);
@@ -75,12 +78,17 @@ const EmployeeClock = () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      const sourceWidth = video.videoWidth || 640;
+      const sourceHeight = video.videoHeight || 480;
+      const scale = Math.min(1, MAX_PHOTO_WIDTH / sourceWidth);
+      const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+      const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
       const context = canvas.getContext('2d');
       if (context) {
-        context.drawImage(video, 0, 0);
-        const photoData = canvas.toDataURL('image/jpeg', 0.8);
+        context.drawImage(video, 0, 0, targetWidth, targetHeight);
+        const photoData = canvas.toDataURL('image/jpeg', PHOTO_QUALITY);
         setCapturedPhoto(photoData);
       }
     }
@@ -113,39 +121,7 @@ const EmployeeClock = () => {
       setCameraStream(null);
     }
 
-    // Get device info
-    const deviceInfo = `${navigator.userAgent.substring(0, 100)}`;
-
-    // Start location fetch in background with very short timeout
-    let locationPromise: Promise<{ latitude: number; longitude: number } | undefined> = Promise.resolve(undefined);
-    if (navigator.geolocation) {
-      locationPromise = new Promise((resolve) => {
-        const timeoutId = setTimeout(() => {
-          console.log('Location timeout - proceeding without location');
-          resolve(undefined);
-        }, 3000); // Only wait 3 seconds max
-
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            clearTimeout(timeoutId);
-            resolve({
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-            });
-          },
-          (error) => {
-            clearTimeout(timeoutId);
-            console.log('Location not available:', error);
-            resolve(undefined);
-          },
-          {
-            timeout: 3000, // 3 second timeout
-            enableHighAccuracy: false,
-            maximumAge: 60000, // Accept cached position up to 1 minute old
-          }
-        );
-      });
-    }
+    const contextPromise = collectPunchContext(3000);
 
     // Convert photo in background
     let photoBlobPromise: Promise<Blob | undefined> = Promise.resolve(undefined);
@@ -160,16 +136,16 @@ const EmployeeClock = () => {
 
     // Wait for both with a maximum total time of 3 seconds
     Promise.race([
-      Promise.all([locationPromise, photoBlobPromise]),
+      Promise.all([contextPromise, photoBlobPromise]),
       new Promise<[undefined, undefined]>(resolve => setTimeout(() => resolve([undefined, undefined]), 3000))
-    ]).then(([location, photoBlob]) => {
+    ]).then(([context, photoBlob]) => {
       createPunch.mutate({
         restaurant_id: restaurantId,
         employee_id: employee.id,
         punch_type: punchType,
         punch_time: new Date().toISOString(),
-        location,
-        device_info: deviceInfo,
+        location: context?.location,
+        device_info: context?.device_info,
         photoBlob,
       });
     });

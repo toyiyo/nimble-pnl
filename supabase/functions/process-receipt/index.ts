@@ -129,16 +129,15 @@ CRITICAL: Return ONLY valid, complete JSON. Ensure all arrays are properly close
 // Model token limits per provider (to prevent exceeding hard caps)
 const MODEL_TOKEN_LIMITS: Record<string, number> = {
   "google/gemini-2.5-flash": 32768,        // Gemini supports high token counts
-  "meta-llama/llama-4-maverick:free": 8192, // Groq hosted, lower limits
-  "google/gemma-3-27b-it:free": 16384,     // Common free tier limit
+  "meta-llama/llama-4-maverick": 8192,     // Llama 4 Maverick
+  "google/gemma-3-27b-it": 16384,          // Gemma 3 27B
   "openai/gpt-4.1-nano": 16384,            // OpenAI standard limit
-  "meta-llama/llama-4-maverick": 8192,     // Same as free version
 };
 
 // Default max tokens for unknown models
 const DEFAULT_MAX_TOKENS = 8192;
 
-// Model configurations (Gemini first, then free models, then paid fallbacks)
+// Model configurations (prioritized by reliability)
 const MODELS = [
   // Primary model
   {
@@ -147,32 +146,25 @@ const MODELS = [
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 2,
   },
-  // Free models
+  // Secondary models
   {
-    name: "Llama 4 Maverick Free",
-    id: "meta-llama/llama-4-maverick:free",
+    name: "Llama 4 Maverick",
+    id: "meta-llama/llama-4-maverick",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 2,
   },
   {
-    name: "Gemma 3 27B Free",
-    id: "google/gemma-3-27b-it:free",
+    name: "Gemma 3 27B",
+    id: "google/gemma-3-27b-it",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 2,
   },
-  // Paid models (fallback)
   {
     name: "GPT-4.1 Nano",
     id: "openai/gpt-4.1-nano",
     systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
     maxRetries: 1,
-  },
-  {
-    name: "Llama 4 Maverick Paid",
-    id: "meta-llama/llama-4-maverick",
-    systemPrompt: "You are an expert receipt parser. Extract itemized data precisely and return valid JSON only.",
-    maxRetries: 1,
-  },
+  }
 ];
 
 // Helper function to build consistent request bodies

@@ -18,7 +18,7 @@ export interface UserRestaurant {
   id: string;
   user_id: string;
   restaurant_id: string;
-  role: 'owner' | 'manager' | 'chef' | 'staff';
+  role: 'owner' | 'manager' | 'chef' | 'staff' | 'kiosk';
   created_at: string;
   restaurant: Restaurant;
 }

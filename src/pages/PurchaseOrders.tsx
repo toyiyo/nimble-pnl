@@ -97,7 +97,6 @@ export const PurchaseOrders: React.FC = () => {
     <div className="space-y-6">
       <PageHeader
         title="Purchase Orders"
-        description="Manage inventory purchase orders for your restaurant"
         icon={FileText}
       />
 

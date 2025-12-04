@@ -33,6 +33,7 @@ import {
   ClipboardList,
   DollarSign,
   ShoppingBag,
+  CalendarDays,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -113,6 +114,9 @@ export function AppSidebar() {
           label: 'Employee',
           items: [
             { path: '/employee/clock', label: 'Time Clock', icon: Clock },
+            { path: '/employee/timecard', label: 'My Timecard', icon: FileText },
+            { path: '/employee/schedule', label: 'My Schedule', icon: CalendarDays },
+            { path: '/employee/pay', label: 'My Pay', icon: Wallet },
             { path: '/employee/portal', label: 'My Requests', icon: CalendarCheck },
           ],
         },

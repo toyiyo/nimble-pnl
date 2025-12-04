@@ -39,6 +39,9 @@ import AiAssistant from "./pages/AiAssistant";
 import Scheduling from "./pages/Scheduling";
 import EmployeeClock from "./pages/EmployeeClock";
 import EmployeePortal from "./pages/EmployeePortal";
+import EmployeeTimecard from "./pages/EmployeeTimecard";
+import EmployeePay from "./pages/EmployeePay";
+import EmployeeSchedule from "./pages/EmployeeSchedule";
 import TimePunchesManager from "./pages/TimePunchesManager";
 import Payroll from "./pages/Payroll";
 import Expenses from "./pages/Expenses";
@@ -153,6 +156,9 @@ const App = () => (
           <Route path="/scheduling" element={<ProtectedRoute><Scheduling /></ProtectedRoute>} />
           <Route path="/employee/clock" element={<ProtectedRoute allowStaff={true}><EmployeeClock /></ProtectedRoute>} />
           <Route path="/employee/portal" element={<ProtectedRoute allowStaff={true}><EmployeePortal /></ProtectedRoute>} />
+          <Route path="/employee/timecard" element={<ProtectedRoute allowStaff={true}><EmployeeTimecard /></ProtectedRoute>} />
+          <Route path="/employee/pay" element={<ProtectedRoute allowStaff={true}><EmployeePay /></ProtectedRoute>} />
+          <Route path="/employee/schedule" element={<ProtectedRoute allowStaff={true}><EmployeeSchedule /></ProtectedRoute>} />
           <Route path="/kiosk" element={<ProtectedRoute allowStaff={true} noChrome={true}><KioskMode /></ProtectedRoute>} />
           <Route path="/time-punches" element={<ProtectedRoute><TimePunchesManager /></ProtectedRoute>} />
           <Route path="/payroll" element={<ProtectedRoute><Payroll /></ProtectedRoute>} />

@@ -16,7 +16,13 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
-      include: ['src/utils/**/*.ts'],
+      include: [
+        'src/utils/**/*.ts',
+        'src/hooks/utils/**/*.ts',
+        'src/hooks/useRevenueBreakdown.tsx',
+        'supabase/functions/_shared/periodMetrics.ts',
+        'supabase/functions/_shared/monthlyMetrics.ts',
+      ],
       exclude: ['**/*.d.ts', '**/*.test.ts'],
       reportsDirectory: './coverage',
     },

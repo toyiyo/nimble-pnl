@@ -3,6 +3,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales } from './utils/passThroughAdjustments';
 
+// Import and re-export types/functions from shared module for backwards compatibility
+import { 
+  classifyAdjustmentIntoMonth, 
+  createEmptyMonth,
+  type MonthlyMapMonth,
+  type AdjustmentInput 
+} from '../../supabase/functions/_shared/monthlyMetrics';
+
+export { classifyAdjustmentIntoMonth, createEmptyMonth, type MonthlyMapMonth, type AdjustmentInput };
+
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'
   gross_revenue: number;
@@ -41,66 +51,7 @@ interface MonthlySalesMetricsRow {
  * ✅ Use this hook for monthly performance tables
  * ❌ Don't use getMonthlyData() from useDailyPnL (incorrect/outdated)
  */
- 
 
-// useMonthlyMetrics hook defined below
-
-export type MonthlyMapMonth = {
-  period: string;
-  gross_revenue: number; // cents
-  total_collected_at_pos: number; // cents
-  net_revenue: number; // cents
-  discounts: number; // cents
-  refunds: number; // cents
-  sales_tax: number; // cents
-  tips: number; // cents
-  other_liabilities: number; // cents
-  food_cost: number; // cents
-  labor_cost: number; // cents
-  pending_labor_cost: number; // cents
-  actual_labor_cost: number; // cents
-  has_data: boolean;
-};
-
-// Exported helper for classifying adjustments into a month object; used by unit tests
-export function classifyAdjustmentIntoMonth(month: MonthlyMapMonth, adjustment: any) {
-  const priceInCents = Math.round((adjustment.total_price || 0) * 100);
-  const chart = adjustment.chart_account;
-  const isCategorized = !!adjustment.is_categorized && !!chart;
-
-  if (isCategorized) {
-    const subtype = (chart.account_subtype || '').toLowerCase();
-    const accountName = (chart.account_name || '').toLowerCase();
-
-    if ((subtype.includes('sales') && subtype.includes('tax')) || accountName.includes('tax')) {
-      month.sales_tax += priceInCents;
-      return;
-    }
-    if (subtype.includes('tip') || accountName.includes('tip')) {
-      month.tips += priceInCents;
-      return;
-    }
-    month.other_liabilities += priceInCents;
-    return;
-  }
-
-  // Un-categorized: fall back to adjustment_type
-  switch (adjustment.adjustment_type) {
-    case 'tax':
-      month.sales_tax += priceInCents;
-      break;
-    case 'tip':
-      month.tips += priceInCents;
-      break;
-    case 'service_charge':
-    case 'fee':
-      month.other_liabilities += priceInCents;
-      break;
-    case 'discount':
-      month.discounts += Math.abs(priceInCents);
-      break;
-  }
-}  
 export function useMonthlyMetrics(
   restaurantId: string | null,
   dateFrom: Date,

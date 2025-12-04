@@ -47,6 +47,11 @@ const KioskMode = () => {
   const [exitPassword, setExitPassword] = useState('');
   const [exitError, setExitError] = useState<string | null>(null);
   const [exitProcessing, setExitProcessing] = useState(false);
+  // Sign out dialog for kiosk service accounts (requires password)
+  const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
+  const [signOutPassword, setSignOutPassword] = useState('');
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [signOutProcessing, setSignOutProcessing] = useState(false);
   const [lastResult, setLastResult] = useState<{
     name: string;
     punchType: PunchAction;
@@ -263,6 +268,28 @@ const KioskMode = () => {
     navigate('/time-punches');
   };
 
+  const handleKioskSignOut = async () => {
+    if (!user?.email) {
+      setSignOutError('Sign out requires an email account.');
+      return;
+    }
+    setSignOutProcessing(true);
+    setSignOutError(null);
+    try {
+      const { error } = await signIn(user.email, signOutPassword);
+      if (error) {
+        setSignOutError('Incorrect password.');
+        return;
+      }
+      endSession();
+      signOut();
+    } catch {
+      setSignOutError('An error occurred. Please try again.');
+    } finally {
+      setSignOutProcessing(false);
+    }
+  };
+
   const resetCameraState = () => {
     setCameraDialogOpen(false);
     setCapturedPhotoBlob(null);
@@ -329,7 +356,7 @@ const KioskMode = () => {
               {locationName}
             </Badge>
             {isKioskServiceAccount ? (
-              <Button variant="ghost" className="text-slate-200" onClick={() => signOut()}>
+              <Button variant="ghost" className="text-slate-200" onClick={() => setSignOutDialogOpen(true)}>
                 Sign Out
               </Button>
             ) : (
@@ -517,6 +544,41 @@ const KioskMode = () => {
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setExitDialogOpen(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign Out Dialog for Kiosk Service Accounts */}
+      <Dialog open={signOutDialogOpen} onOpenChange={setSignOutDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sign Out</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Enter the kiosk service account password to sign out. This will end the kiosk session.
+            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="signout_password">Password</Label>
+              <Input
+                id="signout_password"
+                type="password"
+                value={signOutPassword}
+                onChange={(e) => setSignOutPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleKioskSignOut()}
+              />
+              {signOutError && <p className="text-xs text-red-500">{signOutError}</p>}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSignOutDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleKioskSignOut} disabled={signOutProcessing || !signOutPassword}>
+              {signOutProcessing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Sign Out
             </Button>
           </DialogFooter>
         </DialogContent>

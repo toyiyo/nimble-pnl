@@ -121,6 +121,53 @@ Profitability:
   Gross Profit:        $2,975
   Profit Margin:       41%
 ```
+Sales:
+  Food Sales:          $5,000
+  Bar Sales:           $2,500
+  ─────────────────────────────
+  Gross Revenue:       $7,500
+
+Deductions:
+  Discounts:           -$100
+  Refunds:             -$150
+  ─────────────────────────────
+  Net Revenue:         $7,250
+
+Pass-Through (collected but not revenue):
+  Sales Tax (8.25%):   $618.75
+  Tips (15%):          $1,125.00
+  Service Charges:     $200.00
+  ─────────────────────────────
+  Total at POS:        $9,193.75
+
+Costs:
+  Food Cost:           $2,100 (29% of net)
+  Labor Cost:          $2,175 (30% of net)
+  ─────────────────────────────
+  Prime Cost:          $4,275 (59% of net)
+
+Profitability:
+  Gross Profit:        $2,975
+  Profit Margin:       41%
+```
+
+### Edge Cases Handled
+
+| Scenario | Behavior |
+|----------|----------|
+| **Zero revenue** | Cost percentages = 0% (not infinity) |
+| **Costs > Revenue** | Negative profit, percentages can exceed 100% |
+| **Split sales (combos)** | Parent excluded, only children counted |
+| **Uncategorized sales** | Treated as revenue (fallback) |
+| **Missing chart_account** | Falls back to `adjustment_type` |
+
+### Monthly Metrics
+
+Monthly aggregation uses the same formulas but:
+- **Amounts stored in cents** to avoid floating-point precision issues
+- **Classification priority**: Chart account → adjustment_type → skip
+
+---
 
 ### Edge Cases Handled
 
@@ -150,7 +197,9 @@ tests/
 │   ├── periodMetrics.test.ts          # Core dashboard calculation functions
 │   ├── dashboardScenarios.test.ts     # Realistic restaurant scenario tests
 │   ├── monthlyMetrics.test.ts         # Monthly adjustment classification
-│   └── passThroughAdjustments.test.ts # POS pass-through classification
+│   ├── passThroughAdjustments.test.ts # POS pass-through classification
+│   ├── inventoryConversion.test.ts    # Inventory unit conversion logic
+│   └── inventoryScenarios.test.ts     # Comprehensive inventory edge cases
 ├── setup.ts                           # Test setup file
 └── README.md                          # This file
 ```
@@ -164,8 +213,10 @@ tests/
 | `periodMetrics.ts` | Dashboard revenue, costs, profit calculations | ✅ 100% | 37 |
 | `monthlyMetrics.ts` | Monthly adjustment classification | ✅ 100% | 30 |
 | `passThroughAdjustments.ts` | POS tax/tip/fee classification | ✅ 100% | 33 |
+| `inventoryConversion.ts` | Unit conversions for inventory deductions | ✅ 100% | 67+53 |
 | `calculator.ts` | Inventory quantity expressions | ✅ 97% | 20 |
 | Dashboard Scenarios | End-to-end financial validation | N/A | 41 |
+| Inventory Scenarios | Real-world inventory edge cases | N/A | 53 |
 
 ### 📊 Dashboard Calculations
 
@@ -176,6 +227,66 @@ The `periodMetrics.test.ts` and `dashboardScenarios.test.ts` cover:
 - **Benchmarks**: industry standard comparisons (good/caution/high)
 - **Split sales handling**: prevents double-counting parent/child sales
 - **Real-world scenarios**: lunch service, busy Saturday, slow Monday (losses)
+
+### 📦 Inventory Conversion Logic
+
+The `inventoryConversion.test.ts` and `inventoryScenarios.test.ts` validate the critical unit conversion logic from the `process_unified_inventory_deduction` database function:
+
+#### Volume Conversions
+| Unit | Conversion to ml |
+|------|-----------------|
+| fl oz | × 29.5735 |
+| cup | × 236.588 |
+| tbsp | × 14.7868 |
+| tsp | × 4.92892 |
+| l | × 1000 |
+| gal | × 3785.41 |
+| qt | × 946.353 |
+
+#### Weight Conversions
+| Unit | Conversion to grams |
+|------|---------------------|
+| kg | × 1000 |
+| lb | × 453.592 |
+| oz | × 28.3495 |
+
+#### Density Conversions (Volume ↔ Weight)
+For volume-to-weight conversions (e.g., "1 cup flour" to grams), density constants are used:
+
+| Product | g/cup | Use Case |
+|---------|-------|----------|
+| Rice | 185 | Recipe calls for cups, purchased by lb |
+| Flour | 120 | Recipe calls for cups, purchased by kg |
+| Sugar | 200 | Recipe calls for cups, purchased by oz |
+| Butter | 227 | Recipe calls for cups, purchased by lb |
+
+#### Test Scenarios
+- **Volume-to-volume**: fl oz → gallon, tsp → liter, cups → ml
+- **Weight-to-weight**: oz → lb, g → kg, lb → oz
+- **Volume-to-weight with density**: cups rice → lb, cups flour → kg
+- **Fallback behavior**: Incompatible units, missing density data
+- **Edge cases**: Zero quantities, very small/large values
+
+#### Inventory Scenarios (inventoryScenarios.test.ts)
+
+Real-world restaurant scenarios with 53 comprehensive tests:
+
+| Scenario | Tests | Description |
+|----------|-------|-------------|
+| **Bar Operations** | 7 | Cocktail production, wine service, high-volume nights |
+| **Kitchen Operations** | 10 | Protein portioning, bakery (density), sauce production |
+| **Edge Cases** | 10 | Tiny quantities, catering scale, zero/null values |
+| **Cost Accuracy** | 4 | Pour cost, food cost, batch validation |
+| **Reference IDs** | 6 | Duplicate detection, special characters |
+| **Math Consistency** | 10 | Inverse conversions, unit equivalencies, scaling |
+| **Reconciliation** | 3 | Weekly usage validation, waste factors |
+| **Multi-Location** | 1 | Batch vs incremental processing consistency |
+
+Example validations:
+- 100 Moscow Mules (2 oz vodka each) = 7.89 bottles (750ml)
+- 1000-person event (6 oz chicken) = 9.38 cases (40 lb)
+- 1 gallon = 4 quarts (mathematical identity)
+- Weekly vodka usage matches POS sales count
 
 ### 📅 Monthly Metrics
 

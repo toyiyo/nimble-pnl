@@ -37,16 +37,18 @@ export const useInventoryDeduction = () => {
     quantitySold: number,
     saleDate: string,
     saleTime?: string,
-    restaurantTimezone?: string
+    restaurantTimezone?: string,
+    externalOrderId?: string
   ): Promise<DeductionResult | null> => {
     setLoading(true);
     try {
       const { data, error } = await supabase.rpc('process_unified_inventory_deduction', {
         p_restaurant_id: restaurantId,
         p_pos_item_name: posItemName,
-        p_quantity_sold: quantitySold,
+        p_quantity_sold: Math.round(quantitySold), // Ensure integer for PostgreSQL
         p_sale_date: saleDate,
-        p_sale_time: saleTime,
+        p_external_order_id: externalOrderId || null,
+        p_sale_time: saleTime || null,
         p_restaurant_timezone: restaurantTimezone || 'America/Chicago'
       });
 

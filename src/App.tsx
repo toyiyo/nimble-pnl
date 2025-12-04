@@ -102,13 +102,20 @@ const StaffRoleChecker = ({
 }) => {
   const { selectedRestaurant } = useRestaurantContext();
   
-  // Check if user is staff role
-  const isStaff = selectedRestaurant?.role === 'staff';
+  const role = selectedRestaurant?.role;
+  const isStaff = role === 'staff';
+  const isKiosk = role === 'kiosk';
   
-  // Allowed paths for staff users
-  const staffAllowedPaths = ['/employee/clock', '/employee/portal', '/employee/timecard', '/employee/pay', '/employee/schedule', '/settings', '/kiosk'];
+  // CRITICAL: Kiosk users can ONLY access /kiosk - nothing else
+  // This must be checked first before any other logic
+  if (isKiosk && currentPath !== '/kiosk') {
+    return <Navigate to="/kiosk" replace />;
+  }
+  
+  // Allowed paths for staff users (excludes kiosk - they have their own check above)
+  const staffAllowedPaths = ['/employee/clock', '/employee/portal', '/employee/timecard', '/employee/pay', '/employee/schedule', '/settings'];
   const isStaffAllowedPath = staffAllowedPaths.some(path => currentPath.startsWith(path));
-  
+
   // If user is staff and trying to access restricted route
   if (isStaff && !allowStaff && !isStaffAllowedPath) {
     return <Navigate to="/employee/clock" replace />;

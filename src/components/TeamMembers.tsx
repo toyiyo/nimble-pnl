@@ -7,7 +7,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { MoreHorizontal, Crown, Shield, User, ChefHat, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Crown, Shield, User, ChefHat, Trash2, TabletSmartphone } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 interface TeamMember {
@@ -31,6 +31,7 @@ const roleIcons = {
   manager: Shield,
   chef: ChefHat,
   staff: User,
+  kiosk: TabletSmartphone,
 };
 
 const roleColors = {
@@ -38,6 +39,7 @@ const roleColors = {
   manager: "secondary",
   chef: "outline",
   staff: "outline",
+  kiosk: "outline",
 } as const;
 
 export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
@@ -193,7 +195,7 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
                     {member.role}
                   </Badge>
                   
-                  {canManageMembers && !isOwner && (
+                  {canManageMembers && !isOwner && member.role !== 'kiosk' && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="sm">
@@ -219,6 +221,11 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
                               )}
                             </SelectContent>
                           </Select>
+                          {member.role === 'kiosk' && (
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Kiosk service accounts can only access the kiosk time clock and cannot be changed to other roles.
+                            </p>
+                          )}
                         </div>
                         
                         <AlertDialog>

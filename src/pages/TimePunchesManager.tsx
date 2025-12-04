@@ -16,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { 
   Clock, Trash2, Edit, Download, Search, Camera, MapPin, Eye,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table as TableIcon,
-  LayoutGrid, BarChart3, List, Code, Shield, KeyRound, TabletSmartphone, Unlock
+  LayoutGrid, BarChart3, List, Code, Shield, KeyRound, TabletSmartphone, Unlock, RefreshCcw, Copy, UserCog, Loader2
 } from 'lucide-react';
 import { 
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
@@ -45,7 +45,7 @@ import { useEmployeePins, useUpsertEmployeePin, EmployeePinWithEmployee } from '
 import { KIOSK_POLICY_KEY, generateNumericPin, loadFromStorage, saveToStorage, isSimpleSequence } from '@/utils/kiosk';
 import { Switch } from '@/components/ui/switch';
 import { Employee } from '@/types/scheduling';
-import { useManagerPin, useUpsertManagerPin } from '@/hooks/useManagerPins';
+import { useKioskServiceAccount } from '@/hooks/useKioskServiceAccount';
 import {
   TimelineGanttView,
   EmployeeCardView,
@@ -68,8 +68,6 @@ const TimePunchesManager = () => {
   const { session: kioskSession, startSession, endSession } = useKioskSession();
   const { pins, loading: pinsLoading } = useEmployeePins(restaurantId);
   const upsertPin = useUpsertEmployeePin();
-  const { pin: managerPin } = useManagerPin(restaurantId, user?.id);
-  const upsertManagerPin = useUpsertManagerPin();
 
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const [visualizationMode, setVisualizationMode] = useState<VisualizationMode>('gantt');
@@ -90,23 +88,17 @@ const TimePunchesManager = () => {
   const [pinValue, setPinValue] = useState('');
   const [pinForceReset, setPinForceReset] = useState(false);
   const [lastSavedPin, setLastSavedPin] = useState<string | null>(null);
-  const [managerPinValue, setManagerPinValue] = useState('');
-  const [managerPinSaved, setManagerPinSaved] = useState<string | null>(null);
+  const { account: kioskAccount, loading: kioskAccountLoading, createOrRotate } = useKioskServiceAccount(restaurantId);
+  const [generatedKioskCreds, setGeneratedKioskCreds] = useState<{ email: string; password: string } | null>(null);
 
-  useEffect(() => {
-    if (managerPin) {
-      setManagerPinSaved('PIN on file');
-    }
-  }, [managerPin]);
   const [pinPolicy, setPinPolicy] = useState({
     minLength: 4,
     forceResetOnNext: false,
     allowSimpleSequences: false,
-    requireManagerPin: true,
   });
   const kioskPolicyStorageKey = restaurantId ? `${KIOSK_POLICY_KEY}_${restaurantId}` : KIOSK_POLICY_KEY;
   const kioskActiveForLocation = kioskSession?.kiosk_mode && kioskSession.location_id === restaurantId;
-  const isManager = selectedRestaurant?.role && selectedRestaurant.role !== 'staff';
+  const isManager = ['owner', 'manager'].includes(selectedRestaurant?.role || '');
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -216,7 +208,6 @@ const TimePunchesManager = () => {
     if (!restaurantId) return;
     try {
       await startSession(restaurantId, user?.id || 'manager', {
-        requireManagerPin: pinPolicy.requireManagerPin,
         minLength: pinPolicy.minLength,
       });
       toast({
@@ -606,17 +597,6 @@ const TimePunchesManager = () => {
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
                   <div>
-                    <div className="font-medium text-sm">Require manager to exit</div>
-                    <p className="text-xs text-muted-foreground">Prevents staff from leaving kiosk mode.</p>
-                  </div>
-                  <Switch
-                    checked={pinPolicy.requireManagerPin}
-                    onCheckedChange={(checked) => persistPolicy({ requireManagerPin: checked })}
-                    aria-label="Require manager to exit kiosk"
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
-                  <div>
                     <div className="font-medium text-sm">Force update on next use</div>
                     <p className="text-xs text-muted-foreground">Mark new PINs as temporary until the employee sets their own.</p>
                   </div>
@@ -637,6 +617,115 @@ const TimePunchesManager = () => {
                   <li>Install as a PWA or use Guided Access/App Pinning on tablets.</li>
                   <li>Offline punches queue locally and sync when back online.</li>
                   <li>No navigation or shortcuts appear on the kiosk screen.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="p-4 rounded-lg border bg-muted/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <UserCog className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <div className="font-medium text-sm">Dedicated kiosk login</div>
+                      <p className="text-xs text-muted-foreground">
+                        Generates a service account that only works on /kiosk for this location.
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="outline">{kioskAccount ? 'Ready' : 'Not created'}</Badge>
+                </div>
+
+                {kioskAccount && (
+                  <div className="text-sm space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Email</span>
+                      <span className="font-mono text-xs">{kioskAccount.email}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Use this to sign in on the tablet. Rotate to issue a new password.
+                    </p>
+                  </div>
+                )}
+
+                {generatedKioskCreds && (
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 space-y-2">
+                    <div className="font-medium text-emerald-900 text-sm">New kiosk credentials</div>
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span>Email:</span>
+                      <span>{generatedKioskCreds.email}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span>Password:</span>
+                      <span>{generatedKioskCreds.password}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            `Email: ${generatedKioskCreds.email}\nPassword: ${generatedKioskCreds.password}`
+                          );
+                        }}
+                      >
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copy both
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="flex-1"
+                        onClick={() => setGeneratedKioskCreds(null)}
+                      >
+                        Dismiss
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const result = await createOrRotate.mutateAsync({ rotate: true });
+                        setGeneratedKioskCreds(result);
+                      } catch {
+                        // Errors are handled via onError toast in the hook
+                      }
+                    }}
+                    disabled={createOrRotate.isPending || kioskAccountLoading}
+                  >
+                    {createOrRotate.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCcw className="h-4 w-4 mr-2" />
+                    )}
+                    {kioskAccount ? 'Rotate credentials' : 'Create kiosk login'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setGeneratedKioskCreds(null)}
+                    disabled={!generatedKioskCreds}
+                  >
+                    Clear shown password
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg border bg-muted/20 space-y-2">
+                <div className="font-medium text-sm">How to deploy</div>
+                <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
+                  <li>Sign out the manager on the tablet, then sign in with the kiosk email and one-time password.</li>
+                  <li>Use device pinning/Guided Access so the session stays on /kiosk.</li>
+                  <li>Rotate credentials after staff turnover or if the tablet is lost.</li>
                 </ul>
               </div>
             </div>
@@ -666,55 +755,6 @@ const TimePunchesManager = () => {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="p-3 rounded-lg border bg-muted/30 flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-primary" />
-                <div>
-                  <div className="font-medium text-sm">Manager PIN (kiosk lock/unlock)</div>
-                  <p className="text-xs text-muted-foreground">
-                    This PIN is only for entering or exiting kiosk mode on this device. It does not clock time.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <Input
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={6}
-                  placeholder="Enter 4-6 digit PIN"
-                  value={managerPinValue}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
-                  setManagerPinValue(digits);
-                  setManagerPinSaved(null);
-                }}
-                  className="sm:max-w-xs"
-                />
-                <Button
-                  size="sm"
-                  onClick={async () => {
-                    if (!restaurantId || !user?.id) return;
-                    await upsertManagerPin.mutateAsync({
-                      restaurant_id: restaurantId,
-                      manager_user_id: user.id,
-                      pin: managerPinValue,
-                      min_length: pinPolicy.minLength,
-                    });
-                    setManagerPinSaved(managerPinValue);
-                    setManagerPinValue('');
-                  }}
-                  disabled={managerPinValue.length < pinPolicy.minLength || upsertManagerPin.isPending}
-                >
-                  Save Manager PIN
-                </Button>
-                {managerPinSaved && (
-                  <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
-                    Saved
-                  </Badge>
-                )}
-              </div>
-            </div>
-
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm text-muted-foreground">
                 Avoid duplicate identities by keeping PINs unique per location.

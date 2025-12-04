@@ -15,7 +15,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { collectPunchContext } from '@/utils/punchContext';
 import { addQueuedPunch, flushQueuedPunches, hasQueuedPunches, isLikelyOffline } from '@/utils/offlineQueue';
-import { verifyManagerPin } from '@/hooks/useManagerPins';
 import { format } from 'date-fns';
 import { ImageCapture } from '@/components/ImageCapture';
 import { Clock, Lock, LogIn, LogOut, Shield, WifiOff, KeyRound, X, Loader2, CheckCircle } from 'lucide-react';
@@ -29,12 +28,14 @@ const KioskMode = () => {
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
   const { session: kioskSession, endSession } = useKioskSession();
-  const { user, signIn } = useAuth();
+  const { user, signIn, signOut } = useAuth();
   const createPunch = useCreateTimePunch();
 
   const restaurantId = kioskSession?.location_id || selectedRestaurant?.restaurant_id || null;
   const locationName = selectedRestaurant?.restaurant?.name || kioskSession?.location_id || 'Location';
   const minLength = kioskSession?.min_length || 4;
+  // Kiosk service accounts have role = 'kiosk' and cannot exit - only sign out
+  const isKioskServiceAccount = selectedRestaurant?.role === 'kiosk';
   const [currentTime, setCurrentTime] = useState(new Date());
   const [pinInput, setPinInput] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -46,8 +47,11 @@ const KioskMode = () => {
   const [exitPassword, setExitPassword] = useState('');
   const [exitError, setExitError] = useState<string | null>(null);
   const [exitProcessing, setExitProcessing] = useState(false);
-  const [exitPin, setExitPin] = useState('');
-  const [exitPinError, setExitPinError] = useState<string | null>(null);
+  // Sign out dialog for kiosk service accounts (requires password)
+  const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
+  const [signOutPassword, setSignOutPassword] = useState('');
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [signOutProcessing, setSignOutProcessing] = useState(false);
   const [lastResult, setLastResult] = useState<{
     name: string;
     punchType: PunchAction;
@@ -264,22 +268,25 @@ const KioskMode = () => {
     navigate('/time-punches');
   };
 
-  const handleExitWithPin = async () => {
-    if (!restaurantId) return;
-    setExitPinError(null);
-    setExitProcessing(true);
+  const handleKioskSignOut = async () => {
+    if (!user?.email) {
+      setSignOutError('Sign out requires an email account.');
+      return;
+    }
+    setSignOutProcessing(true);
+    setSignOutError(null);
     try {
-      const result = await verifyManagerPin(restaurantId, exitPin);
-      if (!result) {
-        setExitPinError('Manager PIN not recognized for this location.');
+      const { error } = await signIn(user.email, signOutPassword);
+      if (error) {
+        setSignOutError('Incorrect password.');
         return;
       }
       endSession();
-      navigate('/time-punches');
-    } catch (error: any) {
-      setExitPinError(error?.message || 'Unable to validate PIN.');
+      signOut();
+    } catch {
+      setSignOutError('An error occurred. Please try again.');
     } finally {
-      setExitProcessing(false);
+      setSignOutProcessing(false);
     }
   };
 
@@ -348,9 +355,15 @@ const KioskMode = () => {
               <Lock className="h-4 w-4 mr-1" />
               {locationName}
             </Badge>
-            <Button variant="ghost" className="text-slate-200" onClick={() => setExitDialogOpen(true)}>
-              Manager Exit
-            </Button>
+            {isKioskServiceAccount ? (
+              <Button variant="ghost" className="text-slate-200" onClick={() => setSignOutDialogOpen(true)}>
+                Sign Out
+              </Button>
+            ) : (
+              <Button variant="ghost" className="text-slate-200" onClick={() => setExitDialogOpen(true)}>
+                Manager Exit
+              </Button>
+            )}
           </div>
         </div>
 
@@ -374,7 +387,7 @@ const KioskMode = () => {
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-emerald-300" />
                 <span className="text-sm text-slate-200">
-                  {kioskSession?.require_manager_pin ? 'Manager required to exit' : 'Device locked in kiosk mode'}
+                  {isKioskServiceAccount ? 'Kiosk service account' : 'Device in kiosk mode'}
                 </span>
               </div>
               {lockSeconds > 0 && (
@@ -510,25 +523,8 @@ const KioskMode = () => {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Managers can exit with a manager PIN or password.
+              Enter your account password to exit kiosk mode. For dedicated kiosk devices, use the service account feature instead.
             </p>
-
-            <div className="space-y-2">
-              <Label htmlFor="manager_pin">Manager PIN</Label>
-              <Input
-                id="manager_pin"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                value={exitPin}
-                onChange={(e) => setExitPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              />
-              {exitPinError && <p className="text-xs text-red-500">{exitPinError}</p>}
-              <Button onClick={handleExitWithPin} disabled={exitProcessing || exitPin.length < 4}>
-                {exitProcessing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                Exit with PIN
-              </Button>
-            </div>
 
             <div className="space-y-2">
               <Label htmlFor="manager_password">Password</Label>
@@ -548,6 +544,41 @@ const KioskMode = () => {
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setExitDialogOpen(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign Out Dialog for Kiosk Service Accounts */}
+      <Dialog open={signOutDialogOpen} onOpenChange={setSignOutDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sign Out</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Enter the kiosk service account password to sign out. This will end the kiosk session.
+            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="signout_password">Password</Label>
+              <Input
+                id="signout_password"
+                type="password"
+                value={signOutPassword}
+                onChange={(e) => setSignOutPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleKioskSignOut()}
+              />
+              {signOutError && <p className="text-xs text-red-500">{signOutError}</p>}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSignOutDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleKioskSignOut} disabled={signOutProcessing || !signOutPassword}>
+              {signOutProcessing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Sign Out
             </Button>
           </DialogFooter>
         </DialogContent>

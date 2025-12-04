@@ -3,7 +3,6 @@ import { KioskSessionToken } from '@/types/timeTracking';
 import { hashString, KIOSK_SESSION_KEY, loadFromStorage, saveToStorage } from '@/utils/kiosk';
 
 type StartSessionOptions = {
-  requireManagerPin?: boolean;
   minLength?: number;
 };
 
@@ -49,7 +48,6 @@ export const useKioskSession = () => {
       manager_id_hash: await hashString(managerId),
       kiosk_mode: true,
       started_at: new Date().toISOString(),
-      require_manager_pin: options?.requireManagerPin ?? true,
       min_length: options?.minLength ?? 4,
     };
 

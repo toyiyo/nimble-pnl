@@ -62,7 +62,6 @@ export interface KioskSessionToken {
   manager_id_hash: string;
   kiosk_mode: boolean;
   started_at: string;
-  require_manager_pin?: boolean;
   min_length?: number;
 }
 

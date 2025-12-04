@@ -45,7 +45,6 @@ import { useEmployeePins, useUpsertEmployeePin, EmployeePinWithEmployee } from '
 import { KIOSK_POLICY_KEY, generateNumericPin, loadFromStorage, saveToStorage, isSimpleSequence } from '@/utils/kiosk';
 import { Switch } from '@/components/ui/switch';
 import { Employee } from '@/types/scheduling';
-import { useManagerPin, useUpsertManagerPin } from '@/hooks/useManagerPins';
 import { useKioskServiceAccount } from '@/hooks/useKioskServiceAccount';
 import {
   TimelineGanttView,
@@ -69,8 +68,6 @@ const TimePunchesManager = () => {
   const { session: kioskSession, startSession, endSession } = useKioskSession();
   const { pins, loading: pinsLoading } = useEmployeePins(restaurantId);
   const upsertPin = useUpsertEmployeePin();
-  const { pin: managerPin } = useManagerPin(restaurantId, user?.id);
-  const upsertManagerPin = useUpsertManagerPin();
 
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const [visualizationMode, setVisualizationMode] = useState<VisualizationMode>('gantt');
@@ -91,21 +88,13 @@ const TimePunchesManager = () => {
   const [pinValue, setPinValue] = useState('');
   const [pinForceReset, setPinForceReset] = useState(false);
   const [lastSavedPin, setLastSavedPin] = useState<string | null>(null);
-  const [managerPinValue, setManagerPinValue] = useState('');
-  const [managerPinSaved, setManagerPinSaved] = useState<string | null>(null);
   const { account: kioskAccount, loading: kioskAccountLoading, createOrRotate } = useKioskServiceAccount(restaurantId);
   const [generatedKioskCreds, setGeneratedKioskCreds] = useState<{ email: string; password: string } | null>(null);
 
-  useEffect(() => {
-    if (managerPin) {
-      setManagerPinSaved('PIN on file');
-    }
-  }, [managerPin]);
   const [pinPolicy, setPinPolicy] = useState({
     minLength: 4,
     forceResetOnNext: false,
     allowSimpleSequences: false,
-    requireManagerPin: true,
   });
   const kioskPolicyStorageKey = restaurantId ? `${KIOSK_POLICY_KEY}_${restaurantId}` : KIOSK_POLICY_KEY;
   const kioskActiveForLocation = kioskSession?.kiosk_mode && kioskSession.location_id === restaurantId;
@@ -219,7 +208,6 @@ const TimePunchesManager = () => {
     if (!restaurantId) return;
     try {
       await startSession(restaurantId, user?.id || 'manager', {
-        requireManagerPin: pinPolicy.requireManagerPin,
         minLength: pinPolicy.minLength,
       });
       toast({
@@ -609,17 +597,6 @@ const TimePunchesManager = () => {
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
                   <div>
-                    <div className="font-medium text-sm">Require manager to exit</div>
-                    <p className="text-xs text-muted-foreground">Prevents staff from leaving kiosk mode.</p>
-                  </div>
-                  <Switch
-                    checked={pinPolicy.requireManagerPin}
-                    onCheckedChange={(checked) => persistPolicy({ requireManagerPin: checked })}
-                    aria-label="Require manager to exit kiosk"
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
-                  <div>
                     <div className="font-medium text-sm">Force update on next use</div>
                     <p className="text-xs text-muted-foreground">Mark new PINs as temporary until the employee sets their own.</p>
                   </div>
@@ -778,55 +755,6 @@ const TimePunchesManager = () => {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="p-3 rounded-lg border bg-muted/30 flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-primary" />
-                <div>
-                  <div className="font-medium text-sm">Manager PIN (kiosk lock/unlock)</div>
-                  <p className="text-xs text-muted-foreground">
-                    This PIN is only for entering or exiting kiosk mode on this device. It does not clock time.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <Input
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={6}
-                  placeholder="Enter 4-6 digit PIN"
-                  value={managerPinValue}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
-                  setManagerPinValue(digits);
-                  setManagerPinSaved(null);
-                }}
-                  className="sm:max-w-xs"
-                />
-                <Button
-                  size="sm"
-                  onClick={async () => {
-                    if (!restaurantId || !user?.id) return;
-                    await upsertManagerPin.mutateAsync({
-                      restaurant_id: restaurantId,
-                      manager_user_id: user.id,
-                      pin: managerPinValue,
-                      min_length: pinPolicy.minLength,
-                    });
-                    setManagerPinSaved(managerPinValue);
-                    setManagerPinValue('');
-                  }}
-                  disabled={managerPinValue.length < pinPolicy.minLength || upsertManagerPin.isPending}
-                >
-                  Save Manager PIN
-                </Button>
-                {managerPinSaved && (
-                  <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
-                    Saved
-                  </Badge>
-                )}
-              </div>
-            </div>
-
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm text-muted-foreground">
                 Avoid duplicate identities by keeping PINs unique per location.

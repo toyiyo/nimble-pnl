@@ -11,6 +11,19 @@ The kiosk role exists to:
 2. Prevent staff or managers from accessing sensitive restaurant data on public devices
 3. Isolate time punch functionality from all other restaurant management features
 
+## Security Model
+
+**Previous (Insecure) Approach:**
+- Managers would launch kiosk mode while authenticated
+- Manager PIN was required to exit kiosk mode
+- **Problem:** Users could swipe left/navigate back and have full manager access
+
+**Current (Secure) Approach:**
+- Dedicated service account with `kiosk` role
+- Service account can ONLY access `/kiosk` route
+- No way to "exit" kiosk mode - must sign out and sign in with different account
+- Device-level lockdown (Guided Access/App Pinning) prevents navigation
+
 ## Permission Matrix
 
 | Feature/Route | Owner | Manager | Chef | Staff | Kiosk |

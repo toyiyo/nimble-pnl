@@ -7,6 +7,7 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Database connection parameters
@@ -31,6 +32,21 @@ echo ""
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+
+# Check if database is reachable
+echo "Checking database connection..."
+if ! PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "SELECT 1;" > /dev/null 2>&1; then
+    echo -e "${RED}Error: Cannot connect to database at $DB_HOST:$DB_PORT${NC}"
+    echo ""
+    echo "Please ensure Supabase is running:"
+    echo "  cd $PROJECT_ROOT && supabase start"
+    echo ""
+    echo "Or if using a different database, set environment variables:"
+    echo "  DB_HOST=<host> DB_PORT=<port> DB_USER=<user> DB_PASSWORD=<password> ./run_tests.sh"
+    exit 1
+fi
+echo -e "${GREEN}Database connection successful${NC}"
 
 # Check if pgTAP extension exists
 echo "Checking pgTAP extension..."
@@ -38,12 +54,21 @@ PGTAP_CHECK=$(PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -
 
 if [ "$PGTAP_CHECK" = "0" ]; then
     echo -e "${YELLOW}Warning: pgTAP extension not found. Attempting to install...${NC}"
-    PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "CREATE EXTENSION IF NOT EXISTS pgtap;" 2>/dev/null || {
+    
+    # Try to create the extension directly
+    if PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "CREATE EXTENSION IF NOT EXISTS pgtap;" 2>/dev/null; then
+        echo -e "${GREEN}pgTAP extension installed successfully${NC}"
+    else
         echo -e "${RED}Error: Could not install pgTAP extension${NC}"
-        echo "Please run the migration: 20251010223450_enable_pgtap.sql"
+        echo ""
+        echo "This usually means migrations haven't been applied."
+        echo "Please run:"
+        echo "  cd $PROJECT_ROOT && supabase db reset"
+        echo ""
+        echo "Or apply the migration manually:"
+        echo "  PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f $PROJECT_ROOT/supabase/migrations/20251010223450_enable_pgtap.sql"
         exit 1
-    }
-    echo -e "${GREEN}pgTAP extension installed successfully${NC}"
+    fi
 else
     echo -e "${GREEN}pgTAP extension found${NC}"
 fi

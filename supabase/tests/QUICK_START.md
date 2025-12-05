@@ -3,12 +3,25 @@
 ## TL;DR
 
 ```bash
-# Run all tests
-cd supabase/tests
-./run_tests.sh
+# Option 1: If Supabase is already running with migrations applied
+npm run test:db
+
+# Option 2: Reset database and run tests (recommended for fresh start)
+npm run test:db:reset
+
+# Option 3: Start from scratch
+npm run db:start      # Start Supabase (requires Docker)
+npm run db:reset      # Apply all migrations
+npm run test:db       # Run tests
 
 # Expected output: All tests passed! 🎉
 ```
+
+## Prerequisites
+
+1. **Docker** - Must be running (`docker ps` to check)
+2. **Node.js** - For npm scripts
+3. **Supabase CLI** - Installed automatically via npx
 
 ## What Gets Tested
 
@@ -16,6 +29,7 @@ cd supabase/tests
 ✅ Function signatures and return types  
 ✅ Language settings (plpgsql, sql)  
 ✅ Volatility settings (volatile, stable, immutable)  
+✅ Inventory deduction unit conversions (30 tests)
 
 ## Test Files
 
@@ -29,45 +43,52 @@ cd supabase/tests
 | 05_trigger_functions.sql | Database triggers | 17 |
 | 06_security_functions.sql | Auth & security | 15 |
 | 07_utility_functions.sql | Utilities & cleanup | 12 |
-| **TOTAL** | **35 functions** | **107 tests** |
+| 08_inventory_deduction_conversions.sql | Unit conversions | 30 |
+| **TOTAL** | **35+ functions** | **137 tests** |
 
-## Prerequisites
+## Common Issues
 
-- PostgreSQL database (local or remote)
-- pgTAP extension installed
-- psql command-line tool
-
-## Installation
-
-The pgTAP extension is automatically installed via migration:
+### "pgTAP extension not found"
+This means migrations haven't been applied. Run:
 ```bash
-psql -d your_database -f supabase/migrations/20251010223450_enable_pgtap.sql
+npm run db:reset
 ```
 
-Or manually:
-```sql
-CREATE EXTENSION IF NOT EXISTS pgtap;
+### "Cannot connect to database"
+Docker isn't running or Supabase hasn't started:
+```bash
+# Start Docker first, then:
+npm run db:start
 ```
+
+### "Cannot connect to Docker daemon"
+Start Docker Desktop (macOS/Windows) or the Docker service (Linux).
 
 ## Running Tests
 
-### All tests at once
+### All tests at once (recommended)
 ```bash
-./run_tests.sh
+npm run test:db
 ```
 
-### Single test file
+### Reset and run (if migrations changed)
 ```bash
-psql -d your_database -f 01_sales_functions.sql
+npm run test:db:reset
 ```
 
-### With environment variables
+### Single test file (for debugging)
+```bash
+PGPASSWORD=postgres psql -h localhost -p 54322 -U postgres -d postgres \
+  -f supabase/tests/08_inventory_deduction_conversions.sql
+```
+
+### With custom database
 ```bash
 DB_HOST=localhost \
 DB_PORT=5432 \
-DB_NAME=postgres \
-DB_USER=postgres \
-DB_PASSWORD=your_password \
+DB_NAME=mydb \
+DB_USER=myuser \
+DB_PASSWORD=mypass \
 ./run_tests.sh
 ```
 

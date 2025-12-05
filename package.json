@@ -11,7 +11,13 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:db": "cd supabase/tests && ./run_tests.sh",
+    "test:db:reset": "npx supabase db reset && npm run test:db",
+    "db:start": "npx supabase start",
+    "db:stop": "npx supabase stop",
+    "db:reset": "npx supabase db reset",
+    "test:all": "npm run test && npm run test:db"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^7.2.0",

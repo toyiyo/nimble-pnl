@@ -49,3 +49,51 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  db-tests:
+    name: Database Tests (pgTAP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start Supabase local database
+        run: supabase start -x realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+
+      - name: Wait for database to be ready
+        run: |
+          echo "Waiting for database to be ready..."
+          for i in {1..30}; do
+            if supabase status | grep -q "DB URL"; then
+              echo "Database is ready!"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+
+      - name: Run database migrations
+        run: supabase db reset --debug
+
+      - name: Run pgTAP tests
+        run: |
+          cd supabase/tests
+          chmod +x run_tests.sh
+          ./run_tests.sh
+        env:
+          DB_HOST: localhost
+          DB_PORT: 54322
+          DB_NAME: postgres
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop

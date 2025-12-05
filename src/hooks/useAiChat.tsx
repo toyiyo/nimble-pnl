@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, SUPABASE_URL } from '@/integrations/supabase/client';
 import { ChatMessage, SSEEvent, ToolCall } from '@/types/ai-chat';
 
 export interface UseAiChatOptions {
@@ -31,7 +31,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-execute-tool`,
+        `${SUPABASE_URL}/functions/v1/ai-execute-tool`,
         {
           method: 'POST',
           headers: {
@@ -88,7 +88,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
       console.log(`[Follow-up] Starting stream (attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
       
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-stream`,
+        `${SUPABASE_URL}/functions/v1/ai-chat-stream`,
         {
           method: 'POST',
           headers: {
@@ -308,7 +308,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
       abortControllerRef.current = new AbortController();
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-stream`,
+        `${SUPABASE_URL}/functions/v1/ai-chat-stream`,
         {
           method: 'POST',
           headers: {

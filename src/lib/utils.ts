@@ -16,10 +16,18 @@ export function cn(...inputs: ClassValue[]) {
  * - Backslashes for escaping
  * 
  * @param input - The user-provided string to sanitize
- * @returns Sanitized string safe for use in .or() filters
+ * @returns Sanitized string safe for use in .or() filters (may be empty)
  */
 export function sanitizeForOrFilter(input: string): string {
-  return input.replace(/[,()\\'"]/g, '');
+  // Remove commas, parentheses, backslashes, single and double quotes
+  // Using regex with global flag for consistency
+  return input
+    .replace(/,/g, '')
+    .replace(/\(/g, '')
+    .replace(/\)/g, '')
+    .replace(/\\/g, '')
+    .replace(/'/g, '')
+    .replace(/"/g, '');
 }
 
 /**

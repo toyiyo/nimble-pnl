@@ -201,9 +201,20 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
 
   const handleBarcodeScan = async (barcode: string) => {
     try {
-      // Look up product by GTIN, SKU, or barcode_data
       // Sanitize input to prevent query injection
-      const sanitizedBarcode = sanitizeForOrFilter(barcode);
+      const sanitizedBarcode = sanitizeForOrFilter(barcode).trim();
+      
+      // Validate sanitized barcode is not empty
+      if (!sanitizedBarcode) {
+        toast({
+          title: 'Invalid barcode',
+          description: 'The scanned barcode contains only invalid characters. Please try again.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Look up product by GTIN, SKU, or barcode_data
       const { data: products, error } = await supabase
         .from('products')
         .select('*')

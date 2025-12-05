@@ -622,6 +622,88 @@ serve(async (req) => {
 - ❌ NEVER expose secrets in responses
 - ❌ NEVER skip permission checks
 
+---
+
+## 📐 Unit Conversion System (CRITICAL)
+
+The inventory deduction system converts between recipe units and purchase units. **This is critical for inventory accuracy.**
+
+> ⚠️ **The SQL function is authoritative** - TypeScript is for preview only. Both must use identical constants.
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src/lib/enhancedUnitConversion.ts` | Client-side preview |
+| `supabase/migrations/*_inventory_*.sql` | **Authoritative** server-side |
+| `tests/unit/crossValidation.test.ts` | Alignment validation |
+| `docs/UNIT_CONVERSIONS.md` | Full documentation |
+
+### ⚠️ Critical: `oz` vs `fl oz`
+```typescript
+// ❌ WRONG - Using 'oz' for liquids
+{ unit: 'oz', product: 'Vodka' }  // Will use weight conversion (28.35g)!
+
+// ✅ CORRECT - Using 'fl oz' for liquids
+{ unit: 'fl oz', product: 'Vodka' }  // Will use volume conversion (29.57ml)
+```
+
+### Conversion Constants (MUST match SQL)
+```typescript
+// Volume (to ml)
+'fl oz': 29.5735,  // Fluid ounces (liquids)
+'cup':   236.588,
+'tbsp':  14.7868,
+'tsp':   4.92892,
+'L':     1000,
+'gal':   3785.41,
+
+// Weight (to g)
+'oz':    28.3495,  // Weight ounces (solids)
+'lb':    453.592,
+'kg':    1000,
+
+// Densities (g/cup)
+'rice':   185,
+'flour':  120,
+'sugar':  200,
+'butter': 227,
+```
+
+### When Modifying Conversions
+1. Update **both** TypeScript and SQL with identical values
+2. Add tests in `crossValidation.test.ts` and `08_inventory_deduction_conversions.sql`
+3. Run both test suites to verify alignment:
+   ```bash
+   npm run test -- tests/unit/crossValidation.test.ts
+   npm run test:db
+   ```
+
+### Common Patterns
+```typescript
+// Container unit (bottle, can, etc.)
+// Uses size_value and size_unit to determine content
+Product: { uom_purchase: 'bottle', size_value: 750, size_unit: 'ml' }
+Recipe: { quantity: 1.5, unit: 'fl oz' }
+→ 1.5 fl oz = 44.36ml → 44.36/750 = 0.059 bottles deducted
+
+// Weight conversion
+Product: { uom_purchase: 'box', size_value: 1, size_unit: 'lb' }
+Recipe: { quantity: 4, unit: 'oz' }
+→ 4 oz = 113.4g → 113.4/453.6 = 0.25 boxes deducted
+
+// Density conversion (volume → weight)
+Product: { uom_purchase: 'bag', size_value: 10, size_unit: 'kg', name: 'Rice' }
+Recipe: { quantity: 2, unit: 'cup' }
+→ 2 cups × 185g/cup = 370g = 0.37kg → 0.37/10 = 0.037 bags deducted
+```
+
+### Rules
+- ✅ ALWAYS use `fl oz` for liquids, `oz` for weight
+- ✅ ALWAYS run both TypeScript and SQL tests after changes
+- ✅ ALWAYS check `docs/UNIT_CONVERSIONS.md` for full reference
+- ❌ NEVER change constants in one place without the other
+- ❌ NEVER add new units without updating both codebases
+
 ### Security Rules
 
 **Token Management**:
@@ -674,6 +756,11 @@ For detailed integration patterns and best practices, see:
   - Supabase patterns (React Query, real-time, Edge Functions)
   - Security best practices
   - Performance optimization
+- **[docs/UNIT_CONVERSIONS.md](../docs/UNIT_CONVERSIONS.md)** - Unit conversion system
+  - Volume and weight conversion constants
+  - Product-specific densities (rice, flour, sugar, butter)
+  - Container unit handling (bottles, cans, bags)
+  - TypeScript ↔ SQL alignment requirements
 
 ---
 

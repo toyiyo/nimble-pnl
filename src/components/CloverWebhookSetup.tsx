@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { SUPABASE_URL } from "@/integrations/supabase/client";
 
 interface CloverWebhookSetupProps {
   isConnected: boolean;
@@ -13,27 +14,9 @@ export const CloverWebhookSetup = ({ isConnected }: CloverWebhookSetupProps) => 
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  
-  if (!supabaseUrl) {
-    console.error("VITE_SUPABASE_URL is not configured");
-  }
-  
-  const webhookUrl = supabaseUrl 
-    ? `${supabaseUrl}/functions/v1/clover-webhooks`
-    : "Webhook URL not configured - missing VITE_SUPABASE_URL";
+  const webhookUrl = `${SUPABASE_URL}/functions/v1/clover-webhooks`;
 
   const handleCopy = async () => {
-    // Validate webhook URL before attempting to copy
-    if (!supabaseUrl || !webhookUrl.startsWith('http')) {
-      toast({
-        title: "URL Not Configured",
-        description: "Webhook URL is not configured. Please check your environment variables.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     try {
       await navigator.clipboard.writeText(webhookUrl);
       setCopied(true);

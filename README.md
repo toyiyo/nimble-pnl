@@ -262,12 +262,45 @@ This ensures the app works on:
 Our CI pipeline (`.github/workflows/unit-tests.yml`) runs:
 - **Unit Tests**: TypeScript tests with Vitest
 - **Database Tests**: pgTAP tests against local Supabase
+- **E2E Tests**: Playwright browser tests
 - **SonarCloud**: Code quality and security analysis
 - **CodeQL**: Security vulnerability scanning
 
 ## Testing
 
-### SQL Function Tests
+### Unit Tests (TypeScript)
+
+```bash
+# Run all unit tests
+npm run test
+
+# Run with coverage
+npm run test:coverage
+
+# Watch mode
+npm run test:watch
+```
+
+### E2E Tests (Playwright)
+
+End-to-end tests verify critical user flows in the browser.
+
+```bash
+# Run E2E tests (headless)
+npm run test:e2e
+
+# Run with UI (interactive)
+npm run test:e2e:ui
+
+# Run headed (see the browser)
+npm run test:e2e:headed
+```
+
+**Prerequisites:**
+- Local Supabase running: `npm run db:start`
+- Dev server will start automatically
+
+### SQL Function Tests (pgTAP)
 
 The project includes comprehensive tests for all PostgreSQL database functions using pgTAP.
 
@@ -288,6 +321,13 @@ cd supabase/tests
 - Trigger functions
 - Security and authentication functions
 - Utility and maintenance functions
+
+### Run All Tests
+
+```bash
+# Run unit, database, and E2E tests
+npm run test:all
+```
 
 See [supabase/tests/README.md](supabase/tests/README.md) for detailed testing documentation.
 

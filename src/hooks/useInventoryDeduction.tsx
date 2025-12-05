@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { simulateDeductionClientSide, SimulationResult, ConversionWarning } from '@/utils/inventorySimulation';
+import { simulateDeductionClientSide } from '@/utils/inventorySimulation';
+import type { ConversionWarning } from '@/utils/inventorySimulation';
 
 // Re-export types for consumers
 export type { ConversionWarning } from '@/utils/inventorySimulation';

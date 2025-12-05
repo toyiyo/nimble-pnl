@@ -1,30 +1,8 @@
 -- Tests for inventory-related functions
+-- NOTE: simulate_inventory_deduction was removed in migration 20251204152549
+--       (client-side simulation is used instead per DRY principle)
 BEGIN;
-SELECT plan(13);
-
--- Test simulate_inventory_deduction function exists
-SELECT has_function(
-    'public',
-    'simulate_inventory_deduction',
-    ARRAY['uuid', 'text', 'integer'],
-    'simulate_inventory_deduction function should exist'
-);
-
-SELECT function_returns(
-    'public',
-    'simulate_inventory_deduction',
-    ARRAY['uuid', 'text', 'integer'],
-    'jsonb',
-    'simulate_inventory_deduction should return jsonb'
-);
-
-SELECT function_lang_is(
-    'public',
-    'simulate_inventory_deduction',
-    ARRAY['uuid', 'text', 'integer'],
-    'plpgsql',
-    'simulate_inventory_deduction should be plpgsql'
-);
+SELECT plan(10);
 
 -- Test process_inventory_deduction function exists (FIXED: added p_sale_date text parameter)
 SELECT has_function(
@@ -50,18 +28,20 @@ SELECT function_lang_is(
     'process_inventory_deduction should be plpgsql'
 );
 
--- Test process_unified_inventory_deduction function exists (FIXED: changed timestamp to text, added external_order_id)
+-- Test process_unified_inventory_deduction function exists
+-- Current signature: (uuid, text, integer, text, text, text, text) with 3 DEFAULT params
+-- has_function only matches required params, so we check for the full 7-param signature
 SELECT has_function(
     'public',
     'process_unified_inventory_deduction',
-    ARRAY['uuid', 'text', 'integer', 'text', 'text'],
+    ARRAY['uuid', 'text', 'integer', 'text', 'text', 'text', 'text'],
     'process_unified_inventory_deduction function should exist'
 );
 
 SELECT function_returns(
     'public',
     'process_unified_inventory_deduction',
-    ARRAY['uuid', 'text', 'integer', 'text', 'text'],
+    ARRAY['uuid', 'text', 'integer', 'text', 'text', 'text', 'text'],
     'jsonb',
     'process_unified_inventory_deduction should return jsonb'
 );

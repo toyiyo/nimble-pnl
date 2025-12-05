@@ -510,5 +510,4 @@ GRANT EXECUTE ON FUNCTION sync_shift4_to_unified_sales TO authenticated;
 
 -- Add comment
 COMMENT ON FUNCTION sync_shift4_to_unified_sales IS 
-  'Synchronizes Shift4 charges and refunds to the unified_sales table. ' ||
-  'Note: Shift4 does not provide line-item details, so sales are aggregated at the charge level.';
+  'Synchronizes Shift4 charges and refunds to the unified_sales table. Note: Shift4 does not provide line-item details, so sales are aggregated at the charge level.';

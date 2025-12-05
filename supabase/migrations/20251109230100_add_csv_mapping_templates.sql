@@ -17,6 +17,12 @@ CREATE TABLE IF NOT EXISTS public.csv_mapping_templates (
 -- Add RLS policies
 ALTER TABLE public.csv_mapping_templates ENABLE ROW LEVEL SECURITY;
 
+-- Drop policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Users can view mapping templates for their restaurants" ON public.csv_mapping_templates;
+DROP POLICY IF EXISTS "Users can insert mapping templates for their restaurants" ON public.csv_mapping_templates;
+DROP POLICY IF EXISTS "Users can update mapping templates for their restaurants" ON public.csv_mapping_templates;
+DROP POLICY IF EXISTS "Users can delete mapping templates for their restaurants" ON public.csv_mapping_templates;
+
 -- Users can view templates for their restaurants
 CREATE POLICY "Users can view mapping templates for their restaurants"
   ON public.csv_mapping_templates

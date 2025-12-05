@@ -57,16 +57,19 @@ CREATE TABLE IF NOT EXISTS categorization_rules (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_categorization_rules_restaurant ON categorization_rules(restaurant_id);
-CREATE INDEX idx_categorization_rules_active ON categorization_rules(restaurant_id, is_active, auto_apply);
-CREATE INDEX idx_categorization_rules_priority ON categorization_rules(restaurant_id, priority DESC);
-CREATE INDEX idx_categorization_rules_supplier ON categorization_rules(supplier_id) WHERE supplier_id IS NOT NULL;
-CREATE INDEX idx_categorization_rules_applies_to ON categorization_rules(restaurant_id, applies_to);
+CREATE INDEX IF NOT EXISTS idx_categorization_rules_restaurant ON categorization_rules(restaurant_id);
+CREATE INDEX IF NOT EXISTS idx_categorization_rules_active ON categorization_rules(restaurant_id, is_active, auto_apply);
+CREATE INDEX IF NOT EXISTS idx_categorization_rules_priority ON categorization_rules(restaurant_id, priority DESC);
+CREATE INDEX IF NOT EXISTS idx_categorization_rules_supplier ON categorization_rules(supplier_id) WHERE supplier_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_categorization_rules_applies_to ON categorization_rules(restaurant_id, applies_to);
 
 -- Enable RLS
 ALTER TABLE categorization_rules ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies
+-- RLS Policies (drop first to avoid conflicts)
+DROP POLICY IF EXISTS "Users can view categorization rules for their restaurants" ON categorization_rules;
+DROP POLICY IF EXISTS "Owners and managers can manage categorization rules" ON categorization_rules;
+
 CREATE POLICY "Users can view categorization rules for their restaurants"
   ON categorization_rules FOR SELECT
   USING (
@@ -88,7 +91,8 @@ CREATE POLICY "Owners and managers can manage categorization rules"
     )
   );
 
--- Trigger to update updated_at
+-- Trigger to update updated_at (drop first to avoid conflicts)
+DROP TRIGGER IF EXISTS update_categorization_rules_updated_at ON categorization_rules;
 CREATE TRIGGER update_categorization_rules_updated_at
   BEFORE UPDATE ON categorization_rules
   FOR EACH ROW

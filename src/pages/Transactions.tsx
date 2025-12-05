@@ -35,7 +35,7 @@ import { useDateFormat } from '@/hooks/useDateFormat';
 import { formatDateInTimezone } from '@/lib/timezone';
 
 const Transactions = () => {
-  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState<TransactionFilters>({});
   const { toast } = useToast();
@@ -189,7 +189,8 @@ const Transactions = () => {
           onSelectRestaurant={handleRestaurantSelect}
           restaurants={restaurants}
           loading={restaurantsLoading}
-          createRestaurant={createRestaurant}
+          canCreateRestaurant={canCreateRestaurant}
+            createRestaurant={createRestaurant}
         />
       </div>
     );

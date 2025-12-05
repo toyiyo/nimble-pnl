@@ -14,7 +14,7 @@ import { MetricIcon } from '@/components/MetricIcon';
 import { ExternalLink, Plug, CheckCircle2, TrendingUp } from 'lucide-react';
 
 const Integrations = () => {
-  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const { isConnected: squareConnected } = useSquareIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: cloverConnected } = useCloverIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: shift4Connected } = useShift4Integration(selectedRestaurant?.restaurant_id || null);
@@ -129,6 +129,7 @@ const Integrations = () => {
             onSelectRestaurant={handleRestaurantSelect}
             restaurants={restaurants}
             loading={restaurantsLoading}
+            canCreateRestaurant={canCreateRestaurant}
             createRestaurant={createRestaurant}
           />
         </div>

@@ -63,7 +63,7 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 
 const Index = () => {
   const { user } = useAuth();
-  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const { lowStockItems, reorderAlerts, loading: alertsLoading } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
   const { data: connectedBanks, isLoading: banksLoading } = useConnectedBanks(selectedRestaurant?.restaurant_id || null);
   const { data: transactionsData } = useBankTransactions('for_review');
@@ -484,6 +484,7 @@ const Index = () => {
             onSelectRestaurant={handleRestaurantSelect}
             restaurants={restaurants}
             loading={restaurantsLoading}
+            canCreateRestaurant={canCreateRestaurant}
             createRestaurant={createRestaurant}
           />
         </div>

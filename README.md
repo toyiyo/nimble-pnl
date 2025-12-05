@@ -202,6 +202,69 @@ OPENAI_API_KEY=your_openai_key
 - **Team Collaboration** - Multi-user support with role-based permissions
 - **Multi-Restaurant Support** - Manage multiple locations from one account
 
+## 🔄 CI/CD & Preview Environments
+
+We use **Supabase Branching** with **Vercel** to provide isolated preview environments for every PR.
+
+### How It Works
+
+| Component | Production | PR Preview |
+|-----------|------------|------------|
+| **Frontend** | Vercel Production | Vercel Preview URL |
+| **Database** | Supabase Production | Supabase Preview Branch |
+| **Env Vars** | Production values | Auto-synced branch values |
+
+### Supabase Branching Setup
+
+1. **GitHub Integration**: Connected via Supabase Dashboard → Project Settings → Integrations
+2. **Supabase Directory**: Set to `supabase` (contains migrations, functions, tests)
+3. **Branching Mode**: "Supabase changes only" - branches created when `supabase/` files change
+4. **Branch Limit**: 50 concurrent preview branches
+
+### Vercel Integration
+
+1. **Supabase-Vercel Integration**: Installed via Supabase marketplace
+2. **Environment Variable Prefix**: `VITE_` (for Vite-based apps)
+3. **Auto-sync**: Preview deployments receive branch-specific database credentials
+
+### Environment Variables
+
+The app uses environment variables with production fallbacks:
+
+```typescript
+// src/integrations/supabase/client.ts
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || PRODUCTION_URL;
+export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || PRODUCTION_KEY;
+```
+
+| Variable | Source | Fallback |
+|----------|--------|----------|
+| `VITE_SUPABASE_URL` | Vercel/Supabase integration | Production URL |
+| `VITE_SUPABASE_ANON_KEY` | Vercel/Supabase integration | Production anon key |
+
+This ensures the app works on:
+- ✅ Vercel (production + preview with Supabase branching)
+- ✅ Netlify (uses production fallback)
+- ✅ Lovable (uses production fallback)
+- ✅ Local development (uses `.env` or fallback)
+
+### PR Workflow
+
+1. **Create PR** with changes to `supabase/migrations/` or `supabase/functions/`
+2. **Supabase** automatically creates a preview branch database
+3. **Migrations run** on the preview branch
+4. **Vercel** deploys frontend with preview branch credentials
+5. **Test** on isolated environment (no production data affected)
+6. **Merge** → Changes deploy to production
+
+### GitHub Actions
+
+Our CI pipeline (`.github/workflows/unit-tests.yml`) runs:
+- **Unit Tests**: TypeScript tests with Vitest
+- **Database Tests**: pgTAP tests against local Supabase
+- **SonarCloud**: Code quality and security analysis
+- **CodeQL**: Security vulnerability scanning
+
 ## Testing
 
 ### SQL Function Tests

@@ -24,6 +24,8 @@ import {
   formatPayPeriodType,
   formatContractorInterval,
   requiresTimePunches,
+  calculateSalaryForPeriod,
+  calculateContractorPayForPeriod,
 } from '@/utils/compensationCalculations';
 import type { Employee, CompensationType, DailyLaborAllocation } from '@/types/scheduling';
 
@@ -478,3 +480,275 @@ describe('constants', () => {
     expect(DAYS_PER_CONTRACTOR_INTERVAL.monthly).toBeCloseTo(30.44, 1);
   });
 });
+
+// ============================================================================
+// Payroll Period Calculations for Non-Hourly Employees
+// ============================================================================
+
+describe('calculateSalaryForPeriod', () => {
+  it('calculates full weekly salary when period is exactly one week', () => {
+    // Employee with $1,000/week salary
+    const employee = createMockEmployee({
+      compensation_type: 'salary',
+      salary_amount: 100000, // $1,000 per week
+      pay_period_type: 'weekly',
+    });
+    
+    const startDate = new Date('2024-12-01'); // Sunday
+    const endDate = new Date('2024-12-07'); // Saturday (7 days)
+    
+    const pay = calculateSalaryForPeriod(employee, startDate, endDate);
+    
+    // 7 days * daily rate (which is rounded) = approximately $1,000
+    // Daily rate = 100000 / 7 = 14286 (rounded)
+    // 7 * 14286 = 100002 (slight rounding difference)
+    const dailyRate = calculateDailySalaryAllocation(100000, 'weekly');
+    expect(pay).toBe(dailyRate * 7);
+  });
+  
+  it('calculates prorated salary for partial week', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'salary',
+      salary_amount: 100000, // $1,000 per week
+      pay_period_type: 'weekly',
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-03'); // 3 days
+    
+    const pay = calculateSalaryForPeriod(employee, startDate, endDate);
+    
+    // 3 days * daily rate
+    const dailyRate = calculateDailySalaryAllocation(100000, 'weekly');
+    expect(pay).toBe(dailyRate * 3);
+  });
+  
+  it('calculates bi-weekly salary correctly for one week', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'salary',
+      salary_amount: 200000, // $2,000 per bi-weekly
+      pay_period_type: 'bi-weekly',
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-07'); // 7 days
+    
+    const pay = calculateSalaryForPeriod(employee, startDate, endDate);
+    
+    // 7 days * daily rate
+    const dailyRate = calculateDailySalaryAllocation(200000, 'bi-weekly');
+    expect(pay).toBe(dailyRate * 7);
+  });
+  
+  it('calculates monthly salary prorated for one week', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'salary',
+      salary_amount: 500000, // $5,000 per month
+      pay_period_type: 'monthly',
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-07'); // 7 days
+    
+    const pay = calculateSalaryForPeriod(employee, startDate, endDate);
+    
+    // 7 days * daily rate (uses the same rounding as the function)
+    const dailyRate = calculateDailySalaryAllocation(500000, 'monthly');
+    expect(pay).toBe(dailyRate * 7);
+  });
+  
+  it('returns 0 for non-salary employees', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'hourly',
+      hourly_rate: 1500,
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-07');
+    
+    const pay = calculateSalaryForPeriod(employee, startDate, endDate);
+    
+    expect(pay).toBe(0);
+  });
+  
+  it('returns 0 when salary_amount is missing', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'salary',
+      salary_amount: undefined,
+      pay_period_type: 'weekly',
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-07');
+    
+    const pay = calculateSalaryForPeriod(employee, startDate, endDate);
+    
+    expect(pay).toBe(0);
+  });
+});
+
+describe('calculateContractorPayForPeriod', () => {
+  it('calculates full monthly contractor pay for a month', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'contractor',
+      contractor_payment_amount: 300000, // $3,000 per month
+      contractor_payment_interval: 'monthly',
+    });
+    
+    // Approx 30 days
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-30'); // 30 days
+    
+    const pay = calculateContractorPayForPeriod(employee, startDate, endDate);
+    
+    // 30 days * daily rate (uses same rounding as function)
+    const dailyRate = calculateDailyContractorAllocation(300000, 'monthly');
+    expect(pay).toBe(dailyRate * 30);
+  });
+  
+  it('calculates weekly contractor pay for one week', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'contractor',
+      contractor_payment_amount: 100000, // $1,000 per week
+      contractor_payment_interval: 'weekly',
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-07'); // 7 days
+    
+    const pay = calculateContractorPayForPeriod(employee, startDate, endDate);
+    
+    // 7 days * daily rate
+    const dailyRate = calculateDailyContractorAllocation(100000, 'weekly');
+    expect(pay).toBe(dailyRate * 7);
+  });
+  
+  it('returns 0 for non-contractor employees', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'hourly',
+      hourly_rate: 1500,
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-07');
+    
+    const pay = calculateContractorPayForPeriod(employee, startDate, endDate);
+    
+    expect(pay).toBe(0);
+  });
+});
+
+// ============================================================================
+// Hire Date Handling
+// ============================================================================
+
+describe('calculateSalaryForPeriod - hire date handling', () => {
+  it('calculates salary only from hire date if hired mid-period', () => {
+    // Employee hired on Dec 4, payroll period is Dec 1-7
+    // Should only get paid for Dec 4-7 (4 days), not full week
+    const employee = createMockEmployee({
+      compensation_type: 'salary',
+      salary_amount: 100000, // $1,000 per week
+      pay_period_type: 'weekly',
+      hire_date: '2024-12-04', // Hired on Wed
+    });
+    
+    const startDate = new Date('2024-12-01'); // Sunday
+    const endDate = new Date('2024-12-07'); // Saturday
+    
+    const pay = calculateSalaryForPeriod(employee, startDate, endDate);
+    
+    // Only 4 days (Dec 4-7) * daily rate
+    const dailyRate = calculateDailySalaryAllocation(100000, 'weekly');
+    expect(pay).toBe(dailyRate * 4);
+  });
+  
+  it('calculates full salary if hired before period start', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'salary',
+      salary_amount: 100000,
+      pay_period_type: 'weekly',
+      hire_date: '2024-01-01', // Hired long ago
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-07');
+    
+    const pay = calculateSalaryForPeriod(employee, startDate, endDate);
+    
+    // Full 7 days
+    const dailyRate = calculateDailySalaryAllocation(100000, 'weekly');
+    expect(pay).toBe(dailyRate * 7);
+  });
+  
+  it('returns 0 if hired after period ends', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'salary',
+      salary_amount: 100000,
+      pay_period_type: 'weekly',
+      hire_date: '2024-12-15', // Hired after period
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-07');
+    
+    const pay = calculateSalaryForPeriod(employee, startDate, endDate);
+    
+    expect(pay).toBe(0);
+  });
+  
+  it('handles no hire date by using full period', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'salary',
+      salary_amount: 100000,
+      pay_period_type: 'weekly',
+      hire_date: undefined,
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-07');
+    
+    const pay = calculateSalaryForPeriod(employee, startDate, endDate);
+    
+    // Full 7 days when no hire date
+    const dailyRate = calculateDailySalaryAllocation(100000, 'weekly');
+    expect(pay).toBe(dailyRate * 7);
+  });
+});
+
+describe('calculateContractorPayForPeriod - hire date handling', () => {
+  it('calculates contractor pay only from hire date if hired mid-period', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'contractor',
+      contractor_payment_amount: 100000, // $1,000 per week
+      contractor_payment_interval: 'weekly',
+      hire_date: '2024-12-04', // Hired on Wed
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-07');
+    
+    const pay = calculateContractorPayForPeriod(employee, startDate, endDate);
+    
+    // Only 4 days (Dec 4-7) * daily rate
+    const dailyRate = calculateDailyContractorAllocation(100000, 'weekly');
+    expect(pay).toBe(dailyRate * 4);
+  });
+  
+  it('returns 0 if contractor hired after period ends', () => {
+    const employee = createMockEmployee({
+      compensation_type: 'contractor',
+      contractor_payment_amount: 100000,
+      contractor_payment_interval: 'weekly',
+      hire_date: '2024-12-15',
+    });
+    
+    const startDate = new Date('2024-12-01');
+    const endDate = new Date('2024-12-07');
+    
+    const pay = calculateContractorPayForPeriod(employee, startDate, endDate);
+    
+    expect(pay).toBe(0);
+  });
+});
+

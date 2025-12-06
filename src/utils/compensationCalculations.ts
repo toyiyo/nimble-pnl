@@ -493,3 +493,146 @@ export function formatContractorInterval(interval: ContractorPaymentInterval): s
   };
   return labels[interval];
 }
+
+// ============================================================================
+// Payroll Period Calculations
+// ============================================================================
+
+/**
+ * Calculate the number of days between two dates (inclusive)
+ */
+function getDaysBetween(startDate: Date, endDate: Date): number {
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
+  
+  const diffTime = end.getTime() - start.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 for inclusive
+  return Math.max(0, diffDays);
+}
+
+/**
+ * Get the effective start date for an employee in a period
+ * Returns the later of: period start or hire date
+ * Returns null if employee was hired after period ends
+ */
+function getEffectivePeriodStart(
+  periodStart: Date,
+  periodEnd: Date,
+  hireDate?: string
+): Date | null {
+  const start = new Date(periodStart);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(periodEnd);
+  end.setHours(0, 0, 0, 0);
+  
+  // No hire date? Use full period
+  if (!hireDate) {
+    return start;
+  }
+  
+  const hire = new Date(hireDate);
+  hire.setHours(0, 0, 0, 0);
+  
+  // Hired after period ends? No pay for this period
+  if (hire > end) {
+    return null;
+  }
+  
+  // Return the later of period start or hire date
+  return new Date(Math.max(start.getTime(), hire.getTime()));
+}
+
+/**
+ * Calculate salary pay for a given date range
+ * Prorates the salary based on the number of days in the period
+ * Respects hire date - only calculates from hire date forward
+ *
+ * @param employee - The salaried employee
+ * @param startDate - Start of the payroll period
+ * @param endDate - End of the payroll period (inclusive)
+ * @returns Total pay in cents for the period
+ *
+ * @example
+ * // Weekly salary of $1,000 for 3 days = $428.57
+ * const employee = { compensation_type: 'salary', salary_amount: 100000, pay_period_type: 'weekly' };
+ * calculateSalaryForPeriod(employee, new Date('2024-12-01'), new Date('2024-12-03')); // 42857
+ */
+export function calculateSalaryForPeriod(
+  employee: Employee,
+  startDate: Date,
+  endDate: Date
+): number {
+  // Only calculate for salary employees
+  if (employee.compensation_type !== 'salary') {
+    return 0;
+  }
+  
+  // Need salary amount and pay period type
+  if (!employee.salary_amount || !employee.pay_period_type) {
+    return 0;
+  }
+  
+  // Get effective start date (respecting hire date)
+  const effectiveStart = getEffectivePeriodStart(startDate, endDate, employee.hire_date);
+  if (!effectiveStart) {
+    return 0; // Employee not hired yet
+  }
+  
+  const daysInPeriod = getDaysBetween(effectiveStart, endDate);
+  const dailyRate = calculateDailySalaryAllocation(employee.salary_amount, employee.pay_period_type);
+  
+  return dailyRate * daysInPeriod;
+}
+
+/**
+ * Calculate contractor pay for a given date range
+ * Prorates the payment based on the number of days in the period
+ * Respects hire date - only calculates from hire date forward
+ *
+ * @param employee - The contractor
+ * @param startDate - Start of the payroll period
+ * @param endDate - End of the payroll period (inclusive)
+ * @returns Total pay in cents for the period
+ *
+ * @example
+ * // Monthly contractor of $3,000 for 30 days = ~$2,957
+ * const employee = { compensation_type: 'contractor', contractor_payment_amount: 300000, contractor_payment_interval: 'monthly' };
+ * calculateContractorPayForPeriod(employee, new Date('2024-12-01'), new Date('2024-12-30'));
+ */
+export function calculateContractorPayForPeriod(
+  employee: Employee,
+  startDate: Date,
+  endDate: Date
+): number {
+  // Only calculate for contractors
+  if (employee.compensation_type !== 'contractor') {
+    return 0;
+  }
+  
+  // Need payment amount and interval
+  if (!employee.contractor_payment_amount || !employee.contractor_payment_interval) {
+    return 0;
+  }
+  
+  // Per-job contractors don't get automatic prorated pay
+  if (employee.contractor_payment_interval === 'per-job') {
+    return 0;
+  }
+  
+  // Get effective start date (respecting hire date)
+  const effectiveStart = getEffectivePeriodStart(startDate, endDate, employee.hire_date);
+  if (!effectiveStart) {
+    return 0; // Contractor not engaged yet
+  }
+  
+  const daysInPeriod = getDaysBetween(effectiveStart, endDate);
+  const dailyRate = calculateDailyContractorAllocation(
+    employee.contractor_payment_amount,
+    employee.contractor_payment_interval
+  );
+  
+  return dailyRate * daysInPeriod;
+}
+

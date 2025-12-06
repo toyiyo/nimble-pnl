@@ -14,6 +14,7 @@ interface RestaurantSelectorProps {
   onSelectRestaurant: (restaurant: UserRestaurant) => void;
   restaurants: UserRestaurant[];
   loading: boolean;
+  canCreateRestaurant: boolean;
   createRestaurant: (data: { name: string; address?: string; phone?: string; cuisine_type?: string; timezone?: string }) => Promise<any>;
 }
 
@@ -21,7 +22,8 @@ export function RestaurantSelector({
   selectedRestaurant, 
   onSelectRestaurant, 
   restaurants, 
-  loading, 
+  loading,
+  canCreateRestaurant,
   createRestaurant 
 }: RestaurantSelectorProps) {
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -33,8 +35,6 @@ export function RestaurantSelector({
     timezone: 'America/Chicago',
   });
   const [creating, setCreating] = useState(false);
-  // Only owners should be allowed to create new restaurants
-  const canCreate = (restaurants || []).some(r => r.role === 'owner');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,7 +155,7 @@ export function RestaurantSelector({
           Get started by adding your first restaurant location.
         </p>
         
-        {canCreate ? renderAddDialog() : (
+        {canCreateRestaurant ? renderAddDialog() : (
           <div className="p-4 text-sm text-muted-foreground">Contact your manager or owner to add a restaurant.</div>
         )}
       </div>
@@ -167,7 +167,7 @@ export function RestaurantSelector({
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">Select Restaurant</h2>
         
-        {canCreate ? renderAddDialog() : null}
+        {canCreateRestaurant ? renderAddDialog() : null}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

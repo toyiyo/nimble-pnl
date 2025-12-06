@@ -37,7 +37,7 @@ export default function Recipes() {
   const { user } = useAuth();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
   const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
@@ -171,6 +171,7 @@ export default function Recipes() {
             selectedRestaurant={selectedRestaurant}
             onSelectRestaurant={handleRestaurantSelect}
             loading={restaurantsLoading}
+            canCreateRestaurant={canCreateRestaurant}
             createRestaurant={createRestaurant}
           />
         </div>

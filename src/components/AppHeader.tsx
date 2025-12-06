@@ -29,9 +29,7 @@ import { UserProfileDropdown } from '@/components/UserProfileDropdown';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 
 export const AppHeader = () => {
-  const { selectedRestaurant, setSelectedRestaurant, restaurants, createRestaurant } = useRestaurantContext();
-  // Only allow creating restaurants for users who are owners of at least one restaurant
-  const canCreateRestaurant = restaurants.some(r => r.role === 'owner');
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const navigate = useNavigate();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [formData, setFormData] = useState({

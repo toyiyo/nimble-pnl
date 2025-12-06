@@ -44,6 +44,7 @@ export default function POSSales() {
     restaurants,
     loading: restaurantsLoading,
     createRestaurant,
+    canCreateRestaurant,
   } = useRestaurantContext();
   const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(
     selectedRestaurant?.restaurant_id || null,
@@ -660,7 +661,8 @@ export default function POSSales() {
           onSelectRestaurant={handleRestaurantSelect}
           restaurants={restaurants}
           loading={restaurantsLoading}
-          createRestaurant={createRestaurant}
+          canCreateRestaurant={canCreateRestaurant}
+            createRestaurant={createRestaurant}
         />
       </div>
     );

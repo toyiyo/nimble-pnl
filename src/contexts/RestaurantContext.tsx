@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
 import { useAuth } from '@/hooks/useAuth';
+import { canUserCreateRestaurant } from '@/lib/restaurantPermissions';
 
 interface RestaurantContextType {
   selectedRestaurant: UserRestaurant | null;
   setSelectedRestaurant: (restaurant: UserRestaurant | null) => void;
   restaurants: UserRestaurant[];
   loading: boolean;
+  canCreateRestaurant: boolean;
   createRestaurant: (data: {
     name: string;
     address?: string;
@@ -78,14 +80,18 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
     }
   };
 
+  // Centralized logic: Allow creation if user has no restaurants (first-time) OR is an owner
+  const canCreateRestaurant = canUserCreateRestaurant(restaurants);
+
   // Memoize context value to prevent unnecessary re-renders
   const value = useMemo(() => ({
     selectedRestaurant,
     setSelectedRestaurant: handleSetSelectedRestaurant,
     restaurants,
     loading,
+    canCreateRestaurant,
     createRestaurant,
-  }), [selectedRestaurant, restaurants, loading, createRestaurant]);
+  }), [selectedRestaurant, restaurants, loading, canCreateRestaurant, createRestaurant]);
 
   return (
     <RestaurantContext.Provider value={value}>

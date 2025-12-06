@@ -21,7 +21,7 @@ import { PeriodSelector, type Period } from '@/components/PeriodSelector';
 import { subDays } from 'date-fns';
 
 export default function Reports() {
-  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
     type: 'last30',
@@ -56,7 +56,8 @@ export default function Reports() {
           onSelectRestaurant={handleRestaurantSelect}
           restaurants={restaurants} 
           loading={restaurantsLoading}
-          createRestaurant={createRestaurant}
+          canCreateRestaurant={canCreateRestaurant}
+            createRestaurant={createRestaurant}
         />
       </div>
     );

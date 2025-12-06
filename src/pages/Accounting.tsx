@@ -104,6 +104,7 @@ const Accounting = () => {
             onSelectRestaurant={handleRestaurantSelect}
             restaurants={restaurants}
             loading={restaurantsLoading}
+            canCreateRestaurant={canCreateRestaurant}
             createRestaurant={createRestaurant}
           />
         </div>

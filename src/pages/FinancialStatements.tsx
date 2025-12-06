@@ -17,7 +17,7 @@ import { useCalculateOpeningBalance } from '@/hooks/useCalculateOpeningBalance';
 import { useReconciliationCheck } from '@/hooks/useReconciliationCheck';
 
 const FinancialStatements = () => {
-  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const [dateRange, setDateRange] = useState({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
@@ -45,7 +45,8 @@ const FinancialStatements = () => {
           onSelectRestaurant={handleRestaurantSelect}
           restaurants={restaurants}
           loading={restaurantsLoading}
-          createRestaurant={createRestaurant}
+          canCreateRestaurant={canCreateRestaurant}
+            createRestaurant={createRestaurant}
         />
       </div>
     );

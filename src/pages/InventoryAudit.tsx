@@ -89,7 +89,7 @@ const getTransactionBorderColor = (type: string) => {
 
 export default function InventoryAudit() {
   const { user } = useAuth();
-  const { selectedRestaurant, restaurants, setSelectedRestaurant, loading: restaurantLoading, createRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, restaurants, setSelectedRestaurant, loading: restaurantLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
@@ -296,7 +296,8 @@ export default function InventoryAudit() {
                 selectedRestaurant={selectedRestaurant}
                 onSelectRestaurant={setSelectedRestaurant}
                 loading={restaurantLoading}
-                createRestaurant={createRestaurant}
+                canCreateRestaurant={canCreateRestaurant}
+            createRestaurant={createRestaurant}
               />
             </div>
           </CardContent>

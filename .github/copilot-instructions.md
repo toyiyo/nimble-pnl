@@ -17,7 +17,7 @@ Consistency: Follow existing project patterns and styles
 Accessibility: All UI components must be accessible (ARIA, keyboard)
 Type Safety: Use TypeScript types everywhere
 Performance: Optimize for speed and responsiveness
-Testability: Shared components can be tested once and reused
+Testability: All new code must be covered by tests - no exceptions
 
 
 ### 1. **NO Manual Caching**
@@ -71,6 +71,22 @@ if (loading) return <Skeleton />;
 if (error) return <ErrorMessage />;
 if (!products?.length) return <EmptyState />;
 return <div>{products.map(...)}</div>
+```
+
+### 5. **ALWAYS Write Tests for New Code**
+```typescript
+// ❌ NEVER submit code without tests:
+// - New utility functions
+// - New hooks
+// - New business logic
+// - New SQL functions/migrations
+
+// ✅ ALWAYS include corresponding tests:
+// TypeScript: tests/unit/*.test.ts
+// SQL: supabase/tests/*.sql (pgTAP)
+
+// Example: If you create src/lib/calculateTax.ts
+// You MUST also create tests/unit/calculateTax.test.ts
 ```
 
 ---
@@ -335,33 +351,89 @@ Before suggesting code, verify:
 
 ---
 
-## 🧪 Testing Guidelines
+## 🧪 Testing Guidelines (MANDATORY)
 
-### When to suggest tests:
-1. **Business logic** (calculations, validations)
-2. **Custom hooks** (data transformations)
-3. **Critical user flows** (auth, checkout, inventory updates)
+> ⚠️ **All new code must have corresponding tests. PRs without tests will not be merged.**
 
-### When NOT to suggest tests:
-1. **UI-only components** (presentational)
-2. **Simple wrappers**
-3. **Type definitions**
+### Test Requirements by Code Type
 
-### Example Test
+| Code Type | Test Location | Required |
+|-----------|---------------|----------|
+| Utility functions | `tests/unit/*.test.ts` | ✅ Yes |
+| Custom hooks | `tests/unit/*.test.ts` | ✅ Yes |
+| Business logic | `tests/unit/*.test.ts` | ✅ Yes |
+| SQL functions | `supabase/tests/*.sql` | ✅ Yes |
+| SQL migrations with logic | `supabase/tests/*.sql` | ✅ Yes |
+| UI-only components | - | ❌ Optional |
+| Type definitions | - | ❌ Not needed |
+
+### Running Tests
+
+```bash
+# TypeScript unit tests
+npm run test                    # Watch mode
+npm run test -- --run           # Single run
+npm run test:coverage           # With coverage
+
+# SQL/Database tests (requires Docker)
+cd supabase/tests && ./run_tests.sh
+
+# Full CI check
+npm run test -- --run && cd supabase/tests && ./run_tests.sh
+```
+
+### Test File Naming
+
+```
+src/lib/calculateTax.ts        → tests/unit/calculateTax.test.ts
+src/hooks/useProducts.tsx      → tests/unit/useProducts.test.ts
+supabase/migrations/*_foo.sql  → supabase/tests/*_foo.sql
+```
+
+### Example: TypeScript Test
 ```typescript
-import { renderHook, waitFor } from '@testing-library/react';
-import { useProducts } from '@/hooks/useProducts';
+import { describe, it, expect } from 'vitest';
+import { calculateTax } from '@/lib/calculateTax';
 
-describe('useProducts', () => {
-  it('fetches products for restaurant', async () => {
-    const { result } = renderHook(() => useProducts('restaurant-123'));
-    
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    
-    expect(result.current.products).toHaveLength(5);
+describe('calculateTax', () => {
+  it('calculates tax correctly', () => {
+    expect(calculateTax(100, 0.08)).toBe(8);
+  });
+
+  it('handles zero amount', () => {
+    expect(calculateTax(0, 0.08)).toBe(0);
   });
 });
 ```
+
+### Example: SQL Test (pgTAP)
+```sql
+-- Test: my_function calculates correctly
+SELECT plan(2);
+
+SELECT is(
+  my_function(100),
+  expected_result,
+  'my_function returns expected value'
+);
+
+SELECT ok(
+  my_function(0) = 0,
+  'my_function handles zero input'
+);
+
+SELECT * FROM finish();
+```
+
+### When to Add Tests (Checklist)
+
+Before submitting code, verify:
+- [ ] New functions have unit tests
+- [ ] New hooks have unit tests  
+- [ ] Edge cases are covered (null, empty, boundary values)
+- [ ] Error paths are tested
+- [ ] SQL functions have pgTAP tests
+- [ ] All tests pass locally
 
 ---
 

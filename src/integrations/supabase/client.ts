@@ -12,14 +12,6 @@ const PRODUCTION_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || PRODUCTION_SUPABASE_URL;
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || PRODUCTION_SUPABASE_ANON_KEY;
 
-// Debug: Log which environment is being used (check browser console)
-const isUsingEnvVars = !!import.meta.env.VITE_SUPABASE_URL;
-console.log('[Supabase Config]', {
-  isUsingEnvVars,
-  url: SUPABASE_URL,
-  isProduction: SUPABASE_URL === PRODUCTION_SUPABASE_URL,
-});
-
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 

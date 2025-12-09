@@ -15,15 +15,15 @@ CREATE INDEX IF NOT EXISTS idx_shifts_is_recurring ON shifts(is_recurring);
 COMMENT ON COLUMN shifts.recurrence_pattern IS 
 'JSONB object storing recurrence rules with the following structure:
 {
-  "type": "daily" | "weekly" | "monthly" | "yearly" | "weekday" | "custom",
-  "interval": number (e.g., 1 for every week, 2 for every 2 weeks),
-  "daysOfWeek": [0-6] (Sunday=0, Saturday=6, only for weekly/custom),
-  "dayOfMonth": number (1-31, for monthly),
-  "weekOfMonth": number (1-5, for monthly "third Sunday" pattern),
-  "monthOfYear": number (1-12, for yearly),
-  "endType": "never" | "on" | "after",
-  "endDate": "ISO date string" (when endType is "on"),
-  "occurrences": number (when endType is "after")
+"type": "daily" | "weekly" | "monthly" | "yearly" | "weekday" | "custom",
+"interval": number (e.g., 1 for every week, 2 for every 2 weeks),
+"daysOfWeek": [0-6] (Sunday=0, Saturday=6, only for weekly/custom),
+"dayOfMonth": number (1-31, for monthly),
+"weekOfMonth": number (1-5, for monthly "third Sunday" pattern),
+"monthOfYear": number (1-12, for yearly),
+"endType": "never" | "on" | "after",
+"endDate": "ISO date string" (when endType is "on"),
+"occurrences": number (when endType is "after")
 }';
 
 COMMENT ON COLUMN shifts.recurrence_parent_id IS

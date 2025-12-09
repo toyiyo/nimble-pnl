@@ -12,6 +12,7 @@ export interface Employee {
   position: string;
   status: 'active' | 'inactive' | 'terminated';
   hire_date?: string;
+  termination_date?: string; // Date when employee was terminated/inactivated
   notes?: string;
   created_at: string;
   updated_at: string;

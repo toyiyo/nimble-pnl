@@ -26,6 +26,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [position, setPosition] = useState('Server');
   const [status, setStatus] = useState<'active' | 'inactive' | 'terminated'>('active');
   const [hireDate, setHireDate] = useState('');
+  const [terminationDate, setTerminationDate] = useState('');
   const [notes, setNotes] = useState('');
   
   // Compensation type state
@@ -55,6 +56,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       setPosition(employee.position);
       setStatus(employee.status);
       setHireDate(employee.hire_date || '');
+      setTerminationDate(employee.termination_date || '');
       setNotes(employee.notes || '');
       
       // Compensation fields
@@ -77,6 +79,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     setPosition('Server');
     setStatus('active');
     setHireDate('');
+    setTerminationDate('');
     setNotes('');
     
     // Reset compensation fields
@@ -113,6 +116,9 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       position,
       status,
       hire_date: hireDate || undefined,
+      termination_date: (status === 'inactive' || status === 'terminated') && terminationDate 
+        ? terminationDate 
+        : null, // Clear termination date if status is active
       notes: notes || undefined,
       // Compensation fields
       compensation_type: compensationType,
@@ -396,6 +402,26 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                 />
               </div>
             </div>
+
+            {/* Termination Date - Only show when status is inactive or terminated */}
+            {(status === 'inactive' || status === 'terminated') && (
+              <div className="space-y-2">
+                <Label htmlFor="terminationDate">
+                  Termination Date {status === 'terminated' && <span className="text-destructive">*</span>}
+                </Label>
+                <Input
+                  id="terminationDate"
+                  type="date"
+                  value={terminationDate}
+                  onChange={(e) => setTerminationDate(e.target.value)}
+                  required={status === 'terminated'}
+                  aria-label="Termination date"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Payroll allocations will stop being generated after this date
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>

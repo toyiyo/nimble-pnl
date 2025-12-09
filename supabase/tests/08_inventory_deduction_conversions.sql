@@ -1,7 +1,7 @@
 -- Comprehensive tests for inventory deduction conversions
 -- Note: This test suite validates conversion logic in process_unified_inventory_deduction
 BEGIN;
-SELECT plan(30);
+SELECT plan(56);
 
 -- Setup authenticated user context for tests
 SET LOCAL role TO postgres;

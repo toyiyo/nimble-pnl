@@ -28,23 +28,23 @@ ALTER TABLE employees
 
 -- Add comments for documentation
 COMMENT ON COLUMN employees.compensation_type IS 
-  'hourly: wages from time punches, salary: fixed periodic amount, contractor: fixed payment';
+'hourly: wages from time punches, salary: fixed periodic amount, contractor: fixed payment';
 COMMENT ON COLUMN employees.salary_amount IS 
-  'For salary employees: amount per pay period in cents';
+'For salary employees: amount per pay period in cents';
 COMMENT ON COLUMN employees.pay_period_type IS 
-  'For salary employees: weekly, bi-weekly, semi-monthly, or monthly';
+'For salary employees: weekly, bi-weekly, semi-monthly, or monthly';
 COMMENT ON COLUMN employees.contractor_payment_amount IS 
-  'For contractors: payment amount per interval in cents';
+'For contractors: payment amount per interval in cents';
 COMMENT ON COLUMN employees.contractor_payment_interval IS 
-  'For contractors: weekly, bi-weekly, monthly, or per-job';
+'For contractors: weekly, bi-weekly, monthly, or per-job';
 COMMENT ON COLUMN employees.allocate_daily IS 
-  'DEPRECATED - No longer used. Labor costs are calculated on-demand from source tables.';
+'DEPRECATED - No longer used. Labor costs are calculated on-demand from source tables.';
 COMMENT ON COLUMN employees.tip_eligible IS 
-  'Whether employee can receive tips';
+'Whether employee can receive tips';
 COMMENT ON COLUMN employees.requires_time_punch IS 
-  'Whether employee must clock in/out (typically false for salary/contractor)';
+'Whether employee must clock in/out (typically false for salary/contractor)';
 COMMENT ON COLUMN employees.termination_date IS 
-  'Date when employee was terminated. Used to determine end date for salary/contractor allocations.';
+'Date when employee was terminated. Used to determine end date for salary/contractor allocations.';
 
 -- ============================================================================
 -- STEP 2: Create daily_labor_allocations table
@@ -77,10 +77,10 @@ CREATE TABLE IF NOT EXISTS daily_labor_allocations (
 );
 
 COMMENT ON TABLE daily_labor_allocations IS 
-  'Stores per-job contractor payments ONLY (source=per-job). DO NOT use for auto-generated allocations. Calculate labor costs on-demand from source tables (time_punches + employees).';
+'Stores per-job contractor payments ONLY (source=per-job). DO NOT use for auto-generated allocations. Calculate labor costs on-demand from source tables (time_punches + employees).';
 
 COMMENT ON COLUMN daily_labor_allocations.source IS 
-  'per-job: User-created contractor payment (✅ USE THIS), auto: DEPRECATED aggregation (❌ DO NOT USE), manual: Legacy';
+'per-job: User-created contractor payment (✅ USE THIS), auto: DEPRECATED aggregation (❌ DO NOT USE), manual: Legacy';
 
 -- Create indexes for efficient queries
 CREATE INDEX IF NOT EXISTS idx_daily_labor_allocations_restaurant_date 

@@ -1,11 +1,19 @@
--- Test Suite: Daily Labor Allocations
+-- Test Suite: Daily Labor Allocations (pgTAP version)
 -- Tests the automatic generation of salary/contractor allocations
--- Run with: psql <connection-string> -f this-file.sql
 
--- Setup test environment
 BEGIN;
+SELECT plan(13);
 
--- Define test UUIDs as constants
+-- Setup authenticated user context for tests
+SET LOCAL role TO postgres;
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000000"}';
+
+-- Disable RLS for testing
+ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
+ALTER TABLE employees DISABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_labor_allocations DISABLE ROW LEVEL SECURITY;
+
+-- Define test UUIDs
 DO $$
 DECLARE
   test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
@@ -20,13 +28,12 @@ BEGIN
   VALUES (test_restaurant_id, 'Test Restaurant')
   ON CONFLICT (id) DO NOTHING;
 
-  -- Create test employees (using explicit column lists for clarity)
-
+  -- Create test employees
+  
   -- Salaried employees
   INSERT INTO employees (id, restaurant_id, name, position, status, compensation_type, hire_date, termination_date, salary_amount, pay_period_type, allocate_daily, hourly_rate) VALUES
     -- Salaried employee: $3,000/month, hired Dec 1
     (emp_salary_1_id, test_restaurant_id, 'John Salary', 'Manager', 'active', 'salary', '2024-12-01', NULL, 300000, 'monthly', true, 0),
-    
     -- Salaried employee: hired Dec 1, terminated Dec 10
     (emp_salary_2_id, test_restaurant_id, 'Jane Short', 'Server', 'inactive', 'salary', '2024-12-01', '2024-12-10', 200000, 'monthly', true, 0)
   ON CONFLICT (id) DO NOTHING;
@@ -35,7 +42,6 @@ BEGIN
   INSERT INTO employees (id, restaurant_id, name, position, status, compensation_type, hire_date, termination_date, contractor_payment_amount, contractor_payment_interval, allocate_daily, hourly_rate) VALUES
     -- Contractor: $1,000/week, hired Dec 1
     (emp_contractor_1_id, test_restaurant_id, 'Bob Contractor', 'Chef', 'active', 'contractor', '2024-12-01', NULL, 100000, 'weekly', true, 0),
-    
     -- Per-job contractor (should NOT get auto allocations)
     (emp_perjob_1_id, test_restaurant_id, 'Alice PerJob', 'Event Staff', 'active', 'contractor', '2024-12-01', NULL, NULL, 'per-job', true, 0)
   ON CONFLICT (id) DO NOTHING;
@@ -50,112 +56,65 @@ BEGIN
   DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
 END $$;
 
--- =============================================================================
--- TEST 1: Single Date Allocation - Active Employee
--- =============================================================================
+-- TEST 1: Generate allocation for single date (active employee)
+SELECT is(
+  (SELECT ensure_labor_allocations_for_date('11111111-1111-1111-1111-111111111111', '2024-12-05')),
+  2::INTEGER,
+  'Should create 2 allocations (1 salary + 1 contractor, NOT per-job or hourly)'
+);
+
+SELECT is(
+  (SELECT allocated_cost FROM daily_labor_allocations 
+   WHERE employee_id = '22222222-2222-2222-2222-222222222221' AND date = '2024-12-05'),
+  10000::INTEGER,
+  'Salary allocation should be $100/day (10000 cents)'
+);
+
+SELECT is(
+  (SELECT allocated_cost FROM daily_labor_allocations 
+   WHERE employee_id = '33333333-3333-3333-3333-333333333331' AND date = '2024-12-05'),
+  14286::INTEGER,
+  'Contractor allocation should be ~$142.86/day (14286 cents)'
+);
+
+-- TEST 2: No allocation before hire date
 DO $$
-DECLARE
-  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
-  emp_salary_1_id UUID := '22222222-2222-2222-2222-222222222221'::uuid;
-  emp_contractor_1_id UUID := '33333333-3333-3333-3333-333333333331'::uuid;
-  v_count INTEGER;
-  v_allocation RECORD;
 BEGIN
-  RAISE NOTICE '=== TEST 1: Generate allocation for single date (active employee) ===';
-  
-  -- Generate allocation for Dec 5, 2024
-  SELECT ensure_labor_allocations_for_date(test_restaurant_id, '2024-12-05') INTO v_count;
-  
-  -- Should create 2 allocations (1 salary + 1 contractor, NOT per-job or hourly)
-  ASSERT v_count = 2, format('Expected 2 allocations, got %s', v_count);
-  RAISE NOTICE '✓ Created %s allocations', v_count;
-  
-  -- Check salary employee allocation
-  SELECT * INTO v_allocation 
-  FROM daily_labor_allocations 
-  WHERE employee_id = emp_salary_1_id AND date = '2024-12-05';
-  
-  ASSERT v_allocation.allocated_cost = 10000, -- $3,000/30 days = $100/day = 10000 cents
-    format('Expected 10000 cents/day for salary, got %s', v_allocation.allocated_cost);
-  RAISE NOTICE '✓ Salary allocation: $%.2f/day', v_allocation.allocated_cost / 100.0;
-  
-  -- Check contractor allocation
-  SELECT * INTO v_allocation 
-  FROM daily_labor_allocations 
-  WHERE employee_id = emp_contractor_1_id AND date = '2024-12-05';
-  
-  ASSERT v_allocation.allocated_cost = 14286, -- $1,000/7 days = ~$142.86/day = 14286 cents
-    format('Expected 14286 cents/day for contractor, got %s', v_allocation.allocated_cost);
-  RAISE NOTICE '✓ Contractor allocation: $%.2f/day', v_allocation.allocated_cost / 100.0;
-  
-  RAISE NOTICE '=== TEST 1 PASSED ===';
+  DELETE FROM daily_labor_allocations WHERE restaurant_id = '11111111-1111-1111-1111-111111111111';
 END $$;
 
--- =============================================================================
--- TEST 2: Employee Tenure - Before Hire Date
--- =============================================================================
+SELECT is(
+  (SELECT ensure_labor_allocations_for_date('11111111-1111-1111-1111-111111111111', '2024-11-30')),
+  0::INTEGER,
+  'Should create 0 allocations before hire date'
+);
+
+-- TEST 3: Allocation stops after termination
 DO $$
-DECLARE
-  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
-  v_count INTEGER;
 BEGIN
-  RAISE NOTICE E'\n=== TEST 2: No allocation before hire date ===';
-  
-  -- Try to generate allocation for Nov 30 (before hire date Dec 1)
-  DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
-  SELECT ensure_labor_allocations_for_date(test_restaurant_id, '2024-11-30') INTO v_count;
-  
-  -- Should create 0 allocations (employees not hired yet)
-  ASSERT v_count = 0, format('Expected 0 allocations before hire date, got %s', v_count);
-  RAISE NOTICE '✓ No allocations created for date before hire';
-  
-  RAISE NOTICE '=== TEST 2 PASSED ===';
+  DELETE FROM daily_labor_allocations WHERE restaurant_id = '11111111-1111-1111-1111-111111111111';
 END $$;
 
--- =============================================================================
--- TEST 3: Employee Tenure - After Termination Date
--- =============================================================================
-DO $$
-DECLARE
-  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
-  emp_salary_2_id UUID := '22222222-2222-2222-2222-222222222222'::uuid;
-  v_count INTEGER;
-  v_allocation RECORD;
-BEGIN
-  RAISE NOTICE E'\n=== TEST 3: Allocation stops after termination ===';
-  
-  -- Generate allocation for Dec 15 (after emp-salary-2 terminated on Dec 10)
-  DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
-  SELECT ensure_labor_allocations_for_date(test_restaurant_id, '2024-12-15') INTO v_count;
-  
-  -- Should create 2 allocations (emp-salary-1 + emp-contractor-1, NOT emp-salary-2)
-  ASSERT v_count = 2, format('Expected 2 allocations (terminated employee excluded), got %s', v_count);
-  RAISE NOTICE '✓ Created %s allocations (terminated employee excluded)', v_count;
-  
-  -- Verify terminated employee has no allocation
-  SELECT * INTO v_allocation 
-  FROM daily_labor_allocations 
-  WHERE employee_id = emp_salary_2_id AND date = '2024-12-15';
-  
-  ASSERT v_allocation IS NULL, 'Terminated employee should not have allocation';
-  RAISE NOTICE '✓ Terminated employee correctly excluded';
-  
-  RAISE NOTICE '=== TEST 3 PASSED ===';
-END $$;
+SELECT is(
+  (SELECT ensure_labor_allocations_for_date('11111111-1111-1111-1111-111111111111', '2024-12-15')),
+  2::INTEGER,
+  'Should create 2 allocations (terminated employee excluded)'
+);
 
--- =============================================================================
--- TEST 4: Multi-Day Backfill
--- =============================================================================
+SELECT is(
+  (SELECT COUNT(*) FROM daily_labor_allocations 
+   WHERE employee_id = '22222222-2222-2222-2222-222222222222' AND date = '2024-12-15'),
+  0::BIGINT,
+  'Terminated employee should not have allocation after termination date'
+);
+
+-- TEST 4: Multi-day backfill
 DO $$
 DECLARE
   test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
-  emp_salary_2_id UUID := '22222222-2222-2222-2222-222222222222'::uuid;
   v_result RECORD;
   v_total_allocations INTEGER := 0;
 BEGIN
-  RAISE NOTICE E'\n=== TEST 4: Backfill multiple days ===';
-  
-  -- Backfill Dec 1-10 (10 days)
   DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
   
   FOR v_result IN 
@@ -164,44 +123,37 @@ BEGIN
     v_total_allocations := v_total_allocations + v_result.allocations_created;
   END LOOP;
   
-  -- Should create 30 total allocations:
-  -- - Dec 1-10: emp-salary-1 (10) + emp-salary-2 (10) + emp-contractor-1 (10) = 30
-  ASSERT v_total_allocations = 30, 
-    format('Expected 30 total allocations for 10 days × 3 employees, got %s', v_total_allocations);
-  RAISE NOTICE '✓ Created %s allocations for 10 days', v_total_allocations;
-  
-  -- Verify emp-salary-2 has allocations through Dec 10 (termination date)
-  ASSERT (SELECT COUNT(*) FROM daily_labor_allocations 
-          WHERE employee_id = emp_salary_2_id 
-          AND date BETWEEN '2024-12-01' AND '2024-12-10') = 10,
-    'Terminated employee should have allocations up to termination date';
-  RAISE NOTICE '✓ Terminated employee has allocations through termination date';
-  
-  RAISE NOTICE '=== TEST 4 PASSED ===';
+  -- Store result in a temp table for testing
+  CREATE TEMP TABLE IF NOT EXISTS test_results (key TEXT, value INTEGER);
+  DELETE FROM test_results WHERE key = 'total_allocations';
+  INSERT INTO test_results (key, value) VALUES ('total_allocations', v_total_allocations);
 END $$;
 
--- =============================================================================
--- TEST 5: Real-World Scenario - Payroll Period
--- =============================================================================
+SELECT is(
+  (SELECT value FROM test_results WHERE key = 'total_allocations'),
+  30::INTEGER,
+  'Should create 30 total allocations for 10 days × 3 employees'
+);
+
+SELECT is(
+  (SELECT COUNT(*) FROM daily_labor_allocations 
+   WHERE employee_id = '22222222-2222-2222-2222-222222222222' 
+   AND date BETWEEN '2024-12-01' AND '2024-12-10'),
+  10::BIGINT,
+  'Terminated employee should have allocations through termination date'
+);
+
+-- TEST 5: Real-world payroll calculation
 DO $$
 DECLARE
   test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
   v_total_labor_cost INTEGER;
   v_expected_cost INTEGER;
 BEGIN
-  RAISE NOTICE E'\n=== TEST 5: Real-world payroll calculation ===';
-  
-  -- Scenario: Calculate total labor cost for Dec 1-15 (15 days)
   DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
   
   -- Backfill Dec 1-15
   PERFORM backfill_labor_allocations(test_restaurant_id, '2024-12-01', '2024-12-15');
-  
-  -- Calculate expected costs:
-  -- emp-salary-1: 15 days × $100/day = $1,500
-  -- emp-salary-2: 10 days × $66.67/day = $666.70 (terminated Dec 10)
-  -- emp-contractor-1: 15 days × $142.86/day = $2,142.90
-  -- Total: $4,309.60
   
   SELECT SUM(allocated_cost) INTO v_total_labor_cost
   FROM daily_labor_allocations
@@ -210,20 +162,17 @@ BEGIN
   
   v_expected_cost := (15 * 10000) + (10 * 6667) + (15 * 14286); -- in cents
   
-  RAISE NOTICE 'Total labor cost for Dec 1-15: $%.2f', v_total_labor_cost / 100.0;
-  RAISE NOTICE 'Expected: $%.2f', v_expected_cost / 100.0;
-  
-  -- Allow 1% margin for rounding
-  ASSERT ABS(v_total_labor_cost - v_expected_cost) < (v_expected_cost * 0.01),
-    format('Labor cost mismatch: expected ~%s, got %s', v_expected_cost, v_total_labor_cost);
-  RAISE NOTICE '✓ Labor costs accurate within 1%% margin';
-  
-  RAISE NOTICE '=== TEST 5 PASSED ===';
+  -- Store result for testing
+  DELETE FROM test_results WHERE key = 'labor_cost_diff';
+  INSERT INTO test_results (key, value) VALUES ('labor_cost_diff', ABS(v_total_labor_cost - v_expected_cost));
 END $$;
 
--- =============================================================================
--- TEST 6: Idempotency - Running Multiple Times
--- =============================================================================
+SELECT ok(
+  (SELECT value FROM test_results WHERE key = 'labor_cost_diff') < ((15 * 10000) + (10 * 6667) + (15 * 14286)) * 0.01,
+  'Labor costs should be accurate within 1% margin'
+);
+
+-- TEST 6: Idempotency
 DO $$
 DECLARE
   test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
@@ -232,9 +181,6 @@ DECLARE
   v_cost_first INTEGER;
   v_cost_second INTEGER;
 BEGIN
-  RAISE NOTICE E'\n=== TEST 6: Idempotency (safe to run multiple times) ===';
-  
-  -- Generate allocations for Dec 5
   DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
   SELECT ensure_labor_allocations_for_date(test_restaurant_id, '2024-12-05') INTO v_count_first;
   
@@ -242,55 +188,52 @@ BEGIN
   FROM daily_labor_allocations
   WHERE restaurant_id = test_restaurant_id AND date = '2024-12-05';
   
-  -- Run again (should update, not duplicate)
+  -- Run again
   SELECT ensure_labor_allocations_for_date(test_restaurant_id, '2024-12-05') INTO v_count_second;
   
   SELECT SUM(allocated_cost) INTO v_cost_second
   FROM daily_labor_allocations
   WHERE restaurant_id = test_restaurant_id AND date = '2024-12-05';
   
-  ASSERT v_count_second = v_count_first, 'Should return same count';
-  ASSERT v_cost_second = v_cost_first, 'Should not duplicate costs';
-  
-  RAISE NOTICE '✓ Function is idempotent (safe to run multiple times)';
-  
-  RAISE NOTICE '=== TEST 6 PASSED ===';
+  -- Store results
+  DELETE FROM test_results WHERE key IN ('count_match', 'cost_match');
+  INSERT INTO test_results (key, value) VALUES 
+    ('count_match', CASE WHEN v_count_second = v_count_first THEN 1 ELSE 0 END),
+    ('cost_match', CASE WHEN v_cost_second = v_cost_first THEN 1 ELSE 0 END);
 END $$;
 
--- =============================================================================
--- TEST 7: No Allocations for Per-Job Contractors or Hourly
--- =============================================================================
+SELECT is(
+  (SELECT value FROM test_results WHERE key = 'count_match'),
+  1::INTEGER,
+  'Function should return same count when run multiple times (idempotent)'
+);
+
+SELECT is(
+  (SELECT value FROM test_results WHERE key = 'cost_match'),
+  1::INTEGER,
+  'Function should not duplicate costs when run multiple times (idempotent)'
+);
+
+-- TEST 7: Exclude per-job contractors and hourly employees
 DO $$
-DECLARE
-  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
-  emp_perjob_1_id UUID := '44444444-4444-4444-4444-444444444441'::uuid;
-  emp_hourly_1_id UUID := '55555555-5555-5555-5555-555555555551'::uuid;
-  v_allocation RECORD;
 BEGIN
-  RAISE NOTICE E'\n=== TEST 7: Exclude per-job contractors and hourly employees ===';
-  
-  -- Generate allocations
-  DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
-  PERFORM ensure_labor_allocations_for_date(test_restaurant_id, '2024-12-05');
-  
-  -- Check per-job contractor has no allocation
-  SELECT * INTO v_allocation 
-  FROM daily_labor_allocations 
-  WHERE employee_id = emp_perjob_1_id AND date = '2024-12-05';
-  
-  ASSERT v_allocation IS NULL, 'Per-job contractor should not have auto allocation';
-  RAISE NOTICE '✓ Per-job contractor correctly excluded';
-  
-  -- Check hourly employee has no allocation
-  SELECT * INTO v_allocation 
-  FROM daily_labor_allocations 
-  WHERE employee_id = emp_hourly_1_id AND date = '2024-12-05';
-  
-  ASSERT v_allocation IS NULL, 'Hourly employee should not have allocation';
-  RAISE NOTICE '✓ Hourly employee correctly excluded';
-  
-  RAISE NOTICE '=== TEST 7 PASSED ===';
+  DELETE FROM daily_labor_allocations WHERE restaurant_id = '11111111-1111-1111-1111-111111111111';
+  PERFORM ensure_labor_allocations_for_date('11111111-1111-1111-1111-111111111111', '2024-12-05');
 END $$;
+
+SELECT is(
+  (SELECT COUNT(*) FROM daily_labor_allocations 
+   WHERE employee_id = '44444444-4444-4444-4444-444444444441' AND date = '2024-12-05'),
+  0::BIGINT,
+  'Per-job contractor should not have auto allocation'
+);
+
+SELECT is(
+  (SELECT COUNT(*) FROM daily_labor_allocations 
+   WHERE employee_id = '55555555-5555-5555-5555-555555555551' AND date = '2024-12-05'),
+  0::BIGINT,
+  'Hourly employee should not have allocation'
+);
 
 -- Cleanup
 DO $$
@@ -300,29 +243,13 @@ BEGIN
   DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
   DELETE FROM employees WHERE restaurant_id = test_restaurant_id;
   DELETE FROM restaurants WHERE id = test_restaurant_id;
+  DROP TABLE IF EXISTS test_results;
 END $$;
 
+-- Re-enable RLS
+ALTER TABLE restaurants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_labor_allocations ENABLE ROW LEVEL SECURITY;
+
+SELECT * FROM finish();
 ROLLBACK;
-
--- =============================================================================
--- Summary
--- =============================================================================
-DO $$
-BEGIN
-  RAISE NOTICE E'\n========================================';
-  RAISE NOTICE '✅ ALL TESTS PASSED';
-  RAISE NOTICE '========================================';
-  RAISE NOTICE 'The allocation system:';
-  RAISE NOTICE '  ✓ Generates daily allocations correctly';
-  RAISE NOTICE '  ✓ Respects hire dates';
-  RAISE NOTICE '  ✓ Respects termination dates';
-  RAISE NOTICE '  ✓ Excludes per-job contractors';
-  RAISE NOTICE '  ✓ Excludes hourly employees';
-  RAISE NOTICE '  ✓ Handles multi-day backfills';
-  RAISE NOTICE '  ✓ Calculates accurate payroll totals';
-  RAISE NOTICE '  ✓ Is idempotent (safe to re-run)';
-  RAISE NOTICE '';
-  RAISE NOTICE '⚠️  IMPORTANT: These are MANUAL tests.';
-  RAISE NOTICE '    A CRON JOB is needed to run daily!';
-  RAISE NOTICE '========================================';
-END $$;

@@ -148,6 +148,33 @@ const Payroll = () => {
     }
   };
 
+  // Helper to format rate display based on compensation type
+  const formatRateDisplay = (employee: EmployeePayroll): string => {
+    if (employee.compensationType === 'hourly') {
+      return formatCurrency(employee.hourlyRate);
+    }
+    if (employee.compensationType === 'salary') {
+      return `${formatCurrency(employee.salaryPay)}/period`;
+    }
+    // Contractor
+    if (employee.contractorPay > 0) {
+      return `${formatCurrency(employee.contractorPay)}/period`;
+    }
+    return 'Per-Job';
+  };
+
+  // Helper to format regular pay based on compensation type
+  const formatRegularPayDisplay = (employee: EmployeePayroll): string => {
+    if (employee.compensationType === 'hourly') {
+      return formatCurrency(employee.regularPay);
+    }
+    if (employee.compensationType === 'salary') {
+      return formatCurrency(employee.salaryPay);
+    }
+    // Contractor
+    return formatCurrency(employee.contractorPay + employee.manualPaymentsTotal);
+  };
+
   const handleAddPayment = (employeeId: string, employeeName: string) => {
     setSelectedEmployee({ id: employeeId, name: employeeName });
     setPaymentDialogOpen(true);
@@ -472,11 +499,11 @@ const Payroll = () => {
                                 <TooltipContent side="right" className="max-w-xs">
                                   <p className="font-medium mb-1">{employee.incompleteShifts.length} punch issue(s):</p>
                                   <ul className="text-xs space-y-0.5">
-                                    {employee.incompleteShifts.slice(0, 5).map((shift, idx) => (
-                                      <li key={idx}>• {shift.message}</li>
+                                    {employee.incompleteShifts.slice(0, 5).map((shift) => (
+                                      <li key={`${employee.employeeId}-${shift.punchTime}-${shift.type}`}>• {shift.message}</li>
                                     ))}
                                     {employee.incompleteShifts.length > 5 && (
-                                      <li>• ...and {employee.incompleteShifts.length - 5} more</li>
+                                      <li key="more">• ...and {employee.incompleteShifts.length - 5} more</li>
                                     )}
                                   </ul>
                                 </TooltipContent>
@@ -495,8 +522,8 @@ const Payroll = () => {
                                 <TooltipContent side="right" className="max-w-xs">
                                   <p className="font-medium mb-1">{employee.manualPayments.length} manual payment(s):</p>
                                   <ul className="text-xs space-y-0.5">
-                                    {employee.manualPayments.map((payment, idx) => (
-                                      <li key={idx}>• {format(new Date(payment.date), 'MMM d')}: {formatCurrency(payment.amount)}{payment.description ? ` - ${payment.description}` : ''}</li>
+                                    {employee.manualPayments.map((payment) => (
+                                      <li key={`${employee.employeeId}-${payment.date}-${payment.amount}`}>• {format(new Date(payment.date), 'MMM d')}: {formatCurrency(payment.amount)}{payment.description ? ` - ${payment.description}` : ''}</li>
                                     ))}
                                   </ul>
                                 </TooltipContent>
@@ -507,14 +534,7 @@ const Payroll = () => {
                       </TableCell>
                       <TableCell>{employee.position}</TableCell>
                       <TableCell className="text-right">
-                        {employee.compensationType === 'hourly' 
-                          ? formatCurrency(employee.hourlyRate)
-                          : employee.compensationType === 'salary'
-                            ? formatCurrency(employee.salaryPay) + '/period'
-                            : employee.contractorPay > 0
-                              ? formatCurrency(employee.contractorPay) + '/period'
-                              : 'Per-Job'
-                        }
+                        {formatRateDisplay(employee)}
                       </TableCell>
                       <TableCell className="text-right">
                         {employee.compensationType === 'hourly' ? formatHours(employee.regularHours) : '-'}
@@ -529,12 +549,7 @@ const Payroll = () => {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        {employee.compensationType === 'hourly' 
-                          ? formatCurrency(employee.regularPay)
-                          : employee.compensationType === 'salary'
-                            ? formatCurrency(employee.salaryPay)
-                            : formatCurrency(employee.contractorPay + employee.manualPaymentsTotal)
-                        }
+                        {formatRegularPayDisplay(employee)}
                       </TableCell>
                       <TableCell className="text-right">
                         {employee.overtimePay > 0 ? formatCurrency(employee.overtimePay) : '-'}

@@ -5,48 +5,66 @@
 -- Setup test environment
 BEGIN;
 
--- Create test restaurant
-INSERT INTO restaurants (id, name, owner_id) 
-VALUES ('test-rest-1', 'Test Restaurant', (SELECT id FROM auth.users LIMIT 1))
-ON CONFLICT (id) DO NOTHING;
+-- Define test UUIDs as constants
+DO $$
+DECLARE
+  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
+  emp_salary_1_id UUID := '22222222-2222-2222-2222-222222222221'::uuid;
+  emp_salary_2_id UUID := '22222222-2222-2222-2222-222222222222'::uuid;
+  emp_contractor_1_id UUID := '33333333-3333-3333-3333-333333333331'::uuid;
+  emp_perjob_1_id UUID := '44444444-4444-4444-4444-444444444441'::uuid;
+  emp_hourly_1_id UUID := '55555555-5555-5555-5555-555555555551'::uuid;
+BEGIN
+  -- Create test restaurant
+  INSERT INTO restaurants (id, name) 
+  VALUES (test_restaurant_id, 'Test Restaurant')
+  ON CONFLICT (id) DO NOTHING;
 
--- Create test employees
-INSERT INTO employees (id, restaurant_id, name, position, status, compensation_type, hire_date, termination_date, salary_amount, pay_period_type, allocate_daily) VALUES
-  -- Salaried employee: $3,000/month, hired Dec 1
-  ('emp-salary-1', 'test-rest-1', 'John Salary', 'Manager', 'active', 'salary', '2024-12-01', NULL, 300000, 'monthly', true),
-  
-  -- Salaried employee: hired Dec 1, terminated Dec 10
-  ('emp-salary-2', 'test-rest-1', 'Jane Short', 'Server', 'inactive', 'salary', '2024-12-01', '2024-12-10', 200000, 'monthly', true),
-  
-  -- Contractor: $1,000/week, hired Dec 1
-  ('emp-contractor-1', 'test-rest-1', 'Bob Contractor', 'Chef', 'active', 'contractor', '2024-12-01', NULL, 100000, NULL, true),
-  
-  -- Per-job contractor (should NOT get auto allocations)
-  ('emp-perjob-1', 'test-rest-1', 'Alice PerJob', 'Event Staff', 'active', 'contractor', '2024-12-01', NULL, NULL, NULL, true),
-  
-  -- Hourly employee (should NOT get allocations)
-  ('emp-hourly-1', 'test-rest-1', 'Mike Hourly', 'Server', 'active', 'hourly', '2024-12-01', NULL, 1500, NULL, false)
-ON CONFLICT (id) DO NOTHING;
+  -- Create test employees (using explicit column lists for clarity)
 
--- Update contractor payment intervals
-UPDATE employees SET contractor_payment_interval = 'weekly' WHERE id = 'emp-contractor-1';
-UPDATE employees SET contractor_payment_interval = 'per-job' WHERE id = 'emp-perjob-1';
+  -- Salaried employees
+  INSERT INTO employees (id, restaurant_id, name, position, status, compensation_type, hire_date, termination_date, salary_amount, pay_period_type, allocate_daily, hourly_rate) VALUES
+    -- Salaried employee: $3,000/month, hired Dec 1
+    (emp_salary_1_id, test_restaurant_id, 'John Salary', 'Manager', 'active', 'salary', '2024-12-01', NULL, 300000, 'monthly', true, 0),
+    
+    -- Salaried employee: hired Dec 1, terminated Dec 10
+    (emp_salary_2_id, test_restaurant_id, 'Jane Short', 'Server', 'inactive', 'salary', '2024-12-01', '2024-12-10', 200000, 'monthly', true, 0)
+  ON CONFLICT (id) DO NOTHING;
 
--- Clear any existing allocations for test data
-DELETE FROM daily_labor_allocations WHERE restaurant_id = 'test-rest-1';
+  -- Contractor employees
+  INSERT INTO employees (id, restaurant_id, name, position, status, compensation_type, hire_date, termination_date, contractor_payment_amount, contractor_payment_interval, allocate_daily, hourly_rate) VALUES
+    -- Contractor: $1,000/week, hired Dec 1
+    (emp_contractor_1_id, test_restaurant_id, 'Bob Contractor', 'Chef', 'active', 'contractor', '2024-12-01', NULL, 100000, 'weekly', true, 0),
+    
+    -- Per-job contractor (should NOT get auto allocations)
+    (emp_perjob_1_id, test_restaurant_id, 'Alice PerJob', 'Event Staff', 'active', 'contractor', '2024-12-01', NULL, NULL, 'per-job', true, 0)
+  ON CONFLICT (id) DO NOTHING;
+
+  -- Hourly employee
+  INSERT INTO employees (id, restaurant_id, name, position, status, compensation_type, hire_date, termination_date, hourly_rate, allocate_daily) VALUES
+    -- Hourly employee (should NOT get allocations)
+    (emp_hourly_1_id, test_restaurant_id, 'Mike Hourly', 'Server', 'active', 'hourly', '2024-12-01', NULL, 1500, false)
+  ON CONFLICT (id) DO NOTHING;
+
+  -- Clear any existing allocations for test data
+  DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
+END $$;
 
 -- =============================================================================
 -- TEST 1: Single Date Allocation - Active Employee
 -- =============================================================================
 DO $$
 DECLARE
+  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
+  emp_salary_1_id UUID := '22222222-2222-2222-2222-222222222221'::uuid;
+  emp_contractor_1_id UUID := '33333333-3333-3333-3333-333333333331'::uuid;
   v_count INTEGER;
   v_allocation RECORD;
 BEGIN
   RAISE NOTICE '=== TEST 1: Generate allocation for single date (active employee) ===';
   
   -- Generate allocation for Dec 5, 2024
-  SELECT ensure_labor_allocations_for_date('test-rest-1', '2024-12-05') INTO v_count;
+  SELECT ensure_labor_allocations_for_date(test_restaurant_id, '2024-12-05') INTO v_count;
   
   -- Should create 2 allocations (1 salary + 1 contractor, NOT per-job or hourly)
   ASSERT v_count = 2, format('Expected 2 allocations, got %s', v_count);
@@ -55,7 +73,7 @@ BEGIN
   -- Check salary employee allocation
   SELECT * INTO v_allocation 
   FROM daily_labor_allocations 
-  WHERE employee_id = 'emp-salary-1' AND date = '2024-12-05';
+  WHERE employee_id = emp_salary_1_id AND date = '2024-12-05';
   
   ASSERT v_allocation.allocated_cost = 10000, -- $3,000/30 days = $100/day = 10000 cents
     format('Expected 10000 cents/day for salary, got %s', v_allocation.allocated_cost);
@@ -64,7 +82,7 @@ BEGIN
   -- Check contractor allocation
   SELECT * INTO v_allocation 
   FROM daily_labor_allocations 
-  WHERE employee_id = 'emp-contractor-1' AND date = '2024-12-05';
+  WHERE employee_id = emp_contractor_1_id AND date = '2024-12-05';
   
   ASSERT v_allocation.allocated_cost = 14286, -- $1,000/7 days = ~$142.86/day = 14286 cents
     format('Expected 14286 cents/day for contractor, got %s', v_allocation.allocated_cost);
@@ -78,13 +96,14 @@ END $$;
 -- =============================================================================
 DO $$
 DECLARE
+  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
   v_count INTEGER;
 BEGIN
   RAISE NOTICE E'\n=== TEST 2: No allocation before hire date ===';
   
   -- Try to generate allocation for Nov 30 (before hire date Dec 1)
-  DELETE FROM daily_labor_allocations WHERE restaurant_id = 'test-rest-1';
-  SELECT ensure_labor_allocations_for_date('test-rest-1', '2024-11-30') INTO v_count;
+  DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
+  SELECT ensure_labor_allocations_for_date(test_restaurant_id, '2024-11-30') INTO v_count;
   
   -- Should create 0 allocations (employees not hired yet)
   ASSERT v_count = 0, format('Expected 0 allocations before hire date, got %s', v_count);
@@ -98,14 +117,16 @@ END $$;
 -- =============================================================================
 DO $$
 DECLARE
+  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
+  emp_salary_2_id UUID := '22222222-2222-2222-2222-222222222222'::uuid;
   v_count INTEGER;
   v_allocation RECORD;
 BEGIN
   RAISE NOTICE E'\n=== TEST 3: Allocation stops after termination ===';
   
   -- Generate allocation for Dec 15 (after emp-salary-2 terminated on Dec 10)
-  DELETE FROM daily_labor_allocations WHERE restaurant_id = 'test-rest-1';
-  SELECT ensure_labor_allocations_for_date('test-rest-1', '2024-12-15') INTO v_count;
+  DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
+  SELECT ensure_labor_allocations_for_date(test_restaurant_id, '2024-12-15') INTO v_count;
   
   -- Should create 2 allocations (emp-salary-1 + emp-contractor-1, NOT emp-salary-2)
   ASSERT v_count = 2, format('Expected 2 allocations (terminated employee excluded), got %s', v_count);
@@ -114,7 +135,7 @@ BEGIN
   -- Verify terminated employee has no allocation
   SELECT * INTO v_allocation 
   FROM daily_labor_allocations 
-  WHERE employee_id = 'emp-salary-2' AND date = '2024-12-15';
+  WHERE employee_id = emp_salary_2_id AND date = '2024-12-15';
   
   ASSERT v_allocation IS NULL, 'Terminated employee should not have allocation';
   RAISE NOTICE '✓ Terminated employee correctly excluded';
@@ -127,16 +148,18 @@ END $$;
 -- =============================================================================
 DO $$
 DECLARE
+  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
+  emp_salary_2_id UUID := '22222222-2222-2222-2222-222222222222'::uuid;
   v_result RECORD;
   v_total_allocations INTEGER := 0;
 BEGIN
   RAISE NOTICE E'\n=== TEST 4: Backfill multiple days ===';
   
   -- Backfill Dec 1-10 (10 days)
-  DELETE FROM daily_labor_allocations WHERE restaurant_id = 'test-rest-1';
+  DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
   
   FOR v_result IN 
-    SELECT * FROM backfill_labor_allocations('test-rest-1', '2024-12-01', '2024-12-10')
+    SELECT * FROM backfill_labor_allocations(test_restaurant_id, '2024-12-01', '2024-12-10')
   LOOP
     v_total_allocations := v_total_allocations + v_result.allocations_created;
   END LOOP;
@@ -149,7 +172,7 @@ BEGIN
   
   -- Verify emp-salary-2 has allocations through Dec 10 (termination date)
   ASSERT (SELECT COUNT(*) FROM daily_labor_allocations 
-          WHERE employee_id = 'emp-salary-2' 
+          WHERE employee_id = emp_salary_2_id 
           AND date BETWEEN '2024-12-01' AND '2024-12-10') = 10,
     'Terminated employee should have allocations up to termination date';
   RAISE NOTICE '✓ Terminated employee has allocations through termination date';
@@ -162,16 +185,17 @@ END $$;
 -- =============================================================================
 DO $$
 DECLARE
+  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
   v_total_labor_cost INTEGER;
   v_expected_cost INTEGER;
 BEGIN
   RAISE NOTICE E'\n=== TEST 5: Real-world payroll calculation ===';
   
   -- Scenario: Calculate total labor cost for Dec 1-15 (15 days)
-  DELETE FROM daily_labor_allocations WHERE restaurant_id = 'test-rest-1';
+  DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
   
   -- Backfill Dec 1-15
-  PERFORM backfill_labor_allocations('test-rest-1', '2024-12-01', '2024-12-15');
+  PERFORM backfill_labor_allocations(test_restaurant_id, '2024-12-01', '2024-12-15');
   
   -- Calculate expected costs:
   -- emp-salary-1: 15 days × $100/day = $1,500
@@ -181,7 +205,7 @@ BEGIN
   
   SELECT SUM(allocated_cost) INTO v_total_labor_cost
   FROM daily_labor_allocations
-  WHERE restaurant_id = 'test-rest-1'
+  WHERE restaurant_id = test_restaurant_id
   AND date BETWEEN '2024-12-01' AND '2024-12-15';
   
   v_expected_cost := (15 * 10000) + (10 * 6667) + (15 * 14286); -- in cents
@@ -202,6 +226,7 @@ END $$;
 -- =============================================================================
 DO $$
 DECLARE
+  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
   v_count_first INTEGER;
   v_count_second INTEGER;
   v_cost_first INTEGER;
@@ -210,19 +235,19 @@ BEGIN
   RAISE NOTICE E'\n=== TEST 6: Idempotency (safe to run multiple times) ===';
   
   -- Generate allocations for Dec 5
-  DELETE FROM daily_labor_allocations WHERE restaurant_id = 'test-rest-1';
-  SELECT ensure_labor_allocations_for_date('test-rest-1', '2024-12-05') INTO v_count_first;
+  DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
+  SELECT ensure_labor_allocations_for_date(test_restaurant_id, '2024-12-05') INTO v_count_first;
   
   SELECT SUM(allocated_cost) INTO v_cost_first
   FROM daily_labor_allocations
-  WHERE restaurant_id = 'test-rest-1' AND date = '2024-12-05';
+  WHERE restaurant_id = test_restaurant_id AND date = '2024-12-05';
   
   -- Run again (should update, not duplicate)
-  SELECT ensure_labor_allocations_for_date('test-rest-1', '2024-12-05') INTO v_count_second;
+  SELECT ensure_labor_allocations_for_date(test_restaurant_id, '2024-12-05') INTO v_count_second;
   
   SELECT SUM(allocated_cost) INTO v_cost_second
   FROM daily_labor_allocations
-  WHERE restaurant_id = 'test-rest-1' AND date = '2024-12-05';
+  WHERE restaurant_id = test_restaurant_id AND date = '2024-12-05';
   
   ASSERT v_count_second = v_count_first, 'Should return same count';
   ASSERT v_cost_second = v_cost_first, 'Should not duplicate costs';
@@ -237,18 +262,21 @@ END $$;
 -- =============================================================================
 DO $$
 DECLARE
+  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
+  emp_perjob_1_id UUID := '44444444-4444-4444-4444-444444444441'::uuid;
+  emp_hourly_1_id UUID := '55555555-5555-5555-5555-555555555551'::uuid;
   v_allocation RECORD;
 BEGIN
   RAISE NOTICE E'\n=== TEST 7: Exclude per-job contractors and hourly employees ===';
   
   -- Generate allocations
-  DELETE FROM daily_labor_allocations WHERE restaurant_id = 'test-rest-1';
-  PERFORM ensure_labor_allocations_for_date('test-rest-1', '2024-12-05');
+  DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
+  PERFORM ensure_labor_allocations_for_date(test_restaurant_id, '2024-12-05');
   
   -- Check per-job contractor has no allocation
   SELECT * INTO v_allocation 
   FROM daily_labor_allocations 
-  WHERE employee_id = 'emp-perjob-1' AND date = '2024-12-05';
+  WHERE employee_id = emp_perjob_1_id AND date = '2024-12-05';
   
   ASSERT v_allocation IS NULL, 'Per-job contractor should not have auto allocation';
   RAISE NOTICE '✓ Per-job contractor correctly excluded';
@@ -256,7 +284,7 @@ BEGIN
   -- Check hourly employee has no allocation
   SELECT * INTO v_allocation 
   FROM daily_labor_allocations 
-  WHERE employee_id = 'emp-hourly-1' AND date = '2024-12-05';
+  WHERE employee_id = emp_hourly_1_id AND date = '2024-12-05';
   
   ASSERT v_allocation IS NULL, 'Hourly employee should not have allocation';
   RAISE NOTICE '✓ Hourly employee correctly excluded';
@@ -265,9 +293,14 @@ BEGIN
 END $$;
 
 -- Cleanup
-DELETE FROM daily_labor_allocations WHERE restaurant_id = 'test-rest-1';
-DELETE FROM employees WHERE restaurant_id = 'test-rest-1';
-DELETE FROM restaurants WHERE id = 'test-rest-1';
+DO $$
+DECLARE
+  test_restaurant_id UUID := '11111111-1111-1111-1111-111111111111'::uuid;
+BEGIN
+  DELETE FROM daily_labor_allocations WHERE restaurant_id = test_restaurant_id;
+  DELETE FROM employees WHERE restaurant_id = test_restaurant_id;
+  DELETE FROM restaurants WHERE id = test_restaurant_id;
+END $$;
 
 ROLLBACK;
 

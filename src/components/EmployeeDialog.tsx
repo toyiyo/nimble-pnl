@@ -61,7 +61,12 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       
       // Compensation fields
       setCompensationType(employee.compensation_type || 'hourly');
-      setHourlyRate((employee.hourly_rate / 100).toFixed(2));
+      // Only set hourly rate if it's a valid finite number
+      setHourlyRate(
+        typeof employee.hourly_rate === 'number' && Number.isFinite(employee.hourly_rate)
+          ? (employee.hourly_rate / 100).toFixed(2)
+          : ''
+      );
       setSalaryAmount(employee.salary_amount ? (employee.salary_amount / 100).toFixed(2) : '');
       setPayPeriodType(employee.pay_period_type || 'bi-weekly');
       setAllocateDaily(employee.allocate_daily ?? true);

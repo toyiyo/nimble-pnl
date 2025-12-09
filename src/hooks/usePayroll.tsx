@@ -200,10 +200,15 @@ export const usePayroll = (
   // Mutation to delete a manual payment
   const deleteManualPaymentMutation = useMutation({
     mutationFn: async (paymentId: string) => {
+      if (!restaurantId) {
+        throw new Error('Restaurant ID is required to delete payment');
+      }
+
       const { error } = await supabase
         .from('daily_labor_allocations')
         .delete()
-        .eq('id', paymentId);
+        .eq('id', paymentId)
+        .eq('restaurant_id', restaurantId); // Defense-in-depth: only delete records from current restaurant
 
       if (error) throw error;
     },

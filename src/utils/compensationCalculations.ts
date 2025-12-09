@@ -133,11 +133,13 @@ export function getPayPeriodDates(
     }
     case 'bi-weekly': {
       // For bi-weekly, we need an anchor date. Using a fixed anchor (Jan 1, 2024 was a Monday)
+      // The anchor defines the pay-period phase and is not currently configurable per restaurant
       const anchor = new Date('2024-01-01');
       const daysSinceAnchor = Math.floor(
         (d.getTime() - anchor.getTime()) / (1000 * 60 * 60 * 24)
       );
-      const daysIntoPeriod = daysSinceAnchor % 14;
+      // Normalize modulo to non-negative value to handle dates before anchor correctly
+      const daysIntoPeriod = ((daysSinceAnchor % 14) + 14) % 14;
       const start = new Date(d);
       start.setDate(d.getDate() - daysIntoPeriod);
       const end = new Date(start);
@@ -246,8 +248,8 @@ export function calculateDailyLaborCost(
       if (!employee.salary_amount || !employee.pay_period_type) {
         throw new Error('Salary amount and pay period required for salaried employees');
       }
-      // Only allocate if the flag is set
-      if (!employee.allocate_daily) {
+      // Only skip allocation if explicitly set to false (undefined/null defaults to true)
+      if (employee.allocate_daily === false) {
         return 0; // Salary will be recorded on paycheck date instead
       }
       return calculateDailySalaryAllocation(
@@ -260,6 +262,10 @@ export function calculateDailyLaborCost(
         throw new Error(
           'Payment amount and interval required for contractors'
         );
+      }
+      // Only skip allocation if explicitly set to false (undefined/null defaults to true)
+      if (employee.allocate_daily === false) {
+        return 0; // Contractor payment will be recorded on payment date instead
       }
       return calculateDailyContractorAllocation(
         employee.contractor_payment_amount,

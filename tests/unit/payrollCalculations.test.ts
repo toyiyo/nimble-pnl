@@ -262,9 +262,9 @@ describe('payrollCalculations - Additional Coverage', () => {
       const result = calculateEmployeePay(
         employee,
         [],
+        0, // tips
         new Date('2024-01-01'),
         new Date('2024-01-31'),
-        0,
         manualPayments
       );
 
@@ -273,7 +273,7 @@ describe('payrollCalculations - Additional Coverage', () => {
       expect(result.grossPay).toBe(80000); // Only manual payments for per-job
     });
 
-    it('should not include manual payments for hourly employees', () => {
+    it('should not include manual payments in regular pay for hourly employees', () => {
       const employee = createEmployee({
         compensation_type: 'hourly',
         hourly_rate: 1500, // $15/hr
@@ -291,16 +291,17 @@ describe('payrollCalculations - Additional Coverage', () => {
       const result = calculateEmployeePay(
         employee,
         punches,
+        0, // tips
         new Date('2024-01-15'),
         new Date('2024-01-15'),
-        0,
-        manualPayments // Implementation may include these
+        manualPayments
       );
 
-      // Check that regular pay is calculated correctly
+      // Check that regular pay is calculated correctly from punches only
       expect(result.regularPay).toBe(12000); // 8 hours * $15/hr in cents
-      // Manual payments might be included but not affect regular hourly pay
-      expect(result.regularPay).toBeGreaterThan(0);
+      // Manual payments should be tracked separately and not affect regular pay
+      expect(result.manualPaymentsTotal).toBe(50000); // $500 in cents
+      expect(result.grossPay).toBe(62000); // regularPay + manualPaymentsTotal
     });
 
     it('should handle empty manual payments array', () => {
@@ -312,9 +313,9 @@ describe('payrollCalculations - Additional Coverage', () => {
       const result = calculateEmployeePay(
         employee,
         [],
+        0, // tips
         new Date('2024-01-01'),
         new Date('2024-01-31'),
-        0,
         []
       );
 
@@ -332,9 +333,9 @@ describe('payrollCalculations - Additional Coverage', () => {
       const result = calculateEmployeePay(
         employee,
         [],
+        0, // tips
         new Date('2024-01-01'),
         new Date('2024-01-31'),
-        0,
         undefined
       );
 

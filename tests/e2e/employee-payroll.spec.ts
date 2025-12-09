@@ -685,13 +685,14 @@ test.describe('Per-Job Contractor Manual Payments', () => {
 
     // Payment was added - contractor total should now include the payment
     // Look for the manual payment badge (green badge showing "+$250.00")
-    const paymentBadge = contractorRow.locator('[class*="badge"]').filter({ hasText: '+$250' });
-    await expect(paymentBadge).toBeVisible({ timeout: 5000 });
+    // Note: Badge component renders as a div with classes like "inline-flex", "rounded-full" but no "badge" in class name
+    const paymentAmount = contractorRow.getByText(/\+\$250/);
+    await expect(paymentAmount).toBeVisible({ timeout: 5000 });
     
-    // Hover over the badge to see the tooltip with payment details
-    await paymentBadge.hover();
+    // Hover over the payment amount to see the tooltip with payment details
+    await paymentAmount.hover();
     
-    // The tooltip should show the payment description
-    await expect(page.getByText('Window cleaning')).toBeVisible({ timeout: 5000 });
+    // The tooltip should show the payment description - use .first() for strict mode
+    await expect(page.getByRole('tooltip').getByText('Window cleaning').first()).toBeVisible({ timeout: 5000 });
   });
 });

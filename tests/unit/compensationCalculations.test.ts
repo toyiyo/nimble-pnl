@@ -752,3 +752,163 @@ describe('calculateContractorPayForPeriod - hire date handling', () => {
   });
 });
 
+// ============================================================================
+// Per-Job Contractor Manual Payments
+// ============================================================================
+
+describe('Per-Job Contractor Payment Utilities', () => {
+  describe('createManualContractorPayment', () => {
+    it('creates a valid manual payment record for per-job contractor', async () => {
+      const { createManualContractorPayment } = await import('@/utils/compensationCalculations');
+      
+      const payment = createManualContractorPayment({
+        employeeId: 'emp-123',
+        restaurantId: 'rest-456',
+        date: '2024-12-15',
+        amount: 50000, // $500
+        description: 'Completed catering event',
+      });
+      
+      expect(payment).toEqual({
+        employee_id: 'emp-123',
+        restaurant_id: 'rest-456',
+        date: '2024-12-15',
+        allocated_cost: 50000,
+        compensation_type: 'contractor',
+        source: 'per-job',
+        notes: 'Completed catering event',
+      });
+    });
+
+    it('validates required fields', async () => {
+      const { createManualContractorPayment } = await import('@/utils/compensationCalculations');
+      
+      expect(() => createManualContractorPayment({
+        employeeId: '',
+        restaurantId: 'rest-456',
+        date: '2024-12-15',
+        amount: 50000,
+      })).toThrow('Employee ID is required');
+      
+      expect(() => createManualContractorPayment({
+        employeeId: 'emp-123',
+        restaurantId: '',
+        date: '2024-12-15',
+        amount: 50000,
+      })).toThrow('Restaurant ID is required');
+    });
+
+    it('validates amount is positive', async () => {
+      const { createManualContractorPayment } = await import('@/utils/compensationCalculations');
+      
+      expect(() => createManualContractorPayment({
+        employeeId: 'emp-123',
+        restaurantId: 'rest-456',
+        date: '2024-12-15',
+        amount: 0,
+      })).toThrow('Amount must be positive');
+      
+      expect(() => createManualContractorPayment({
+        employeeId: 'emp-123',
+        restaurantId: 'rest-456',
+        date: '2024-12-15',
+        amount: -100,
+      })).toThrow('Amount must be positive');
+    });
+
+    it('validates date format', async () => {
+      const { createManualContractorPayment } = await import('@/utils/compensationCalculations');
+      
+      expect(() => createManualContractorPayment({
+        employeeId: 'emp-123',
+        restaurantId: 'rest-456',
+        date: 'invalid-date',
+        amount: 50000,
+      })).toThrow('Invalid date format');
+    });
+  });
+
+  describe('calculateTotalManualPayments', () => {
+    it('sums manual payments for a contractor in a period', async () => {
+      const { calculateTotalManualPayments } = await import('@/utils/compensationCalculations');
+      
+      const payments = [
+        { allocated_cost: 50000, date: '2024-12-01', source: 'per-job' },
+        { allocated_cost: 75000, date: '2024-12-10', source: 'per-job' },
+        { allocated_cost: 30000, date: '2024-12-15', source: 'per-job' },
+      ];
+      
+      const total = calculateTotalManualPayments(payments);
+      
+      expect(total).toBe(155000); // $1,550
+    });
+
+    it('handles empty payments array', async () => {
+      const { calculateTotalManualPayments } = await import('@/utils/compensationCalculations');
+      
+      const total = calculateTotalManualPayments([]);
+      
+      expect(total).toBe(0);
+    });
+
+    it('only sums per-job and manual source payments', async () => {
+      const { calculateTotalManualPayments } = await import('@/utils/compensationCalculations');
+      
+      const payments = [
+        { allocated_cost: 50000, date: '2024-12-01', source: 'per-job' },
+        { allocated_cost: 75000, date: '2024-12-10', source: 'auto' }, // Should be excluded
+        { allocated_cost: 30000, date: '2024-12-15', source: 'manual' },
+      ];
+      
+      const total = calculateTotalManualPayments(payments);
+      
+      expect(total).toBe(80000); // $500 + $300 (excludes $750 auto)
+    });
+  });
+
+  describe('isPerJobContractor', () => {
+    it('returns true for per-job contractors', async () => {
+      const { isPerJobContractor } = await import('@/utils/compensationCalculations');
+      
+      const employee = createMockEmployee({
+        compensation_type: 'contractor',
+        contractor_payment_interval: 'per-job',
+      });
+      
+      expect(isPerJobContractor(employee)).toBe(true);
+    });
+
+    it('returns false for weekly contractors', async () => {
+      const { isPerJobContractor } = await import('@/utils/compensationCalculations');
+      
+      const employee = createMockEmployee({
+        compensation_type: 'contractor',
+        contractor_payment_interval: 'weekly',
+      });
+      
+      expect(isPerJobContractor(employee)).toBe(false);
+    });
+
+    it('returns false for hourly employees', async () => {
+      const { isPerJobContractor } = await import('@/utils/compensationCalculations');
+      
+      const employee = createMockEmployee({
+        compensation_type: 'hourly',
+      });
+      
+      expect(isPerJobContractor(employee)).toBe(false);
+    });
+
+    it('returns false for salaried employees', async () => {
+      const { isPerJobContractor } = await import('@/utils/compensationCalculations');
+      
+      const employee = createMockEmployee({
+        compensation_type: 'salary',
+      });
+      
+      expect(isPerJobContractor(employee)).toBe(false);
+    });
+  });
+});
+
+

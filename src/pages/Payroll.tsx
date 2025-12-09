@@ -12,11 +12,15 @@ import {
 } from '@/components/ui/tooltip';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePayroll } from '@/hooks/usePayroll';
+import { useEmployees } from '@/hooks/useEmployees';
 import {
   formatCurrency,
   formatHours,
   exportPayrollToCSV,
+  EmployeePayroll,
 } from '@/utils/payrollCalculations';
+import { isPerJobContractor } from '@/utils/compensationCalculations';
+import { AddManualPaymentDialog } from '@/components/payroll/AddManualPaymentDialog';
 import {
   DollarSign,
   Clock,
@@ -26,6 +30,9 @@ import {
   TrendingUp,
   Users,
   AlertTriangle,
+  Plus,
+  Briefcase,
+  Banknote,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, subWeeks, addWeeks } from 'date-fns';
 import {
@@ -95,7 +102,67 @@ const Payroll = () => {
   };
 
   const { start, end } = getDateRange();
-  const { payrollPeriod, loading, error, refetch } = usePayroll(restaurantId, start, end);
+  const { 
+    payrollPeriod, 
+    loading, 
+    error, 
+    refetch,
+    addManualPayment,
+    isAddingPayment,
+  } = usePayroll(restaurantId, start, end);
+  
+  const { employees } = useEmployees(restaurantId);
+  
+  // State for manual payment dialog
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
+  // Helper to check if an employee is a per-job contractor
+  const isEmployeePerJobContractor = (employeeId: string) => {
+    const employee = employees.find(e => e.id === employeeId);
+    return employee ? isPerJobContractor(employee) : false;
+  };
+
+  // Helper to get compensation type badge
+  const getCompensationBadge = (emp: EmployeePayroll) => {
+    switch (emp.compensationType) {
+      case 'salary':
+        return (
+          <Badge variant="outline" className="text-xs">
+            <Banknote className="h-3 w-3 mr-1" />
+            Salary
+          </Badge>
+        );
+      case 'contractor':
+        return (
+          <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+            <Briefcase className="h-3 w-3 mr-1" />
+            {isEmployeePerJobContractor(emp.employeeId) ? 'Per-Job' : 'Contractor'}
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const handleAddPayment = (employeeId: string, employeeName: string) => {
+    setSelectedEmployee({ id: employeeId, name: employeeName });
+    setPaymentDialogOpen(true);
+  };
+
+  const handlePaymentSubmit = (data: {
+    employeeId: string;
+    date: string;
+    amount: number;
+    description?: string;
+  }) => {
+    addManualPayment(data);
+    setPaymentDialogOpen(false);
+    setSelectedEmployee(null);
+  };
 
   const handleExportCSV = () => {
     if (!payrollPeriod) return;
@@ -386,14 +453,16 @@ const Payroll = () => {
                     <TableHead className="text-right">OT Pay</TableHead>
                     <TableHead className="text-right">Tips</TableHead>
                     <TableHead className="text-right font-semibold">Total Pay</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {payrollPeriod.employees.map((employee) => (
                     <TableRow key={employee.employeeId} className={employee.incompleteShifts?.length ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}>
                       <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          {employee.employeeName}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span>{employee.employeeName}</span>
+                          {getCompensationBadge(employee)}
                           {employee.incompleteShifts && employee.incompleteShifts.length > 0 && (
                             <TooltipProvider>
                               <Tooltip>
@@ -414,26 +483,58 @@ const Payroll = () => {
                               </Tooltip>
                             </TooltipProvider>
                           )}
+                          {/* Show manual payment info if any */}
+                          {employee.manualPaymentsTotal > 0 && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                    +{formatCurrency(employee.manualPaymentsTotal)}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent side="right" className="max-w-xs">
+                                  <p className="font-medium mb-1">{employee.manualPayments.length} manual payment(s):</p>
+                                  <ul className="text-xs space-y-0.5">
+                                    {employee.manualPayments.map((payment, idx) => (
+                                      <li key={idx}>• {format(new Date(payment.date), 'MMM d')}: {formatCurrency(payment.amount)}{payment.description ? ` - ${payment.description}` : ''}</li>
+                                    ))}
+                                  </ul>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>{employee.position}</TableCell>
                       <TableCell className="text-right">
-                        {formatCurrency(employee.hourlyRate)}
+                        {employee.compensationType === 'hourly' 
+                          ? formatCurrency(employee.hourlyRate)
+                          : employee.compensationType === 'salary'
+                            ? formatCurrency(employee.salaryPay) + '/period'
+                            : employee.contractorPay > 0
+                              ? formatCurrency(employee.contractorPay) + '/period'
+                              : 'Per-Job'
+                        }
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatHours(employee.regularHours)}
+                        {employee.compensationType === 'hourly' ? formatHours(employee.regularHours) : '-'}
                       </TableCell>
                       <TableCell className="text-right">
-                        {employee.overtimeHours > 0 ? (
+                        {employee.compensationType === 'hourly' && employee.overtimeHours > 0 ? (
                           <Badge variant="secondary">
                             {formatHours(employee.overtimeHours)}
                           </Badge>
                         ) : (
-                          '0.00'
+                          employee.compensationType === 'hourly' ? '0.00' : '-'
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatCurrency(employee.regularPay)}
+                        {employee.compensationType === 'hourly' 
+                          ? formatCurrency(employee.regularPay)
+                          : employee.compensationType === 'salary'
+                            ? formatCurrency(employee.salaryPay)
+                            : formatCurrency(employee.contractorPay + employee.manualPaymentsTotal)
+                        }
                       </TableCell>
                       <TableCell className="text-right">
                         {employee.overtimePay > 0 ? formatCurrency(employee.overtimePay) : '-'}
@@ -443,6 +544,19 @@ const Payroll = () => {
                       </TableCell>
                       <TableCell className="text-right font-semibold">
                         {formatCurrency(employee.totalPay)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isEmployeePerJobContractor(employee.employeeId) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAddPayment(employee.employeeId, employee.employeeName)}
+                            aria-label={`Add payment for ${employee.employeeName}`}
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add Payment
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -457,7 +571,7 @@ const Payroll = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       {formatCurrency(
-                        payrollPeriod.employees.reduce((sum, e) => sum + e.regularPay, 0)
+                        payrollPeriod.employees.reduce((sum, e) => sum + e.regularPay + e.salaryPay + e.contractorPay + e.manualPaymentsTotal, 0)
                       )}
                     </TableCell>
                     <TableCell className="text-right">
@@ -473,6 +587,7 @@ const Payroll = () => {
                         payrollPeriod.totalGrossPay + payrollPeriod.totalTips
                       )}
                     </TableCell>
+                    <TableCell>{/* Actions column - empty for total row */}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -513,12 +628,26 @@ const Payroll = () => {
                 <li>Only completed time punches (clock in/out pairs) are included</li>
                 <li>Break time is excluded from worked hours</li>
                 <li>Tips are aggregated from the employee_tips table</li>
+                <li>Salaried employees and regular contractors have prorated pay for the period</li>
+                <li>Per-job contractors require manual payment entry</li>
                 <li>Export CSV for integration with payroll systems (ADP, Gusto, etc.)</li>
               </ul>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Add Manual Payment Dialog */}
+      {selectedEmployee && (
+        <AddManualPaymentDialog
+          open={paymentDialogOpen}
+          onOpenChange={setPaymentDialogOpen}
+          employeeName={selectedEmployee.name}
+          employeeId={selectedEmployee.id}
+          onSubmit={handlePaymentSubmit}
+          isSubmitting={isAddingPayment}
+        />
+      )}
     </div>
   );
 };

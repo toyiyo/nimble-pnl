@@ -5688,52 +5688,18 @@ export type Database = {
         }
         Returns: Json
       }
-      process_unified_inventory_deduction:
-        | {
-            Args: {
-              p_pos_item_name: string
-              p_quantity_sold: number
-              p_restaurant_id: string
-              p_restaurant_timezone?: string
-              p_sale_date: string
-              p_sale_time?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_external_order_id?: string
-              p_pos_item_name: string
-              p_quantity_sold: number
-              p_restaurant_id: string
-              p_restaurant_timezone?: string
-              p_sale_date: string
-              p_sale_time?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_external_order_id?: string
-              p_pos_item_name: string
-              p_quantity_sold: number
-              p_restaurant_id: string
-              p_restaurant_timezone?: string
-              p_sale_date: string
-              p_sale_time?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_external_order_id?: string
-              p_pos_item_name: string
-              p_quantity_sold: number
-              p_restaurant_id: string
-              p_sale_date: string
-            }
-            Returns: Json
-          }
+      process_unified_inventory_deduction: {
+        Args: {
+          p_external_order_id?: string
+          p_pos_item_name: string
+          p_quantity_sold: number
+          p_restaurant_id: string
+          p_restaurant_timezone?: string
+          p_sale_date: string
+          p_sale_time?: string
+        }
+        Returns: Json
+      }
       publish_schedule: {
         Args: {
           p_notes?: string
@@ -5768,14 +5734,6 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
-      simulate_inventory_deduction: {
-        Args: {
-          p_pos_item_name: string
-          p_quantity_sold: number
-          p_restaurant_id: string
-        }
-        Returns: Json
-      }
       soundex: { Args: { "": string }; Returns: string }
       split_bank_transaction: {
         Args: { p_splits: Json; p_transaction_id: string }

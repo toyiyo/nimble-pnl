@@ -636,3 +636,136 @@ export function calculateContractorPayForPeriod(
   return dailyRate * daysInPeriod;
 }
 
+// ============================================================================
+// Per-Job Contractor Manual Payment Utilities
+// ============================================================================
+
+/**
+ * Input for creating a manual contractor payment
+ */
+export interface ManualContractorPaymentInput {
+  employeeId: string;
+  restaurantId: string;
+  date: string;
+  amount: number; // In cents
+  description?: string;
+}
+
+/**
+ * Output record for daily_labor_allocations table
+ */
+export interface ManualContractorPaymentRecord {
+  employee_id: string;
+  restaurant_id: string;
+  date: string;
+  allocated_cost: number;
+  compensation_type: 'contractor';
+  source: 'per-job';
+  notes?: string;
+}
+
+/**
+ * Validates a date string is in YYYY-MM-DD format
+ */
+function isValidDateFormat(date: string): boolean {
+  const regex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!regex.test(date)) return false;
+  const parsed = new Date(date);
+  return !Number.isNaN(parsed.getTime());
+}
+
+/**
+ * Create a manual payment record for a per-job contractor
+ * 
+ * @param input - Payment details
+ * @returns A record ready to insert into daily_labor_allocations
+ * @throws Error if validation fails
+ * 
+ * @example
+ * createManualContractorPayment({
+ *   employeeId: 'emp-123',
+ *   restaurantId: 'rest-456',
+ *   date: '2024-12-15',
+ *   amount: 50000, // $500
+ *   description: 'Completed catering event'
+ * });
+ */
+export function createManualContractorPayment(
+  input: ManualContractorPaymentInput
+): ManualContractorPaymentRecord {
+  // Validate required fields
+  if (!input.employeeId) {
+    throw new Error('Employee ID is required');
+  }
+  if (!input.restaurantId) {
+    throw new Error('Restaurant ID is required');
+  }
+  if (!input.date) {
+    throw new Error('Date is required');
+  }
+  if (!isValidDateFormat(input.date)) {
+    throw new Error('Invalid date format. Expected YYYY-MM-DD');
+  }
+  if (input.amount <= 0) {
+    throw new Error('Amount must be positive');
+  }
+
+  return {
+    employee_id: input.employeeId,
+    restaurant_id: input.restaurantId,
+    date: input.date,
+    allocated_cost: input.amount,
+    compensation_type: 'contractor',
+    source: 'per-job',
+    notes: input.description,
+  };
+}
+
+/**
+ * Payment record from the database with source field
+ */
+export interface PaymentAllocation {
+  allocated_cost: number;
+  date: string;
+  source: 'auto' | 'manual' | 'per-job';
+}
+
+/**
+ * Calculate total from manual/per-job payments
+ * 
+ * @param payments - Array of payment allocations
+ * @returns Total amount in cents
+ * 
+ * @example
+ * calculateTotalManualPayments([
+ *   { allocated_cost: 50000, date: '2024-12-01', source: 'per-job' },
+ *   { allocated_cost: 75000, date: '2024-12-10', source: 'per-job' },
+ * ]);
+ * // Returns 125000 ($1,250)
+ */
+export function calculateTotalManualPayments(
+  payments: PaymentAllocation[]
+): number {
+  return payments
+    .filter(p => p.source === 'per-job' || p.source === 'manual')
+    .reduce((sum, p) => sum + p.allocated_cost, 0);
+}
+
+/**
+ * Check if an employee is a per-job contractor
+ * 
+ * @param employee - The employee to check
+ * @returns true if employee is a contractor with per-job payment interval
+ * 
+ * @example
+ * isPerJobContractor({ compensation_type: 'contractor', contractor_payment_interval: 'per-job' });
+ * // Returns true
+ */
+export function isPerJobContractor(employee: Employee): boolean {
+  return (
+    employee.compensation_type === 'contractor' &&
+    employee.contractor_payment_interval === 'per-job'
+  );
+}
+
+

@@ -537,3 +537,154 @@ test.describe('Payroll Page Functionality', () => {
     await expect(exportButton).toBeVisible();
   });
 });
+
+// ============================================================================
+// Per-Job Contractor Manual Payment Flow
+// ============================================================================
+
+test.describe('Per-Job Contractor Manual Payments', () => {
+  test.beforeEach(async ({ page }) => {
+    const testUser = generateTestUser();
+    await signUpAndCreateRestaurant(page, testUser);
+  });
+
+  test('can create per-job contractor and add manual payment', async ({ page }) => {
+    // Step 1: Create a per-job contractor on scheduling page
+    await page.goto('/scheduling');
+    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+
+    await page.getByRole('button', { name: /add employee/i }).first().click();
+    const employeeDialog = page.getByRole('dialog');
+    await expect(employeeDialog).toBeVisible();
+
+    const contractorName = `Contractor ${Date.now()}`;
+    await employeeDialog.getByLabel(/name/i).first().fill(contractorName);
+
+    // Select Contractor compensation type
+    const compensationTypeSelect = employeeDialog.getByLabel(/compensation type/i);
+    await compensationTypeSelect.click();
+    await page.getByRole('option', { name: /contractor/i }).click();
+
+    // Fill payment amount
+    await employeeDialog.getByLabel(/payment amount/i).fill('500');
+
+    // Select "Per Job" payment interval
+    const paymentIntervalSelect = employeeDialog.getByLabel(/payment interval/i);
+    await paymentIntervalSelect.click();
+    await page.getByRole('option', { name: /per job/i }).click();
+
+    // Submit
+    await employeeDialog.getByRole('button', { name: /add employee|save/i }).click();
+    await expect(employeeDialog).not.toBeVisible({ timeout: 5000 });
+
+    // Step 2: Navigate to payroll page
+    await page.goto('/payroll');
+    await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
+
+    // Per-job contractor should appear with $0.00 initial pay
+    await expect(page.getByText(contractorName)).toBeVisible({ timeout: 5000 });
+    
+    // Should see "Add Payment" button for per-job contractors
+    const contractorRow = page.locator('tr', { has: page.getByText(contractorName) });
+    const addPaymentButton = contractorRow.getByRole('button', { name: /add payment/i });
+    await expect(addPaymentButton).toBeVisible();
+
+    // Step 3: Click "Add Payment" and enter payment details
+    await addPaymentButton.click();
+    
+    const paymentDialog = page.getByRole('dialog');
+    await expect(paymentDialog).toBeVisible();
+    await expect(paymentDialog.getByText(/add.*payment/i)).toBeVisible();
+
+    // Fill payment details
+    await paymentDialog.getByLabel(/amount/i).fill('750');
+    await paymentDialog.getByLabel(/description|job|notes/i).fill('Kitchen deep clean');
+
+    // Submit payment
+    await paymentDialog.getByRole('button', { name: /add|save|submit/i }).click();
+    await expect(paymentDialog).not.toBeVisible({ timeout: 5000 });
+
+    // Step 4: Verify payment appears in contractor's total
+    // The contractor's total pay should now show $750.00
+    await expect(contractorRow.getByText('$750.00')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('per-job contractor shows indicator that manual payment is needed', async ({ page }) => {
+    // Create a per-job contractor
+    await page.goto('/scheduling');
+    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+
+    await page.getByRole('button', { name: /add employee/i }).first().click();
+    const dialog = page.getByRole('dialog');
+
+    const contractorName = `PerJob ${Date.now()}`;
+    await dialog.getByLabel(/name/i).first().fill(contractorName);
+
+    const compensationTypeSelect = dialog.getByLabel(/compensation type/i);
+    await compensationTypeSelect.click();
+    await page.getByRole('option', { name: /contractor/i }).click();
+
+    await dialog.getByLabel(/payment amount/i).fill('500');
+
+    const paymentIntervalSelect = dialog.getByLabel(/payment interval/i);
+    await paymentIntervalSelect.click();
+    await page.getByRole('option', { name: /per job/i }).click();
+
+    await dialog.getByRole('button', { name: /add employee|save/i }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    // Navigate to payroll
+    await page.goto('/payroll');
+    await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
+
+    // Should see indicator that this is a per-job contractor
+    const contractorRow = page.locator('tr', { has: page.getByText(contractorName) });
+    await expect(contractorRow.getByText(/per.?job/i)).toBeVisible();
+  });
+
+  test('can view payment history for per-job contractor', async ({ page }) => {
+    // Create a per-job contractor
+    await page.goto('/scheduling');
+    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+
+    await page.getByRole('button', { name: /add employee/i }).first().click();
+    const employeeDialog = page.getByRole('dialog');
+
+    const contractorName = `History ${Date.now()}`;
+    await employeeDialog.getByLabel(/name/i).first().fill(contractorName);
+
+    const compensationTypeSelect = employeeDialog.getByLabel(/compensation type/i);
+    await compensationTypeSelect.click();
+    await page.getByRole('option', { name: /contractor/i }).click();
+
+    await employeeDialog.getByLabel(/payment amount/i).fill('500');
+
+    const paymentIntervalSelect = employeeDialog.getByLabel(/payment interval/i);
+    await paymentIntervalSelect.click();
+    await page.getByRole('option', { name: /per job/i }).click();
+
+    await employeeDialog.getByRole('button', { name: /add employee|save/i }).click();
+    await expect(employeeDialog).not.toBeVisible({ timeout: 5000 });
+
+    // Go to payroll and add a payment
+    await page.goto('/payroll');
+    await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
+
+    const contractorRow = page.locator('tr', { has: page.getByText(contractorName) });
+    await contractorRow.getByRole('button', { name: /add payment/i }).click();
+
+    const paymentDialog = page.getByRole('dialog');
+    await paymentDialog.getByLabel(/amount/i).fill('250');
+    await paymentDialog.getByLabel(/description|job|notes/i).fill('Window cleaning');
+    await paymentDialog.getByRole('button', { name: /add|save|submit/i }).click();
+    await expect(paymentDialog).not.toBeVisible({ timeout: 5000 });
+
+    // Click to view payment history
+    await contractorRow.getByRole('button', { name: /view payments|history/i }).click();
+
+    const historyDialog = page.getByRole('dialog');
+    await expect(historyDialog).toBeVisible();
+    await expect(historyDialog.getByText('Window cleaning')).toBeVisible();
+    await expect(historyDialog.getByText('$250.00')).toBeVisible();
+  });
+});

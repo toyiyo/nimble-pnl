@@ -27,6 +27,13 @@ export interface IncompleteShift {
   message: string;
 }
 
+export interface ManualPayment {
+  id?: string;
+  date: string;
+  amount: number; // In cents
+  description?: string;
+}
+
 export interface EmployeePayroll {
   employeeId: string;
   employeeName: string;
@@ -39,6 +46,8 @@ export interface EmployeePayroll {
   overtimePay: number; // In cents
   salaryPay: number; // In cents (for salaried employees)
   contractorPay: number; // In cents (for contractors)
+  manualPayments: ManualPayment[]; // Manual payments for per-job contractors
+  manualPaymentsTotal: number; // Sum of manual payments in cents
   grossPay: number; // In cents
   totalTips: number; // In cents
   totalPay: number; // In cents (gross + tips)
@@ -394,7 +403,8 @@ export function calculateEmployeePay(
   punches: TimePunch[],
   tips: number, // In cents
   periodStartDate?: Date,
-  periodEndDate?: Date
+  periodEndDate?: Date,
+  manualPayments: ManualPayment[] = []
 ): EmployeePayroll {
   const compensationType = employee.compensation_type || 'hourly';
   
@@ -432,7 +442,10 @@ export function calculateEmployeePay(
     contractorPay = calculateContractorPayForPeriod(employee, periodStartDate, periodEndDate);
   }
 
-  const grossPay = regularPay + overtimePay + salaryPay + contractorPay;
+  // Calculate manual payments total
+  const manualPaymentsTotal = manualPayments.reduce((sum, p) => sum + p.amount, 0);
+
+  const grossPay = regularPay + overtimePay + salaryPay + contractorPay + manualPaymentsTotal;
   const totalPay = grossPay + tips;
 
   return {
@@ -447,6 +460,8 @@ export function calculateEmployeePay(
     overtimePay,
     salaryPay,
     contractorPay,
+    manualPayments,
+    manualPaymentsTotal,
     grossPay,
     totalTips: tips,
     totalPay,
@@ -480,13 +495,15 @@ export function calculatePayrollPeriod(
   endDate: Date,
   employees: Employee[],
   punchesPerEmployee: Map<string, TimePunch[]>,
-  tipsPerEmployee: Map<string, number>
+  tipsPerEmployee: Map<string, number>,
+  manualPaymentsPerEmployee: Map<string, ManualPayment[]> = new Map()
 ): PayrollPeriod {
   const employeePayrolls = employees.map(employee => {
     const punches = punchesPerEmployee.get(employee.id) || [];
     const tips = tipsPerEmployee.get(employee.id) || 0;
+    const manualPayments = manualPaymentsPerEmployee.get(employee.id) || [];
     // Pass period dates for salary/contractor calculations
-    return calculateEmployeePay(employee, punches, tips, startDate, endDate);
+    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments);
   });
 
   const totalRegularHours = employeePayrolls.reduce((sum, ep) => sum + ep.regularHours, 0);

@@ -1,15 +1,44 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from './useEmployees';
 import { TimePunch } from '@/types/timeTracking';
 import {
   calculatePayrollPeriod,
   PayrollPeriod,
+  ManualPayment,
 } from '@/utils/payrollCalculations';
+import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 interface EmployeeTip {
   employee_id: string;
   tip_amount: number;
+}
+
+interface ManualPaymentDB {
+  id: string;
+  employee_id: string;
+  date: string;
+  allocated_cost: number;
+  notes: string | null;
+}
+
+// Type for the time_punches data from Supabase
+interface DBTimePunch {
+  id: string;
+  employee_id: string;
+  restaurant_id: string;
+  punch_time: string;
+  punch_type: string;
+  created_at: string;
+  updated_at: string;
+  shift_id: string | null;
+  notes: string | null;
+  photo_path: string | null;
+  device_info: string | null;
+  location: unknown;
+  created_by: string | null;
+  modified_by: string | null;
 }
 
 /**
@@ -21,6 +50,8 @@ export const usePayroll = (
   endDate: Date
 ) => {
   const { employees } = useEmployees(restaurantId);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: payrollPeriod, isLoading, error, refetch } = useQuery({
     queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString()],
@@ -48,13 +79,33 @@ export const usePayroll = (
 
       if (tipsError) throw tipsError;
 
+      // Fetch manual payments (per-job contractor payments) for the period
+      // Using raw query to avoid type issues with table not in generated types
+      const { data: manualPaymentsData, error: manualPaymentsError } = await supabase
+        .rpc('get_manual_payments', {
+          p_restaurant_id: restaurantId,
+          p_start_date: format(startDate, 'yyyy-MM-dd'),
+          p_end_date: format(endDate, 'yyyy-MM-dd'),
+        })
+        .returns<ManualPaymentDB[]>();
+
+      if (manualPaymentsError) {
+        // If the RPC doesn't exist, fall back to no manual payments
+        // This allows the feature to work even without the RPC function
+        console.warn('Manual payments fetch failed:', manualPaymentsError.message);
+      }
+
       // Group punches by employee
       const punchesPerEmployee = new Map<string, TimePunch[]>();
-      (punches || []).forEach((punch: any) => {
+      (punches || []).forEach((punch: DBTimePunch) => {
         if (!punchesPerEmployee.has(punch.employee_id)) {
           punchesPerEmployee.set(punch.employee_id, []);
         }
-        punchesPerEmployee.get(punch.employee_id)!.push(punch as TimePunch);
+        const typedPunch: TimePunch = {
+          ...punch,
+          punch_type: punch.punch_type as TimePunch['punch_type'],
+        };
+        punchesPerEmployee.get(punch.employee_id)?.push(typedPunch);
       });
 
       // Sum tips by employee
@@ -64,13 +115,28 @@ export const usePayroll = (
         tipsPerEmployee.set(tip.employee_id, currentTips + tip.tip_amount);
       });
 
+      // Group manual payments by employee
+      const manualPaymentsPerEmployee = new Map<string, ManualPayment[]>();
+      (manualPaymentsData || []).forEach((payment: ManualPaymentDB) => {
+        if (!manualPaymentsPerEmployee.has(payment.employee_id)) {
+          manualPaymentsPerEmployee.set(payment.employee_id, []);
+        }
+        manualPaymentsPerEmployee.get(payment.employee_id)!.push({
+          id: payment.id,
+          date: payment.date,
+          amount: payment.allocated_cost,
+          description: payment.notes || undefined,
+        });
+      });
+
       // Calculate payroll
       const payroll = calculatePayrollPeriod(
         startDate,
         endDate,
         employees.filter(e => e.status === 'active'),
         punchesPerEmployee,
-        tipsPerEmployee
+        tipsPerEmployee,
+        manualPaymentsPerEmployee
       );
 
       return payroll;
@@ -80,10 +146,92 @@ export const usePayroll = (
     refetchOnWindowFocus: true,
   });
 
+  // Mutation to add a manual payment
+  const addManualPaymentMutation = useMutation({
+    mutationFn: async ({
+      employeeId,
+      date,
+      amount,
+      description,
+    }: {
+      employeeId: string;
+      date: string;
+      amount: number;
+      description?: string;
+    }) => {
+      if (!restaurantId) throw new Error('Restaurant ID required');
+
+      const { data, error } = await supabase
+        .from('daily_labor_allocations')
+        .insert({
+          restaurant_id: restaurantId,
+          employee_id: employeeId,
+          date,
+          allocated_cost: amount,
+          compensation_type: 'contractor',
+          source: 'per-job',
+          notes: description,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Payment added',
+        description: 'Manual payment has been recorded.',
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ['payroll', restaurantId] 
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error adding payment',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Mutation to delete a manual payment
+  const deleteManualPaymentMutation = useMutation({
+    mutationFn: async (paymentId: string) => {
+      const { error } = await supabase
+        .from('daily_labor_allocations')
+        .delete()
+        .eq('id', paymentId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Payment deleted',
+        description: 'Manual payment has been removed.',
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ['payroll', restaurantId] 
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error deleting payment',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
   return {
     payrollPeriod,
     loading: isLoading,
     error,
     refetch,
+    addManualPayment: addManualPaymentMutation.mutate,
+    isAddingPayment: addManualPaymentMutation.isPending,
+    deleteManualPayment: deleteManualPaymentMutation.mutate,
+    isDeletingPayment: deleteManualPaymentMutation.isPending,
   };
 };

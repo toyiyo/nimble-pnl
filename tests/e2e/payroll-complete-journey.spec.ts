@@ -517,7 +517,11 @@ test.describe('Complete Payroll Journey', () => {
       
       await dialog.getByRole('button', { name: /add employee|save/i }).click();
       await expect(dialog).not.toBeVisible({ timeout: 5000 });
-      await page.waitForTimeout(500);
+      
+      // Wait for the employee to appear in the employee table (confirms save completed)
+      // Look in the table row specifically to avoid toast notifications
+      const employeeRow = page.locator('tr', { has: page.getByText(emp.name) });
+      await expect(employeeRow).toBeVisible({ timeout: 5000 });
     }
 
     // ============================================================================
@@ -525,10 +529,9 @@ test.describe('Complete Payroll Journey', () => {
     // ============================================================================
     
     await page.goto('/');
-    await page.waitForTimeout(1000);
-
-    // Dashboard should display successfully
-    await expect(page.getByText(testUser.restaurantName).first()).toBeVisible();
+    
+    // Wait for dashboard to load with explicit checks
+    await expect(page.getByText(testUser.restaurantName).first()).toBeVisible({ timeout: 10000 });
 
     // ============================================================================
     // Verify: View in Payroll page
@@ -537,11 +540,11 @@ test.describe('Complete Payroll Journey', () => {
     await page.goto('/payroll');
     await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
 
-    // Should see payroll summary sections
-    await expect(page.getByText(/employees/i)).toBeVisible();
+    // Should see payroll summary sections with explicit timeouts
+    await expect(page.getByText(/employees/i)).toBeVisible({ timeout: 5000 });
     
     // All three employee types should be represented in the page
     // (May show $0 without data, but structure should exist)
-    await expect(page.getByText(/employee payroll details|payroll summary/i)).toBeVisible();
+    await expect(page.getByText(/employee payroll details|payroll summary/i)).toBeVisible({ timeout: 5000 });
   });
 });

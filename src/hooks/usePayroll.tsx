@@ -80,20 +80,15 @@ export const usePayroll = (
       if (tipsError) throw tipsError;
 
       // Fetch manual payments (per-job contractor payments) for the period
-      // Using raw query to avoid type issues with table not in generated types
       const { data: manualPaymentsData, error: manualPaymentsError } = await supabase
-        .rpc('get_manual_payments', {
-          p_restaurant_id: restaurantId,
-          p_start_date: format(startDate, 'yyyy-MM-dd'),
-          p_end_date: format(endDate, 'yyyy-MM-dd'),
-        })
-        .returns<ManualPaymentDB[]>();
+        .from('daily_labor_allocations')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('source', 'per-job')
+        .gte('date', format(startDate, 'yyyy-MM-dd'))
+        .lte('date', format(endDate, 'yyyy-MM-dd'));
 
-      if (manualPaymentsError) {
-        // If the RPC doesn't exist, fall back to no manual payments
-        // This allows the feature to work even without the RPC function
-        console.warn('Manual payments fetch failed:', manualPaymentsError.message);
-      }
+      if (manualPaymentsError) throw manualPaymentsError;
 
       // Group punches by employee
       const punchesPerEmployee = new Map<string, TimePunch[]>();
@@ -104,6 +99,9 @@ export const usePayroll = (
         const typedPunch: TimePunch = {
           ...punch,
           punch_type: punch.punch_type as TimePunch['punch_type'],
+          location: punch.location && typeof punch.location === 'object' && 'latitude' in punch.location && 'longitude' in punch.location
+            ? punch.location as { latitude: number; longitude: number }
+            : undefined,
         };
         punchesPerEmployee.get(punch.employee_id)?.push(typedPunch);
       });
@@ -117,16 +115,19 @@ export const usePayroll = (
 
       // Group manual payments by employee
       const manualPaymentsPerEmployee = new Map<string, ManualPayment[]>();
-      (manualPaymentsData || []).forEach((payment: ManualPaymentDB) => {
+      (manualPaymentsData || []).forEach((payment) => {
         if (!manualPaymentsPerEmployee.has(payment.employee_id)) {
           manualPaymentsPerEmployee.set(payment.employee_id, []);
         }
-        manualPaymentsPerEmployee.get(payment.employee_id)!.push({
-          id: payment.id,
-          date: payment.date,
-          amount: payment.allocated_cost,
-          description: payment.notes || undefined,
-        });
+        const paymentsList = manualPaymentsPerEmployee.get(payment.employee_id);
+        if (paymentsList) {
+          paymentsList.push({
+            id: payment.id,
+            date: payment.date,
+            amount: payment.allocated_cost,
+            description: payment.notes || undefined,
+          });
+        }
       });
 
       // Calculate payroll

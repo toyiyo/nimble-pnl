@@ -2,6 +2,25 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 
+/**
+ * ⚠️ DEPRECATED: Do NOT use this hook - use useLaborCostsFromTimeTracking instead
+ * 
+ * CONTEXT: This hook queries daily_labor_allocations aggregation table.
+ * This pattern has proven problematic (data sync issues, stale data).
+ * 
+ * NEW PATTERN: Calculate labor costs on-demand from source tables
+ * ✅ Use: useLaborCostsFromTimeTracking (calculates from time_punches + employees + per-job allocations)
+ * 
+ * See: src/hooks/useLaborCostsFromTimeTracking.tsx for the new approach
+ * See: src/hooks/usePayroll.tsx for the pattern we're following
+ * See: docs/INTEGRATIONS.md for data flow architecture
+ * 
+ * @deprecated Use useLaborCostsFromTimeTracking instead
+ */
+
+/**
+ * @deprecated Use useLaborCostsFromTimeTracking instead
+ */
 export interface LaborCostData {
   date: string;
   total_labor_cost: number;
@@ -11,6 +30,9 @@ export interface LaborCostData {
   total_hours: number;
 }
 
+/**
+ * @deprecated Use useLaborCostsFromTimeTracking instead
+ */
 export interface LaborCostsResult {
   dailyCosts: LaborCostData[];
   totalCost: number;
@@ -28,6 +50,7 @@ export interface LaborCostsResult {
  * 2. Salary allocations from daily_labor_allocations (compensation_type='salary')
  * 3. Contractor payments from daily_labor_allocations (compensation_type='contractor')
  * 
+ * @deprecated Use useLaborCostsFromTimeTracking instead - this queries aggregation tables
  * @param restaurantId - Restaurant ID to filter costs
  * @param dateFrom - Start date for the period
  * @param dateTo - End date for the period

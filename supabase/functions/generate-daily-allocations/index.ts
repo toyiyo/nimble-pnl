@@ -1,3 +1,21 @@
+// ⚠️ DEPRECATED: DO NOT USE - This Edge Function is no longer called
+// 
+// CONTEXT: This was a cron job to maintain daily_labor_allocations aggregation table.
+// This pattern has proven problematic (data sync issues, stale data).
+// 
+// NEW PATTERN: Calculate labor costs on-demand from source tables
+// ✅ Use: useLaborCostsFromTimeTracking (src/hooks/useLaborCostsFromTimeTracking.tsx)
+// ✅ Pattern: Query time_punches + employees + per-job allocations directly
+// 
+// See: src/hooks/useLaborCostsFromTimeTracking.tsx for the new approach
+// See: src/hooks/usePayroll.tsx for the pattern we're following
+// See: docs/INTEGRATIONS.md for data flow architecture
+//
+// This function remains for backwards compatibility but should not be called.
+// The cron job in migration 20251208210000_auto_generate_labor_allocations.sql is disabled.
+//
+// @deprecated Use useLaborCostsFromTimeTracking instead
+//
 // Edge Function: Generate Daily Labor Allocations (Cron Job)
 // Runs daily at 2 AM to ensure salary/contractor allocations exist
 // Schedule: "0 2 * * *" (daily at 2 AM)

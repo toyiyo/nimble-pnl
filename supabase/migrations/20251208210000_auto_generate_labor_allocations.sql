@@ -1,3 +1,20 @@
+-- ⚠️ DEPRECATED: DO NOT USE - This migration is no longer the source of truth for labor costs
+-- 
+-- CONTEXT: This was an attempt to maintain a synchronized daily_labor_allocations aggregation table
+-- for salary and contractor costs. This pattern has proven problematic (data sync issues).
+-- 
+-- NEW PATTERN: Calculate labor costs on-demand from source tables (like usePayroll does)
+-- - Hourly: time_punches table
+-- - Salary: employees table (compensation_type='salary', salary_amount, pay_period_type)
+-- - Contractor: daily_labor_allocations table (source='per-job' only - user-created records)
+-- 
+-- See: src/hooks/useLaborCostsFromTimeTracking.tsx for the new approach
+-- See: src/hooks/usePayroll.tsx for the pattern we're following
+-- See: docs/INTEGRATIONS.md for data flow architecture
+--
+-- ⚠️ The cron job in this migration is DISABLED to prevent auto-generation
+-- ⚠️ The functions remain for backwards compatibility but should not be called
+--
 -- Migration: Add automatic trigger for daily labor allocations
 -- This ensures salary and contractor allocations are created automatically
 -- JUST-IN-TIME: Only creates allocations for dates that are being calculated/viewed
@@ -173,24 +190,25 @@ COMMENT ON FUNCTION backfill_labor_allocations(UUID, DATE, DATE) IS
 
 -- =============================================================================
 -- CRON JOB SETUP - Automated Daily Allocations
+-- ⚠️ DISABLED - This approach is DEPRECATED
 -- =============================================================================
 --
--- This migration creates the functions AND schedules a daily cron job.
--- 
--- The cron job will:
+-- ❌ DO NOT USE: This cron job is disabled. The aggregation approach has been abandoned.
+-- ✅ NEW APPROACH: Calculate labor costs on-demand from source tables (see useLaborCostsFromTimeTracking)
+--
+-- Historical Context (for reference only):
+-- This migration originally created functions AND scheduled a daily cron job.
+-- The cron job would:
 -- - Run every day at 2 AM
 -- - Call the Edge Function: generate-daily-allocations
 -- - For each restaurant
 -- - Generate allocations for salary/contractor employees active TODAY
 --
--- This ensures:
--- ✓ Payroll data is always up-to-date
--- ✓ Dashboard shows accurate labor costs
--- ✓ No manual intervention required
--- ✓ Allocations respect hire/termination dates
+-- Problem: Maintaining synchronized aggregation tables creates data consistency issues.
+-- Solution: Query source tables directly (time_punches, employees) and calculate on-demand.
 -- =============================================================================
 
--- Unschedule existing job if it exists (for idempotency)
+-- Unschedule existing job if it exists (cleanup from previous installs)
 DO $migration$
 BEGIN
   -- Try to unschedule, ignore if doesn't exist
@@ -202,10 +220,9 @@ EXCEPTION
 END
 $migration$;
 
--- Schedule the daily allocation generation
--- Runs at 2 AM every day
--- NOTE: This will only work in production with pg_cron enabled
--- For local development, the allocations are generated just-in-time
+-- ⚠️ CRON JOB DISABLED - Code commented out to prevent automatic aggregation
+-- The cron.schedule call below is intentionally commented out
+/*
 DO $migration$
 BEGIN
   PERFORM cron.schedule(
@@ -226,7 +243,8 @@ EXCEPTION
     RAISE NOTICE 'Cron job scheduling skipped (likely local development environment)';
 END
 $migration$;
+*/
 
 COMMENT ON EXTENSION pg_cron IS 
-  'Cron job: generate-daily-labor-allocations runs daily at 2 AM to ensure payroll allocations are always current.';
+  '⚠️ DEPRECATED: Cron job generate-daily-labor-allocations is disabled. Labor costs are now calculated on-demand from source tables.';
 

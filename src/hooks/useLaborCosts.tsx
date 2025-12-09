@@ -20,13 +20,18 @@ export interface LaborCostsResult {
 }
 
 /**
- * Query labor costs directly from daily_labor_costs table (source of truth).
- * This table contains manually entered or integrated labor cost data.
+ * Query labor costs directly from daily_labor_costs table (source of truth) AND
+ * daily_labor_allocations table (salary + contractor allocations).
+ * 
+ * This combines:
+ * 1. Hourly wages from daily_labor_costs.hourly_wages (time punch based)
+ * 2. Salary allocations from daily_labor_allocations (compensation_type='salary')
+ * 3. Contractor payments from daily_labor_allocations (compensation_type='contractor')
  * 
  * @param restaurantId - Restaurant ID to filter costs
  * @param dateFrom - Start date for the period
  * @param dateTo - End date for the period
- * @returns Labor cost data by date
+ * @returns Labor cost data by date including all compensation types
  */
 export function useLaborCosts(
   restaurantId: string | null,
@@ -38,29 +43,72 @@ export function useLaborCosts(
     queryFn: async () => {
       if (!restaurantId) return null;
 
-      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
-      // to ensure we get all daily labor cost records for accurate labor cost calculations
-      const { data, error } = await supabase
+      // Query daily_labor_costs for hourly wages
+      const { data: laborCostsData, error: laborCostsError } = await supabase
         .from('daily_labor_costs')
         .select('date, total_labor_cost, hourly_wages, salary_wages, benefits, total_hours')
         .eq('restaurant_id', restaurantId)
         .gte('date', format(dateFrom, 'yyyy-MM-dd'))
         .lte('date', format(dateTo, 'yyyy-MM-dd'))
         .order('date', { ascending: true })
-        .limit(10000); // Override Supabase's default 1000 row limit
+        .limit(10000);
 
-      if (error) throw error;
+      if (laborCostsError) throw laborCostsError;
 
-      const dailyCosts: LaborCostData[] = (data || []).map((row) => ({
-        date: row.date,
-        // Use Math.abs() because labor costs may be stored as negative values (accounting convention)
-        // but profit calculations expect positive cost values
-        total_labor_cost: Math.abs(Number(row.total_labor_cost) || 0),
-        hourly_wages: Math.abs(Number(row.hourly_wages) || 0),
-        salary_wages: Math.abs(Number(row.salary_wages) || 0),
-        benefits: Math.abs(Number(row.benefits) || 0),
-        total_hours: Number(row.total_hours) || 0,
-      }));
+      // Query daily_labor_allocations for salary and contractor
+      const { data: allocationsData, error: allocationsError } = await supabase
+        .from('daily_labor_allocations')
+        .select('date, allocated_cost, compensation_type')
+        .eq('restaurant_id', restaurantId)
+        .gte('date', format(dateFrom, 'yyyy-MM-dd'))
+        .lte('date', format(dateTo, 'yyyy-MM-dd'))
+        .order('date', { ascending: true })
+        .limit(10000);
+
+      if (allocationsError) throw allocationsError;
+
+      // Combine both sources by date
+      const dateMap = new Map<string, LaborCostData>();
+
+      // Add labor costs (hourly wages)
+      (laborCostsData || []).forEach((row) => {
+        dateMap.set(row.date, {
+          date: row.date,
+          total_labor_cost: Math.abs(Number(row.total_labor_cost) || 0),
+          hourly_wages: Math.abs(Number(row.hourly_wages) || 0),
+          salary_wages: Math.abs(Number(row.salary_wages) || 0),
+          benefits: Math.abs(Number(row.benefits) || 0),
+          total_hours: Number(row.total_hours) || 0,
+        });
+      });
+
+      // Add allocations (salary and contractor)
+      (allocationsData || []).forEach((row) => {
+        const existing = dateMap.get(row.date);
+        const allocationCost = Math.abs(row.allocated_cost / 100); // Convert cents to dollars
+        
+        if (existing) {
+          existing.total_labor_cost += allocationCost;
+          if (row.compensation_type === 'salary') {
+            existing.salary_wages += allocationCost;
+          }
+          // Note: contractor costs are added to total but not broken out separately
+          // in the current LaborCostData interface
+        } else {
+          dateMap.set(row.date, {
+            date: row.date,
+            total_labor_cost: allocationCost,
+            hourly_wages: 0,
+            salary_wages: row.compensation_type === 'salary' ? allocationCost : 0,
+            benefits: 0,
+            total_hours: 0,
+          });
+        }
+      });
+
+      const dailyCosts: LaborCostData[] = Array.from(dateMap.values()).sort((a, b) =>
+        a.date.localeCompare(b.date)
+      );
 
       const totalCost = dailyCosts.reduce((sum, day) => sum + day.total_labor_cost, 0);
 
@@ -76,7 +124,7 @@ export function useLaborCosts(
     dailyCosts: data?.dailyCosts || [],
     totalCost: data?.totalCost || 0,
     isLoading,
-    error: error as Error | null,
-    refetch,
+    error: error ?? null,
+    refetch: () => void refetch(),
   };
 }

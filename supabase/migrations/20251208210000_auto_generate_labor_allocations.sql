@@ -191,7 +191,7 @@ COMMENT ON FUNCTION backfill_labor_allocations(UUID, DATE, DATE) IS
 -- =============================================================================
 
 -- Unschedule existing job if it exists (for idempotency)
-DO $$
+DO $migration$
 BEGIN
   -- Try to unschedule, ignore if doesn't exist
   PERFORM cron.unschedule('generate-daily-labor-allocations');
@@ -200,32 +200,32 @@ EXCEPTION
     -- Job doesn't exist, that's fine
     NULL;
 END
-$$;
+$migration$;
 
 -- Schedule the daily allocation generation
 -- Runs at 2 AM every day
 -- NOTE: This will only work in production with pg_cron enabled
 -- For local development, the allocations are generated just-in-time
-DO $$
+DO $migration$
 BEGIN
   PERFORM cron.schedule(
     'generate-daily-labor-allocations',
     '0 2 * * *',
-    $$
+    $cron$
     select
       net.http_post(
           url:='https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/generate-daily-allocations',
           headers:='{"Content-Type": "application/json"}'::jsonb,
           body:='{"scheduled": true}'::jsonb
       ) as request_id;
-    $$
+    $cron$
   );
 EXCEPTION
   WHEN OTHERS THEN
     -- Cron not available in local dev, that's fine
     RAISE NOTICE 'Cron job scheduling skipped (likely local development environment)';
 END
-$$;
+$migration$;
 
 COMMENT ON EXTENSION pg_cron IS 
   'Cron job: generate-daily-labor-allocations runs daily at 2 AM to ensure payroll allocations are always current.';

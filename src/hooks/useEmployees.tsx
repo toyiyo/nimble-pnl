@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Employee, DeactivationReason } from '@/types/scheduling';
+import { Employee } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
 
 export type EmployeeStatusFilter = 'active' | 'inactive' | 'all';
@@ -9,11 +9,12 @@ interface UseEmployeesOptions {
   status?: EmployeeStatusFilter;
 }
 
+const defaultOptions: UseEmployeesOptions = { status: 'active' };
+
 export const useEmployees = (
   restaurantId: string | null,
-  options: UseEmployeesOptions = { status: 'active' }
+  options: UseEmployeesOptions = defaultOptions
 ) => {
-  const { toast } = useToast();
   const { status = 'active' } = options;
 
   const { data, isLoading, error } = useQuery({

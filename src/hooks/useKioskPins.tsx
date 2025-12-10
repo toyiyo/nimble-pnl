@@ -9,6 +9,7 @@ export interface EmployeePinWithEmployee extends EmployeePin {
     id: string;
     name: string;
     position?: string | null;
+    is_active?: boolean;
   };
 }
 
@@ -184,7 +185,7 @@ export const verifyPinForRestaurant = async (
       last_used_at,
       created_at,
       updated_at,
-      employee:employees(id, name, position)
+      employee:employees(id, name, position, is_active)
     `
     )
     .eq('restaurant_id', restaurantId)
@@ -193,6 +194,11 @@ export const verifyPinForRestaurant = async (
 
   if (error) {
     throw error;
+  }
+
+  // Check if employee is inactive
+  if (data?.employee?.is_active === false) {
+    return null; // Treat inactive employees as if PIN doesn't exist
   }
 
   return data as EmployeePinWithEmployee | null;

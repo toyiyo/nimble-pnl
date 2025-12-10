@@ -125,6 +125,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
         ? terminationDate 
         : null, // Clear termination date if status is active
       notes: notes || undefined,
+      // Activation tracking - preserve existing state or default to true for new employees
+      is_active: employee?.is_active ?? true,
       // Compensation fields
       compensation_type: compensationType,
       hourly_rate: hourlyRateInCents,

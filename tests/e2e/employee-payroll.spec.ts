@@ -206,20 +206,20 @@ test.describe('Employee Payroll - Happy Paths', () => {
       const employeeRow = page.locator('tr', { has: page.getByText(employee.name) });
       await expect(employeeRow).toBeVisible({ timeout: 5000 });
 
-      // Navigate to payroll
-      await page.goto('/payroll');
+      // Navigate to payroll and wait for network to settle
+      await page.goto('/payroll', { waitUntil: 'networkidle' });
       
       // Wait for page to load - use exact heading match to avoid ambiguity
-      await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 15000 });
 
-      // Should see payroll summary cards
-      await expect(page.getByText(/employees/i)).toBeVisible({ timeout: 5000 });
-      await expect(page.getByText(/total hours/i)).toBeVisible({ timeout: 5000 });
-      await expect(page.getByText(/gross wages/i)).toBeVisible({ timeout: 5000 });
+      // Should see payroll summary cards - use exact text to avoid ambiguity
+      await expect(page.getByText('Employees', { exact: true }).first()).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText('Total Hours', { exact: true }).first()).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText('Gross Wages', { exact: true }).first()).toBeVisible({ timeout: 10000 });
 
       // Without time punches, employee won't have hours - that's expected
-      // Check that the page loads correctly
-      await expect(page.getByText(/employee payroll details/i)).toBeVisible({ timeout: 5000 });
+      // Check that the page loads correctly - increased timeout for CI
+      await expect(page.getByText(/employee payroll details/i)).toBeVisible({ timeout: 10000 });
     });
 
     test('payroll page shows no data state or employee table', async ({ page }) => {

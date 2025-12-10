@@ -1,7 +1,7 @@
 -- Comprehensive tests for inventory deduction conversions
 -- Note: This test suite validates conversion logic in process_unified_inventory_deduction
 BEGIN;
-SELECT plan(30);
+SELECT plan(56);
 
 -- Setup authenticated user context for tests
 SET LOCAL role TO postgres;
@@ -56,7 +56,7 @@ SELECT is(
 -- TEST CATEGORY 2: CONTAINER UNIT CONVERSIONS (bottle, jar, can)
 -- ============================================================
 
--- Test 2: Bottle (750ml) with oz recipe unit
+-- Test 2: Bottle (750ml) with fl oz recipe unit (volume)
 INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
   ('a0000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'Vodka Bottle', 'VODKA-001', 'bottle', 12, 25.00, 750, 'ml')
 ON CONFLICT (id) DO UPDATE SET current_stock = 12, cost_per_unit = 25.00;
@@ -66,7 +66,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 1.5, 'oz');
+  ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 1.5, 'fl oz');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -76,15 +76,15 @@ SELECT lives_ok(
     '2025-01-15',
     'order-vodka-001'
   )$$,
-  'Bottle to oz conversion should succeed'
+  'Bottle to fl oz conversion should succeed'
 );
 
--- 1.5 oz * 10 = 15 oz = 443.6025 ml
+-- 1.5 fl oz * 10 = 15 fl oz = 443.6025 ml
 -- 443.6025 ml / 750 ml = 0.5915 bottles
 -- 12 - 0.5915 ≈ 11.41 bottles
 SELECT ok(
   (SELECT current_stock FROM products WHERE id = 'a0000000-0000-0000-0000-000000000002') BETWEEN 11.40 AND 11.42,
-  'Bottle-oz conversion: 12 - (15 oz / 750ml) ≈ 11.41 bottles'
+  'Bottle-fl oz conversion: 12 - (15 fl oz / 750ml) ≈ 11.41 bottles'
 );
 
 -- Test 3: Container with cup recipe unit
@@ -416,7 +416,7 @@ SELECT ok(
 -- TEST CATEGORY 5: STANDARD VOLUME CONVERSIONS
 -- ============================================================
 
--- Test 13: oz to ml (standard volume conversion)
+-- Test 13: fl oz to ml (standard volume conversion)
 INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
   ('a0000000-0000-0000-0000-00000000000d', '22222222-2222-2222-2222-222222222222', 'Simple Syrup', 'SYRUP-001', 'ml', 5000, 0.01, 1, 'ml')
 ON CONFLICT (id) DO UPDATE SET current_stock = 5000, cost_per_unit = 0.01;
@@ -426,7 +426,7 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
-  ('b0000000-0000-0000-0000-00000000000d', 'a0000000-0000-0000-0000-00000000000d', 2, 'oz');
+  ('b0000000-0000-0000-0000-00000000000d', 'a0000000-0000-0000-0000-00000000000d', 2, 'fl oz');
 
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
@@ -436,15 +436,15 @@ SELECT lives_ok(
     '2025-01-15',
     'order-tea-001'
   )$$,
-  'oz to ml standard conversion should succeed'
+  'fl oz to ml standard conversion should succeed'
 );
 
--- 2 oz * 25 = 50 oz
--- 50 oz * 29.5735 ml/oz = 1478.675 ml
+-- 2 fl oz * 25 = 50 fl oz
+-- 50 fl oz * 29.5735 ml/fl oz = 1478.675 ml
 -- 5000 - 1478.675 = 3521.325 ml
 SELECT ok(
   (SELECT current_stock FROM products WHERE id = 'a0000000-0000-0000-0000-00000000000d') BETWEEN 3521 AND 3522,
-  'oz-ml conversion: 5000 - (50 oz * 29.5735) ≈ 3521.325 ml'
+  'fl oz-ml conversion: 5000 - (50 fl oz * 29.5735) ≈ 3521.325 ml'
 );
 
 -- Test 14: cup to tbsp (standard volume conversion)
@@ -471,12 +471,12 @@ SELECT lives_ok(
 );
 
 -- 0.25 cups * 10 = 2.5 cups
--- 2.5 cups * 16 tbsp/cup = 40 tbsp
+-- 2.5 cups * 236.588 ml/cup = 591.47 ml
+-- 591.47 ml / 14.7868 ml/tbsp = 40 tbsp (approximately)
 -- 1000 - 40 = 960 tbsp
-SELECT is(
-  (SELECT current_stock FROM products WHERE id = 'a0000000-0000-0000-0000-00000000000e'),
-  960.0::numeric,
-  'cup-tbsp conversion: 1000 - (2.5 cups * 16) = 960 tbsp'
+SELECT ok(
+  (SELECT current_stock FROM products WHERE id = 'a0000000-0000-0000-0000-00000000000e') BETWEEN 959.99 AND 960.01,
+  'cup-tbsp conversion: 1000 - (2.5 cups → 40 tbsp) ≈ 960 tbsp'
 );
 
 -- Test 15: L to gal (standard volume conversion)

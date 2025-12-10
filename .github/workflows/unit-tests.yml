@@ -1,0 +1,171 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# Restrict GITHUB_TOKEN permissions to minimum required
+permissions:
+  contents: read
+  pull-requests: read  # Required for SonarCloud PR decoration
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for SonarQube
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  db-tests:
+    name: Database Tests (pgTAP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Start Supabase local database
+        run: supabase start -x realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+
+      - name: Wait for database to be ready
+        run: |
+          echo "Waiting for database to be ready..."
+          for i in {1..30}; do
+            if supabase status | grep -q "DB URL"; then
+              echo "Database is ready!"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+
+      - name: Run database migrations
+        run: supabase db reset --debug
+
+      - name: Run pgTAP tests
+        run: |
+          cd supabase/tests
+          chmod +x run_tests.sh
+          ./run_tests.sh
+        env:
+          DB_HOST: localhost
+          DB_PORT: 54322
+          DB_NAME: postgres
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop
+
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start Supabase local database
+        run: supabase start
+
+      - name: Wait for Supabase to be ready
+        run: |
+          echo "Waiting for Supabase to be ready..."
+          for i in {1..30}; do
+            if curl -s http://localhost:54321/rest/v1/ > /dev/null 2>&1; then
+              echo "Supabase is ready!"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          VITE_SUPABASE_URL: http://127.0.0.1:54321
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 7
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop

@@ -43,7 +43,7 @@ export const AvailabilityExceptionDialog = ({
 
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
-  const { zonedTimeToUtc } = dateFnsTz;
+  const { fromZonedTime } = dateFnsTz;
 
   useEffect(() => {
     if (exception) {
@@ -70,13 +70,13 @@ export const AvailabilityExceptionDialog = ({
   const toUTC = (time: string) => {
     if (!date) return '';
     const dateStr = format(date, 'yyyy-MM-dd');
-    const converter = zonedTimeToUtc ?? ((value: string) => new Date(value));
+    const converter = fromZonedTime ?? ((value: string) => new Date(value));
     const zoned = converter(`${dateStr}T${time}:00`, restaurantTimezone);
     return `${zoned.getUTCHours().toString().padStart(2, '0')}:${zoned.getUTCMinutes().toString().padStart(2, '0')}:${zoned.getUTCSeconds().toString().padStart(2, '0')}`;
   };
 
   const formatDateToUTC = (value: Date) => {
-    const converter = zonedTimeToUtc ?? ((v: Date) => v);
+    const converter = fromZonedTime ?? ((v: Date) => v);
     return converter(value, restaurantTimezone).toISOString().substring(0, 10);
   };
 

@@ -1,3 +1,8 @@
+// Compensation types for employees
+export type CompensationType = 'hourly' | 'salary' | 'contractor';
+export type PayPeriodType = 'weekly' | 'bi-weekly' | 'semi-monthly' | 'monthly';
+export type ContractorPaymentInterval = 'weekly' | 'bi-weekly' | 'monthly' | 'per-job';
+
 export interface Employee {
   id: string;
   restaurant_id: string;
@@ -5,12 +10,32 @@ export interface Employee {
   email?: string;
   phone?: string;
   position: string;
-  hourly_rate: number; // In cents
   status: 'active' | 'inactive' | 'terminated';
   hire_date?: string;
+  termination_date?: string; // Date when employee was terminated/inactivated
   notes?: string;
   created_at: string;
   updated_at: string;
+  user_id?: string; // Link to auth.users for self-service
+  
+  // Compensation fields
+  compensation_type: CompensationType; // Determines which fields are relevant
+  
+  // Hourly employees
+  hourly_rate: number; // In cents (used when compensation_type = 'hourly')
+  
+  // Salaried employees
+  salary_amount?: number; // In cents (per-period amount)
+  pay_period_type?: PayPeriodType; // How often they're paid
+  allocate_daily?: boolean; // Whether to spread salary across days for Daily P&L
+  
+  // Contractors
+  contractor_payment_amount?: number; // In cents (per-interval payment)
+  contractor_payment_interval?: ContractorPaymentInterval;
+  
+  // Time tracking & tips
+  requires_time_punch?: boolean; // Must clock in/out (true for hourly, optional for others)
+  tip_eligible?: boolean; // Can receive tip pool distributions
 }
 
 export type RecurrenceType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'weekday' | 'custom';
@@ -139,4 +164,64 @@ export interface NotificationSettings {
   time_off_notify_employee: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export type ChangeType = 'created' | 'updated' | 'deleted' | 'unpublished';
+
+export interface ScheduleChangeLog {
+  id: string;
+  restaurant_id: string;
+  shift_id: string | null;
+  employee_id: string | null;
+  change_type: ChangeType;
+  changed_by: string;
+  changed_at: string;
+  reason: string | null;
+  before_data: any;
+  after_data: any;
+  employee?: Employee;
+}
+
+export interface SchedulePublication {
+  id: string;
+  restaurant_id: string;
+  week_start_date: string;
+  week_end_date: string;
+  published_at: string;
+  published_by: string;
+  notes: string | null;
+  shift_count: number;
+}
+
+// Daily labor allocation for salaried/contractor employees
+export interface DailyLaborAllocation {
+  id: string;
+  restaurant_id: string;
+  employee_id: string;
+  date: string; // DATE format (YYYY-MM-DD)
+  compensation_type: CompensationType;
+  allocated_amount: number; // In cents (daily portion of salary/contractor payment)
+  calculation_notes?: string; // e.g., "Weekly salary $1000 / 7 days = $142.86/day"
+  source_pay_period_start?: string; // Start of the pay period this allocation is from
+  source_pay_period_end?: string; // End of the pay period
+  created_at: string;
+  updated_at: string;
+  employee?: Employee; // Joined data
+}
+
+// Helper type for payroll calculations
+export interface CompensationSummary {
+  compensation_type: CompensationType;
+  total_amount: number; // In cents
+  hours_worked?: number; // For hourly employees
+  days_worked?: number; // For salary/contractor with daily allocation
+  effective_hourly_rate?: number; // Calculated for comparison
+}
+
+// Labor cost breakdown by compensation type
+export interface LaborCostBreakdown {
+  hourly_wages: number; // In cents
+  salary_allocations: number; // In cents
+  contractor_payments: number; // In cents
+  total: number; // In cents
 }

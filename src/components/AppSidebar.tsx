@@ -33,6 +33,7 @@ import {
   ClipboardList,
   DollarSign,
   ShoppingBag,
+  CalendarDays,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -97,16 +98,25 @@ export function AppSidebar() {
   const { signOut, user } = useAuth();
   const { selectedRestaurant } = useRestaurantContext();
 
-  // Check if user is staff
-  const isStaff = selectedRestaurant?.role === 'staff';
+  // Check user role
+  const role = selectedRestaurant?.role;
+  const isStaff = role === 'staff';
+  const isKiosk = role === 'kiosk';
 
-  // Filter navigation groups for staff users
-  const filteredNavigationGroups = isStaff
+  // Kiosk users should never see the sidebar (they're on noChrome route)
+  // But as a safety measure, show nothing if somehow they do
+  // Staff users get limited navigation
+  const filteredNavigationGroups = isKiosk
+    ? [] // Kiosk: no navigation at all
+    : isStaff
     ? [
         {
           label: 'Employee',
           items: [
             { path: '/employee/clock', label: 'Time Clock', icon: Clock },
+            { path: '/employee/timecard', label: 'My Timecard', icon: FileText },
+            { path: '/employee/schedule', label: 'My Schedule', icon: CalendarDays },
+            { path: '/employee/pay', label: 'My Pay', icon: Wallet },
             { path: '/employee/portal', label: 'My Requests', icon: CalendarCheck },
           ],
         },
@@ -117,7 +127,7 @@ export function AppSidebar() {
           ],
         },
       ]
-    : navigationGroups;
+    : navigationGroups; // Full access for owner/manager/chef
 
   const isActivePath = (path: string) => {
     if (path === '/') return location.pathname === '/';

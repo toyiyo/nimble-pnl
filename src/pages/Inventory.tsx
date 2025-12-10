@@ -51,7 +51,7 @@ export const Inventory: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
-  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const { toast } = useToast();
   
   const { products, loading, createProduct, updateProductWithQuantity, deleteProduct, findProductByGtin, refetchProducts } = useProducts(selectedRestaurant?.restaurant_id || null);
@@ -237,7 +237,8 @@ export const Inventory: React.FC = () => {
           selectedRestaurant={selectedRestaurant}
           onSelectRestaurant={handleRestaurantSelect}
           loading={restaurantsLoading}
-          createRestaurant={createRestaurant}
+          canCreateRestaurant={canCreateRestaurant}
+            createRestaurant={createRestaurant}
         />
       </div>
     );

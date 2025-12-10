@@ -74,5 +74,18 @@ SELECT function_lang_is(
     'log_security_event should be plpgsql'
 );
 
+-- manager_pins RLS & policy checks
+-- Check that row level security is enabled on manager_pins
+SELECT ok(
+    (SELECT relrowsecurity FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE c.relname = 'manager_pins' AND n.nspname='public'),
+    'manager_pins should have row level security enabled'
+);
+
+-- Check that at least one policy exists on manager_pins
+SELECT ok(
+    ((SELECT COUNT(*) FROM pg_policies WHERE tablename = 'manager_pins')::int > 0),
+    'manager_pins should have policies defined'
+);
+
 SELECT * FROM finish();
 ROLLBACK;

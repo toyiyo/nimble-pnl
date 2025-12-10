@@ -256,6 +256,69 @@ export const PurchaseOrderEditor: React.FC = () => {
     );
   }, [lineRecommendations]);
 
+  const renderUsageContent = () => {
+    if (usageLoading) {
+      return (
+        <div className="space-y-2">
+          {['usage-skel-1', 'usage-skel-2', 'usage-skel-3', 'usage-skel-4'].map((key) => (
+            <Skeleton key={key} className="h-20 w-full" />
+          ))}
+        </div>
+      );
+    }
+
+    if (usageError) {
+      return (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          {usageError}
+        </div>
+      );
+    }
+
+    if (usageItems.length === 0) {
+      return (
+        <div className="text-center py-10 text-sm text-muted-foreground">
+          <Package className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+          No recent usage yet. Log inventory usage to unlock recommendations.
+        </div>
+      );
+    }
+
+    return usageItems.map((item) => {
+      const product = productLookup.get(item.productId) || null;
+      const isAdded = lines.some((line) => line.product_id === item.productId);
+      const onHand = typeof product?.current_stock === 'number' ? product.current_stock : null;
+      const suggestedQuantity = Math.max(1, Math.round(item.suggestedQuantity || 0));
+
+      return (
+        <div
+          key={item.productId}
+          className="p-3 border rounded-lg space-y-2 hover:bg-muted/50 transition-colors"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 space-y-1">
+              <p className="font-medium">{item.productName}</p>
+              {item.sku && <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>}
+              <p className="text-xs text-muted-foreground">
+                Used {item.totalUsage} units in last 14 days · Suggest {suggestedQuantity}
+              </p>
+              {onHand !== null && <p className="text-xs text-muted-foreground">On hand: {onHand}</p>}
+            </div>
+            <Button
+              size="sm"
+              onClick={() => product && handleAddItem(product, suggestedQuantity)}
+              disabled={isAdded || product == null}
+              aria-label={`Add ${item.productName} suggestion`}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              {isAdded ? 'Added' : 'Add'}
+            </Button>
+          </div>
+        </div>
+      );
+    });
+  };
+
   // Show the Suggest Order control enabled by default so users can try it even if there are no
   // immediate recommendations. The handler will show a friendly toast if nothing actionable exists.
   const canSuggestOrder = true;
@@ -1101,8 +1164,8 @@ export const PurchaseOrderEditor: React.FC = () => {
                   <div className="space-y-2 max-h-[500px] overflow-y-auto">
                     {productsLoading ? (
                       <div className="space-y-2">
-                        {new Array(5).fill(null).map((_, i) => (
-                          <Skeleton key={`product-skel-${i}`} className="h-20 w-full" />
+                        {['product-skel-1', 'product-skel-2', 'product-skel-3', 'product-skel-4', 'product-skel-5'].map((key) => (
+                          <Skeleton key={key} className="h-20 w-full" />
                         ))}
                       </div>
                     ) : availableProducts.length === 0 ? (
@@ -1181,60 +1244,7 @@ export const PurchaseOrderEditor: React.FC = () => {
                         automatically.
                       </p>
                     </div>
-                    {usageLoading ? (
-                      <div className="space-y-2">
-                        {['s1', 's2', 's3', 's4'].map((key) => (
-                          <Skeleton key={key} className="h-20 w-full" />
-                        ))}
-                      </div>
-                    ) : usageError ? (
-                      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-                        {usageError}
-                      </div>
-                    ) : usageItems.length === 0 ? (
-                      <div className="text-center py-10 text-sm text-muted-foreground">
-                        <Package className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
-                        No recent usage yet. Log inventory usage to unlock recommendations.
-                      </div>
-                    ) : (
-                      usageItems.map((item) => {
-                        const product = productLookup.get(item.productId) || null;
-                        const isAdded = lines.some((line) => line.product_id === item.productId);
-                        const onHand = typeof product?.current_stock === 'number' ? product.current_stock : null;
-                        const suggestedQuantity = Math.max(1, Math.round(item.suggestedQuantity || 0));
-
-                        return (
-                          <div
-                            key={item.productId}
-                            className="p-3 border rounded-lg space-y-2 hover:bg-muted/50 transition-colors"
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1 space-y-1">
-                                <p className="font-medium">{item.productName}</p>
-                                {item.sku && (
-                                  <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
-                                )}
-                                <p className="text-xs text-muted-foreground">
-                                  Used {item.totalUsage} units in last 14 days · Suggest {suggestedQuantity}
-                                </p>
-                                {onHand !== null && (
-                                  <p className="text-xs text-muted-foreground">On hand: {onHand}</p>
-                                )}
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={() => product && handleAddItem(product, suggestedQuantity)}
-                                disabled={isAdded || product == null}
-                                aria-label={`Add ${item.productName} suggestion`}
-                              >
-                                <Plus className="h-4 w-4 mr-1" />
-                                {isAdded ? 'Added' : 'Add'}
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
+                    {renderUsageContent()}
                   </TabsContent>
                 </Tabs>
             </CardContent>

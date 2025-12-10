@@ -77,6 +77,7 @@ export const usePurchaseOrders = () => {
 
     const po: PurchaseOrderViewModel = {
       ...poData,
+      status: poData.status as any,
       supplier_name: poData.suppliers?.name || undefined,
       lines: linesData || [],
     };

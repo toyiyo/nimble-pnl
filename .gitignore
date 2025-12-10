@@ -27,4 +27,6 @@ dist-ssr
 test-ai-kpis-tool.js
 test-shared-calculations.js
 test-results/
+playwright-report/
 supabase/.temp/
+coverage/

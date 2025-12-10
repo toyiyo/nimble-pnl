@@ -35,6 +35,7 @@ import { SplitSaleView } from "@/components/pos-sales/SplitSaleView";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRecipes } from "@/hooks/useRecipes";
 import { useNavigate } from "react-router-dom";
+import { createRecipeByItemNameMap, hasRecipeMapping, getRecipeForItem } from "@/utils/recipeMapping";
 
 export default function POSSales() {
   const {
@@ -43,18 +44,8 @@ export default function POSSales() {
     restaurants,
     loading: restaurantsLoading,
     createRestaurant,
+    canCreateRestaurant,
   } = useRestaurantContext();
-  const {
-    sales,
-    loading,
-    loadingMore,
-    hasMore,
-    loadMoreSales,
-    getSalesByDateRange,
-    getSalesGroupedByItem,
-    unmappedItems,
-    deleteManualSale,
-  } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { hasAnyConnectedSystem, syncAllSystems, isSyncing, integrationStatuses } = usePOSIntegrations(
     selectedRestaurant?.restaurant_id || null,
   );
@@ -107,30 +98,30 @@ export default function POSSales() {
   const [saleForRuleSuggestion, setSaleForRuleSuggestion] = useState<UnifiedSaleItem | null>(null);
   const [aiCategorizationError, setAiCategorizationError] = useState<string | null>(null);
 
+  const {
+    sales,
+    loading,
+    loadingMore,
+    hasMore,
+    loadMoreSales,
+    getSalesByDateRange,
+    getSalesGroupedByItem,
+    deleteManualSale,
+  } = useUnifiedSales(selectedRestaurant?.restaurant_id || null, {
+    searchTerm,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+  });
+
   // Filter revenue and liability accounts for categorization (matching split dialog)
   const categoryAccounts = useMemo(() => {
     return accounts.filter(acc => acc.account_type === 'revenue' || acc.account_type === 'liability');
   }, [accounts]);
 
   // Create a map of POS item name to recipe for quick lookup
+  // Uses utility function for testability - see tests/unit/recipeMapping.test.ts
   const recipeByItemName = useMemo(() => {
-    const map = new Map<string, { 
-      id: string; 
-      name: string; 
-      profitMargin?: number;
-      hasIngredients: boolean;
-    }>();
-    recipes.forEach(recipe => {
-      if (recipe.pos_item_name) {
-        map.set(recipe.pos_item_name.toLowerCase(), {
-          id: recipe.id,
-          name: recipe.name,
-          profitMargin: recipe.profit_margin,
-          hasIngredients: recipe.ingredients ? recipe.ingredients.length > 0 : false
-        });
-      }
-    });
-    return map;
+    return createRecipeByItemNameMap(recipes);
   }, [recipes]);
 
   const handleMapPOSItem = (itemName: string) => {
@@ -184,9 +175,9 @@ export default function POSSales() {
     
     // Apply recipe filter
     if (recipeFilter === 'with-recipe') {
-      filtered = filtered.filter((sale) => recipeByItemName.has(sale.itemName.toLowerCase()));
+      filtered = filtered.filter((sale) => hasRecipeMapping(sale.itemName, recipeByItemName));
     } else if (recipeFilter === 'without-recipe') {
-      filtered = filtered.filter((sale) => !recipeByItemName.has(sale.itemName.toLowerCase()));
+      filtered = filtered.filter((sale) => !hasRecipeMapping(sale.itemName, recipeByItemName));
     }
     
     // Apply sorting
@@ -493,6 +484,12 @@ export default function POSSales() {
     const collectedAtPOS = revenue + passThroughAmount + discounts;
     const uniqueItems = new Set(filteredSales.map(sale => sale.itemName)).size;
     
+    // Count items that don't have a recipe mapping (use recipeByItemName as source of truth)
+    const uniqueItemNames = new Set(filteredSales.map(sale => sale.itemName));
+    const unmappedCount = Array.from(uniqueItemNames).filter(
+      itemName => !hasRecipeMapping(itemName, recipeByItemName)
+    ).length;
+    
     return {
       totalSales,
       revenue,
@@ -500,9 +497,9 @@ export default function POSSales() {
       passThroughAmount,
       collectedAtPOS,
       uniqueItems,
-      unmappedCount: unmappedItems.length,
+      unmappedCount,
     };
-  }, [filteredSales, unmappedItems]);
+  }, [filteredSales, recipeByItemName]);
 
   const activeFiltersCount = [
     searchTerm, 
@@ -664,7 +661,8 @@ export default function POSSales() {
           onSelectRestaurant={handleRestaurantSelect}
           restaurants={restaurants}
           loading={restaurantsLoading}
-          createRestaurant={createRestaurant}
+          canCreateRestaurant={canCreateRestaurant}
+            createRestaurant={createRestaurant}
         />
       </div>
     );
@@ -1065,32 +1063,38 @@ export default function POSSales() {
                               <Badge variant="outline" className="text-xs">
                                 {sale.posSystem}
                               </Badge>
-                              {unmappedItems.includes(sale.itemName) ? (
-                                <Badge
-                                  variant="destructive"
-                                  className="text-xs cursor-pointer hover:scale-105 transition-transform animate-pulse"
-                                  onClick={() => handleMapPOSItem(sale.itemName)}
-                                >
-                                  No Recipe
-                                </Badge>
-                              ) : recipeByItemName.has(sale.itemName.toLowerCase()) ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
-                                  onClick={() => navigate(`/recipes?recipeId=${recipeByItemName.get(sale.itemName.toLowerCase())?.id}`)}
-                                >
-                                  {!recipeByItemName.get(sale.itemName.toLowerCase())?.hasIngredients && (
-                                    <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
-                                  )}
-                                  <ExternalLink className="h-3 w-3 mr-1" />
-                                  {recipeByItemName.get(sale.itemName.toLowerCase())?.name}
-                                  {recipeByItemName.get(sale.itemName.toLowerCase())?.profitMargin != null && (
-                                    <span className="ml-1 font-semibold">
-                                      ({recipeByItemName.get(sale.itemName.toLowerCase())!.profitMargin!.toFixed(0)}%)
-                                    </span>
-                                  )}
-                                </Badge>
-                              ) : null}
+                              {(() => {
+                                const recipe = getRecipeForItem(sale.itemName, recipeByItemName);
+                                if (recipe) {
+                                  return (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
+                                      onClick={() => navigate(`/recipes?recipeId=${recipe.id}`)}
+                                    >
+                                      {!recipe.hasIngredients && (
+                                        <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
+                                      )}
+                                      <ExternalLink className="h-3 w-3 mr-1" />
+                                      {recipe.name}
+                                      {recipe.profitMargin != null && (
+                                        <span className="ml-1 font-semibold">
+                                          ({recipe.profitMargin.toFixed(0)}%)
+                                        </span>
+                                      )}
+                                    </Badge>
+                                  );
+                                }
+                                return (
+                                  <Badge
+                                    variant="destructive"
+                                    className="text-xs cursor-pointer hover:scale-105 transition-transform animate-pulse"
+                                    onClick={() => handleMapPOSItem(sale.itemName)}
+                                  >
+                                    No Recipe
+                                  </Badge>
+                                );
+                              })()}
                               {sale.suggested_category_id && !sale.is_categorized && (
                                 <Badge variant="outline" className="bg-accent/10 text-accent-foreground border-accent/30">
                                   <Sparkles className="h-3 w-3 mr-1" />
@@ -1239,6 +1243,7 @@ export default function POSSales() {
                                        }}
                                        placeholder="Select category"
                                        filterByTypes={['revenue', 'liability']}
+                                       autoOpen
                                      />
                                   </div>
                                   <Button
@@ -1340,32 +1345,38 @@ export default function POSSales() {
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1">
                                   <h3 className="font-semibold text-base mb-1 line-clamp-2">{item.item_name}</h3>
-                                  {unmappedItems.includes(item.item_name) ? (
-                                    <Badge
-                                      variant="destructive"
-                                      className="cursor-pointer hover:scale-105 transition-transform animate-pulse text-xs"
-                                      onClick={() => handleMapPOSItem(item.item_name)}
-                                    >
-                                      No Recipe
-                                    </Badge>
-                                  ) : recipeByItemName.has(item.item_name.toLowerCase()) ? (
-                                    <Badge
-                                      variant="outline"
-                                      className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
-                                      onClick={() => navigate(`/recipes?recipeId=${recipeByItemName.get(item.item_name.toLowerCase())?.id}`)}
-                                    >
-                                      {!recipeByItemName.get(item.item_name.toLowerCase())?.hasIngredients && (
-                                        <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
-                                      )}
-                                      <ExternalLink className="h-3 w-3 mr-1" />
-                                      {recipeByItemName.get(item.item_name.toLowerCase())?.name}
-                                      {recipeByItemName.get(item.item_name.toLowerCase())?.profitMargin != null && (
-                                        <span className="ml-1 font-semibold">
-                                          ({recipeByItemName.get(item.item_name.toLowerCase())!.profitMargin!.toFixed(0)}%)
-                                        </span>
-                                      )}
-                                    </Badge>
-                                  ) : null}
+                                  {(() => {
+                                    const recipe = getRecipeForItem(item.item_name, recipeByItemName);
+                                    if (recipe) {
+                                      return (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
+                                          onClick={() => navigate(`/recipes?recipeId=${recipe.id}`)}
+                                        >
+                                          {!recipe.hasIngredients && (
+                                            <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
+                                          )}
+                                          <ExternalLink className="h-3 w-3 mr-1" />
+                                          {recipe.name}
+                                          {recipe.profitMargin != null && (
+                                            <span className="ml-1 font-semibold">
+                                              ({recipe.profitMargin.toFixed(0)}%)
+                                            </span>
+                                          )}
+                                        </Badge>
+                                      );
+                                    }
+                                    return (
+                                      <Badge
+                                        variant="destructive"
+                                        className="cursor-pointer hover:scale-105 transition-transform animate-pulse text-xs"
+                                        onClick={() => handleMapPOSItem(item.item_name)}
+                                      >
+                                        No Recipe
+                                      </Badge>
+                                    );
+                                  })()}
                                 </div>
                                 <Badge 
                                   variant="secondary"

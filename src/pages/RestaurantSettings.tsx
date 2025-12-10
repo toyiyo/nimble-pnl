@@ -18,7 +18,7 @@ import { Settings, Save, RotateCcw, AlertCircle } from 'lucide-react';
 
 export default function RestaurantSettings() {
   const { user } = useAuth();
-  const { selectedRestaurant, restaurants, setSelectedRestaurant, loading: restaurantLoading, createRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, restaurants, setSelectedRestaurant, loading: restaurantLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const { updateRestaurant } = useRestaurants();
   const { toast } = useToast();
 
@@ -128,6 +128,7 @@ export default function RestaurantSettings() {
             selectedRestaurant={selectedRestaurant}
             onSelectRestaurant={setSelectedRestaurant}
             loading={restaurantLoading}
+            canCreateRestaurant={canCreateRestaurant}
             createRestaurant={createRestaurant}
           />
         </div>

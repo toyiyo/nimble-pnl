@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useFoodCosts } from './useFoodCosts';
-import { useLaborCosts } from './useLaborCosts';
+import { useLaborCostsFromTimeTracking } from './useLaborCostsFromTimeTracking';
 import { useLaborCostsFromTransactions } from './useLaborCostsFromTransactions';
 
 export interface DailyCostData {
@@ -48,7 +48,7 @@ export function useCostsFromSource(
   dateTo: Date
 ): CostsFromSourceResult {
   const foodCosts = useFoodCosts(restaurantId, dateFrom, dateTo);
-  const laborCosts = useLaborCosts(restaurantId, dateFrom, dateTo);
+  const laborCosts = useLaborCostsFromTimeTracking(restaurantId, dateFrom, dateTo);
   const transactionLaborCosts = useLaborCostsFromTransactions(restaurantId, dateFrom, dateTo);
 
   const isLoading = foodCosts.isLoading || laborCosts.isLoading || transactionLaborCosts.isLoading;
@@ -113,11 +113,9 @@ export function useCostsFromSource(
   }, [foodCosts.dailyCosts, laborCosts.dailyCosts, transactionLaborCosts.dailyCosts]);
 
   const refetch = () => {
-    return Promise.all([
-      foodCosts.refetch(), 
-      laborCosts.refetch(),
-      transactionLaborCosts.refetch()
-    ]);
+    foodCosts.refetch(); 
+    laborCosts.refetch();
+    transactionLaborCosts.refetch();
   };
 
   const totalLaborCost = laborCosts.totalCost + transactionLaborCosts.totalCost;

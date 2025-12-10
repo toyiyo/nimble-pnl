@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { usePOSItems } from '@/hooks/usePOSItems';
 import { useRecipes } from '@/hooks/useRecipes';
+import { hasRecipeMapping, createRecipeByItemNameMap } from '@/utils/recipeMapping';
 import {
   Command,
   CommandEmpty,
@@ -152,6 +153,9 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       source: string;
     }> = [];
 
+    // Create recipe mapping for quick lookup (uses tested utility)
+    const recipeMap = createRecipeByItemNameMap(recipes);
+
     // Add recipes (these have mappings by definition)
     recipes.forEach(recipe => {
       if (recipe.pos_item_name) {
@@ -166,13 +170,9 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       }
     });
 
-    // Add POS items that don't have recipes
+    // Add POS items that don't have recipes (uses tested utility)
     posItems.forEach(posItem => {
-      const hasRecipe = recipes.some(r => 
-        r.pos_item_name?.toLowerCase() === posItem.item_name.toLowerCase()
-      );
-      
-      if (!hasRecipe) {
+      if (!hasRecipeMapping(posItem.item_name, recipeMap)) {
         items.push({
           value: posItem.item_name,
           label: posItem.item_name,

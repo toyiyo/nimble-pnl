@@ -17,7 +17,7 @@ Consistency: Follow existing project patterns and styles
 Accessibility: All UI components must be accessible (ARIA, keyboard)
 Type Safety: Use TypeScript types everywhere
 Performance: Optimize for speed and responsiveness
-Testability: Shared components can be tested once and reused
+Testability: All new code must be covered by tests - no exceptions
 
 
 ### 1. **NO Manual Caching**
@@ -71,6 +71,22 @@ if (loading) return <Skeleton />;
 if (error) return <ErrorMessage />;
 if (!products?.length) return <EmptyState />;
 return <div>{products.map(...)}</div>
+```
+
+### 5. **ALWAYS Write Tests for New Code**
+```typescript
+// ❌ NEVER submit code without tests:
+// - New utility functions
+// - New hooks
+// - New business logic
+// - New SQL functions/migrations
+
+// ✅ ALWAYS include corresponding tests:
+// TypeScript: tests/unit/*.test.ts
+// SQL: supabase/tests/*.sql (pgTAP)
+
+// Example: If you create src/lib/calculateTax.ts
+// You MUST also create tests/unit/calculateTax.test.ts
 ```
 
 ---
@@ -335,33 +351,89 @@ Before suggesting code, verify:
 
 ---
 
-## 🧪 Testing Guidelines
+## 🧪 Testing Guidelines (MANDATORY)
 
-### When to suggest tests:
-1. **Business logic** (calculations, validations)
-2. **Custom hooks** (data transformations)
-3. **Critical user flows** (auth, checkout, inventory updates)
+> ⚠️ **All new code must have corresponding tests. PRs without tests will not be merged.**
 
-### When NOT to suggest tests:
-1. **UI-only components** (presentational)
-2. **Simple wrappers**
-3. **Type definitions**
+### Test Requirements by Code Type
 
-### Example Test
+| Code Type | Test Location | Required |
+|-----------|---------------|----------|
+| Utility functions | `tests/unit/*.test.ts` | ✅ Yes |
+| Custom hooks | `tests/unit/*.test.ts` | ✅ Yes |
+| Business logic | `tests/unit/*.test.ts` | ✅ Yes |
+| SQL functions | `supabase/tests/*.sql` | ✅ Yes |
+| SQL migrations with logic | `supabase/tests/*.sql` | ✅ Yes |
+| UI-only components | - | ❌ Optional |
+| Type definitions | - | ❌ Not needed |
+
+### Running Tests
+
+```bash
+# TypeScript unit tests
+npm run test                    # Watch mode
+npm run test -- --run           # Single run
+npm run test:coverage           # With coverage
+
+# SQL/Database tests (requires Docker)
+cd supabase/tests && ./run_tests.sh
+
+# Full CI check
+npm run test -- --run && cd supabase/tests && ./run_tests.sh
+```
+
+### Test File Naming
+
+```
+src/lib/calculateTax.ts        → tests/unit/calculateTax.test.ts
+src/hooks/useProducts.tsx      → tests/unit/useProducts.test.ts
+supabase/migrations/*_foo.sql  → supabase/tests/*_foo.sql
+```
+
+### Example: TypeScript Test
 ```typescript
-import { renderHook, waitFor } from '@testing-library/react';
-import { useProducts } from '@/hooks/useProducts';
+import { describe, it, expect } from 'vitest';
+import { calculateTax } from '@/lib/calculateTax';
 
-describe('useProducts', () => {
-  it('fetches products for restaurant', async () => {
-    const { result } = renderHook(() => useProducts('restaurant-123'));
-    
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    
-    expect(result.current.products).toHaveLength(5);
+describe('calculateTax', () => {
+  it('calculates tax correctly', () => {
+    expect(calculateTax(100, 0.08)).toBe(8);
+  });
+
+  it('handles zero amount', () => {
+    expect(calculateTax(0, 0.08)).toBe(0);
   });
 });
 ```
+
+### Example: SQL Test (pgTAP)
+```sql
+-- Test: my_function calculates correctly
+SELECT plan(2);
+
+SELECT is(
+  my_function(100),
+  expected_result,
+  'my_function returns expected value'
+);
+
+SELECT ok(
+  my_function(0) = 0,
+  'my_function handles zero input'
+);
+
+SELECT * FROM finish();
+```
+
+### When to Add Tests (Checklist)
+
+Before submitting code, verify:
+- [ ] New functions have unit tests
+- [ ] New hooks have unit tests  
+- [ ] Edge cases are covered (null, empty, boundary values)
+- [ ] Error paths are tested
+- [ ] SQL functions have pgTAP tests
+- [ ] All tests pass locally
 
 ---
 
@@ -622,6 +694,88 @@ serve(async (req) => {
 - ❌ NEVER expose secrets in responses
 - ❌ NEVER skip permission checks
 
+---
+
+## 📐 Unit Conversion System (CRITICAL)
+
+The inventory deduction system converts between recipe units and purchase units. **This is critical for inventory accuracy.**
+
+> ⚠️ **The SQL function is authoritative** - TypeScript is for preview only. Both must use identical constants.
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src/lib/enhancedUnitConversion.ts` | Client-side preview |
+| `supabase/migrations/*_inventory_*.sql` | **Authoritative** server-side |
+| `tests/unit/crossValidation.test.ts` | Alignment validation |
+| `docs/UNIT_CONVERSIONS.md` | Full documentation |
+
+### ⚠️ Critical: `oz` vs `fl oz`
+```typescript
+// ❌ WRONG - Using 'oz' for liquids
+{ unit: 'oz', product: 'Vodka' }  // Will use weight conversion (28.35g)!
+
+// ✅ CORRECT - Using 'fl oz' for liquids
+{ unit: 'fl oz', product: 'Vodka' }  // Will use volume conversion (29.57ml)
+```
+
+### Conversion Constants (MUST match SQL)
+```typescript
+// Volume (to ml)
+'fl oz': 29.5735,  // Fluid ounces (liquids)
+'cup':   236.588,
+'tbsp':  14.7868,
+'tsp':   4.92892,
+'L':     1000,
+'gal':   3785.41,
+
+// Weight (to g)
+'oz':    28.3495,  // Weight ounces (solids)
+'lb':    453.592,
+'kg':    1000,
+
+// Densities (g/cup)
+'rice':   185,
+'flour':  120,
+'sugar':  200,
+'butter': 227,
+```
+
+### When Modifying Conversions
+1. Update **both** TypeScript and SQL with identical values
+2. Add tests in `crossValidation.test.ts` and `08_inventory_deduction_conversions.sql`
+3. Run both test suites to verify alignment:
+   ```bash
+   npm run test -- tests/unit/crossValidation.test.ts
+   npm run test:db
+   ```
+
+### Common Patterns
+```typescript
+// Container unit (bottle, can, etc.)
+// Uses size_value and size_unit to determine content
+Product: { uom_purchase: 'bottle', size_value: 750, size_unit: 'ml' }
+Recipe: { quantity: 1.5, unit: 'fl oz' }
+→ 1.5 fl oz = 44.36ml → 44.36/750 = 0.059 bottles deducted
+
+// Weight conversion
+Product: { uom_purchase: 'box', size_value: 1, size_unit: 'lb' }
+Recipe: { quantity: 4, unit: 'oz' }
+→ 4 oz = 113.4g → 113.4/453.6 = 0.25 boxes deducted
+
+// Density conversion (volume → weight)
+Product: { uom_purchase: 'bag', size_value: 10, size_unit: 'kg', name: 'Rice' }
+Recipe: { quantity: 2, unit: 'cup' }
+→ 2 cups × 185g/cup = 370g = 0.37kg → 0.37/10 = 0.037 bags deducted
+```
+
+### Rules
+- ✅ ALWAYS use `fl oz` for liquids, `oz` for weight
+- ✅ ALWAYS run both TypeScript and SQL tests after changes
+- ✅ ALWAYS check `docs/UNIT_CONVERSIONS.md` for full reference
+- ❌ NEVER change constants in one place without the other
+- ❌ NEVER add new units without updating both codebases
+
 ### Security Rules
 
 **Token Management**:
@@ -674,6 +828,11 @@ For detailed integration patterns and best practices, see:
   - Supabase patterns (React Query, real-time, Edge Functions)
   - Security best practices
   - Performance optimization
+- **[docs/UNIT_CONVERSIONS.md](../docs/UNIT_CONVERSIONS.md)** - Unit conversion system
+  - Volume and weight conversion constants
+  - Product-specific densities (rice, flour, sugar, butter)
+  - Container unit handling (bottles, cans, bags)
+  - TypeScript ↔ SQL alignment requirements
 
 ---
 

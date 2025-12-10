@@ -19,18 +19,18 @@ const ENHANCED_OCR_PROMPT = `Extract ALL visible text from this image with high 
 
 Return the extracted text maintaining the layout structure when possible.`;
 
-// Model configurations (free models first, then paid fallbacks)
+// Model configurations (prioritized by reliability)
 const MODELS = [
-  // Free models
+  // Primary models
   {
-    name: "Llama 4 Maverick Free",
-    id: "meta-llama/llama-4-maverick:free",
+    name: "Llama 4 Maverick",
+    id: "meta-llama/llama-4-maverick",
     systemPrompt: "You are an expert OCR system. Extract all visible text precisely.",
     maxRetries: 2
   },
   {
-    name: "Gemma 3 27B Free",
-    id: "google/gemma-3-27b-it:free",
+    name: "Gemma 3 27B",
+    id: "google/gemma-3-27b-it",
     systemPrompt: "You are an expert OCR system. Extract all visible text precisely.",
     maxRetries: 2
   },
@@ -44,12 +44,6 @@ const MODELS = [
   {
     name: "GPT-4.1 Nano",
     id: "openai/gpt-4.1-nano",
-    systemPrompt: "You are an expert OCR system. Extract all visible text precisely.",
-    maxRetries: 1
-  },
-  {
-    name: "Llama 4 Maverick Paid",
-    id: "meta-llama/llama-4-maverick",
     systemPrompt: "You are an expert OCR system. Extract all visible text precisely.",
     maxRetries: 1
   }

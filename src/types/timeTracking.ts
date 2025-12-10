@@ -44,6 +44,27 @@ export interface PunchStatus {
   on_break: boolean;
 }
 
+export interface EmployeePin {
+  id: string;
+  restaurant_id: string;
+  employee_id: string;
+  pin_hash: string;
+  min_length: number;
+  force_reset: boolean;
+  last_used_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KioskSessionToken {
+  location_id: string;
+  kiosk_instance_id: string;
+  manager_id_hash: string;
+  kiosk_mode: boolean;
+  started_at: string;
+  min_length?: number;
+}
+
 export interface WorkedHours {
   total_hours: number;
   regular_hours: number;

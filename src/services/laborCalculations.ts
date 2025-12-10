@@ -17,9 +17,8 @@
 import {
   calculateDailySalaryAllocation,
   calculateDailyContractorAllocation,
-  DAYS_PER_PAY_PERIOD,
-  DAYS_PER_CONTRACTOR_INTERVAL,
 } from '@/utils/compensationCalculations';
+import { parseWorkPeriods } from '@/utils/payrollCalculations';
 import type { Employee, Shift, CompensationType } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
 import { format, eachDayOfInterval } from 'date-fns';
@@ -326,15 +325,15 @@ export function calculateScheduledLaborCost(
  * 
  * Used by: Dashboard metrics, Payroll
  * 
- * @param timePunches - Array of time punch records
  * @param employees - Array of employees
+ * @param timePunches - Array of time punch records
  * @param startDate - Period start date
  * @param endDate - Period end date
  * @returns Labor cost breakdown with daily details
  */
 export function calculateActualLaborCost(
-  timePunches: TimePunch[],
   employees: Employee[],
+  timePunches: TimePunch[],
   startDate: Date,
   endDate: Date
 ): { breakdown: LaborCostBreakdown; dailyCosts: DailyLaborCost[] } {
@@ -355,55 +354,116 @@ export function calculateActualLaborCost(
     });
   });
 
-  // Group punches by employee and date, calculate hours
-  const hoursPerEmployeePerDay = new Map<string, Map<string, number>>();
-  const employeesActivePerDay = new Map<string, Set<string>>();
-  
-  // Process time punches (similar logic to payrollCalculations.ts)
-  // For simplicity, we'll assume punches are already paired (clock_in → clock_out)
-  // In production, you'd use parseWorkPeriods from payrollCalculations.ts
-  
+  // Group time punches by employee and parse into work periods
+  const punchesByEmployee = new Map<string, TimePunch[]>();
   timePunches.forEach(punch => {
-    const employee = employeeMap.get(punch.employee_id);
-    if (!employee) return;
-    
-    const punchDate = format(new Date(punch.punch_time), 'yyyy-MM-dd');
-    
-    // Track active employees per day
-    if (!employeesActivePerDay.has(punchDate)) {
-      employeesActivePerDay.set(punchDate, new Set());
+    if (!punchesByEmployee.has(punch.employee_id)) {
+      punchesByEmployee.set(punch.employee_id, []);
     }
-    employeesActivePerDay.get(punchDate)?.add(employee.id);
+    const employeePunches = punchesByEmployee.get(punch.employee_id);
+    if (employeePunches) {
+      employeePunches.push(punch);
+    }
   });
 
-  // Calculate costs (this is a simplified version - production uses parseWorkPeriods)
-  // For now, we'll just mark employees as active and use daily rates
-  
+  // Map to store hours worked per employee per day
+  const hoursPerEmployeePerDay = new Map<string, Map<string, number>>();
+  const employeesActivePerDay = new Map<string, Set<string>>();
+
+  // Parse work periods for each employee and calculate daily hours
+  punchesByEmployee.forEach((punches, employeeId) => {
+    const employee = employeeMap.get(employeeId);
+    if (!employee || employee.status !== 'active') {
+      return;
+    }
+
+    const { periods } = parseWorkPeriods(punches);
+    
+    if (!hoursPerEmployeePerDay.has(employeeId)) {
+      hoursPerEmployeePerDay.set(employeeId, new Map<string, number>());
+    }
+    const employeeHours = hoursPerEmployeePerDay.get(employeeId);
+    if (!employeeHours) return;
+
+    periods.forEach(period => {
+      // Skip break periods - only count actual work time
+      if (period.isBreak) {
+        return;
+      }
+      
+      const workDate = format(new Date(period.startTime), 'yyyy-MM-dd');
+      const hoursWorked = period.hours;
+      
+      // Accumulate hours for this employee on this date (start date of work period)
+      employeeHours.set(workDate, (employeeHours.get(workDate) || 0) + hoursWorked);
+      
+      // Track that this employee was active on ALL dates in the period range
+      // This handles overnight shifts where work spans multiple days
+      const startDate = new Date(period.startTime);
+      const endDate = new Date(period.endTime);
+      const periodStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+      const periodEnd = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+      
+      // Add employee to active set for each day the period touches
+      for (let d = new Date(periodStart); d <= periodEnd; d.setDate(d.getDate() + 1)) {
+        const dateStr = format(d, 'yyyy-MM-dd');
+        if (!employeesActivePerDay.has(dateStr)) {
+          employeesActivePerDay.set(dateStr, new Set());
+        }
+        const activeSet = employeesActivePerDay.get(dateStr);
+        if (activeSet) {
+          activeSet.add(employeeId);
+        }
+      }
+    });
+  });
+
+  // Calculate costs for each date
   allDates.forEach(date => {
     const dateStr = format(date, 'yyyy-MM-dd');
     const dayData = dateMap.get(dateStr);
-    if (!dayData) return;
-    
+    if (!dayData) {
+      return;
+    }
+
     const activeEmployees = employeesActivePerDay.get(dateStr);
-    if (!activeEmployees) return;
-    
+    if (!activeEmployees) {
+      return;
+    }
+
     activeEmployees.forEach(empId => {
       const employee = employeeMap.get(empId);
       if (!employee) return;
-      
-      const dailyCost = calculateEmployeeDailyCost(employee) / 100; // Convert to dollars
-      
+
+      const employeeHours = hoursPerEmployeePerDay.get(empId);
+      const hoursWorked = employeeHours?.get(dateStr) || 0;
+
       switch (employee.compensation_type) {
-        case 'salary':
-          dayData.salary_cost += dailyCost;
-          dayData.total_cost += dailyCost;
-          break;
-        case 'contractor':
-          if (employee.contractor_payment_interval !== 'per-job') {
-            dayData.contractor_cost += dailyCost;
-            dayData.total_cost += dailyCost;
+        case 'hourly': {
+          if (hoursWorked > 0) {
+            const hourlyCost = (employee.hourly_rate / 100) * hoursWorked; // Convert cents to dollars
+            dayData.hourly_cost += hourlyCost;
+            dayData.hours_worked += hoursWorked;
+            dayData.total_cost += hourlyCost;
           }
           break;
+        }
+
+        case 'salary': {
+          const salaryCost = calculateEmployeeDailyCost(employee) / 100; // Convert to dollars
+          dayData.salary_cost += salaryCost;
+          dayData.total_cost += salaryCost;
+          break;
+        }
+
+        case 'contractor': {
+          if (employee.contractor_payment_interval !== 'per-job') {
+            const contractorCost = calculateEmployeeDailyCost(employee) / 100; // Convert to dollars
+            dayData.contractor_cost += contractorCost;
+            dayData.total_cost += contractorCost;
+          }
+          break;
+        }
       }
     });
   });
@@ -474,8 +534,8 @@ export function getEmployeeDailyRateDescription(employee: Employee): string {
     case 'salary':
       return `~$${dailyRate}/day (${employee.pay_period_type})`;
     case 'contractor':
-      if (employee.contractor_payment_interval === 'per-job') {
-        return `$${(employee.contractor_payment_amount! / 100).toFixed(2)}/job`;
+      if (employee.contractor_payment_interval === 'per-job' && employee.contractor_payment_amount) {
+        return `$${(employee.contractor_payment_amount / 100).toFixed(2)}/job`;
       }
       return `~$${dailyRate}/day (${employee.contractor_payment_interval})`;
     default:

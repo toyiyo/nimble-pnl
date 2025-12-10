@@ -88,8 +88,8 @@ INSERT INTO employee_pins (
 -- Create user_restaurants relationships
 INSERT INTO user_restaurants (user_id, restaurant_id, role)
 VALUES 
-  ('00000000-0000-0000-0000-000000000402'::uuid, '00000000-0000-0000-0000-000000000401'::uuid, 'employee'),
-  ('00000000-0000-0000-0000-000000000403'::uuid, '00000000-0000-0000-0000-000000000401'::uuid, 'employee'),
+  ('00000000-0000-0000-0000-000000000402'::uuid, '00000000-0000-0000-0000-000000000401'::uuid, 'staff'),
+  ('00000000-0000-0000-0000-000000000403'::uuid, '00000000-0000-0000-0000-000000000401'::uuid, 'staff'),
   ('00000000-0000-0000-0000-000000000404'::uuid, '00000000-0000-0000-0000-000000000401'::uuid, 'manager');
 
 -- Test 1: verify_employee_can_login allows active employee to login
@@ -124,12 +124,9 @@ SELECT results_eq(
 DELETE FROM auth_audit_log WHERE employee_id = '00000000-0000-0000-0000-000000000407'::uuid;
 
 -- Call function as authenticated user
-SET LOCAL request.jwt.claims TO json_build_object(
-  'sub', '00000000-0000-0000-0000-000000000403'::uuid,
-  'role', 'authenticated'
-)::text;
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000403", "role": "authenticated"}';
 
-PERFORM verify_employee_can_login('00000000-0000-0000-0000-000000000403'::uuid);
+SELECT * FROM verify_employee_can_login('00000000-0000-0000-0000-000000000403'::uuid);
 
 SELECT ok(
   EXISTS(
@@ -186,7 +183,7 @@ SELECT results_eq(
 DELETE FROM auth_audit_log WHERE employee_id = '00000000-0000-0000-0000-000000000407'::uuid;
 
 -- Call function as authenticated user (kiosk mode manager)
-PERFORM verify_employee_pin('00000000-0000-0000-0000-000000000401'::uuid, '5678');
+SELECT * FROM verify_employee_pin('00000000-0000-0000-0000-000000000401'::uuid, '5678');
 
 SELECT ok(
   EXISTS(
@@ -206,7 +203,7 @@ SET LOCAL role TO 'anon';
 DELETE FROM auth_audit_log WHERE employee_id = '00000000-0000-0000-0000-000000000407'::uuid;
 
 -- Call function as anon (this should NOT create audit log entry due to NULL guard)
-PERFORM verify_employee_pin('00000000-0000-0000-0000-000000000401'::uuid, '5678');
+SELECT * FROM verify_employee_pin('00000000-0000-0000-0000-000000000401'::uuid, '5678');
 
 -- Verify function still blocks but doesn't crash
 SELECT results_eq(
@@ -231,10 +228,7 @@ SELECT results_eq(
 
 -- Reset to authenticated for remaining tests
 RESET role;
-SET LOCAL request.jwt.claims TO json_build_object(
-  'sub', '00000000-0000-0000-0000-000000000404'::uuid,
-  'role', 'authenticated'
-)::text;
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000404", "role": "authenticated"}';
 
 -- Test 16: auth_audit_log table has correct columns
 SELECT has_column('auth_audit_log', 'user_id', 'auth_audit_log should have user_id column');

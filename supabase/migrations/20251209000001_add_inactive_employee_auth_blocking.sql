@@ -165,13 +165,19 @@ RETURNS TABLE(
 ) AS $$
 DECLARE
   v_employee RECORD;
+  v_pin_hash TEXT;
 BEGIN
-  -- Find employee by PIN and restaurant
-  SELECT e.id, e.name, e.pin, e.is_active
+  -- Hash the provided PIN to compare with stored hash
+  v_pin_hash := encode(digest(p_pin, 'sha256'), 'hex');
+
+  -- Find employee by PIN hash and restaurant
+  SELECT e.id, e.name, e.is_active
   INTO v_employee
   FROM employees e
+  INNER JOIN employee_pins ep ON ep.employee_id = e.id
   WHERE e.restaurant_id = p_restaurant_id
-    AND e.pin = p_pin
+    AND ep.restaurant_id = p_restaurant_id
+    AND ep.pin_hash = v_pin_hash
   LIMIT 1;
 
   -- No employee found with that PIN

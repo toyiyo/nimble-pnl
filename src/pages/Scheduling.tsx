@@ -11,6 +11,7 @@ import { useShifts, useDeleteShift } from '@/hooks/useShifts';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
+import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
@@ -22,7 +23,6 @@ import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionD
 import { ScheduleStatusBadge } from '@/components/ScheduleStatusBadge';
 import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
-import { Unlock, Send, History } from 'lucide-react';
 import { 
   Calendar, 
   Plus, 
@@ -37,6 +37,9 @@ import {
   CalendarClock,
   CalendarX,
   AlertTriangle,
+  Unlock,
+  Send,
+  History,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -199,6 +202,14 @@ const Scheduling = () => {
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
   const [positionFilter, setPositionFilter] = useState<string>('all');
 
+  // Calculate scheduled labor costs with breakdown
+  const { breakdown: laborCostBreakdown } = useScheduledLaborCosts(
+    shifts,
+    currentWeekStart,
+    weekEnd,
+    restaurantId
+  );
+
   // Apply position filter when present
   const filteredEmployees = positionFilter && positionFilter !== 'all'
     ? activeEmployees.filter(emp => emp.position === positionFilter)
@@ -216,14 +227,6 @@ const Scheduling = () => {
   const totalScheduledHours = shifts
     .filter(s => filteredEmployees.some(e => e.id === s.employee_id))
     .reduce((sum, shift) => sum + calculateShiftHours(shift), 0);
-  
-  const totalLaborCost = shifts
-    .filter(s => filteredEmployees.some(e => e.id === s.employee_id))
-    .reduce((sum, shift) => {
-      const employee = employees.find(emp => emp.id === shift.employee_id);
-      const hours = calculateShiftHours(shift);
-      return sum + (employee ? (employee.hourly_rate / 100) * hours : 0);
-    }, 0);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
@@ -320,10 +323,6 @@ const Scheduling = () => {
   );
   const scheduledEmployeeCount = scheduledEmployeeIds.size;
 
-  const getShiftsForDay = (day: Date) => {
-    return shifts.filter(shift => isSameDay(parseISO(shift.start_time), day));
-  };
-
   const getShiftsForEmployee = (employeeId: string, day: Date) => {
     return shifts.filter(
       shift => shift.employee_id === employeeId && isSameDay(parseISO(shift.start_time), day)
@@ -398,9 +397,41 @@ const Scheduling = () => {
             {shiftsLoading ? (
               <Skeleton className="h-8 w-20" />
             ) : (
-              <div className="text-2xl font-bold">${totalLaborCost.toFixed(2)}</div>
+              <>
+                <div className="text-2xl font-bold">${laborCostBreakdown.total.toFixed(2)}</div>
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Hourly:</span>
+                    <span className="font-medium">
+                      ${laborCostBreakdown.hourly.cost.toFixed(2)}
+                      <span className="text-muted-foreground ml-1">
+                        ({laborCostBreakdown.hourly.hours.toFixed(1)}h)
+                      </span>
+                    </span>
+                  </div>
+                  {laborCostBreakdown.salary.cost > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Salary:</span>
+                      <span className="font-medium">
+                        ${laborCostBreakdown.salary.cost.toFixed(2)}
+                        <span className="text-muted-foreground ml-1">
+                          (est. {laborCostBreakdown.salary.estimatedDays}d)
+                        </span>
+                      </span>
+                    </div>
+                  )}
+                  {laborCostBreakdown.contractor.cost > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Contractors:</span>
+                      <span className="font-medium">
+                        ${laborCostBreakdown.contractor.cost.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
-            <p className="text-xs text-muted-foreground">Estimated weekly cost</p>
+            <p className="text-xs text-muted-foreground mt-2">Estimated weekly cost</p>
           </CardContent>
         </Card>
       </div>

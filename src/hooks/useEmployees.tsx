@@ -1,21 +1,42 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Employee } from '@/types/scheduling';
+import { Employee, DeactivationReason } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
 
-export const useEmployees = (restaurantId: string | null) => {
+export type EmployeeStatusFilter = 'active' | 'inactive' | 'all';
+
+interface UseEmployeesOptions {
+  status?: EmployeeStatusFilter;
+}
+
+export const useEmployees = (
+  restaurantId: string | null,
+  options: UseEmployeesOptions = { status: 'active' }
+) => {
   const { toast } = useToast();
+  const { status = 'active' } = options;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['employees', restaurantId],
+    queryKey: ['employees', restaurantId, status],
     queryFn: async () => {
       if (!restaurantId) return [];
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('employees')
         .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('name');
+        .eq('restaurant_id', restaurantId);
+
+      // Apply status filter
+      if (status === 'active') {
+        query = query.eq('is_active', true);
+      } else if (status === 'inactive') {
+        query = query.eq('is_active', false);
+      }
+      // 'all' = no filter
+
+      query = query.order('name');
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return data as Employee[];
@@ -122,6 +143,95 @@ export const useDeleteEmployee = () => {
     onError: (error: Error) => {
       toast({
         title: 'Error deleting employee',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+};
+
+export interface DeactivateEmployeeParams {
+  employeeId: string;
+  reason?: string;
+  removeFromSchedules?: boolean;
+}
+
+export const useDeactivateEmployee = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ employeeId, reason, removeFromSchedules = true }: DeactivateEmployeeParams) => {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // Call the database function for deactivation
+      const { data, error } = await supabase.rpc('deactivate_employee', {
+        p_employee_id: employeeId,
+        p_deactivated_by: user.id,
+        p_reason: reason || null,
+        p_remove_from_future_shifts: removeFromSchedules,
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      // Invalidate all employee queries for this restaurant
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast({
+        title: 'Employee deactivated',
+        description: 'The employee has been deactivated and will no longer appear in active lists.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error deactivating employee',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+};
+
+export interface ReactivateEmployeeParams {
+  employeeId: string;
+  hourlyRate?: number; // Optional: update rate during reactivation
+  confirmPin?: boolean; // Whether PIN should remain active (for UI flow)
+}
+
+export const useReactivateEmployee = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ employeeId, hourlyRate }: ReactivateEmployeeParams) => {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // Call the database function for reactivation
+      const { data, error } = await supabase.rpc('reactivate_employee', {
+        p_employee_id: employeeId,
+        p_reactivated_by: user.id,
+        p_new_hourly_rate: hourlyRate || null,
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      // Invalidate all employee queries
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast({
+        title: 'Employee reactivated',
+        description: 'The employee has been reactivated and can now log in, punch, and be scheduled.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error reactivating employee',
         description: error.message,
         variant: 'destructive',
       });

@@ -4,7 +4,7 @@
 BEGIN;
 
 -- Load pgTAP extension
-SELECT plan(25);
+SELECT plan(29);
 
 -- Setup: Create test restaurant and users
 INSERT INTO restaurants (id, name, address, phone)

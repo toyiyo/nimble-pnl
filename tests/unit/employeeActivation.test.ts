@@ -2,6 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React, { ReactNode } from 'react';
+import {
+  filterActiveEmployees,
+  filterInactiveEmployees,
+  getLastActiveDate,
+  canReactivate,
+} from '@/utils/employeeFilters';
 
 /**
  * Unit Tests for Employee Activation/Deactivation Logic
@@ -226,6 +232,12 @@ describe('Employee Activation Status', () => {
       });
 
       mockSupabase.rpc = mockRpc;
+      
+      // Mock authenticated user for deactivation
+      mockSupabase.auth.getUser.mockResolvedValue({
+        data: { user: { id: 'user-123' } },
+        error: null,
+      });
 
       const { useDeactivateEmployee } = await import('@/hooks/useEmployees');
 
@@ -365,10 +377,6 @@ describe('Employee Activation Status', () => {
         { id: '3', name: 'Active 2', is_active: true, status: 'active' },
       ];
 
-      // This would be a utility function we create
-      const filterActiveEmployees = (emps: typeof employees) =>
-        emps.filter((e) => e.is_active);
-
       const result = filterActiveEmployees(employees);
       expect(result).toHaveLength(2);
       expect(result.every((e) => e.is_active)).toBe(true);
@@ -380,9 +388,6 @@ describe('Employee Activation Status', () => {
         { id: '2', name: 'Inactive 1', is_active: false, status: 'inactive' },
         { id: '3', name: 'Active 2', is_active: true, status: 'active' },
       ];
-
-      const filterInactiveEmployees = (emps: typeof employees) =>
-        emps.filter((e) => !e.is_active);
 
       const result = filterInactiveEmployees(employees);
       expect(result).toHaveLength(1);
@@ -397,22 +402,12 @@ describe('Employee Activation Status', () => {
         deactivated_at: '2025-09-12T00:00:00Z',
       };
 
-      // Utility to get formatted last active date
-      const getLastActiveDate = (emp: typeof employee) => {
-        if (!emp.deactivated_at) return null;
-        return new Date(emp.deactivated_at).toLocaleDateString();
-      };
-
       const result = getLastActiveDate(employee);
       expect(result).toBeTruthy();
       expect(typeof result).toBe('string');
     });
 
     it('should determine if employee can be reactivated', () => {
-      const canReactivate = (employee: { is_active: boolean; status: string }) => {
-        return !employee.is_active && employee.status === 'inactive';
-      };
-
       expect(
         canReactivate({ is_active: false, status: 'inactive' })
       ).toBe(true);

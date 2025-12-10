@@ -1,7 +1,7 @@
 # Employee Activation/Deactivation Implementation Summary
 
-> **Status**: ✅ **Complete** - All 10 todos implemented and tested
-> **Date**: December 9, 2025
+> **Status**: ⚠️ 80% Complete (8/10 todos)
+> **Date**: December 10, 2025
 > **Branch**: `feature/better-handling-of-inactive-employees`
 
 ---
@@ -438,6 +438,9 @@ employees
 
 ---
 
-**Implementation Status**: ⚠️ 70% Complete (7/10 todos)
-**Est. Time to Completion**: 2-3 hours (remaining 3 todos)
+**Implementation Status**: ⚠️ 80% Complete (8/10 todos)
+**Remaining Todos**: 
+- TODO #9: Employee Profile View (badge, read-only fields, reactivate/deactivate buttons)
+- TODO #10: Scheduling filter enhancement (use `is_active` field consistently)
+**Est. Time to Completion**: 1-2 hours (remaining 2 todos)
 **Blocking Issues**: None - all dependencies resolved

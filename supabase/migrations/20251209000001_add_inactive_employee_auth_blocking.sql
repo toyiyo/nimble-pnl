@@ -16,23 +16,25 @@ BEGIN
 
   -- If user is an employee and is inactive, prevent login
   IF FOUND AND v_employee_record.is_active = false THEN
-    -- Log the blocked login attempt for audit purposes
-    INSERT INTO auth_audit_log (
-      user_id,
-      event_type,
-      employee_id,
-      restaurant_id,
-      metadata
-    ) VALUES (
-      NEW.id,
-      'login_blocked_inactive_employee',
-      v_employee_record.id,
-      v_employee_record.restaurant_id,
-      jsonb_build_object(
-        'employee_name', v_employee_record.name,
-        'attempted_at', NOW()
-      )
-    );
+    -- Log the blocked login attempt for audit purposes (only if authenticated)
+    IF auth.uid() IS NOT NULL THEN
+      INSERT INTO auth_audit_log (
+        user_id,
+        event_type,
+        employee_id,
+        restaurant_id,
+        metadata
+      ) VALUES (
+        NEW.id,
+        'login_blocked_inactive_employee',
+        v_employee_record.id,
+        v_employee_record.restaurant_id,
+        jsonb_build_object(
+          'employee_name', v_employee_record.name,
+          'attempted_at', NOW()
+        )
+      );
+    END IF;
 
     -- Raise exception to prevent login
     RAISE EXCEPTION 'Account is inactive. Please contact your manager.'
@@ -107,23 +109,25 @@ BEGIN
 
   -- If employee is inactive, block login
   IF v_employee.is_active = false THEN
-    -- Log blocked attempt
-    INSERT INTO auth_audit_log (
-      user_id,
-      event_type,
-      employee_id,
-      restaurant_id,
-      metadata
-    ) VALUES (
-      v_user_id,
-      'login_blocked_inactive_employee',
-      v_employee.id,
-      v_employee.restaurant_id,
-      jsonb_build_object(
-        'employee_name', v_employee.name,
-        'attempted_at', NOW()
-      )
-    );
+    -- Log blocked attempt (only if authenticated)
+    IF v_user_id IS NOT NULL THEN
+      INSERT INTO auth_audit_log (
+        user_id,
+        event_type,
+        employee_id,
+        restaurant_id,
+        metadata
+      ) VALUES (
+        v_user_id,
+        'login_blocked_inactive_employee',
+        v_employee.id,
+        v_employee.restaurant_id,
+        jsonb_build_object(
+          'employee_name', v_employee.name,
+          'attempted_at', NOW()
+        )
+      );
+    END IF;
 
     RETURN QUERY SELECT 
       false as can_login,
@@ -182,23 +186,25 @@ BEGIN
 
   -- Employee found but inactive
   IF v_employee.is_active = false THEN
-    -- Log blocked PIN attempt
-    INSERT INTO auth_audit_log (
-      user_id,
-      event_type,
-      employee_id,
-      restaurant_id,
-      metadata
-    ) VALUES (
-      auth.uid(),
-      'pin_blocked_inactive_employee',
-      v_employee.id,
-      p_restaurant_id,
-      jsonb_build_object(
-        'employee_name', v_employee.name,
-        'attempted_at', NOW()
-      )
-    );
+    -- Log blocked PIN attempt (only if authenticated user exists)
+    IF auth.uid() IS NOT NULL THEN
+      INSERT INTO auth_audit_log (
+        user_id,
+        event_type,
+        employee_id,
+        restaurant_id,
+        metadata
+      ) VALUES (
+        auth.uid(),
+        'pin_blocked_inactive_employee',
+        v_employee.id,
+        p_restaurant_id,
+        jsonb_build_object(
+          'employee_name', v_employee.name,
+          'attempted_at', NOW()
+        )
+      );
+    END IF;
 
     RETURN QUERY SELECT 
       v_employee.id,

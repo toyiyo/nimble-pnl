@@ -207,10 +207,18 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
   };
 
   const getDeactivationInfo = () => {
-    if (!employee.deactivated_at) return null;
+    // Prefer last_active_date, fall back to deactivated_at
+    const dateToUse = employee.last_active_date || employee.deactivated_at;
+    if (!dateToUse) return null;
     
-    const date = format(new Date(employee.deactivated_at), 'MMM d, yyyy');
-    return `Last active: ${date}`;
+    const date = format(new Date(dateToUse), 'MMM d, yyyy');
+    
+    // Use appropriate label based on which field we're displaying
+    if (employee.last_active_date) {
+      return `Last active: ${date}`;
+    } else {
+      return `Deactivated: ${date}`;
+    }
   };
 
   return (

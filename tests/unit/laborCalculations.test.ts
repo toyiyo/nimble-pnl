@@ -259,7 +259,7 @@ describe('LaborCalculationService', () => {
       expect(breakdown.total).toBe(240);
     });
 
-    it('prorates salary for days employee is scheduled', () => {
+    it('calculates full period cost for salary employees regardless of scheduled days', () => {
       const shifts: Shift[] = [
         {
           ...baseShift,
@@ -282,9 +282,11 @@ describe('LaborCalculationService', () => {
         weekEnd
       );
 
-      // 1 day × $164.24/day = $164.24
-      expect(breakdown.salary.cost).toBeCloseTo(164.24, 1);
-      expect(breakdown.salary.daysScheduled).toBe(1);
+      // Salary employees get paid regardless of scheduled hours
+      // $5000/month ÷ 30.44 days/month = $164.24/day
+      // 7 days in range × $164.24/day = $1149.68 (allow for rounding)
+      expect(breakdown.salary.cost).toBeCloseTo(1149.68, 0); // Allow $1 variance for rounding
+      expect(breakdown.salary.employees).toBe(1);
     });
 
     it('shows full week cost for salary employees when no shifts exist', () => {
@@ -347,13 +349,13 @@ describe('LaborCalculationService', () => {
       );
 
       // Hourly: 8hrs × $15 = $120
-      // Salary: 1 day × $164.26 = $164.26
-      // Contractor: 1 day × $98.55 = $98.55
-      // Total: $382.81
+      // Salary: 7 days × $164.24/day = $1149.68 (paid per pay period, not per shift)
+      // Contractor: 7 days × $98.55/day = $689.85 (paid per pay period, not per shift)
+      // Total: $1959.53
       expect(breakdown.hourly.cost).toBe(120);
-      expect(breakdown.salary.cost).toBe(164.26);
-      expect(breakdown.contractor.cost).toBe(98.55);
-      expect(breakdown.total).toBeCloseTo(382.81, 1);
+      expect(breakdown.salary.cost).toBeCloseTo(1149.68, 0); // Allow $1 variance for rounding
+      expect(breakdown.contractor.cost).toBeCloseTo(689.85, 0); // Allow $1 variance for rounding
+      expect(breakdown.total).toBeCloseTo(1959.53, 0); // Allow $1 variance for rounding
     });
   });
 

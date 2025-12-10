@@ -54,7 +54,9 @@ export function useScheduledLaborCosts(
   dateTo: Date,
   restaurantId: string | null
 ): ScheduledLaborCostsResult {
-  const { employees } = useEmployees(restaurantId);
+  // Fetch ALL employees (including inactive) for historical labor cost accuracy
+  // Shifts from inactive employees should still be counted in past periods
+  const { employees } = useEmployees(restaurantId, { status: 'all' });
 
   const result = useMemo(() => {
     if (!restaurantId || employees.length === 0) {

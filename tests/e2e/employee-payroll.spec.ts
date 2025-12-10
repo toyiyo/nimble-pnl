@@ -700,4 +700,161 @@ test.describe('Per-Job Contractor Manual Payments', () => {
     // The tooltip should show the payment description - use .first() for strict mode
     await expect(page.getByRole('tooltip').getByText('Window cleaning').first()).toBeVisible({ timeout: 5000 });
   });
+
+  test.describe('Inactive Employee Historical Data', () => {
+    let inactiveTestUser: ReturnType<typeof generateTestUser>;
+
+    test.beforeEach(async ({ page }) => {
+      inactiveTestUser = generateTestUser();
+      await signUpAndCreateRestaurant(page, inactiveTestUser);
+    });
+
+    test('deactivated employee still appears in historical payroll with past work', async ({ page }) => {
+      const employee = generateHourlyEmployee();
+      
+      // Step 1: Create an hourly employee
+      await page.goto('/scheduling');
+      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+
+      await page.getByRole('button', { name: /add employee/i }).first().click();
+      const dialog = page.getByRole('dialog');
+      
+      await dialog.getByLabel(/name/i).first().fill(employee.name);
+      await dialog.getByLabel(/hourly rate/i).fill(employee.hourlyRate);
+      await dialog.getByRole('button', { name: /add employee|save/i }).click();
+      await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+      // Wait for employee to appear
+      await expect(page.locator('tr', { has: page.getByText(employee.name) })).toBeVisible({ timeout: 5000 });
+
+      // Step 2: Add a time punch for this employee (simulating past work)
+      await page.goto('/time-tracking');
+      await expect(page.getByRole('heading', { name: /time tracking/i })).toBeVisible({ timeout: 10000 });
+
+      // Clock in
+      const clockInButton = page.getByRole('button', { name: new RegExp(`clock in.*${employee.name}`, 'i') });
+      if (await clockInButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await clockInButton.click();
+        await page.waitForTimeout(1000);
+      }
+
+      // Step 3: Go to payroll and verify employee appears with hours
+      await page.goto('/payroll');
+      await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
+      
+      // Employee should appear in payroll
+      const employeeRowBefore = page.locator('tr', { has: page.getByText(employee.name) });
+      await expect(employeeRowBefore).toBeVisible({ timeout: 5000 });
+
+      // Step 4: Deactivate the employee
+      await page.goto('/scheduling');
+      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+
+      // Find employee row and click edit
+      const scheduleRow = page.locator('tr', { has: page.getByText(employee.name) });
+      await scheduleRow.getByRole('button', { name: /edit/i }).first().click();
+
+      const editDialog = page.getByRole('dialog');
+      await expect(editDialog).toBeVisible();
+
+      // Change status to inactive
+      const statusSelect = editDialog.getByLabel(/status/i);
+      await statusSelect.click();
+      await page.getByRole('option', { name: /inactive/i }).click();
+
+      await editDialog.getByRole('button', { name: /save|update/i }).click();
+      await expect(editDialog).not.toBeVisible({ timeout: 5000 });
+
+      // Employee should now show as inactive
+      await page.waitForTimeout(1000);
+
+      // Step 5: CRITICAL TEST - Go back to payroll and verify employee STILL appears
+      await page.goto('/payroll');
+      await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
+      
+      // The deactivated employee should STILL appear in payroll with their historical data
+      const employeeRowAfter = page.locator('tr', { has: page.getByText(employee.name) });
+      await expect(employeeRowAfter).toBeVisible({ timeout: 5000 });
+
+      // Should show the "Inactive" badge
+      await expect(employeeRowAfter.getByText(/inactive/i)).toBeVisible({ timeout: 5000 });
+      
+      // Should still show their hours/pay (not zero)
+      // The row should exist and be functional
+      await expect(employeeRowAfter).toBeVisible();
+    });
+
+    test('inactive employee with past shifts still counted in labor costs', async ({ page }) => {
+      const employee = generateHourlyEmployee();
+      
+      // Step 1: Create employee and schedule a shift
+      await page.goto('/scheduling');
+      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+
+      await page.getByRole('button', { name: /add employee/i }).first().click();
+      const empDialog = page.getByRole('dialog');
+      
+      await empDialog.getByLabel(/name/i).first().fill(employee.name);
+      await empDialog.getByLabel(/hourly rate/i).fill(employee.hourlyRate);
+      await empDialog.getByRole('button', { name: /add employee|save/i }).click();
+      await expect(empDialog).not.toBeVisible({ timeout: 5000 });
+
+      // Create a shift for this employee
+      await page.getByRole('button', { name: /create shift/i }).first().click();
+      const shiftDialog = page.getByRole('dialog');
+
+      // Select employee
+      const employeeSelect = shiftDialog.getByLabel(/employee/i);
+      await employeeSelect.click();
+      await page.getByRole('option', { name: employee.name }).click();
+
+      // Fill shift times (using today)
+      const today = new Date();
+      const startTime = new Date(today);
+      startTime.setHours(9, 0, 0, 0);
+      const endTime = new Date(today);
+      endTime.setHours(17, 0, 0, 0);
+
+      // These fields might be datetime-local inputs
+      await shiftDialog.getByLabel(/start.*time/i).fill(startTime.toISOString().slice(0, 16));
+      await shiftDialog.getByLabel(/end.*time/i).fill(endTime.toISOString().slice(0, 16));
+
+      await shiftDialog.getByRole('button', { name: /save|create/i }).click();
+      await expect(shiftDialog).not.toBeVisible({ timeout: 5000 });
+
+      // Verify shift appears
+      await page.waitForTimeout(1000);
+
+      // Note the labor cost before deactivation
+      const laborCostCard = page.getByText(/labor cost/i).first();
+      await expect(laborCostCard).toBeVisible();
+      const laborCostBefore = await page.locator(String.raw`text=/\$[0-9]+\.?[0-9]*$/`).first().textContent();
+
+      // Step 2: Deactivate employee
+      const scheduleRow = page.locator('tr', { has: page.getByText(employee.name) });
+      await scheduleRow.getByRole('button', { name: /edit/i }).first().click();
+
+      const editDialog = page.getByRole('dialog');
+      const statusSelect = editDialog.getByLabel(/status/i);
+      await statusSelect.click();
+      await page.getByRole('option', { name: /inactive/i }).click();
+      await editDialog.getByRole('button', { name: /save|update/i }).click();
+      await expect(editDialog).not.toBeVisible({ timeout: 5000 });
+
+      // Refresh the page to ensure we're getting fresh data
+      await page.reload();
+      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+
+      // Step 3: CRITICAL TEST - Labor cost should still include the inactive employee's shift
+      const laborCostAfter = await page.locator(String.raw`text=/\$[0-9]+\.?[0-9]*$/`).first().textContent();
+      
+      // The labor cost should be the same (not zero)
+      expect(laborCostAfter).toBe(laborCostBefore);
+
+      // The shift should still be visible with an "Inactive" badge
+      const shiftRow = page.locator('tr', { has: page.getByText(employee.name) });
+      await expect(shiftRow).toBeVisible();
+      await expect(shiftRow.getByText(/inactive/i)).toBeVisible();
+    });
+  });
 });

@@ -182,7 +182,8 @@ const Scheduling = () => {
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
-  const { employees, loading: employeesLoading } = useEmployees(restaurantId);
+  // Fetch ALL employees (including inactive) to show historical shifts
+  const { employees: allEmployees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'all' });
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
   const deleteShift = useDeleteShift();
   const publishSchedule = usePublishSchedule();
@@ -198,7 +199,8 @@ const Scheduling = () => {
     weekEnd
   );
 
-  const activeEmployees = employees.filter(emp => emp.status === 'active');
+  // Separate active employees for creating new shifts
+  const activeEmployees = allEmployees.filter(emp => emp.status === 'active');
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
   const [positionFilter, setPositionFilter] = useState<string>('all');
 
@@ -210,10 +212,22 @@ const Scheduling = () => {
     restaurantId
   );
 
-  // Apply position filter when present
-  const filteredEmployees = positionFilter && positionFilter !== 'all'
+  // Apply position filter to active employees for new shift creation
+  const filteredActiveEmployees = positionFilter && positionFilter !== 'all'
     ? activeEmployees.filter(emp => emp.position === positionFilter)
     : activeEmployees;
+
+  // For displaying shifts, include ALL employees with shifts this week (including inactive)
+  // Apply position filter to all employees with shifts
+  const filteredEmployeesWithShifts = useMemo(() => {
+    const shiftEmployeeIds = new Set(shifts.map(s => s.employee_id));
+    const employeesWithShifts = allEmployees.filter(emp => shiftEmployeeIds.has(emp.id));
+    
+    if (positionFilter && positionFilter !== 'all') {
+      return employeesWithShifts.filter(emp => emp.position === positionFilter);
+    }
+    return employeesWithShifts;
+  }, [allEmployees, shifts, positionFilter]);
 
   // Calculate labor metrics
   const calculateShiftHours = (shift: Shift) => {
@@ -224,8 +238,9 @@ const Scheduling = () => {
     return netMinutes / 60;
   };
 
+  // Calculate hours for all shifts (including inactive employees)
   const totalScheduledHours = shifts
-    .filter(s => filteredEmployees.some(e => e.id === s.employee_id))
+    .filter(s => filteredEmployeesWithShifts.some(e => e.id === s.employee_id))
     .reduce((sum, shift) => sum + calculateShiftHours(shift), 0);
 
   const handlePreviousWeek = () => {
@@ -315,10 +330,10 @@ const Scheduling = () => {
     }
   };
 
-  // Get unique employees scheduled this week (respecting position filter)
+  // Get unique employees scheduled this week (respecting position filter, including inactive)
   const scheduledEmployeeIds = new Set(
     shifts
-      .filter(s => filteredEmployees.some(e => e.id === s.employee_id))
+      .filter(s => filteredEmployeesWithShifts.some(e => e.id === s.employee_id))
       .map(shift => shift.employee_id)
   );
   const scheduledEmployeeCount = scheduledEmployeeIds.size;
@@ -365,9 +380,9 @@ const Scheduling = () => {
           </CardHeader>
           <CardContent>
             {employeesLoading ? (
-              <Skeleton className="h-8 w-20" />
+              <Skeleton className="h-8 w-12" />
             ) : (
-              <div className="text-2xl font-bold">{filteredEmployees.length}</div>
+              <div className="text-2xl font-bold">{filteredActiveEmployees.length}</div>
             )}
             <p className="text-xs text-muted-foreground">Ready to be scheduled</p>
           </CardContent>
@@ -557,12 +572,15 @@ const Scheduling = () => {
                 Add Employee
               </Button>
             </div>
-            ) : filteredEmployees.length === 0 ? (
+            ) : filteredEmployeesWithShifts.length === 0 ? (
             <div className="text-center py-12">
               <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No employees match filter</h3>
-              <p className="text-muted-foreground mb-4">Try clearing the position filter to see all employees.</p>
-              <Button variant="outline" onClick={() => setPositionFilter('all')}>Clear Filter</Button>
+              <h3 className="text-lg font-semibold mb-2">No scheduled shifts</h3>
+              <p className="text-muted-foreground mb-4">Create shifts for your employees this week.</p>
+              <Button onClick={() => handleAddShift()}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Shift
+              </Button>
             </div>
             ) : (
             <div className="overflow-x-auto">
@@ -579,12 +597,19 @@ const Scheduling = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEmployees.map((employee) => (
+                  {filteredEmployeesWithShifts.map((employee) => (
                     <tr key={employee.id} className="border-b hover:bg-muted/50 group">
                       <td className="p-2 sticky left-0 bg-background">
                         <div className="flex items-center gap-2 justify-between">
                           <div>
-                            <div className="font-medium">{employee.name}</div>
+                            <div className="font-medium flex items-center gap-2">
+                              {employee.name}
+                              {employee.status !== 'active' && (
+                                <Badge variant="outline" className="text-xs">
+                                  Inactive
+                                </Badge>
+                              )}
+                            </div>
                             <div className="text-sm text-muted-foreground">{employee.position}</div>
                           </div>
                           <Button

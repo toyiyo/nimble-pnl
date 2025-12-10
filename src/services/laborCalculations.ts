@@ -21,7 +21,46 @@ import {
 import { parseWorkPeriods } from '@/utils/payrollCalculations';
 import type { Employee, Shift, CompensationType } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
-import { format, eachDayOfInterval } from 'date-fns';
+
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Format a date as YYYY-MM-DD using UTC components to avoid timezone issues
+ */
+function formatDateUTC(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Generate an array of date strings in YYYY-MM-DD format for the inclusive range.
+ * Works entirely in UTC to avoid timezone issues.
+ */
+function generateDateRange(startDate: Date, endDate: Date): string[] {
+  const dates: string[] = [];
+  const current = new Date(Date.UTC(
+    startDate.getUTCFullYear(),
+    startDate.getUTCMonth(),
+    startDate.getUTCDate()
+  ));
+  const end = new Date(Date.UTC(
+    endDate.getUTCFullYear(),
+    endDate.getUTCMonth(),
+    endDate.getUTCDate()
+  ));
+  
+  while (current <= end) {
+    dates.push(formatDateUTC(current));
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+  
+  return dates;
+}
 
 // ============================================================================
 // Types
@@ -134,17 +173,11 @@ export function calculateEmployeePeriodCost(
   endDate: Date,
   hoursPerDay?: Map<string, number>
 ): number {
-  // Normalize to date-only strings to avoid timezone issues
-  const startStr = format(startDate, 'yyyy-MM-dd');
-  const endStr = format(endDate, 'yyyy-MM-dd');
-  const dates = eachDayOfInterval({ 
-    start: new Date(startStr + 'T00:00:00'), 
-    end: new Date(endStr + 'T00:00:00') 
-  });
+  // Generate date range in UTC to avoid timezone issues
+  const dates = generateDateRange(startDate, endDate);
   let totalCost = 0;
 
-  for (const date of dates) {
-    const dateStr = format(date, 'yyyy-MM-dd');
+  for (const dateStr of dates) {
     const hours = hoursPerDay?.get(dateStr) || 0;
 
     switch (employee.compensation_type) {
@@ -193,15 +226,9 @@ export function calculateScheduledLaborCost(
   const employeeMap = new Map(employees.map(e => [e.id, e]));
   const dateMap = new Map<string, DailyLaborCost>();
   
-  // Initialize all dates (normalize to date-only strings to avoid timezone issues)
-  const startStr = format(startDate, 'yyyy-MM-dd');
-  const endStr = format(endDate, 'yyyy-MM-dd');
-  const allDates = eachDayOfInterval({ 
-    start: new Date(startStr + 'T00:00:00'), 
-    end: new Date(endStr + 'T00:00:00') 
-  });
-  allDates.forEach(date => {
-    const dateStr = format(date, 'yyyy-MM-dd');
+  // Initialize all dates using UTC date range to avoid timezone issues
+  const dateStrings = generateDateRange(startDate, endDate);
+  dateStrings.forEach(dateStr => {
     dateMap.set(dateStr, {
       date: dateStr,
       hourly_cost: 0,
@@ -229,7 +256,7 @@ export function calculateScheduledLaborCost(
     const employee = employeeMap.get(shift.employee_id);
     if (!employee || employee.status !== 'active') return;
 
-    const shiftDate = format(new Date(shift.start_time), 'yyyy-MM-dd');
+    const shiftDate = formatDateUTC(new Date(shift.start_time));
     const dayData = dateMap.get(shiftDate);
     if (!dayData) return;
 
@@ -263,10 +290,9 @@ export function calculateScheduledLaborCost(
     if (periodCost > 0) {
       // For scheduled view, distribute the period cost evenly across all days in the range
       // This is just for display purposes - the employee gets paid once per pay period
-      const dailyAllocation = periodCost / allDates.length;
+      const dailyAllocation = periodCost / dateStrings.length;
       
-      allDates.forEach(date => {
-        const dateStr = format(date, 'yyyy-MM-dd');
+      dateStrings.forEach(dateStr => {
         const dayData = dateMap.get(dateStr);
         if (dayData) {
           dayData.salary_cost += dailyAllocation;
@@ -290,10 +316,9 @@ export function calculateScheduledLaborCost(
     if (periodCost > 0) {
       // For scheduled view, distribute the period cost evenly across all days in the range
       // This is just for display purposes - the contractor gets paid per their payment interval
-      const dailyAllocation = periodCost / allDates.length;
+      const dailyAllocation = periodCost / dateStrings.length;
       
-      allDates.forEach(date => {
-        const dateStr = format(date, 'yyyy-MM-dd');
+      dateStrings.forEach(dateStr => {
         const dayData = dateMap.get(dateStr);
         if (dayData) {
           dayData.contractor_cost += dailyAllocation;
@@ -357,15 +382,9 @@ export function calculateActualLaborCost(
   const employeeMap = new Map(employees.map(e => [e.id, e]));
   const dateMap = new Map<string, DailyLaborCost>();
   
-  // Initialize all dates (normalize to date-only strings to avoid timezone issues)
-  const startStr = format(startDate, 'yyyy-MM-dd');
-  const endStr = format(endDate, 'yyyy-MM-dd');
-  const allDates = eachDayOfInterval({ 
-    start: new Date(startStr + 'T00:00:00'), 
-    end: new Date(endStr + 'T00:00:00') 
-  });
-  allDates.forEach(date => {
-    const dateStr = format(date, 'yyyy-MM-dd');
+  // Initialize all dates using UTC date range to avoid timezone issues
+  const dateStrings = generateDateRange(startDate, endDate);
+  dateStrings.forEach(dateStr => {
     dateMap.set(dateStr, {
       date: dateStr,
       hourly_cost: 0,
@@ -413,7 +432,7 @@ export function calculateActualLaborCost(
         return;
       }
       
-      const workDate = format(new Date(period.startTime), 'yyyy-MM-dd');
+      const workDate = formatDateUTC(new Date(period.startTime));
       const hoursWorked = period.hours;
       
       // Accumulate hours for this employee on this date (start date of work period)
@@ -421,14 +440,22 @@ export function calculateActualLaborCost(
       
       // Track that this employee was active on ALL dates in the period range
       // This handles overnight shifts where work spans multiple days
-      const startDate = new Date(period.startTime);
-      const endDate = new Date(period.endTime);
-      const periodStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-      const periodEnd = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+      const startTimestamp = new Date(period.startTime);
+      const endTimestamp = new Date(period.endTime);
+      const periodStart = new Date(Date.UTC(
+        startTimestamp.getUTCFullYear(),
+        startTimestamp.getUTCMonth(),
+        startTimestamp.getUTCDate()
+      ));
+      const periodEnd = new Date(Date.UTC(
+        endTimestamp.getUTCFullYear(),
+        endTimestamp.getUTCMonth(),
+        endTimestamp.getUTCDate()
+      ));
       
       // Add employee to active set for each day the period touches
-      for (let d = new Date(periodStart); d <= periodEnd; d.setDate(d.getDate() + 1)) {
-        const dateStr = format(d, 'yyyy-MM-dd');
+      for (let d = new Date(periodStart); d <= periodEnd; d.setUTCDate(d.getUTCDate() + 1)) {
+        const dateStr = formatDateUTC(d);
         if (!employeesActivePerDay.has(dateStr)) {
           employeesActivePerDay.set(dateStr, new Set());
         }
@@ -441,8 +468,7 @@ export function calculateActualLaborCost(
   });
 
   // Calculate costs for each date
-  allDates.forEach(date => {
-    const dateStr = format(date, 'yyyy-MM-dd');
+  dateStrings.forEach(dateStr => {
     const dayData = dateMap.get(dateStr);
     if (!dayData) {
       return;

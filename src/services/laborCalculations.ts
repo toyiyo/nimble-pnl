@@ -217,7 +217,7 @@ export function calculateScheduledLaborCost(
   // Process hourly employee shifts
   shifts.forEach(shift => {
     const employee = employeeMap.get(shift.employee_id);
-    if (!employee) return;
+    if (!employee || employee.status !== 'active') return;
 
     const shiftDate = format(new Date(shift.start_time), 'yyyy-MM-dd');
     const dayData = dateMap.get(shiftDate);

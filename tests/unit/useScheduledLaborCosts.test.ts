@@ -144,7 +144,8 @@ describe('useScheduledLaborCosts', () => {
         {
           id: 'emp-1',
           compensation_type: 'salary' as const,
-          salary_amount: 3650000, // $36,500/year = $100/day (in cents)
+          salary_amount: 304400, // $3,044/month = $100/day (using 30.44 days/month)
+          pay_period_type: 'monthly' as const,
           status: 'active' as const,
         },
       ];
@@ -177,7 +178,7 @@ describe('useScheduledLaborCosts', () => {
         useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId)
       );
 
-      // $36,500/365 = $100/day × 2 days = $200
+      // $3,044/month ÷ 30.44 days = $100/day × 2 days = $200
       expect(result.current.breakdown.salary.cost).toBeCloseTo(200, 2);
       expect(result.current.breakdown.salary.estimatedDays).toBe(2);
     });
@@ -187,7 +188,8 @@ describe('useScheduledLaborCosts', () => {
         {
           id: 'emp-1',
           compensation_type: 'salary' as const,
-          salary_amount: 3650000, // $100/day
+          salary_amount: 304400, // $3,044/month = $100/day
+          pay_period_type: 'monthly' as const,
           status: 'active' as const,
         },
       ];
@@ -231,7 +233,8 @@ describe('useScheduledLaborCosts', () => {
         {
           id: 'emp-salary',
           compensation_type: 'salary' as const,
-          salary_amount: 3650000, // $100/day
+          salary_amount: 304400, // $3,044/month = $100/day
+          pay_period_type: 'monthly' as const,
           status: 'active' as const,
         },
       ];

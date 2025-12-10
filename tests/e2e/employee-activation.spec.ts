@@ -97,12 +97,12 @@ async function createEmployee(
   employee: ReturnType<typeof generateEmployee>,
   createUserAccount = false
 ) {
-  // Navigate to employees page
-  await page.getByRole('link', { name: /employees/i }).click();
+  // Navigate to employees page directly
+  await page.goto('/employees');
   await page.waitForURL(/\/employees/);
 
-  // Click Add Employee button
-  const addButton = page.getByRole('button', { name: /add employee/i });
+  // Click Add Employee button (use first() since there may be multiple)
+  const addButton = page.getByRole('button', { name: /add employee/i }).first();
   await expect(addButton).toBeVisible();
   await addButton.click();
 
@@ -110,8 +110,27 @@ async function createEmployee(
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
 
-  await dialog.getByLabel(/^name/i).fill(employee.name);
-  await dialog.getByLabel(/position/i).fill(employee.position);
+  // Fill basic employee info
+  await dialog.getByLabel(/employee name/i).fill(employee.name);
+  
+  // Position uses a combobox - click to open, then type in the search
+  const positionCombobox = dialog.getByRole('combobox', { name: /position/i });
+  await positionCombobox.click();
+  
+  // Wait for the popover to open and type into the search input
+  const searchInput = page.getByPlaceholder(/search or type new position/i);
+  await searchInput.fill(employee.position);
+  
+  // Click the matching item or create new option
+  const positionOption = page.getByRole('option', { name: new RegExp(employee.position, 'i') }).first();
+  if (await positionOption.isVisible().catch(() => false)) {
+    await positionOption.click();
+  } else {
+    // If no match, press Enter to create new
+    await page.keyboard.press('Enter');
+  }
+  
+  // Fill hourly rate
   await dialog.getByLabel(/hourly rate/i).fill(employee.hourlyRate);
 
   if (createUserAccount) {
@@ -126,10 +145,12 @@ async function createEmployee(
 
   // Submit
   await dialog.getByRole('button', { name: /create|add/i }).click();
-  await page.waitForTimeout(1500);
 
-  // Wait for employee to appear in list
-  await expect(page.getByText(employee.name)).toBeVisible();
+  // Wait for the employee dialog specifically to close (by checking for its title to disappear)
+  await expect(page.getByRole('dialog', { name: /add new employee|edit employee/i })).not.toBeVisible({ timeout: 10000 });
+  
+  // Wait for employee to appear in the list
+  await expect(page.getByRole('heading', { name: employee.name })).toBeVisible({ timeout: 10000 });
 }
 
 /**

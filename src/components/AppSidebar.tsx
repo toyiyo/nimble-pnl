@@ -85,6 +85,7 @@ const navigationGroups = [
   {
     label: 'Admin',
     items: [
+      { path: '/employees', label: 'Employees', icon: Users },
       { path: '/team', label: 'Team', icon: Users },
       { path: '/settings', label: 'Settings', icon: Settings },
     ],

@@ -6,20 +6,24 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useEmployees, EmployeeStatusFilter } from '@/hooks/useEmployees';
 import { Employee } from '@/types/scheduling';
-import { Users, UserX, UsersRound, Plus, RotateCcw } from 'lucide-react';
+import { Users, UserX, UsersRound, Plus, RotateCcw, Edit, UserMinus } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 interface EmployeeListProps {
   restaurantId: string;
-  onEmployeeClick?: (employee: Employee) => void;
+  onEmployeeEdit?: (employee: Employee) => void;
+  onEmployeeDeactivate?: (employee: Employee) => void;
+  onEmployeeReactivate?: (employee: Employee) => void;
   onAddEmployee?: () => void;
   showInactiveCount?: boolean;
 }
 
 export const EmployeeList = ({ 
   restaurantId, 
-  onEmployeeClick,
+  onEmployeeEdit,
+  onEmployeeDeactivate,
+  onEmployeeReactivate,
   onAddEmployee,
   showInactiveCount = true 
 }: EmployeeListProps) => {
@@ -110,7 +114,8 @@ export const EmployeeList = ({
                   <EmployeeCard
                     key={employee.id}
                     employee={employee}
-                    onClick={onEmployeeClick}
+                    onEdit={onEmployeeEdit}
+                    onDeactivate={onEmployeeDeactivate}
                     variant="active"
                   />
                 ))}
@@ -133,7 +138,8 @@ export const EmployeeList = ({
                   <EmployeeCard
                     key={employee.id}
                     employee={employee}
-                    onClick={onEmployeeClick}
+                    onEdit={onEmployeeEdit}
+                    onReactivate={onEmployeeReactivate}
                     variant="inactive"
                   />
                 ))}
@@ -158,7 +164,9 @@ export const EmployeeList = ({
                   <EmployeeCard
                     key={employee.id}
                     employee={employee}
-                    onClick={onEmployeeClick}
+                    onEdit={onEmployeeEdit}
+                    onDeactivate={employee.is_active ? onEmployeeDeactivate : undefined}
+                    onReactivate={!employee.is_active ? onEmployeeReactivate : undefined}
                     variant={employee.is_active ? 'active' : 'inactive'}
                   />
                 ))}
@@ -174,11 +182,13 @@ export const EmployeeList = ({
 // Employee Card Component
 interface EmployeeCardProps {
   employee: Employee;
-  onClick?: (employee: Employee) => void;
+  onEdit?: (employee: Employee) => void;
+  onDeactivate?: (employee: Employee) => void;
+  onReactivate?: (employee: Employee) => void;
   variant: 'active' | 'inactive';
 }
 
-const EmployeeCard = ({ employee, onClick, variant }: EmployeeCardProps) => {
+const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }: EmployeeCardProps) => {
   const formatCurrency = (cents: number) => {
     return `$${(cents / 100).toFixed(2)}`;
   };
@@ -204,68 +214,105 @@ const EmployeeCard = ({ employee, onClick, variant }: EmployeeCardProps) => {
   };
 
   return (
-    <div
+    <Card
       className={cn(
-        'flex items-center justify-between p-4 rounded-lg border transition-all cursor-pointer',
+        'transition-all',
         variant === 'active' 
-          ? 'bg-card hover:bg-accent/50 border-border' 
-          : 'bg-muted/30 hover:bg-muted/50 border-muted opacity-75',
-        onClick && 'hover:shadow-sm'
+          ? 'bg-card border-border' 
+          : 'bg-muted/30 border-muted opacity-75'
       )}
-      onClick={() => onClick?.(employee)}
     >
-      <div className="flex items-center gap-4 flex-1 min-w-0">
-        {/* Avatar/Initials */}
-        <div className={cn(
-          'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
-          variant === 'active' 
-            ? 'bg-primary/10 text-primary' 
-            : 'bg-muted text-muted-foreground'
-        )}>
-          {employee.name
-            .split(' ')
-            .map((n) => n[0])
-            .join('')
-            .toUpperCase()
-            .slice(0, 2)}
-        </div>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-4">
+          {/* Avatar/Initials */}
+          <div className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
+            variant === 'active' 
+              ? 'bg-primary/10 text-primary' 
+              : 'bg-muted text-muted-foreground'
+          )}>
+            {employee.name
+              .split(' ')
+              .map((n) => n[0])
+              .join('')
+              .toUpperCase()
+              .slice(0, 2)}
+          </div>
 
-        {/* Employee Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h4 className="font-semibold truncate">{employee.name}</h4>
-            {variant === 'inactive' && (
-              <Badge variant="secondary" className="shrink-0">
-                Inactive
-              </Badge>
+          {/* Employee Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h4 className="font-semibold truncate">{employee.name}</h4>
+              {variant === 'inactive' && (
+                <Badge variant="secondary" className="shrink-0">
+                  Inactive
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="truncate">{employee.position}</span>
+              <span>•</span>
+              <span className="shrink-0">{getCompensationDisplay()}</span>
+            </div>
+            {variant === 'inactive' && employee.deactivation_reason && (
+              <div className="text-xs text-muted-foreground mt-1">
+                Reason: {employee.deactivation_reason}
+              </div>
+            )}
+            {variant === 'inactive' && getDeactivationInfo() && (
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {getDeactivationInfo()}
+              </div>
             )}
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="truncate">{employee.position}</span>
-            <span>•</span>
-            <span className="shrink-0">{getCompensationDisplay()}</span>
-          </div>
-          {variant === 'inactive' && employee.deactivation_reason && (
-            <div className="text-xs text-muted-foreground mt-1">
-              Reason: {employee.deactivation_reason}
-            </div>
-          )}
-          {variant === 'inactive' && getDeactivationInfo() && (
-            <div className="text-xs text-muted-foreground mt-0.5">
-              {getDeactivationInfo()}
-            </div>
-          )}
-        </div>
 
-        {/* Reactivate hint for inactive employees */}
-        {variant === 'inactive' && (
-          <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
-            <RotateCcw className="h-4 w-4" />
-            <span className="hidden md:inline">Click to reactivate</span>
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 shrink-0">
+            {onEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(employee);
+                }}
+                aria-label={`Edit ${employee.name}`}
+              >
+                Edit
+              </Button>
+            )}
+            {onDeactivate && variant === 'active' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeactivate(employee);
+                }}
+                aria-label={`Deactivate ${employee.name}`}
+              >
+                <UserMinus className="h-4 w-4 mr-2" />
+                Deactivate
+              </Button>
+            )}
+            {onReactivate && variant === 'inactive' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReactivate(employee);
+                }}
+                aria-label={`Reactivate ${employee.name}`}
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Reactivate
+              </Button>
+            )}
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 

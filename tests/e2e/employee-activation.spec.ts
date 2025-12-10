@@ -154,23 +154,26 @@ async function createEmployee(
 }
 
 /**
- * Helper to create a PIN for an employee
+ * Helper to set PIN for employee
  */
 async function createEmployeePin(page: Page, employeeName: string, pin: string) {
-  // Find the employee row and click to open profile
-  await page.getByText(employeeName).click();
-  await page.waitForTimeout(1000);
+  // Find the employee card by heading, then click the Edit button
+  const employeeCard = page.locator('div', { has: page.getByRole('heading', { name: employeeName }) });
+  await employeeCard.getByRole('button', { name: /edit/i }).click();
+  await page.waitForTimeout(500);
 
-  // Look for PIN section or button to set PIN
-  const setPinButton = page.getByRole('button', { name: /set pin|create pin/i });
-  if (await setPinButton.isVisible().catch(() => false)) {
-    await setPinButton.click();
+  // Now we should be in the EmployeeDialog
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
 
-    // Fill PIN in dialog
-    const pinDialog = page.getByRole('dialog');
-    await pinDialog.getByLabel(/pin/i).first().fill(pin);
-    await pinDialog.getByRole('button', { name: /save|create/i }).click();
-    await page.waitForTimeout(1000);
+  // Look for PIN input field
+  const pinInput = dialog.getByLabel(/pin/i).first();
+  if (await pinInput.isVisible().catch(() => false)) {
+    await pinInput.fill(pin);
+    
+    // Save the changes
+    await dialog.getByRole('button', { name: /save|update/i }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 10000 });
   }
 }
 
@@ -209,15 +212,12 @@ test.describe('Employee Activation/Deactivation', () => {
     // === SETUP: Set employee PIN ===
     await createEmployeePin(page, employeeData.name, employeeData.pin);
 
-    // === TEST: Navigate to employee profile ===
-    await page.getByText(employeeData.name).click();
-    await page.waitForTimeout(1000);
-
-    // === TEST: Verify employee is active ===
-    await expect(page.getByText(/active/i).first()).toBeVisible();
+    // === TEST: Verify employee is in active tab ===
+    const employeeCard = page.locator('div', { has: page.getByRole('heading', { name: employeeData.name }) });
+    await expect(employeeCard).toBeVisible();
 
     // === TEST: Click deactivate button ===
-    const deactivateButton = page.getByRole('button', { name: /deactivate/i });
+    const deactivateButton = employeeCard.getByRole('button', { name: /deactivate/i });
     await expect(deactivateButton).toBeVisible();
     await deactivateButton.click();
 
@@ -293,10 +293,8 @@ test.describe('Employee Activation/Deactivation', () => {
     await createEmployeePin(page, employeeData.name, employeeData.pin);
 
     // === SETUP: Deactivate the employee first ===
-    await page.getByText(employeeData.name).click();
-    await page.waitForTimeout(1000);
-
-    const deactivateButton = page.getByRole('button', { name: /deactivate/i });
+    const activeEmployeeCard = page.locator('div', { has: page.getByRole('heading', { name: employeeData.name }) });
+    const deactivateButton = activeEmployeeCard.getByRole('button', { name: /deactivate/i });
     await deactivateButton.click();
 
     const deactivateModal = page.getByRole('dialog');
@@ -304,7 +302,7 @@ test.describe('Employee Activation/Deactivation', () => {
     await page.waitForTimeout(2000);
 
     // === TEST: Navigate to inactive employees ===
-    await page.getByRole('link', { name: /employees/i }).click();
+    await page.goto('/employees');
     await page.waitForURL(/\/employees/);
 
     const inactiveTab = page.getByRole('tab', { name: /inactive/i });
@@ -313,15 +311,15 @@ test.describe('Employee Activation/Deactivation', () => {
       await page.waitForTimeout(1000);
     }
 
-    // === TEST: Click on inactive employee ===
-    await page.getByText(employeeData.name).click();
-    await page.waitForTimeout(1000);
+    // === TEST: Find inactive employee card ===
+    const inactiveEmployeeCard = page.locator('div', { has: page.getByRole('heading', { name: employeeData.name }) });
+    await expect(inactiveEmployeeCard).toBeVisible();
 
     // === TEST: Verify inactive badge visible ===
-    await expect(page.getByText(/inactive/i)).toBeVisible();
+    await expect(inactiveEmployeeCard.getByText(/inactive/i)).toBeVisible();
 
     // === TEST: Click reactivate button ===
-    const reactivateButton = page.getByRole('button', { name: /reactivate/i });
+    const reactivateButton = inactiveEmployeeCard.getByRole('button', { name: /reactivate/i });
     await expect(reactivateButton).toBeVisible();
     await reactivateButton.click();
 
@@ -393,10 +391,8 @@ test.describe('Employee Activation/Deactivation', () => {
     // For now, we'll verify the employee appears in historical views
 
     // === SETUP: Deactivate employee ===
-    await page.getByText(employeeData.name).click();
-    await page.waitForTimeout(1000);
-
-    const deactivateButton = page.getByRole('button', { name: /deactivate/i });
+    const employeeCard = page.locator('div', { has: page.getByRole('heading', { name: employeeData.name }) });
+    const deactivateButton = employeeCard.getByRole('button', { name: /deactivate/i });
     await deactivateButton.click();
 
     const deactivateModal = page.getByRole('dialog');
@@ -414,7 +410,8 @@ test.describe('Employee Activation/Deactivation', () => {
     }
 
     // === TEST: Open inactive employee profile ===
-    await page.getByText(employeeData.name).click();
+    const inactiveEmployeeCard = page.locator('div', { has: page.getByRole('heading', { name: employeeData.name }) });
+    await expect(inactiveEmployeeCard).toBeVisible();
     await page.waitForTimeout(1000);
 
     // === TEST: Verify history tabs are present and accessible ===

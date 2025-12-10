@@ -82,10 +82,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
+      
+      if (error) {
+        return { error };
+      }
+
+      // Check if user is an inactive employee
+      if (data.user) {
+        const { data: employees, error: employeeError } = await supabase
+          .from('employees')
+          .select('id, name, is_active')
+          .eq('user_id', data.user.id)
+          .limit(1);
+
+        if (employeeError) {
+          console.error('Error checking employee status:', employeeError);
+          // Don't block login on query error, just log it
+        } else if (employees && employees.length > 0) {
+          const employee = employees[0];
+          if (employee.is_active === false) {
+            // Employee is inactive, sign them out and return error
+            await supabase.auth.signOut({ scope: 'local' });
+            return { 
+              error: { 
+                message: 'Account is inactive. Please contact your manager.',
+                status: 403,
+                name: 'EmployeeInactiveError'
+              } 
+            };
+          }
+        }
+      }
+
       return { error };
     } catch (error) {
       console.error('Sign in error:', error);

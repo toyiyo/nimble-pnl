@@ -180,9 +180,9 @@ describe('useScheduledLaborCosts', () => {
 
       // Salary employees get paid per pay period, not per scheduled day
       // $3,044/month ÷ 30.44 days = $100/day
-      // Date range includes timezone quirk: 8 days × $100/day = $800
+      // 7 days in range × $100/day = $700
       // (They're scheduled 2 days but that doesn't affect their pay)
-      expect(result.current.breakdown.salary.cost).toBeCloseTo(800, 2);
+      expect(result.current.breakdown.salary.cost).toBeCloseTo(700, 2);
       expect(result.current.breakdown.salary.estimatedDays).toBe(2); // Tracking scheduled days for info only
     });
 
@@ -220,8 +220,8 @@ describe('useScheduledLaborCosts', () => {
 
       // Employee scheduled only 1 day (for tracking purposes)
       expect(result.current.breakdown.salary.estimatedDays).toBe(1);
-      // But cost is for full period: $100/day × 8 days (timezone quirk) = $800
-      expect(result.current.breakdown.salary.cost).toBeCloseTo(800, 2);
+      // But cost is for full 7-day period: $100/day × 7 days = $700
+      expect(result.current.breakdown.salary.cost).toBeCloseTo(700, 2);
     });
   });
 
@@ -273,11 +273,11 @@ describe('useScheduledLaborCosts', () => {
 
       // Hourly: 8hrs × $15 = $120
       // Salary: Employee paid per pay period regardless of scheduled hours
-      // Date range includes timezone quirk: 8 days × $100/day = $800
-      // Total: $920
+      // 7 days in range × $100/day = $700
+      // Total: $820
       expect(result.current.breakdown.hourly.cost).toBeCloseTo(120, 2);
-      expect(result.current.breakdown.salary.cost).toBeCloseTo(800, 2);
-      expect(result.current.totalCost).toBeCloseTo(920, 2);
+      expect(result.current.breakdown.salary.cost).toBeCloseTo(700, 2);
+      expect(result.current.totalCost).toBeCloseTo(820, 2);
     });
   });
 

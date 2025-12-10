@@ -21,7 +21,7 @@ import {
 import { parseWorkPeriods } from '@/utils/payrollCalculations';
 import type { Employee, Shift, CompensationType } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
-import { format, eachDayOfInterval, startOfDay } from 'date-fns';
+import { format, eachDayOfInterval } from 'date-fns';
 
 // ============================================================================
 // Types
@@ -134,9 +134,12 @@ export function calculateEmployeePeriodCost(
   endDate: Date,
   hoursPerDay?: Map<string, number>
 ): number {
+  // Normalize to date-only strings to avoid timezone issues
+  const startStr = format(startDate, 'yyyy-MM-dd');
+  const endStr = format(endDate, 'yyyy-MM-dd');
   const dates = eachDayOfInterval({ 
-    start: startOfDay(startDate), 
-    end: startOfDay(endDate) 
+    start: new Date(startStr + 'T00:00:00'), 
+    end: new Date(endStr + 'T00:00:00') 
   });
   let totalCost = 0;
 
@@ -190,10 +193,12 @@ export function calculateScheduledLaborCost(
   const employeeMap = new Map(employees.map(e => [e.id, e]));
   const dateMap = new Map<string, DailyLaborCost>();
   
-  // Initialize all dates (normalize to start of day to avoid timezone issues)
+  // Initialize all dates (normalize to date-only strings to avoid timezone issues)
+  const startStr = format(startDate, 'yyyy-MM-dd');
+  const endStr = format(endDate, 'yyyy-MM-dd');
   const allDates = eachDayOfInterval({ 
-    start: startOfDay(startDate), 
-    end: startOfDay(endDate) 
+    start: new Date(startStr + 'T00:00:00'), 
+    end: new Date(endStr + 'T00:00:00') 
   });
   allDates.forEach(date => {
     const dateStr = format(date, 'yyyy-MM-dd');
@@ -352,10 +357,12 @@ export function calculateActualLaborCost(
   const employeeMap = new Map(employees.map(e => [e.id, e]));
   const dateMap = new Map<string, DailyLaborCost>();
   
-  // Initialize all dates (normalize to start of day to avoid timezone issues)
+  // Initialize all dates (normalize to date-only strings to avoid timezone issues)
+  const startStr = format(startDate, 'yyyy-MM-dd');
+  const endStr = format(endDate, 'yyyy-MM-dd');
   const allDates = eachDayOfInterval({ 
-    start: startOfDay(startDate), 
-    end: startOfDay(endDate) 
+    start: new Date(startStr + 'T00:00:00'), 
+    end: new Date(endStr + 'T00:00:00') 
   });
   allDates.forEach(date => {
     const dateStr = format(date, 'yyyy-MM-dd');

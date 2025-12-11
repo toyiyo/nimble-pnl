@@ -431,12 +431,17 @@ test.describe('Complete Payroll Journey', () => {
     await employeeSelect.click();
     await page.getByRole('option', { name: employeeName }).click();
     const now = new Date();
+    const dateString = now.toISOString().slice(0, 10);
     const startTime = new Date(now);
     startTime.setHours(9, 0, 0, 0);
     const endTime = new Date(now);
     endTime.setHours(17, 0, 0, 0);
-    await shiftDialog.getByLabel(/start.*time/i).fill(startTime.toISOString().slice(0, 16));
-    await shiftDialog.getByLabel(/end.*time/i).fill(endTime.toISOString().slice(0, 16));
+    await shiftDialog.getByLabel(/start date/i).fill(dateString);
+    await shiftDialog.getByLabel(/end date/i).fill(dateString);
+    const startTimeString = startTime.toTimeString().slice(0, 5);
+    const endTimeString = endTime.toTimeString().slice(0, 5);
+    await shiftDialog.getByLabel(/start.*time/i).fill(startTimeString);
+    await shiftDialog.getByLabel(/end.*time/i).fill(endTimeString);
     await shiftDialog.getByRole('button', { name: /save|create/i }).click();
     await expect(shiftDialog).not.toBeVisible({ timeout: 5000 });
     await page.waitForTimeout(500);
@@ -447,7 +452,7 @@ test.describe('Complete Payroll Journey', () => {
     
     // Find and click edit button for this employee
     const employeeRow = page.locator('tr', { has: page.getByText(employeeName) });
-    const editButton = employeeRow.getByRole('button', { name: /edit/i });
+    const editButton = employeeRow.getByRole('button', { name: new RegExp(`^edit ${employeeName}$`, 'i') });
     
     // Button may be hidden until hover
     await employeeRow.hover();

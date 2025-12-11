@@ -201,10 +201,8 @@ test.describe('Employee Payroll - Happy Paths', () => {
       await dialog.getByRole('button', { name: /add employee|save/i }).click();
       await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
-      // Wait for the employee to appear in the employee table (confirms save completed)
-      // Look in the table row specifically to avoid toast notifications
-      const employeeRow = page.locator('tr', { has: page.getByText(employee.name) });
-      await expect(employeeRow).toBeVisible({ timeout: 5000 });
+      // Scheduling view hides employees until they have a shift; dialog closure is our success signal.
+      await page.waitForLoadState('networkidle');
 
       // Navigate to payroll and wait for network to settle
       await page.goto('/payroll', { waitUntil: 'networkidle' });

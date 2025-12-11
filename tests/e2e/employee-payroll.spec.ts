@@ -57,17 +57,40 @@ const generateContractorEmployee = () => {
  * Reusable across tests to avoid code duplication
  */
 async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof generateTestUser>) {
-  // Navigate to auth page
-  await page.goto('/');
-  await page.waitForURL(/\/(auth)?$/);
+  // Navigate to auth page and clear any persisted session to avoid landing on dashboard
+  await page.goto('/auth');
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await page.reload();
+  await page.waitForURL(/\/auth/);
+
+  // If still authenticated (e.g., Supabase session persisted elsewhere), sign out then return
+  const signOutButton = page.getByRole('button', { name: /sign out/i });
+  if (await signOutButton.isVisible().catch(() => false)) {
+    await signOutButton.click();
+    await page.waitForURL(/\/auth/);
+  }
   
-  // If on home page, click sign in
-  if (page.url().endsWith('/')) {
-    const signInLink = page.getByRole('link', { name: /sign in|log in|get started/i });
-    if (await signInLink.isVisible().catch(() => false)) {
-      await signInLink.click();
-      await page.waitForURL('/auth');
+  // If we somehow remain signed in (rare), skip straight to restaurant creation
+  const addRestaurantButtonExisting = page.getByRole('button', { name: /add restaurant/i });
+  if (await addRestaurantButtonExisting.isVisible().catch(() => false)) {
+    await addRestaurantButtonExisting.click();
+    const dialogExisting = page.getByRole('dialog');
+    await expect(dialogExisting).toBeVisible();
+    await dialogExisting.getByLabel(/restaurant name/i).fill(testUser.restaurantName);
+    await dialogExisting.getByLabel(/address/i).fill('123 Payroll Test Street');
+    await dialogExisting.getByLabel(/phone/i).fill('555-PAY-ROLL');
+    const cuisineExisting = dialogExisting.getByRole('combobox').filter({ hasText: /select cuisine type/i });
+    if (await cuisineExisting.isVisible().catch(() => false)) {
+      await cuisineExisting.click();
+      await page.getByRole('option', { name: /american/i }).click();
     }
+    await dialogExisting.getByRole('button', { name: /create|add|save/i }).click();
+    await expect(dialogExisting).not.toBeVisible({ timeout: 5000 });
+    await page.waitForTimeout(500);
+    return;
   }
 
   // Go to signup tab or trigger signup mode if tabs aren't present

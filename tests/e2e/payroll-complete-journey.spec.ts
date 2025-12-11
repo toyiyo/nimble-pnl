@@ -32,8 +32,20 @@ const generateTestUser = () => {
  * Helper to sign up and create restaurant
  */
 async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof generateTestUser>) {
-  await page.goto('/');
-  await page.waitForURL(/\/(auth)?$/);
+  await page.goto('/auth');
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await page.reload();
+  await page.waitForURL(/\/auth/);
+
+  // If still authenticated, sign out and return to auth
+  const signOutButton = page.getByRole('button', { name: /sign out/i });
+  if (await signOutButton.isVisible().catch(() => false)) {
+    await signOutButton.click();
+    await page.waitForURL(/\/auth/);
+  }
   
   if (page.url().endsWith('/')) {
     const signInLink = page.getByRole('link', { name: /sign in|log in|get started/i });

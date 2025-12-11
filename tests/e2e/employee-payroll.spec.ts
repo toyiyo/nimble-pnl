@@ -765,7 +765,9 @@ test.describe('Per-Job Contractor Manual Payments', () => {
 
       // Step 3: Go to employees page to edit employee (has dedicated employee management)
       await page.goto('/employees');
-      await expect(page.getByRole('heading', { name: /employees/i }).first()).toBeVisible({ timeout: 10000 });
+      
+      // Wait for page to load - check for the employee list card instead of hidden heading
+      await expect(page.getByText(/manage your restaurant staff/i)).toBeVisible({ timeout: 10000 });
 
       // Wait for employee list to load
       await page.waitForTimeout(1000);

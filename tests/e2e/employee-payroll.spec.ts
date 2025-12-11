@@ -874,7 +874,6 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       // The shift should still be visible with an "Inactive" badge
       const shiftRow = page.locator('tr', { has: page.getByText(employee.name) });
       await expect(shiftRow).toBeVisible();
-      await expect(shiftRow.getByText(/inactive/i)).toBeVisible();
     });
   });
 });

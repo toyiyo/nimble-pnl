@@ -763,8 +763,16 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       const employeeRowBefore = page.locator('tr', { has: page.getByText(employee.name) });
       await expect(employeeRowBefore).toBeVisible({ timeout: 5000 });
 
-      // Step 3: Edit employee from payroll page (has edit button in each row)
-      await employeeRowBefore.getByRole('button', { name: /edit/i }).first().click();
+      // Step 3: Go to scheduling page to edit employee (payroll page is read-only)
+      await page.goto('/scheduling');
+      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+
+      // Find employee row in scheduling table
+      const scheduleRow = page.locator('tr', { has: page.getByText(employee.name) });
+      await expect(scheduleRow).toBeVisible({ timeout: 5000 });
+
+      // Click edit button from scheduling page
+      await scheduleRow.getByRole('button', { name: /edit/i }).first().click();
       const editDialog = page.getByRole('dialog');
       await expect(editDialog).toBeVisible({ timeout: 5000 });
 
@@ -779,7 +787,11 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       // Wait for update to propagate
       await page.waitForTimeout(1000);
 
-      // Step 4: CRITICAL TEST - Verify employee STILL appears in payroll after deactivation
+      // Step 4: Go back to payroll to verify inactive employee still appears
+      await page.goto('/payroll');
+      await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
+
+      // CRITICAL TEST - Verify employee STILL appears in payroll after deactivation
       // The deactivated employee should STILL appear in payroll with their data
       const employeeRowAfter = page.locator('tr', { has: page.getByText(employee.name) });
       await expect(employeeRowAfter).toBeVisible({ timeout: 5000 });

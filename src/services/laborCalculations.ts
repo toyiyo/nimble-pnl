@@ -287,7 +287,7 @@ export function calculateScheduledLaborCost(
     // Calculate total cost for this employee across the entire date range
     const periodCost = calculateEmployeePeriodCost(employee, startDate, endDate) / 100; // Convert to dollars
     
-    if (periodCost > 0) {
+    if (periodCost > 0 && dateStrings.length > 0) {
       // For scheduled view, distribute the period cost evenly across all days in the range
       // This is just for display purposes - the employee gets paid once per pay period
       const dailyAllocation = periodCost / dateStrings.length;
@@ -313,7 +313,7 @@ export function calculateScheduledLaborCost(
     // Calculate total cost for this employee across the entire date range
     const periodCost = calculateEmployeePeriodCost(employee, startDate, endDate) / 100; // Convert to dollars
     
-    if (periodCost > 0) {
+    if (periodCost > 0 && dateStrings.length > 0) {
       // For scheduled view, distribute the period cost evenly across all days in the range
       // This is just for display purposes - the contractor gets paid per their payment interval
       const dailyAllocation = periodCost / dateStrings.length;
@@ -527,12 +527,12 @@ export function calculateActualLaborCost(
     },
     salary: {
       cost: dailyCosts.reduce((sum, day) => sum + day.salary_cost, 0),
-      employees: employees.filter(e => e.compensation_type === 'salary').length,
+      employees: employees.filter(e => e.compensation_type === 'salary' && e.status === 'active').length,
       daysScheduled: dailyCosts.filter(d => d.salary_cost > 0).length,
     },
     contractor: {
       cost: dailyCosts.reduce((sum, day) => sum + day.contractor_cost, 0),
-      employees: employees.filter(e => e.compensation_type === 'contractor').length,
+      employees: employees.filter(e => e.compensation_type === 'contractor' && e.status === 'active').length,
       daysScheduled: dailyCosts.filter(d => d.contractor_cost > 0).length,
     },
     total: dailyCosts.reduce((sum, day) => sum + day.total_cost, 0),

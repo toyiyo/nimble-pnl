@@ -200,7 +200,7 @@ const Scheduling = () => {
   );
 
   // Separate active employees for creating new shifts
-  const activeEmployees = allEmployees.filter(emp => emp.status === 'active');
+  const activeEmployees = allEmployees.filter(emp => Boolean(emp.is_active));
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
   const [positionFilter, setPositionFilter] = useState<string>('all');
 

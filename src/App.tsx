@@ -37,6 +37,7 @@ import Banking from "./pages/Banking";
 import FinancialIntelligence from "./pages/FinancialIntelligence";
 import AiAssistant from "./pages/AiAssistant";
 import Scheduling from "./pages/Scheduling";
+import Employees from "./pages/Employees";
 import EmployeeClock from "./pages/EmployeeClock";
 import EmployeePortal from "./pages/EmployeePortal";
 import EmployeeTimecard from "./pages/EmployeeTimecard";
@@ -144,6 +145,7 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/settings" element={<ProtectedRoute allowStaff={true}><RestaurantSettings /></ProtectedRoute>} />
             <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
+            <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
             <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
             <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
             <Route path="/pos-sales" element={<ProtectedRoute><POSSales /></ProtectedRoute>} />

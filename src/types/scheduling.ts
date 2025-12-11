@@ -2,6 +2,7 @@
 export type CompensationType = 'hourly' | 'salary' | 'contractor';
 export type PayPeriodType = 'weekly' | 'bi-weekly' | 'semi-monthly' | 'monthly';
 export type ContractorPaymentInterval = 'weekly' | 'bi-weekly' | 'monthly' | 'per-job';
+export type DeactivationReason = 'seasonal' | 'left_company' | 'on_leave' | 'other';
 
 export interface Employee {
   id: string;
@@ -17,6 +18,15 @@ export interface Employee {
   created_at: string;
   updated_at: string;
   user_id?: string; // Link to auth.users for self-service
+  
+  // Activation tracking (for deactivate/reactivate flow)
+  is_active: boolean; // Controls login, PIN, and scheduling access
+  deactivation_reason?: DeactivationReason | string; // Why employee was deactivated
+  deactivated_at?: string; // Timestamp of deactivation
+  deactivated_by?: string; // User ID who deactivated
+  reactivated_at?: string; // Timestamp of reactivation
+  reactivated_by?: string; // User ID who reactivated
+  last_active_date?: string; // Date of last shift or punch (set automatically)
   
   // Compensation fields
   compensation_type: CompensationType; // Determines which fields are relevant

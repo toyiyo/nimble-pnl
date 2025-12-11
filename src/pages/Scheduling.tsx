@@ -11,6 +11,7 @@ import { useShifts, useDeleteShift } from '@/hooks/useShifts';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
+import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
@@ -22,7 +23,6 @@ import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionD
 import { ScheduleStatusBadge } from '@/components/ScheduleStatusBadge';
 import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
-import { Unlock, Send, History } from 'lucide-react';
 import { 
   Calendar, 
   Plus, 
@@ -37,6 +37,9 @@ import {
   CalendarClock,
   CalendarX,
   AlertTriangle,
+  Unlock,
+  Send,
+  History,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -179,7 +182,8 @@ const Scheduling = () => {
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
-  const { employees, loading: employeesLoading } = useEmployees(restaurantId);
+  // Fetch ALL employees (including inactive) to show historical shifts
+  const { employees: allEmployees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'all' });
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
   const deleteShift = useDeleteShift();
   const publishSchedule = usePublishSchedule();
@@ -195,14 +199,35 @@ const Scheduling = () => {
     weekEnd
   );
 
-  const activeEmployees = employees.filter(emp => emp.status === 'active');
+  // Separate active employees for creating new shifts
+  const activeEmployees = allEmployees.filter(emp => Boolean(emp.is_active));
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
   const [positionFilter, setPositionFilter] = useState<string>('all');
 
-  // Apply position filter when present
-  const filteredEmployees = positionFilter && positionFilter !== 'all'
+  // Calculate scheduled labor costs with breakdown
+  const { breakdown: laborCostBreakdown } = useScheduledLaborCosts(
+    shifts,
+    currentWeekStart,
+    weekEnd,
+    restaurantId
+  );
+
+  // Apply position filter to active employees for new shift creation
+  const filteredActiveEmployees = positionFilter && positionFilter !== 'all'
     ? activeEmployees.filter(emp => emp.position === positionFilter)
     : activeEmployees;
+
+  // For displaying shifts, include ALL employees with shifts this week (including inactive)
+  // Apply position filter to all employees with shifts
+  const filteredEmployeesWithShifts = useMemo(() => {
+    const shiftEmployeeIds = new Set(shifts.map(s => s.employee_id));
+    const employeesWithShifts = allEmployees.filter(emp => shiftEmployeeIds.has(emp.id));
+    
+    if (positionFilter && positionFilter !== 'all') {
+      return employeesWithShifts.filter(emp => emp.position === positionFilter);
+    }
+    return employeesWithShifts;
+  }, [allEmployees, shifts, positionFilter]);
 
   // Calculate labor metrics
   const calculateShiftHours = (shift: Shift) => {
@@ -213,17 +238,10 @@ const Scheduling = () => {
     return netMinutes / 60;
   };
 
+  // Calculate hours for all shifts (including inactive employees)
   const totalScheduledHours = shifts
-    .filter(s => filteredEmployees.some(e => e.id === s.employee_id))
+    .filter(s => filteredEmployeesWithShifts.some(e => e.id === s.employee_id))
     .reduce((sum, shift) => sum + calculateShiftHours(shift), 0);
-  
-  const totalLaborCost = shifts
-    .filter(s => filteredEmployees.some(e => e.id === s.employee_id))
-    .reduce((sum, shift) => {
-      const employee = employees.find(emp => emp.id === shift.employee_id);
-      const hours = calculateShiftHours(shift);
-      return sum + (employee ? (employee.hourly_rate / 100) * hours : 0);
-    }, 0);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
@@ -312,17 +330,13 @@ const Scheduling = () => {
     }
   };
 
-  // Get unique employees scheduled this week (respecting position filter)
+  // Get unique employees scheduled this week (respecting position filter, including inactive)
   const scheduledEmployeeIds = new Set(
     shifts
-      .filter(s => filteredEmployees.some(e => e.id === s.employee_id))
+      .filter(s => filteredEmployeesWithShifts.some(e => e.id === s.employee_id))
       .map(shift => shift.employee_id)
   );
   const scheduledEmployeeCount = scheduledEmployeeIds.size;
-
-  const getShiftsForDay = (day: Date) => {
-    return shifts.filter(shift => isSameDay(parseISO(shift.start_time), day));
-  };
 
   const getShiftsForEmployee = (employeeId: string, day: Date) => {
     return shifts.filter(
@@ -366,9 +380,9 @@ const Scheduling = () => {
           </CardHeader>
           <CardContent>
             {employeesLoading ? (
-              <Skeleton className="h-8 w-20" />
+              <Skeleton className="h-8 w-12" />
             ) : (
-              <div className="text-2xl font-bold">{filteredEmployees.length}</div>
+              <div className="text-2xl font-bold">{filteredActiveEmployees.length}</div>
             )}
             <p className="text-xs text-muted-foreground">Ready to be scheduled</p>
           </CardContent>
@@ -398,9 +412,41 @@ const Scheduling = () => {
             {shiftsLoading ? (
               <Skeleton className="h-8 w-20" />
             ) : (
-              <div className="text-2xl font-bold">${totalLaborCost.toFixed(2)}</div>
+              <>
+                <div className="text-2xl font-bold">${laborCostBreakdown.total.toFixed(2)}</div>
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Hourly:</span>
+                    <span className="font-medium">
+                      ${laborCostBreakdown.hourly.cost.toFixed(2)}
+                      <span className="text-muted-foreground ml-1">
+                        ({laborCostBreakdown.hourly.hours.toFixed(1)}h)
+                      </span>
+                    </span>
+                  </div>
+                  {laborCostBreakdown.salary.cost > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Salary:</span>
+                      <span className="font-medium">
+                        ${laborCostBreakdown.salary.cost.toFixed(2)}
+                        <span className="text-muted-foreground ml-1">
+                          (est. {laborCostBreakdown.salary.estimatedDays}d)
+                        </span>
+                      </span>
+                    </div>
+                  )}
+                  {laborCostBreakdown.contractor.cost > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Contractors:</span>
+                      <span className="font-medium">
+                        ${laborCostBreakdown.contractor.cost.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
-            <p className="text-xs text-muted-foreground">Estimated weekly cost</p>
+            <p className="text-xs text-muted-foreground mt-2">Estimated weekly cost</p>
           </CardContent>
         </Card>
       </div>
@@ -526,12 +572,15 @@ const Scheduling = () => {
                 Add Employee
               </Button>
             </div>
-            ) : filteredEmployees.length === 0 ? (
+            ) : filteredEmployeesWithShifts.length === 0 ? (
             <div className="text-center py-12">
               <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No employees match filter</h3>
-              <p className="text-muted-foreground mb-4">Try clearing the position filter to see all employees.</p>
-              <Button variant="outline" onClick={() => setPositionFilter('all')}>Clear Filter</Button>
+              <h3 className="text-lg font-semibold mb-2">No scheduled shifts</h3>
+              <p className="text-muted-foreground mb-4">Create shifts for your employees this week.</p>
+              <Button onClick={() => handleAddShift()}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Shift
+              </Button>
             </div>
             ) : (
             <div className="overflow-x-auto">
@@ -548,12 +597,19 @@ const Scheduling = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEmployees.map((employee) => (
+                  {filteredEmployeesWithShifts.map((employee) => (
                     <tr key={employee.id} className="border-b hover:bg-muted/50 group">
                       <td className="p-2 sticky left-0 bg-background">
                         <div className="flex items-center gap-2 justify-between">
                           <div>
-                            <div className="font-medium">{employee.name}</div>
+                            <div className="font-medium flex items-center gap-2">
+                              {employee.name}
+                              {employee.status !== 'active' && (
+                                <Badge variant="outline" className="text-xs">
+                                  Inactive
+                                </Badge>
+                              )}
+                            </div>
                             <div className="text-sm text-muted-foreground">{employee.position}</div>
                           </div>
                           <Button

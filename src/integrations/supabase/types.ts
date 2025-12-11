@@ -108,7 +108,21 @@ export type Database = {
             foreignKeyName: "availability_exceptions_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_exceptions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_exceptions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
@@ -1155,7 +1169,21 @@ export type Database = {
             foreignKeyName: "daily_labor_allocations_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_labor_allocations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_labor_allocations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
@@ -1365,7 +1393,21 @@ export type Database = {
             foreignKeyName: "employee_availability_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_availability_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_availability_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
@@ -1422,7 +1464,21 @@ export type Database = {
             foreignKeyName: "employee_pins_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_pins_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_pins_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
@@ -1479,7 +1535,21 @@ export type Database = {
             foreignKeyName: "employee_tips_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_tips_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_tips_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
@@ -1505,19 +1575,27 @@ export type Database = {
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
           created_at: string | null
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
           email: string | null
           hire_date: string | null
           hourly_rate: number
           id: string
+          is_active: boolean
+          last_active_date: string | null
           name: string
           notes: string | null
           pay_period_type: string | null
           phone: string | null
           position: string
+          reactivated_at: string | null
+          reactivated_by: string | null
           requires_time_punch: boolean | null
           restaurant_id: string
           salary_amount: number | null
           status: string
+          termination_date: string | null
           tip_eligible: boolean | null
           updated_at: string | null
           user_id: string | null
@@ -1528,19 +1606,27 @@ export type Database = {
           contractor_payment_amount?: number | null
           contractor_payment_interval?: string | null
           created_at?: string | null
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          deactivation_reason?: string | null
           email?: string | null
           hire_date?: string | null
           hourly_rate?: number
           id?: string
+          is_active?: boolean
+          last_active_date?: string | null
           name: string
           notes?: string | null
           pay_period_type?: string | null
           phone?: string | null
           position: string
+          reactivated_at?: string | null
+          reactivated_by?: string | null
           requires_time_punch?: boolean | null
           restaurant_id: string
           salary_amount?: number | null
           status?: string
+          termination_date?: string | null
           tip_eligible?: boolean | null
           updated_at?: string | null
           user_id?: string | null
@@ -1551,19 +1637,27 @@ export type Database = {
           contractor_payment_amount?: number | null
           contractor_payment_interval?: string | null
           created_at?: string | null
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          deactivation_reason?: string | null
           email?: string | null
           hire_date?: string | null
           hourly_rate?: number
           id?: string
+          is_active?: boolean
+          last_active_date?: string | null
           name?: string
           notes?: string | null
           pay_period_type?: string | null
           phone?: string | null
           position?: string
+          reactivated_at?: string | null
+          reactivated_by?: string | null
           requires_time_punch?: boolean | null
           restaurant_id?: string
           salary_amount?: number | null
           status?: string
+          termination_date?: string | null
           tip_eligible?: boolean | null
           updated_at?: string | null
           user_id?: string | null
@@ -1916,7 +2010,21 @@ export type Database = {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
         ]
@@ -3263,7 +3371,21 @@ export type Database = {
             foreignKeyName: "schedule_change_logs_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_change_logs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_change_logs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
@@ -3875,7 +3997,21 @@ export type Database = {
             foreignKeyName: "shifts_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
@@ -4606,7 +4742,21 @@ export type Database = {
             foreignKeyName: "time_off_requests_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_off_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_off_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
@@ -4672,7 +4822,21 @@ export type Database = {
             foreignKeyName: "time_punches_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_punches_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_punches_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
@@ -5380,6 +5544,154 @@ export type Database = {
       }
     }
     Views: {
+      active_employees: {
+        Row: {
+          allocate_daily: boolean | null
+          compensation_type: string | null
+          contractor_payment_amount: number | null
+          contractor_payment_interval: string | null
+          created_at: string | null
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
+          email: string | null
+          hire_date: string | null
+          hourly_rate: number | null
+          id: string | null
+          is_active: boolean | null
+          last_active_date: string | null
+          name: string | null
+          notes: string | null
+          pay_period_type: string | null
+          phone: string | null
+          position: string | null
+          reactivated_at: string | null
+          reactivated_by: string | null
+          requires_time_punch: boolean | null
+          restaurant_id: string | null
+          salary_amount: number | null
+          status: string | null
+          termination_date: string | null
+          tip_eligible: boolean | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          allocate_daily?: boolean | null
+          compensation_type?: string | null
+          contractor_payment_amount?: number | null
+          contractor_payment_interval?: string | null
+          created_at?: string | null
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          deactivation_reason?: string | null
+          email?: string | null
+          hire_date?: string | null
+          hourly_rate?: number | null
+          id?: string | null
+          is_active?: boolean | null
+          last_active_date?: string | null
+          name?: string | null
+          notes?: string | null
+          pay_period_type?: string | null
+          phone?: string | null
+          position?: string | null
+          reactivated_at?: string | null
+          reactivated_by?: string | null
+          requires_time_punch?: boolean | null
+          restaurant_id?: string | null
+          salary_amount?: number | null
+          status?: string | null
+          termination_date?: string | null
+          tip_eligible?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          allocate_daily?: boolean | null
+          compensation_type?: string | null
+          contractor_payment_amount?: number | null
+          contractor_payment_interval?: string | null
+          created_at?: string | null
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          deactivation_reason?: string | null
+          email?: string | null
+          hire_date?: string | null
+          hourly_rate?: number | null
+          id?: string | null
+          is_active?: boolean | null
+          last_active_date?: string | null
+          name?: string | null
+          notes?: string | null
+          pay_period_type?: string | null
+          phone?: string | null
+          position?: string | null
+          reactivated_at?: string | null
+          reactivated_by?: string | null
+          requires_time_punch?: boolean | null
+          restaurant_id?: string | null
+          salary_amount?: number | null
+          status?: string | null
+          termination_date?: string | null
+          tip_eligible?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employees_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inactive_employees: {
+        Row: {
+          allocate_daily: boolean | null
+          compensation_type: string | null
+          contractor_payment_amount: number | null
+          contractor_payment_interval: string | null
+          created_at: string | null
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivated_by_email: string | null
+          deactivation_reason: string | null
+          email: string | null
+          hire_date: string | null
+          hourly_rate: number | null
+          id: string | null
+          is_active: boolean | null
+          last_active_date: string | null
+          name: string | null
+          notes: string | null
+          pay_period_type: string | null
+          phone: string | null
+          position: string | null
+          reactivated_at: string | null
+          reactivated_by: string | null
+          reactivated_by_email: string | null
+          requires_time_punch: boolean | null
+          restaurant_id: string | null
+          salary_amount: number | null
+          status: string | null
+          termination_date: string | null
+          tip_eligible: boolean | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employees_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pg_all_foreign_keys: {
         Row: {
           fk_columns: unknown[] | null
@@ -5649,6 +5961,51 @@ export type Database = {
             Returns: string
           }
       daitch_mokotoff: { Args: { "": string }; Returns: string[] }
+      deactivate_employee: {
+        Args: {
+          p_deactivated_by: string
+          p_employee_id: string
+          p_reason?: string
+          p_remove_from_future_shifts?: boolean
+        }
+        Returns: {
+          allocate_daily: boolean | null
+          compensation_type: string
+          contractor_payment_amount: number | null
+          contractor_payment_interval: string | null
+          created_at: string | null
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
+          email: string | null
+          hire_date: string | null
+          hourly_rate: number
+          id: string
+          is_active: boolean
+          last_active_date: string | null
+          name: string
+          notes: string | null
+          pay_period_type: string | null
+          phone: string | null
+          position: string
+          reactivated_at: string | null
+          reactivated_by: string | null
+          requires_time_punch: boolean | null
+          restaurant_id: string
+          salary_amount: number | null
+          status: string
+          termination_date: string | null
+          tip_eligible: boolean | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "employees"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       diag:
         | {
             Args: { msg: unknown }
@@ -5728,29 +6085,11 @@ export type Database = {
           uom_purchase: string
         }[]
       }
-      generate_daily_labor_allocations: {
-        Args: {
-          p_end_date: string
-          p_restaurant_id: string
-          p_start_date: string
-        }
-        Returns: number
-      }
       generate_po_number: { Args: { p_restaurant_id: string }; Returns: string }
       get_account_subtypes: { Args: never; Returns: Json }
       get_current_employee_id: {
         Args: { p_restaurant_id: string }
         Returns: string
-      }
-      get_daily_labor_summary: {
-        Args: { p_date: string; p_restaurant_id: string }
-        Returns: {
-          contractor_labor: number
-          hourly_labor: number
-          salary_labor: number
-          total_hours: number
-          total_labor: number
-        }[]
       }
       get_employee_punch_status: {
         Args: { p_employee_id: string }
@@ -5892,6 +6231,50 @@ export type Database = {
           p_week_start: string
         }
         Returns: string
+      }
+      reactivate_employee: {
+        Args: {
+          p_employee_id: string
+          p_new_hourly_rate?: number
+          p_reactivated_by: string
+        }
+        Returns: {
+          allocate_daily: boolean | null
+          compensation_type: string
+          contractor_payment_amount: number | null
+          contractor_payment_interval: string | null
+          created_at: string | null
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
+          email: string | null
+          hire_date: string | null
+          hourly_rate: number
+          id: string
+          is_active: boolean
+          last_active_date: string | null
+          name: string
+          notes: string | null
+          pay_period_type: string | null
+          phone: string | null
+          position: string
+          reactivated_at: string | null
+          reactivated_by: string | null
+          requires_time_punch: boolean | null
+          restaurant_id: string
+          salary_amount: number | null
+          status: string
+          termination_date: string | null
+          tip_eligible: boolean | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "employees"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       rebuild_account_balances: {
         Args: { p_restaurant_id: string }

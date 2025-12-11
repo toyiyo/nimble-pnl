@@ -49,7 +49,9 @@ export const usePayroll = (
   startDate: Date,
   endDate: Date
 ) => {
-  const { employees } = useEmployees(restaurantId);
+  // Fetch ALL employees (including inactive) for historical payroll accuracy
+  // An employee deactivated today should still show their past work/salary
+  const { employees } = useEmployees(restaurantId, { status: 'all' });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -130,11 +132,12 @@ export const usePayroll = (
         }
       });
 
-      // Calculate payroll
+      // Calculate payroll for all employees who have data in this period
+      // Don't filter by active status - historical data should include inactive employees
       const payroll = calculatePayrollPeriod(
         startDate,
         endDate,
-        employees.filter(e => e.status === 'active'),
+        employees, // Include all employees (active and inactive)
         punchesPerEmployee,
         tipsPerEmployee,
         manualPaymentsPerEmployee

@@ -26,6 +26,11 @@ VITE_FARO_APP_NAME="easyshifthq"
 VITE_FARO_APP_VERSION="1.0.0"
 VITE_FARO_ENVIRONMENT="production"
 
+# Optional: Enable source map uploads (may increase build memory usage)
+# Set to "true" only when you need source maps uploaded to Grafana
+# Disabled by default to prevent memory issues on platforms with limited resources
+VITE_FARO_UPLOAD_SOURCEMAPS="true"
+
 # Optional: Stack ID for source map uploads (Grafana Cloud)
 VITE_FARO_STACK_ID="your_stack_id"
 ```
@@ -51,10 +56,11 @@ The application is configured with:
 - Performance metrics
 - End-to-end request visibility
 
-### 3. Source Map Upload
-- Automatic source map upload during production builds
-- De-obfuscated stack traces
-- Original source code visibility in error reports
+### 3. Source Map Upload (Optional)
+- Source maps are always generated for production builds
+- Automatic upload to Grafana can be enabled via `VITE_FARO_UPLOAD_SOURCEMAPS=true`
+- When enabled: De-obfuscated stack traces and original source code visibility in error reports
+- **Note**: Source map upload is disabled by default to prevent memory issues during builds on platforms with limited resources (e.g., Netlify)
 
 ## Implementation
 
@@ -89,8 +95,12 @@ Source map generation and upload is configured in `vite.config.ts`:
 ```typescript
 import { faroRollupPlugin } from "@grafana/faro-rollup-plugin";
 
-// Production builds automatically upload source maps
-if (mode === "production" && process.env.VITE_FARO_COLLECTOR_URL) {
+// Source map upload only when explicitly enabled
+if (
+  mode === "production" && 
+  process.env.VITE_FARO_COLLECTOR_URL && 
+  process.env.VITE_FARO_UPLOAD_SOURCEMAPS === "true"
+) {
   plugins.push(faroRollupPlugin({
     appName: process.env.VITE_FARO_APP_NAME || "easyshifthq",
     appVersion: process.env.VITE_FARO_APP_VERSION || "1.0.0",
@@ -156,11 +166,17 @@ npm run test -- tests/unit/faro.test.ts
 
 ### Production Builds
 
-Source maps are automatically generated and uploaded during production builds when `VITE_FARO_COLLECTOR_URL` is configured.
+Source maps are always generated for production builds. To enable automatic upload to Grafana:
+
+1. Set `VITE_FARO_UPLOAD_SOURCEMAPS=true` in your environment
+2. Ensure `VITE_FARO_COLLECTOR_URL` is configured
+3. Build the application: `npm run build`
+
+**Note**: Source map upload is disabled by default to prevent memory issues during builds on platforms with limited resources (e.g., Netlify). Enable it only when needed and on platforms with sufficient memory.
 
 ### Development Builds
 
-Source maps are generated but not uploaded during development builds.
+Source maps are generated but never uploaded during development builds.
 
 ## Privacy & Security
 
@@ -181,9 +197,18 @@ Check that:
 ### Missing Source Maps
 
 Ensure:
-1. `VITE_FARO_COLLECTOR_URL` is set during build
-2. `VITE_FARO_STACK_ID` is configured (if using Grafana Cloud)
-3. Build is running in production mode (`npm run build`)
+1. `VITE_FARO_UPLOAD_SOURCEMAPS=true` is set during build
+2. `VITE_FARO_COLLECTOR_URL` is set during build
+3. `VITE_FARO_STACK_ID` is configured (if using Grafana Cloud)
+4. Build is running in production mode (`npm run build`)
+
+### Build Memory Issues (Netlify/Other Platforms)
+
+If builds fail with "heap out of memory" errors:
+1. Keep `VITE_FARO_UPLOAD_SOURCEMAPS` unset or set to `false`
+2. Source maps will still be generated locally but not uploaded
+3. You can manually upload source maps to Grafana after the build if needed
+4. Consider using a platform with more memory for builds with source map uploads enabled
 
 ### High Data Volume
 

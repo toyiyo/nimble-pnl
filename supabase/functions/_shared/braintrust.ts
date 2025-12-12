@@ -1,12 +1,9 @@
 // Braintrust telemetry integration for AI observability
-// Import is wrapped in try-catch to handle missing npm package gracefully
+// NOTE: Braintrust npm package is disabled - it's not compatible with Deno Edge Functions
+// To re-enable, install braintrust as a Deno-compatible package
 let initLogger: any = null;
-try {
-  const braintrust = await import("npm:braintrust");
-  initLogger = braintrust.initLogger;
-} catch (error) {
-  console.log('[Braintrust] Package not available - tracing disabled');
-}
+// Braintrust import disabled - causes build errors in Deno Edge Functions
+// If you need Braintrust, use their REST API directly instead
 
 // Lazy-initialized logger instance
 let logger: any = null;

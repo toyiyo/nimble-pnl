@@ -37,22 +37,20 @@ Deno.serve(async (req) => {
         .update(signaturePayload)
         .digest('base64');
 
-      console.log('Webhook signature verification:', {
-        receivedSignature: signature,
-        computedSignature: computedSignature,
-        payloadLength: rawBody.length,
-        signaturePayloadLength: signaturePayload.length
-      });
-
       if (signature !== computedSignature) {
-        console.error('Invalid webhook signature - signatures do not match');
-        // For now, log the error but don't reject the webhook to allow testing
-        console.warn('Continuing webhook processing despite signature mismatch for debugging');
+        console.error('Invalid Square webhook signature');
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        );
+        await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_INVALID_SIGNATURE', undefined, undefined, {
+          receivedSignature: signature?.substring(0, 10) + '...',
+        });
+        return new Response('Unauthorized', { status: 401, headers: corsHeaders });
       }
     } else if (SQUARE_WEBHOOK_SIGNATURE_KEY && !signature) {
-      console.warn('Webhook signature key configured but no signature received');
-    } else if (!SQUARE_WEBHOOK_SIGNATURE_KEY && signature) {
-      console.warn('Webhook signature received but no signature key configured');
+      console.error('Square webhook signature key configured but no signature received');
+      return new Response('Unauthorized - signature required', { status: 401, headers: corsHeaders });
     }
 
     const webhookData = JSON.parse(rawBody);

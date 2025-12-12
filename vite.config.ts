@@ -22,6 +22,7 @@ export default defineConfig(async ({ mode }) => {
   ) {
     try {
       // Dynamic import to handle CommonJS module
+      // The plugin may export as default or named export depending on bundler/version
       const faroPlugin = await import("@grafana/faro-rollup-plugin");
       const faroRollupPlugin = faroPlugin.default || faroPlugin.faroRollupPlugin;
       

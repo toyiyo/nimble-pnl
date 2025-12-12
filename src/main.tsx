@@ -2,6 +2,10 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 import { PostHogProvider } from 'posthog-js/react';
+import { initFaro } from './lib/faro';
+
+// Initialize Grafana Faro for frontend observability (must be first)
+initFaro();
 
 // Validate PostHog environment variables
 const POSTHOG_KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY;

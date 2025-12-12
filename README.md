@@ -12,6 +12,7 @@ EasyShiftHQ is a comprehensive solution that helps restaurants track and analyze
 - **[Integration Patterns](INTEGRATIONS.md)** - Third-party integrations (banks, POS, AI), security, and performance
 - **[Unit Conversions](docs/UNIT_CONVERSIONS.md)** - Recipe-to-inventory conversion system (critical for inventory accuracy)
 - **[Braintrust Telemetry](docs/BRAINTRUST_TELEMETRY.md)** - AI observability and telemetry setup
+- **[Grafana Faro](docs/GRAFANA_FARO.md)** - Frontend observability, error tracking, and performance monitoring
 - **[GitHub Copilot Instructions](.github/copilot-instructions.md)** - Guidelines for AI coding assistants
 
 ### Quick Links
@@ -23,6 +24,7 @@ EasyShiftHQ is a comprehensive solution that helps restaurants track and analyze
 - [POS Integrations](INTEGRATIONS.md#-pos-system-integrations)
 - [AI Functionality](INTEGRATIONS.md#-ai--machine-learning)
 - [AI Telemetry Setup](docs/BRAINTRUST_TELEMETRY.md#setup)
+- [Frontend Observability](docs/GRAFANA_FARO.md)
 - [Edge Functions](INTEGRATIONS.md#-edge-functions-architecture)
 - [Security Best Practices](INTEGRATIONS.md#-security-best-practices)
 

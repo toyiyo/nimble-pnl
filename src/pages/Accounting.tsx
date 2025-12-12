@@ -17,6 +17,7 @@ const Accounting = () => {
     restaurants,
     loading: restaurantsLoading,
     createRestaurant,
+    canCreateRestaurant,
   } = useRestaurantContext();
   const {
     connectedBanks,

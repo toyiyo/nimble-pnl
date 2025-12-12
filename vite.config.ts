@@ -6,6 +6,16 @@ import { componentTagger } from "lovable-tagger";
 // https://vitejs.dev/config/
 export default defineConfig(async ({ mode }) => {
   const plugins = [react()];
+
+  const shouldUploadFaroSourcemaps =
+    mode === "production" &&
+    process.env.VITE_FARO_COLLECTOR_URL &&
+    process.env.VITE_FARO_UPLOAD_SOURCEMAPS === "true";
+
+  const enableSourceMaps =
+    mode !== "production" ||
+    shouldUploadFaroSourcemaps ||
+    process.env.VITE_ENABLE_SOURCEMAPS === "true"; // opt-in for production to avoid OOM on constrained builders
   
   // Add development-only plugins
   if (mode === "development") {
@@ -15,11 +25,7 @@ export default defineConfig(async ({ mode }) => {
   // Add Faro source map upload plugin for production builds
   // Only when explicitly enabled via VITE_FARO_UPLOAD_SOURCEMAPS=true
   // This prevents memory issues during builds on platforms with limited resources
-  if (
-    mode === "production" && 
-    process.env.VITE_FARO_COLLECTOR_URL && 
-    process.env.VITE_FARO_UPLOAD_SOURCEMAPS === "true"
-  ) {
+  if (shouldUploadFaroSourcemaps) {
     try {
       // Dynamic import to handle CommonJS module
       // The plugin may export as default or named export depending on bundler/version
@@ -53,7 +59,8 @@ export default defineConfig(async ({ mode }) => {
       },
     },
     build: {
-      sourcemap: true, // Always generate source maps for production debugging
+      // Only enable sourcemaps when explicitly requested to keep memory low on CI builders
+      sourcemap: enableSourceMaps,
       rollupOptions: {
         output: {
           manualChunks: {

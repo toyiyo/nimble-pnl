@@ -104,9 +104,12 @@ export function useReconciliation(restaurantId: string | null) {
         .order('product(name)');
 
       if (error) throw error;
-      setItems(data || []);
+      const fetched = data || [];
+      setItems(fetched);
+      return fetched;
     } catch (error: any) {
       console.error('Error fetching session items:', error);
+      return [];
     }
   };
 
@@ -252,13 +255,55 @@ export function useReconciliation(restaurantId: string | null) {
   };
 
   const submitReconciliation = async () => {
-    if (!activeSession) return;
+    if (!activeSession) return false;
 
     setLoading(true);
     try {
-      const summary = calculateSummary();
+      const { data: { user } } = await supabase.auth.getUser();
 
-      // Update reconciliation session
+      // Refresh items to avoid stale counts and recalculated variances
+      const latestItems = await fetchSessionItems(activeSession.id);
+      const itemsToProcess = latestItems.length > 0 ? latestItems : items;
+      const summary = calculateSummary(itemsToProcess);
+
+      for (const item of itemsToProcess) {
+        const actualQty = item.actual_quantity !== null && item.actual_quantity !== undefined
+          ? Number(item.actual_quantity)
+          : null;
+
+        if (actualQty !== null) {
+          const { error: stockError } = await supabase
+            .from('products')
+            .update({ current_stock: actualQty })
+            .eq('id', item.product_id);
+
+          if (stockError) throw stockError;
+
+          const expectedQty = Number(item.expected_quantity ?? 0);
+          const variance = actualQty - expectedQty;
+          const varianceValue = item.unit_cost ? variance * Number(item.unit_cost) : null;
+
+          if (variance !== 0) {
+            const { error: txError } = await supabase
+              .from('inventory_transactions')
+              .insert({
+                restaurant_id: restaurantId,
+                product_id: item.product_id,
+                quantity: variance,
+                unit_cost: item.unit_cost,
+                total_cost: varianceValue,
+                transaction_type: 'adjustment',
+                reason: `Reconciliation ${activeSession.reconciliation_date}${item.notes ? `: ${item.notes}` : ''}`,
+                reference_id: `RECON-${activeSession.id}`,
+                performed_by: user?.id,
+              });
+
+            if (txError) throw txError;
+          }
+        }
+      }
+
+      // Only mark the reconciliation complete after all updates succeed
       const { error: updateError } = await supabase
         .from('inventory_reconciliations')
         .update({
@@ -271,40 +316,6 @@ export function useReconciliation(restaurantId: string | null) {
         .eq('id', activeSession.id);
 
       if (updateError) throw updateError;
-
-      // Update product stock and create inventory transactions
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      for (const item of items) {
-        if (item.actual_quantity !== null) {
-          // Always update product stock to actual count
-          const { error: stockError } = await supabase
-            .from('products')
-            .update({ current_stock: item.actual_quantity })
-            .eq('id', item.product_id);
-
-          if (stockError) throw stockError;
-
-          // Only create inventory transaction if there's a variance
-          if (item.variance !== null && item.variance !== 0) {
-            const { error: txError } = await supabase
-              .from('inventory_transactions')
-              .insert({
-                restaurant_id: restaurantId,
-                product_id: item.product_id,
-                quantity: item.variance,
-                unit_cost: item.unit_cost,
-                total_cost: item.variance_value,
-                transaction_type: 'adjustment',
-                reason: `Reconciliation ${activeSession.reconciliation_date}${item.notes ? `: ${item.notes}` : ''}`,
-                reference_id: `RECON-${activeSession.id}`,
-                performed_by: user?.id,
-              });
-
-            if (txError) throw txError;
-          }
-        }
-      }
 
       toast({ title: 'Success', description: 'Reconciliation completed and inventory updated' });
       setActiveSession(null);
@@ -319,22 +330,28 @@ export function useReconciliation(restaurantId: string | null) {
     }
   };
 
-  const calculateSummary = (): ReconciliationSummary => {
-    const countedItems = items.filter(item => item.actual_quantity !== null);
-    const itemsWithVariance = items.filter(
-      item => item.variance !== null && item.variance !== 0
-    );
+  const calculateSummary = (sourceItems?: ReconciliationItem[]): ReconciliationSummary => {
+    const dataset = sourceItems ?? items;
+    const countedItems = dataset.filter(item => item.actual_quantity !== null);
+    const itemsWithVariance = dataset.filter(item => {
+      if (item.variance === null || item.variance === undefined) return false;
+      return Number(item.variance) !== 0;
+    });
     
-    const totalShrinkage = items.reduce((sum, item) => {
-      if (item.variance_value && item.variance_value < 0) {
-        return sum + Math.abs(item.variance_value);
+    const totalShrinkage = dataset.reduce((sum, item) => {
+      const varianceValue = item.variance_value ?? 0;
+      const numericVariance = Number(varianceValue);
+      if (numericVariance < 0) {
+        return sum + Math.abs(numericVariance);
       }
       return sum;
     }, 0);
 
-    const totalOverage = items.reduce((sum, item) => {
-      if (item.variance_value && item.variance_value > 0) {
-        return sum + item.variance_value;
+    const totalOverage = dataset.reduce((sum, item) => {
+      const varianceValue = item.variance_value ?? 0;
+      const numericVariance = Number(varianceValue);
+      if (numericVariance > 0) {
+        return sum + numericVariance;
       }
       return sum;
     }, 0);

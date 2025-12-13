@@ -65,3 +65,26 @@ export function initFaro(): Faro | null {
 export function getFaro(): Faro | null {
   return faroInstance;
 }
+
+/**
+ * Start a user action manually for tracking user journeys.
+ * Use this for programmatic actions or when data-faro-user-action-name attribute isn't suitable.
+ * 
+ * For automatic tracking, add data-faro-user-action-name="action-name" attribute to HTML elements.
+ * 
+ * @example
+ * // Manual tracking
+ * startUserAction('checkout', { cartSize: '3', paymentMethod: 'card' });
+ * 
+ * // Automatic tracking (in JSX)
+ * <button data-faro-user-action-name="add-to-cart">Add to cart</button>
+ */
+export function startUserAction(
+  name: string,
+  attributes?: Record<string, string>,
+  options?: { triggerName?: string; importance?: 'normal' | 'critical' }
+): void {
+  if (faroInstance?.api?.startUserAction) {
+    faroInstance.api.startUserAction(name, attributes, options);
+  }
+}

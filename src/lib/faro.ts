@@ -44,7 +44,6 @@ export function initFaro(): Faro | null {
         // Mandatory, omits default instrumentations otherwise.
         ...getWebInstrumentations({
           captureConsole: true,
-          captureConsoleDisabledLevels: [], // Capture all console levels
         }),
 
         // Tracing package to get end-to-end visibility for HTTP requests.

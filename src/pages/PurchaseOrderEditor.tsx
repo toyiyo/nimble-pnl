@@ -172,7 +172,7 @@ export const PurchaseOrderEditor: React.FC = () => {
     id: `temp-${Date.now()}-${template.product_id}-${Math.random().toString(36).slice(2, 6)}`,
     purchase_order_id: '',
     product_id: template.product_id,
-    supplier_id: template.supplier_id ?? '',
+    supplier_id: template.supplier_id || null,
     item_name: template.item_name,
     sku: template.sku ?? null,
     unit_label: template.unit_label ?? 'Unit',
@@ -190,7 +190,7 @@ export const PurchaseOrderEditor: React.FC = () => {
     item_name: line.item_name ?? '',
     sku: line.sku ?? null,
     unit_label: line.unit_label ?? 'Unit',
-    supplier_id: line.supplier_id ?? '',
+    supplier_id: line.supplier_id || null,
     quantity: typeof line.quantity === 'number' ? line.quantity : Number(line.quantity) || 0,
     unit_cost: typeof line.unit_cost === 'number' ? line.unit_cost : Number(line.unit_cost) || 0,
     line_total: typeof line.line_total === 'number' ? line.line_total : Number(line.line_total) || 0,
@@ -384,7 +384,7 @@ export const PurchaseOrderEditor: React.FC = () => {
       const lineData: CreatePurchaseOrderLineData = {
         purchase_order_id: po.id,
         ...template,
-        supplier_id: template.supplier_id ?? '',
+        supplier_id: template.supplier_id || null,
         unit_label: template.unit_label ?? 'Unit',
         sku: template.sku ?? null,
       };
@@ -624,7 +624,7 @@ export const PurchaseOrderEditor: React.FC = () => {
           await addLineItem({
             purchase_order_id: newPo.id,
             product_id: line.product_id,
-            supplier_id: line.supplier_id,
+            supplier_id: line.supplier_id || null,
             item_name: line.item_name,
             sku: line.sku,
             unit_label: line.unit_label,

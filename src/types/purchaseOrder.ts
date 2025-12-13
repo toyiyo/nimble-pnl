@@ -6,7 +6,7 @@ export interface PurchaseOrderLine {
   id: string;
   purchase_order_id: string;
   product_id: string;
-  supplier_id: string;
+  supplier_id: string | null;
   item_name: string;
   sku: string | null;
   unit_label: string | null;
@@ -59,7 +59,7 @@ export interface UpdatePurchaseOrderData {
 export interface CreatePurchaseOrderLineData {
   purchase_order_id: string;
   product_id: string;
-  supplier_id: string;
+  supplier_id: string | null;
   item_name: string;
   sku?: string | null;
   unit_label?: string | null;

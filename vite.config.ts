@@ -1,11 +1,11 @@
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(async ({ mode }) => {
-  const plugins = [react()];
+  const plugins: PluginOption[] = [react()];
 
   const shouldUploadFaroSourcemaps =
     mode === "production" &&
@@ -19,7 +19,7 @@ export default defineConfig(async ({ mode }) => {
   
   // Add development-only plugins
   if (mode === "development") {
-    plugins.push(componentTagger());
+    plugins.push(componentTagger() as unknown as import("vite").Plugin);
   }
   
   // Add Faro source map upload plugin for production builds
@@ -28,18 +28,18 @@ export default defineConfig(async ({ mode }) => {
   if (shouldUploadFaroSourcemaps) {
     try {
       // Dynamic import to handle CommonJS module
-      // The plugin may export as default or named export depending on bundler/version
       const faroPlugin = await import("@grafana/faro-rollup-plugin");
-      const faroRollupPlugin = faroPlugin.default || faroPlugin.faroRollupPlugin;
+      const faroRollupPlugin = faroPlugin.default;
       
       if (typeof faroRollupPlugin === 'function') {
         plugins.push(
           faroRollupPlugin({
             appName: process.env.VITE_FARO_APP_NAME || "easyshifthq",
-            appVersion: process.env.VITE_FARO_APP_VERSION || "1.0.0",
-            endpoint: process.env.VITE_FARO_COLLECTOR_URL,
-            stackId: process.env.VITE_FARO_STACK_ID,
-          })
+            appId: process.env.VITE_FARO_APP_ID || "easyshifthq",
+            endpoint: process.env.VITE_FARO_COLLECTOR_URL!,
+            stackId: process.env.VITE_FARO_STACK_ID!,
+            apiKey: process.env.VITE_FARO_API_KEY || "",
+          }) as unknown as import("vite").Plugin
         );
       }
     } catch (error) {

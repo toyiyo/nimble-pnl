@@ -61,10 +61,11 @@ async function signUpAndCreateRestaurant(page: Page, user: TestUser) {
   await page.getByLabel(/password/i).first().fill(user.password);
   await page.getByRole('button', { name: /sign up|create account/i }).click();
 
-  await page.waitForURL('/', { timeout: 10000 });
+  await page.waitForURL('/');
 
-  await expect(page.getByRole('button', { name: /add restaurant/i })).toBeVisible({ timeout: 10000 });
-  await page.getByRole('button', { name: /add restaurant/i }).click();
+  const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
+  await expect(addRestaurantButton).toBeVisible();
+  await addRestaurantButton.click();
 
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
@@ -73,8 +74,7 @@ async function signUpAndCreateRestaurant(page: Page, user: TestUser) {
   await dialog.getByLabel(/phone/i).fill('555-987-6543');
   await dialog.getByRole('button', { name: /create restaurant/i }).click();
 
-  await expect(dialog).not.toBeVisible({ timeout: 5000 });
-  await page.waitForTimeout(1000);
+  await expect(dialog).not.toBeVisible();
 }
 
 test('user can create a new product with image and supplier in one flow', async ({ page }) => {
@@ -91,7 +91,7 @@ test('user can create a new product with image and supplier in one flow', async 
   const headerAddButton = page.getByRole('button', { name: /add product/i }).first();
   const emptyStateButton = page.getByRole('button', { name: /add your first product/i });
   
-  if (await headerAddButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+  if (await headerAddButton.isVisible({ timeout: 1000 }).catch(() => false)) {
     await headerAddButton.click();
   } else {
     await expect(emptyStateButton).toBeVisible();
@@ -144,7 +144,7 @@ test('user can create a new product with image and supplier in one flow', async 
 
   // Submit
   await dialog.getByRole('button', { name: /add product/i }).click();
-  await expect(dialog).not.toBeVisible({ timeout: 10000 });
+  await expect(dialog).not.toBeVisible();
 
   // Verify product created with image
   await expect(page.getByRole('heading', { name: product.name })).toBeVisible();

@@ -96,7 +96,6 @@ async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof
 
   await dialog.getByRole('button', { name: /create|add|save/i }).click();
   await expect(dialog).not.toBeVisible({ timeout: 5000 });
-  await page.waitForTimeout(500);
 }
 
 test.describe('Complete Payroll Journey', () => {
@@ -237,10 +236,9 @@ test.describe('Complete Payroll Journey', () => {
     // Step 2: View in Dashboard
     // ============================================================================
     
-    await page.goto('/');
-    await page.waitForTimeout(1000);
+  await page.goto('/');
 
-    // Dashboard should show labor costs section
+  // Dashboard should show labor costs section
     await expect(page.getByText(testUser.restaurantName).first()).toBeVisible();
 
     // ============================================================================
@@ -289,7 +287,6 @@ test.describe('Complete Payroll Journey', () => {
       const plOption = page.getByRole('option', { name: /p&l|profit.*loss|labor/i }).first();
       if (await plOption.isVisible().catch(() => false)) {
         await plOption.click();
-        await page.waitForTimeout(1000);
       }
     }
 
@@ -481,23 +478,13 @@ test.describe('Complete Payroll Journey', () => {
     // Save changes
     await dialog.getByRole('button', { name: /update|save/i }).click();
     
-    // Wait for dialog to close - use a more reliable check
-    await page.waitForTimeout(1000);
-    await expect(page.getByRole('dialog').filter({ hasText: /edit employee|employee details/i })).not.toBeVisible({ timeout: 10000 }).catch(() => {
-      // If dialog is still visible, it might be a different dialog or save is processing
-      console.log('Dialog still visible, continuing...');
-    });
-    await page.waitForTimeout(1000); // Wait for save to complete
-
-    // ============================================================================
+  // Wait for dialog to close
+  await expect(dialog).not.toBeVisible({ timeout: 10000 });    // ============================================================================
     // Verify: Navigate to payroll and check terminated employee
     // ============================================================================
     
-    await page.goto('/payroll');
-    await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
-    await page.waitForTimeout(1000); // Wait for data to load
-
-    // Check if terminated employees are visible (they may be filtered or shown with status badge)
+  await page.goto('/payroll');
+  await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });    // Check if terminated employees are visible (they may be filtered or shown with status badge)
     // Try to find the employee name anywhere on the page first
     const employeeText = page.getByText(employeeName);
     if (await employeeText.isVisible().catch(() => false)) {

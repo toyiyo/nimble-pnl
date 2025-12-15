@@ -68,7 +68,7 @@ async function signUpAndCreateRestaurant(page: Page, user: TestUser) {
   await dialog.getByLabel(/address/i).fill('123 Recon Street');
   await dialog.getByLabel(/phone/i).fill('555-123-4567');
   await dialog.getByRole('button', { name: /create restaurant|add restaurant/i }).click();
-  await page.waitForTimeout(2000);
+  await expect(dialog).not.toBeVisible({ timeout: 5000 });
 }
 
 async function createProduct(page: Page, product: TestProduct) {

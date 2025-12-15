@@ -86,7 +86,7 @@ async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof
 
   // Submit and wait for success
   await dialog.getByRole('button', { name: /create restaurant|add restaurant/i }).click();
-  await page.waitForTimeout(2000); // Wait for creation
+  await expect(dialog).not.toBeVisible({ timeout: 5000 });
 }
 
 /**
@@ -160,7 +160,6 @@ async function createEmployeePin(page: Page, employeeName: string, pin: string) 
   // Click the Edit button using aria-label (which includes employee name)
   const editButton = page.getByRole('button', { name: `Edit ${employeeName}` });
   await editButton.click();
-  await page.waitForTimeout(500);
 
   // Now we should be in the EmployeeDialog
   const dialog = page.getByRole('dialog');
@@ -236,11 +235,10 @@ test.describe('Employee Activation/Deactivation', () => {
       await seasonalOption.click();
     }
 
-    // === TEST: Confirm deactivation ===
-    await deactivateModal.getByRole('button', { name: /deactivate|confirm/i }).click();
-    await page.waitForTimeout(2000);
+  // === TEST: Confirm deactivation ===
+  await deactivateModal.getByRole('button', { name: /deactivate|confirm/i }).click();
 
-    // === TEST: Success message appears ===
+  // === TEST: Success message appears ===
     await expect(page.getByRole('status').getByText(/employee.*deactivated/i).first()).toBeVisible({ timeout: 5000 });
 
     // === TEST: Navigate to employee list - should not see in active by default ===
@@ -251,12 +249,11 @@ test.describe('Employee Activation/Deactivation', () => {
     await expect(page.getByText(employeeData.name)).not.toBeVisible({ timeout: 3000 });
 
     // === TEST: Switch to inactive view ===
-    const inactiveTab = page.getByRole('tab', { name: /inactive/i });
-    if (await inactiveTab.isVisible().catch(() => false)) {
-      await inactiveTab.click();
-      await page.waitForTimeout(1000);
+  const inactiveTab = page.getByRole('tab', { name: /inactive/i });
+  if (await inactiveTab.isVisible().catch(() => false)) {
+    await inactiveTab.click();
 
-      // Now employee should be visible
+    // Now employee should be visible
       await expect(page.getByText(employeeData.name)).toBeVisible();
       // Check for inactive badge (not the tab)
       await expect(page.getByText('Inactive', { exact: true }).and(page.locator('.inline-flex'))).toBeVisible();
@@ -276,21 +273,18 @@ test.describe('Employee Activation/Deactivation', () => {
 
     // === SETUP: Deactivate the employee first ===
     const activeEmployeeCard = page.locator('div', { has: page.getByRole('heading', { name: employeeData.name }) });
-    const deactivateButton = activeEmployeeCard.getByRole('button', { name: /deactivate/i });
-    await deactivateButton.click();
+  const deactivateButton = activeEmployeeCard.getByRole('button', { name: /deactivate/i });
+  await deactivateButton.click();
 
-    const deactivateModal = page.getByRole('dialog');
-    await deactivateModal.getByRole('button', { name: /deactivate|confirm/i }).click();
-    await page.waitForTimeout(2000);
-
-    // === TEST: Navigate to inactive employees ===
+  const deactivateModal = page.getByRole('dialog');
+  await deactivateModal.getByRole('button', { name: /deactivate|confirm/i }).click();    // === TEST: Navigate to inactive employees ===
     await page.goto('/employees');
     await page.waitForURL(/\/employees/);
 
     const inactiveTab = page.getByRole('tab', { name: /inactive/i });
     if (await inactiveTab.isVisible().catch(() => false)) {
       await inactiveTab.click();
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(500); // Wait for tab content to load
     }
 
     // === TEST: Find inactive employee card ===
@@ -310,12 +304,9 @@ test.describe('Employee Activation/Deactivation', () => {
     await expect(reactivateModal.getByRole('heading', { name: /reactivate.*employee/i })).toBeVisible();
 
     // === TEST: Confirm wage and other details (form may be pre-filled) ===
-    const confirmButton = reactivateModal.getByRole('button', { name: /reactivate|confirm/i });
-    await expect(confirmButton).toBeVisible();
-    await confirmButton.click();
-    await page.waitForTimeout(2000);
-
-    // === TEST: Success message appears ===
+  const confirmButton = reactivateModal.getByRole('button', { name: /reactivate|confirm/i });
+  await expect(confirmButton).toBeVisible();
+  await confirmButton.click();    // === TEST: Success message appears ===
     await expect(page.getByRole('status').getByText(/employee.*reactivated/i).first()).toBeVisible({ timeout: 5000 });
 
     // === TEST: Navigate back to employee list ===
@@ -342,43 +333,36 @@ test.describe('Employee Activation/Deactivation', () => {
 
     // === SETUP: Deactivate employee ===
     const employeeCard = page.locator('div', { has: page.getByRole('heading', { name: employeeData.name }) });
-    const deactivateButton = employeeCard.getByRole('button', { name: /deactivate/i });
-    await deactivateButton.click();
+  const deactivateButton = employeeCard.getByRole('button', { name: /deactivate/i });
+  await deactivateButton.click();
 
-    const deactivateModal = page.getByRole('dialog');
-    await deactivateModal.getByRole('button', { name: /deactivate|confirm/i }).click();
-    await page.waitForTimeout(2000);
-
-    // === TEST: Navigate to inactive employees ===
+  const deactivateModal = page.getByRole('dialog');
+  await deactivateModal.getByRole('button', { name: /deactivate|confirm/i }).click();    // === TEST: Navigate to inactive employees ===
     await page.goto('/employees');
     await page.waitForURL(/\/employees/);
 
     const inactiveTab = page.getByRole('tab', { name: /inactive/i });
     if (await inactiveTab.isVisible().catch(() => false)) {
       await inactiveTab.click();
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(500); // Wait for tab content to load
     }
 
-    // === TEST: Open inactive employee profile ===
-    await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible();
-    await page.waitForTimeout(1000);
+  // === TEST: Open inactive employee profile ===
+  await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible();
 
-    // === TEST: Verify history tabs are present and accessible ===
-    const historyTabs = [
-      /time.*punches/i,
-      /payroll/i,
-      /schedules/i,
-      /history/i,
-    ];
+  // === TEST: Verify history tabs are present and accessible ===
+  const historyTabs = [
+    /time.*punches/i,
+    /payroll/i,
+    /schedules/i,
+    /history/i,
+  ];
 
-    for (const tabPattern of historyTabs) {
-      const tab = page.getByRole('tab', { name: tabPattern });
-      if (await tab.isVisible().catch(() => false)) {
-        // Tab exists - click it to verify it's accessible
-        await tab.click();
-        await page.waitForTimeout(500);
-        
-        // Should not show error - data should be preserved
+  for (const tabPattern of historyTabs) {
+    const tab = page.getByRole('tab', { name: tabPattern });
+    if (await tab.isVisible().catch(() => false)) {
+      // Tab exists - click it to verify it's accessible
+      await tab.click();        // Should not show error - data should be preserved
         const errorMessage = page.getByText(/error|not found/i);
         await expect(errorMessage).not.toBeVisible();
       }

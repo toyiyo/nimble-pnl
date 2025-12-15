@@ -144,9 +144,6 @@ async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof
   // Submit restaurant creation
   await dialog.getByRole('button', { name: /create|add|save/i }).click();
   await expect(dialog).not.toBeVisible({ timeout: 5000 });
-
-  // Wait for page to stabilize
-  await page.waitForTimeout(500);
 }
 
 test.describe('Employee Payroll - Happy Paths', () => {

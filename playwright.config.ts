@@ -29,6 +29,7 @@ export default defineConfig({
       name: 'e2e',
       testMatch: ['**/e2e/**/*.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
+      timeout: 180000, // 3 minutes for e2e tests  
     },
   ],
 

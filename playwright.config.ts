@@ -6,10 +6,10 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
   testMatch: ['**/*.spec.ts'],
-  fullyParallel: false, // Run tests serially to avoid data conflicts
+  fullyParallel: true, // Enable parallel execution - tests use unique timestamps for isolation
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : 1,
+  workers: process.env.CI ? 1 : 10, // 10 parallel workers locally for faster execution
   reporter: 'html',
   
   use: {

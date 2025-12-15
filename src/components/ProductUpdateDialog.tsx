@@ -121,6 +121,20 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const [imageUrl, setImageUrl] = useState<string>('');
   const [adjustmentMode, setAdjustmentMode] = useState<'add' | 'set_exact'>('add');
   const [showAddSupplier, setShowAddSupplier] = useState(false);
+  const [pendingSupplierId, setPendingSupplierId] = useState<string | null>(product.supplier_id || null);
+  const [pendingSupplierDetails, setPendingSupplierDetails] = useState<{
+    id: string;
+    name: string;
+    cost?: number;
+    sku?: string;
+  } | null>(product.supplier_id
+    ? {
+        id: product.supplier_id,
+        name: product.supplier_name || '',
+        cost: product.cost_per_unit || undefined,
+        sku: product.supplier_sku || undefined,
+      }
+    : null);
   const [newSupplier, setNewSupplier] = useState({ supplier_id: '', cost: 0, supplier_sku: '' });
   const [isNewSupplier, setIsNewSupplier] = useState(false);
   const [savingSupplier, setSavingSupplier] = useState(false);
@@ -182,6 +196,13 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
         image_url: product.image_url || '',
       });
       setImageUrl(product.image_url || '');
+      setPendingSupplierId(product.supplier_id || null);
+      setPendingSupplierDetails(product.supplier_id ? {
+        id: product.supplier_id,
+        name: product.supplier_name || '',
+        cost: product.cost_per_unit || undefined,
+        sku: product.supplier_sku || undefined,
+      } : null);
       setEnhancedData(null);
       // Refresh supplier data when dialog opens
       fetchSuppliers();
@@ -284,11 +305,19 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
 
     // Debug logging
     console.log('[ProductUpdateDialog] handleSubmit called with data:', data);
-    console.log('[ProductUpdateDialog] SKU value specifically:', data.sku, 'Type:', typeof data.sku, 'Length:', data.sku?.length);
+      console.log('[ProductUpdateDialog] SKU value specifically:', data.sku, 'Type:', typeof data.sku, 'Length:', data.sku?.length);
 
     const isNewProduct = !product.id;
     const currentStock = product.current_stock || 0;
     
+    if (uploading) {
+      toast({
+        title: "Image upload in progress",
+        description: "Please wait for the image to finish uploading before saving.",
+      });
+      return;
+    }
+
     let quantityToAdd = 0;
     let finalStock = currentStock;
     
@@ -321,6 +350,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
       reorder_point: data.reorder_point || 0,
       image_url: imageUrl || data.image_url,
       current_stock: finalStock,
+      supplier_id: pendingSupplierId ?? product.supplier_id,
     };
 
     console.log('[ProductUpdateDialog] updates object being sent:', updates);
@@ -740,28 +770,73 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">Cost & Supplier</CardTitle>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (!showAddSupplier) {
+                  <div className="flex items-center gap-2">
+                    {pendingSupplierDetails && !product.id && (
+                      <Badge variant="secondary" className="text-xs">
+                        Will link supplier: {pendingSupplierDetails.name || 'Unnamed'}
+                      </Badge>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
                         // Pre-populate with current product cost when opening
                         setNewSupplier({ 
                           supplier_id: '', 
-                          cost: product.cost_per_unit || 0, 
-                          supplier_sku: '' 
+                          cost: form.getValues('cost_per_unit') || product.cost_per_unit || 0, 
+                          supplier_sku: form.getValues('supplier_sku') || '' 
                         });
-                      }
-                      setShowAddSupplier(!showAddSupplier);
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Supplier
-                  </Button>
+                        setShowAddSupplier(!showAddSupplier);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Supplier
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                {!product.id && pendingSupplierDetails && (
+                  <Card className="bg-muted/40 border-dashed">
+                    <CardContent className="pt-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Will be saved when this product is created</p>
+                          <p className="font-semibold">{pendingSupplierDetails.name || 'Supplier'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {pendingSupplierDetails.sku ? `SKU: ${pendingSupplierDetails.sku}` : 'No supplier SKU set'}
+                            {pendingSupplierDetails.cost !== undefined ? ` • $${pendingSupplierDetails.cost.toFixed(2)} per unit` : ''}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowAddSupplier(true)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setPendingSupplierId(null);
+                              setPendingSupplierDetails(null);
+                              form.setValue('supplier_name', '');
+                              form.setValue('supplier_sku', '');
+                              form.setValue('cost_per_unit', undefined);
+                            }}
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
                 {showAddSupplier && (
                   <Card className="bg-muted/50">
                     <CardContent className="pt-4 space-y-4">
@@ -833,37 +908,65 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                               return;
                             }
 
-                            if (savingSupplier) return; // Prevent double-clicks
-                            
-                            setSavingSupplier(true);
-                            try {
-                              let supplierIdToUse: string;
-                              
-                              // Create new supplier if needed
-                              if (isNewSupplier) {
-                                const createdSupplier = await createSupplier({ name: newSupplier.supplier_id });
-                                if (!createdSupplier?.id) {
-                                  throw new Error('Failed to create supplier - no ID returned');
-                                }
-                                supplierIdToUse = createdSupplier.id;
-                              } else {
-                                // Validate UUID format for existing supplier
-                                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-                                if (!uuidRegex.test(newSupplier.supplier_id)) {
-                                  throw new Error('Invalid supplier ID format');
-                                }
-                                supplierIdToUse = newSupplier.supplier_id;
-                              }
-                              
-                              // Final validation before insert
-                              if (!supplierIdToUse || supplierIdToUse.trim() === '') {
-                                throw new Error('Supplier ID is empty after processing');
-                              }
-                              
-                              const isFirstSupplier = productSuppliers.length === 0;
-                              
-                              const { error } = await supabase
-                                .from('product_suppliers')
+                        if (savingSupplier) return; // Prevent double-clicks
+                        
+                        setSavingSupplier(true);
+                        try {
+                          let supplierIdToUse: string;
+                          let supplierNameToUse = newSupplier.supplier_id;
+                          
+                          // Create new supplier if needed
+                          if (isNewSupplier) {
+                            const createdSupplier = await createSupplier({ name: newSupplier.supplier_id });
+                            if (!createdSupplier?.id) {
+                              throw new Error('Failed to create supplier - no ID returned');
+                            }
+                            supplierIdToUse = createdSupplier.id;
+                            supplierNameToUse = createdSupplier.name;
+                          } else {
+                            // Validate UUID format for existing supplier
+                            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                            if (!uuidRegex.test(newSupplier.supplier_id)) {
+                              throw new Error('Invalid supplier ID format');
+                            }
+                            supplierIdToUse = newSupplier.supplier_id;
+                            const matchedSupplier = allSuppliers.find(s => s.id === supplierIdToUse);
+                            supplierNameToUse = matchedSupplier?.name || supplierNameToUse;
+                          }
+                          
+                          // Final validation before insert
+                          if (!supplierIdToUse || supplierIdToUse.trim() === '') {
+                            throw new Error('Supplier ID is empty after processing');
+                          }
+
+                          // If the product has not been created yet, capture supplier details to apply on save
+                          if (!product.id) {
+                            setPendingSupplierId(supplierIdToUse);
+                            setPendingSupplierDetails({
+                              id: supplierIdToUse,
+                              name: supplierNameToUse,
+                              cost: newSupplier.cost || undefined,
+                              sku: newSupplier.supplier_sku || undefined,
+                            });
+                            form.setValue('supplier_name', supplierNameToUse);
+                            form.setValue('supplier_sku', newSupplier.supplier_sku);
+                            form.setValue('cost_per_unit', newSupplier.cost);
+
+                            toast({
+                              title: 'Supplier saved for new product',
+                              description: 'This supplier will be linked once the product is created.',
+                            });
+
+                            setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
+                            setIsNewSupplier(false);
+                            setShowAddSupplier(false);
+                            return;
+                          }
+                          
+                          const isFirstSupplier = productSuppliers.length === 0;
+                          
+                          const { error } = await supabase
+                            .from('product_suppliers')
                                 .insert({
                                   restaurant_id: restaurantId,
                                   product_id: product.id,

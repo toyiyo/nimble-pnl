@@ -277,14 +277,19 @@ test.describe('Employee Activation/Deactivation', () => {
   await deactivateButton.click();
 
   const deactivateModal = page.getByRole('dialog');
-  await deactivateModal.getByRole('button', { name: /deactivate|confirm/i }).click();    // === TEST: Navigate to inactive employees ===
+  await deactivateModal.getByRole('button', { name: /deactivate|confirm/i }).click();
+  
+  // Wait for modal to close after deactivation
+  await expect(deactivateModal).not.toBeVisible({ timeout: 5000 });
+  
+    // === TEST: Navigate to inactive employees ===
     await page.goto('/employees');
     await page.waitForURL(/\/employees/);
 
     const inactiveTab = page.getByRole('tab', { name: /inactive/i });
     if (await inactiveTab.isVisible().catch(() => false)) {
       await inactiveTab.click();
-      await page.waitForTimeout(500); // Wait for tab content to load
+      await page.waitForTimeout(1000); // Wait for tab content to load
     }
 
     // === TEST: Find inactive employee card ===
@@ -337,14 +342,19 @@ test.describe('Employee Activation/Deactivation', () => {
   await deactivateButton.click();
 
   const deactivateModal = page.getByRole('dialog');
-  await deactivateModal.getByRole('button', { name: /deactivate|confirm/i }).click();    // === TEST: Navigate to inactive employees ===
+  await deactivateModal.getByRole('button', { name: /deactivate|confirm/i }).click();
+  
+  // Wait for modal to close after deactivation
+  await expect(deactivateModal).not.toBeVisible({ timeout: 5000 });
+  
+    // === TEST: Navigate to inactive employees ===
     await page.goto('/employees');
     await page.waitForURL(/\/employees/);
 
     const inactiveTab = page.getByRole('tab', { name: /inactive/i });
     if (await inactiveTab.isVisible().catch(() => false)) {
       await inactiveTab.click();
-      await page.waitForTimeout(500); // Wait for tab content to load
+      await page.waitForTimeout(1000); // Wait for tab content to load
     }
 
   // === TEST: Open inactive employee profile ===

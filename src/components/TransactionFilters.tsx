@@ -24,18 +24,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-
-export interface TransactionFilters {
-  dateFrom?: string;
-  dateTo?: string;
-  minAmount?: number;
-  maxAmount?: number;
-  status?: string;
-  transactionType?: string;
-  categoryId?: string;
-  bankAccountId?: string;
-  showUncategorized?: boolean;
-}
+import type { TransactionFilters } from '@/types/transactions';
+export type { TransactionFilters } from '@/types/transactions';
 
 interface TransactionFiltersProps {
   restaurantId: string;

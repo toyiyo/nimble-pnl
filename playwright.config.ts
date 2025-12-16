@@ -9,7 +9,12 @@ export default defineConfig({
   fullyParallel: true, // Enable parallel execution - tests use unique timestamps for isolation
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : 1, // 1 parallel worker locally for consistent execution
+  // Allow overriding worker count via PLAYWRIGHT_WORKERS; default to 10 locally and 2 in CI for safety
+  workers: process.env.PLAYWRIGHT_WORKERS
+    ? Number(process.env.PLAYWRIGHT_WORKERS)
+    : process.env.CI
+      ? 2
+      : 10,
   reporter: 'html',
   
   use: {

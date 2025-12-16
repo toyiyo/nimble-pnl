@@ -1,10 +1,23 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo } from "react";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { SplitLine, invalidateSplitQueries } from "./useSplitTransactionHelpers";
+import type { BankTransactionSort, TransactionFilters } from "@/types/transactions";
 
 export type TransactionStatus = 'for_review' | 'categorized' | 'excluded' | 'reconciled';
+
+export const BANK_TRANSACTIONS_PAGE_SIZE = 200;
+
+export interface UseBankTransactionsOptions {
+  searchTerm?: string;
+  filters?: TransactionFilters;
+  sortBy?: BankTransactionSort;
+  sortDirection?: 'asc' | 'desc';
+  pageSize?: number;
+  autoLoadAll?: boolean;
+}
 
 export interface BankTransaction {
   id: string;
@@ -52,61 +65,200 @@ export interface BankTransaction {
   } | null;
 }
 
-export function useBankTransactions(status?: TransactionStatus) {
+interface BankTransactionsPage {
+  transactions: BankTransaction[];
+  totalCount: number;
+  hasMore: boolean;
+  nextPage?: number;
+}
+
+const SORT_COLUMN_MAP: Record<BankTransactionSort, string> = {
+  date: 'transaction_date',
+  payee: 'normalized_payee',
+  amount: 'amount',
+  category: 'category_id',
+};
+
+const buildBaseQuery = (restaurantId: string) =>
+  supabase
+    .from('bank_transactions')
+    .select(`
+      *,
+      connected_bank:connected_banks(
+        id,
+        institution_name,
+        bank_account_balances(id, account_mask, account_name, is_active)
+      ),
+      chart_account:chart_of_accounts!category_id(
+        id,
+        account_name
+      ),
+      supplier:suppliers(
+        id,
+        name
+      )
+    `, { count: 'exact' })
+    .eq('restaurant_id', restaurantId);
+
+const applyStatusFilter = (query: any, status?: TransactionStatus) => {
+  if (status === 'for_review') return query.eq('is_categorized', false).is('excluded_reason', null);
+  if (status === 'categorized') return query.eq('is_categorized', true).is('excluded_reason', null);
+  if (status === 'excluded') return query.not('excluded_reason', 'is', null);
+  if (status === 'reconciled') return query.eq('is_reconciled', true);
+  return query;
+};
+
+const applySearchFilter = (query: any, normalizedSearch: string) => {
+  if (!normalizedSearch) return query;
+  return query.or(
+    `description.ilike.%${normalizedSearch}%,merchant_name.ilike.%${normalizedSearch}%,normalized_payee.ilike.%${normalizedSearch}%`
+  );
+};
+
+const applyDateFilters = (query: any, filters: TransactionFilters) => {
+  if (filters.dateFrom) query = query.gte('transaction_date', filters.dateFrom);
+  if (filters.dateTo) query = query.lte('transaction_date', filters.dateTo);
+  return query;
+};
+
+const applyAmountFilters = (query: any, filters: TransactionFilters) => {
+  if (filters.minAmount !== undefined) {
+    query = query.or(`amount.lte.-${filters.minAmount},amount.gte.${filters.minAmount}`);
+  }
+  if (filters.maxAmount !== undefined) {
+    query = query.gte('amount', -filters.maxAmount).lte('amount', filters.maxAmount);
+  }
+  return query;
+};
+
+const applyMetadataFilters = (query: any, filters: TransactionFilters) => {
+  if (filters.status) query = query.eq('status', filters.status);
+  if (filters.transactionType === 'debit') query = query.lt('amount', 0);
+  if (filters.transactionType === 'credit') query = query.gt('amount', 0);
+  if (filters.categoryId) query = query.eq('category_id', filters.categoryId);
+  if (filters.bankAccountId) query = query.eq('connected_bank_id', filters.bankAccountId);
+  if (filters.showUncategorized) query = query.eq('is_categorized', false);
+  return query;
+};
+
+const applySorting = (query: any, sortBy: BankTransactionSort, sortDirection: 'asc' | 'desc') => {
+  const sortColumn = SORT_COLUMN_MAP[sortBy] ?? SORT_COLUMN_MAP.date;
+  return query
+    .order(sortColumn, { ascending: sortDirection === 'asc', nullsFirst: false })
+    .order('id', { ascending: false });
+};
+
+export function useBankTransactions(
+  status?: TransactionStatus,
+  options: UseBankTransactionsOptions = {}
+) {
   const { selectedRestaurant } = useRestaurantContext();
   const { toast } = useToast();
 
-  return useQuery({
-    queryKey: ['bank-transactions', selectedRestaurant?.restaurant_id, status],
-    queryFn: async () => {
-      if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
+  const pageSize = options.pageSize ?? BANK_TRANSACTIONS_PAGE_SIZE;
+  const normalizedSearch = options.searchTerm?.trim() ?? '';
+  const filtersKey = useMemo(() => JSON.stringify(options.filters || {}), [options.filters]);
+  const parsedFilters = useMemo<TransactionFilters>(() => JSON.parse(filtersKey), [filtersKey]);
+  const sortBy = options.sortBy ?? 'date';
+  const sortDirection = options.sortDirection ?? 'desc';
 
-      // Base query with all relations
-      let query = supabase
-        .from('bank_transactions')
-        .select(`
-          *,
-          connected_bank:connected_banks(
-            id,
-            institution_name,
-            bank_account_balances(id, account_mask, account_name, is_active)
-          ),
-          chart_account:chart_of_accounts!category_id(
-            id,
-            account_name
-          ),
-          supplier:suppliers(
-            id,
-            name
-          )
-        `, { count: 'exact' })
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .order('transaction_date', { ascending: false })
-        .range(0, 9999);
+  const fetchTransactionsPage = useCallback(async ({ pageParam = 0 }): Promise<BankTransactionsPage> => {
+    if (!selectedRestaurant?.restaurant_id) {
+      return { transactions: [], totalCount: 0, hasMore: false, nextPage: undefined };
+    }
 
-      // Filter based on logical status (not enum status)
-      if (status === 'for_review') {
-        // Uncategorized and not excluded
-        query = query.eq('is_categorized', false).is('excluded_reason', null);
-      } else if (status === 'categorized') {
-        // Categorized but not excluded
-        query = query.eq('is_categorized', true).is('excluded_reason', null);
-      } else if (status === 'excluded') {
-        // Has exclusion reason
-        query = query.not('excluded_reason', 'is', null);
-      } else if (status === 'reconciled') {
-        // Marked as reconciled
-        query = query.eq('is_reconciled', true);
-      }
+    const from = Number(pageParam) || 0;
+    const to = from + pageSize - 1;
 
-      const { data, error } = await query;
+    let query = buildBaseQuery(selectedRestaurant.restaurant_id);
+    query = applyStatusFilter(query, status);
+    query = applySearchFilter(query, normalizedSearch);
+    query = applyDateFilters(query, parsedFilters);
+    query = applyAmountFilters(query, parsedFilters);
+    query = applyMetadataFilters(query, parsedFilters);
+    query = applySorting(query, sortBy, sortDirection);
 
-      if (error) throw error;
-      return data as BankTransaction[];
-    },
+    const { data, count, error } = await query.range(from, to);
+
+    if (error) throw error;
+
+    const received = data?.length ?? 0;
+    const totalCount = count ?? received;
+    const nextPage = to + 1;
+    const hasMore = typeof count === 'number' ? count > nextPage : received === pageSize;
+
+    return {
+      transactions: (data || []) as BankTransaction[],
+      totalCount,
+      hasMore,
+      nextPage: hasMore ? nextPage : undefined,
+    };
+  }, [selectedRestaurant?.restaurant_id, status, normalizedSearch, parsedFilters, sortBy, sortDirection, pageSize]);
+
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+    error,
+    refetch,
+    isRefetching,
+  } = useInfiniteQuery({
+    queryKey: [
+      'bank-transactions',
+      selectedRestaurant?.restaurant_id,
+      status || 'all',
+      normalizedSearch,
+      filtersKey,
+      sortBy,
+      sortDirection,
+      pageSize,
+    ],
+    queryFn: ({ pageParam = 0 }) => fetchTransactionsPage({ pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => (lastPage?.hasMore ? lastPage.nextPage : undefined),
     enabled: !!selectedRestaurant?.restaurant_id,
     staleTime: 60000,
+    gcTime: 300000,
   });
+
+  const transactions = useMemo(
+    () => data?.pages?.flatMap((page) => page.transactions) ?? [],
+    [data]
+  );
+
+  const totalCount = data?.pages?.[0]?.totalCount ?? 0;
+
+  // Automatically hydrate full dataset when requested (metrics views)
+  useEffect(() => {
+    if (options.autoLoadAll && hasNextPage && !isFetchingNextPage && !isLoading) {
+      fetchNextPage();
+    }
+  }, [options.autoLoadAll, hasNextPage, isFetchingNextPage, isLoading, fetchNextPage]);
+
+  // Surface errors to users
+  useEffect(() => {
+    if (error) {
+      toast({
+        title: "Error fetching transactions",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    }
+  }, [error, toast]);
+
+  return {
+    data: transactions,
+    transactions,
+    totalCount,
+    isLoading,
+    isRefetching,
+    loadingMore: isFetchingNextPage,
+    hasMore: !!hasNextPage,
+    loadMore: fetchNextPage,
+    refetch,
+  };
 }
 
 export function useBankTransactionsWithRelations(restaurantId: string | null | undefined) {

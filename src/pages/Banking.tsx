@@ -18,12 +18,10 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
 import { TransactionFiltersSheet, type TransactionFilters } from "@/components/TransactionFilters";
-import { useDateFormat } from "@/hooks/useDateFormat";
-import { formatDateInTimezone } from "@/lib/timezone";
 import { BankStatementUpload } from "@/components/BankStatementUpload";
 import { BankStatementReview } from "@/components/BankStatementReview";
 import { useBankStatementImport } from "@/hooks/useBankStatementImport";
-import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2, Plus, Wallet, TrendingUp, Search, ArrowUpDown, Filter, Brain, ArrowRight, Upload } from "lucide-react";
+import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2, Plus, Wallet, Search, ArrowUpDown, Filter, Brain, ArrowRight, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { loadStripe } from "@stripe/stripe-js";
@@ -39,11 +37,47 @@ export default function Banking() {
   const [sortBy, setSortBy] = useState<'date' | 'payee' | 'amount' | 'category'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const { selectedRestaurant } = useRestaurantContext();
-  const { formatTransactionDate, timezone } = useDateFormat();
+  const hasActiveFilters = searchTerm.length > 0 || Object.values(filters).some(v => v !== undefined && v !== '');
   
-  const { data: forReviewTransactions, isLoading: isLoadingReview } = useBankTransactions('for_review');
-  const { data: categorizedTransactions, isLoading: isLoadingCategorized } = useBankTransactions('categorized');
-  const { data: excludedTransactions, isLoading: isLoadingExcluded } = useBankTransactions('excluded');
+  const {
+    transactions: reviewTransactions = [],
+    totalCount: reviewCount = 0,
+    isLoading: isLoadingReview,
+    loadingMore: loadingMoreReview,
+    hasMore: hasMoreReview,
+    loadMore: loadMoreReview,
+  } = useBankTransactions('for_review', {
+    searchTerm,
+    filters,
+    sortBy,
+    sortDirection,
+  });
+  const {
+    transactions: categorizedTransactions = [],
+    totalCount: categorizedCount = 0,
+    isLoading: isLoadingCategorized,
+    loadingMore: loadingMoreCategorized,
+    hasMore: hasMoreCategorized,
+    loadMore: loadMoreCategorized,
+  } = useBankTransactions('categorized', {
+    searchTerm,
+    filters,
+    sortBy,
+    sortDirection,
+  });
+  const {
+    transactions: excludedTransactions = [],
+    totalCount: excludedCount = 0,
+    isLoading: isLoadingExcluded,
+    loadingMore: loadingMoreExcluded,
+    hasMore: hasMoreExcluded,
+    loadMore: loadMoreExcluded,
+  } = useBankTransactions('excluded', {
+    searchTerm,
+    filters,
+    sortBy,
+    sortDirection,
+  });
   const categorizeAll = useCategorizeTransactions();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   
@@ -136,87 +170,16 @@ export default function Banking() {
   const totalBalance = connectedBanks
     .flatMap((bank) => bank.balances || [])
     .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
-
-  // Apply filters and sorting
-  const applyFiltersAndSort = (transactions: typeof forReviewTransactions) => {
-    if (!transactions) return [];
-    
-    return transactions.filter(txn => {
-      // Search filter
-      const matchesSearch = !searchTerm || 
-        txn.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        txn.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        txn.normalized_payee?.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      // Date filters - Convert timestamp to restaurant's local date for accurate filtering
-      const transactionLocalDate = formatDateInTimezone(txn.transaction_date, timezone, 'yyyy-MM-dd');
-      const matchesDateFrom = !filters.dateFrom || transactionLocalDate >= filters.dateFrom;
-      const matchesDateTo = !filters.dateTo || transactionLocalDate <= filters.dateTo;
-      
-      // Amount filters
-      const matchesMinAmount = filters.minAmount === undefined || Math.abs(txn.amount) >= filters.minAmount;
-      const matchesMaxAmount = filters.maxAmount === undefined || Math.abs(txn.amount) <= filters.maxAmount;
-      
-      // Status filter
-      const matchesStatus = !filters.status || txn.status === filters.status;
-      
-      // Transaction type filter
-      const matchesType = !filters.transactionType || 
-        (filters.transactionType === 'debit' && txn.amount < 0) ||
-        (filters.transactionType === 'credit' && txn.amount > 0);
-      
-      // Category filter
-      const matchesCategory = !filters.categoryId || txn.category_id === filters.categoryId;
-      
-      // Bank account filter
-      const matchesBankAccount = !filters.bankAccountId || 
-        (txn.connected_bank?.bank_account_balances?.some((acc: any) => acc.id === filters.bankAccountId) ?? false);
-      
-      // Uncategorized filter
-      const matchesUncategorized = filters.showUncategorized === undefined || 
-        (filters.showUncategorized ? !txn.is_categorized : true);
-      
-      return matchesSearch && matchesDateFrom && matchesDateTo && 
-             matchesMinAmount && matchesMaxAmount && matchesStatus && matchesType &&
-             matchesCategory && matchesBankAccount && matchesUncategorized;
-    }).sort((a, b) => {
-      let comparison = 0;
-      
-      switch (sortBy) {
-        case 'date':
-          comparison = new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime();
-          if (comparison === 0) {
-            comparison = a.id.localeCompare(b.id);
-          }
-          break;
-        case 'payee':
-          const payeeA = a.normalized_payee || a.merchant_name || '';
-          const payeeB = b.normalized_payee || b.merchant_name || '';
-          comparison = payeeA.localeCompare(payeeB);
-          break;
-        case 'amount':
-          comparison = Math.abs(a.amount) - Math.abs(b.amount);
-          break;
-        case 'category':
-          const categoryA = a.chart_account?.account_name || '';
-          const categoryB = b.chart_account?.account_name || '';
-          comparison = categoryA.localeCompare(categoryB);
-          break;
-      }
-      
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-  };
-
-  const filteredForReview = applyFiltersAndSort(forReviewTransactions);
-  const filteredCategorized = applyFiltersAndSort(categorizedTransactions);
-  const filteredExcluded = applyFiltersAndSort(excludedTransactions);
-  
-  const reviewCount = filteredForReview?.length || 0;
-  const categorizedCount = filteredCategorized?.length || 0;
-  const excludedCount = filteredExcluded?.length || 0;
-  
   const activeFilterCount = Object.values(filters).filter(v => v !== undefined && v !== '').length;
+  const reviewEmptyState = hasActiveFilters
+    ? { title: 'No transactions match your filters', subtitle: 'Try adjusting your search or filter criteria' }
+    : { title: 'No transactions to review', subtitle: 'All caught up! 🎉' };
+  const categorizedEmptyState = hasActiveFilters
+    ? { title: 'No transactions match your filters', subtitle: 'Try adjusting your search or filter criteria' }
+    : { title: 'No categorized transactions', subtitle: 'Start categorizing transactions from the "For Review" tab' };
+  const excludedEmptyState = hasActiveFilters
+    ? { title: 'No transactions match your filters', subtitle: 'Try adjusting your search or filter criteria' }
+    : { title: 'No excluded transactions', subtitle: 'Duplicate or personal transactions will appear here' };
 
   return (
     <div className="min-h-screen bg-background">
@@ -488,19 +451,26 @@ export default function Banking() {
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
-                ) : filteredForReview && filteredForReview.length > 0 ? (
-                  <div className="-mx-6">
-                    <BankTransactionList transactions={filteredForReview} status="for_review" accounts={accounts} />
-                  </div>
-                ) : forReviewTransactions && forReviewTransactions.length > 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <p className="text-lg">No transactions match your filters</p>
-                    <p className="text-sm mt-2">Try adjusting your search or filter criteria</p>
-                  </div>
+                ) : reviewTransactions.length > 0 ? (
+                  <>
+                    <div className="-mx-6">
+                      <BankTransactionList transactions={reviewTransactions} status="for_review" accounts={accounts} />
+                    </div>
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4">
+                      <div className="text-sm text-muted-foreground">
+                        Loaded {reviewTransactions.length} of {reviewCount} transactions
+                      </div>
+                      {hasMoreReview && (
+                        <Button variant="outline" onClick={() => loadMoreReview()} disabled={loadingMoreReview}>
+                          {loadingMoreReview ? "Loading..." : "Load more"}
+                        </Button>
+                      )}
+                    </div>
+                  </>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
-                    <p className="text-lg">No transactions to review</p>
-                    <p className="text-sm mt-2">All caught up! 🎉</p>
+                    <p className="text-lg">{reviewEmptyState.title}</p>
+                    <p className="text-sm mt-2">{reviewEmptyState.subtitle}</p>
                   </div>
                 )}
               </div>
@@ -514,19 +484,26 @@ export default function Banking() {
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
-                ) : filteredCategorized && filteredCategorized.length > 0 ? (
-                  <div className="-mx-6">
-                    <BankTransactionList transactions={filteredCategorized} status="categorized" accounts={accounts} />
-                  </div>
-                ) : categorizedTransactions && categorizedTransactions.length > 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <p className="text-lg">No transactions match your filters</p>
-                    <p className="text-sm mt-2">Try adjusting your search or filter criteria</p>
-                  </div>
+                ) : categorizedTransactions.length > 0 ? (
+                  <>
+                    <div className="-mx-6">
+                      <BankTransactionList transactions={categorizedTransactions} status="categorized" accounts={accounts} />
+                    </div>
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4">
+                      <div className="text-sm text-muted-foreground">
+                        Loaded {categorizedTransactions.length} of {categorizedCount} transactions
+                      </div>
+                      {hasMoreCategorized && (
+                        <Button variant="outline" onClick={() => loadMoreCategorized()} disabled={loadingMoreCategorized}>
+                          {loadingMoreCategorized ? "Loading..." : "Load more"}
+                        </Button>
+                      )}
+                    </div>
+                  </>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
-                    <p className="text-lg">No categorized transactions</p>
-                    <p className="text-sm mt-2">Start categorizing transactions from the "For Review" tab</p>
+                    <p className="text-lg">{categorizedEmptyState.title}</p>
+                    <p className="text-sm mt-2">{categorizedEmptyState.subtitle}</p>
                   </div>
                 )}
               </div>
@@ -540,19 +517,26 @@ export default function Banking() {
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
-                ) : filteredExcluded && filteredExcluded.length > 0 ? (
-                  <div className="-mx-6">
-                    <BankTransactionList transactions={filteredExcluded} status="excluded" accounts={accounts} />
-                  </div>
-                ) : excludedTransactions && excludedTransactions.length > 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <p className="text-lg">No transactions match your filters</p>
-                    <p className="text-sm mt-2">Try adjusting your search or filter criteria</p>
-                  </div>
+                ) : excludedTransactions.length > 0 ? (
+                  <>
+                    <div className="-mx-6">
+                      <BankTransactionList transactions={excludedTransactions} status="excluded" accounts={accounts} />
+                    </div>
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4">
+                      <div className="text-sm text-muted-foreground">
+                        Loaded {excludedTransactions.length} of {excludedCount} transactions
+                      </div>
+                      {hasMoreExcluded && (
+                        <Button variant="outline" onClick={() => loadMoreExcluded()} disabled={loadingMoreExcluded}>
+                          {loadingMoreExcluded ? "Loading..." : "Load more"}
+                        </Button>
+                      )}
+                    </div>
+                  </>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
-                    <p className="text-lg">No excluded transactions</p>
-                    <p className="text-sm mt-2">Duplicate or personal transactions will appear here</p>
+                    <p className="text-lg">{excludedEmptyState.title}</p>
+                    <p className="text-sm mt-2">{excludedEmptyState.subtitle}</p>
                   </div>
                 )}
               </div>

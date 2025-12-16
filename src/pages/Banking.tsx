@@ -37,6 +37,7 @@ export default function Banking() {
   const [sortBy, setSortBy] = useState<'date' | 'payee' | 'amount' | 'category'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const { selectedRestaurant } = useRestaurantContext();
+  const hasActiveFilters = searchTerm.length > 0 || Object.values(filters).some(v => v !== undefined && v !== '');
   
   const {
     transactions: reviewTransactions = [],
@@ -170,6 +171,15 @@ export default function Banking() {
     .flatMap((bank) => bank.balances || [])
     .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
   const activeFilterCount = Object.values(filters).filter(v => v !== undefined && v !== '').length;
+  const reviewEmptyState = hasActiveFilters
+    ? { title: 'No transactions match your filters', subtitle: 'Try adjusting your search or filter criteria' }
+    : { title: 'No transactions to review', subtitle: 'All caught up! 🎉' };
+  const categorizedEmptyState = hasActiveFilters
+    ? { title: 'No transactions match your filters', subtitle: 'Try adjusting your search or filter criteria' }
+    : { title: 'No categorized transactions', subtitle: 'Start categorizing transactions from the "For Review" tab' };
+  const excludedEmptyState = hasActiveFilters
+    ? { title: 'No transactions match your filters', subtitle: 'Try adjusting your search or filter criteria' }
+    : { title: 'No excluded transactions', subtitle: 'Duplicate or personal transactions will appear here' };
 
   return (
     <div className="min-h-screen bg-background">
@@ -459,12 +469,8 @@ export default function Banking() {
                   </>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
-                    <p className="text-lg">
-                      {searchTerm || activeFilterCount > 0 ? 'No transactions match your filters' : 'No transactions to review'}
-                    </p>
-                    <p className="text-sm mt-2">
-                      {searchTerm || activeFilterCount > 0 ? 'Try adjusting your search or filter criteria' : 'All caught up! 🎉'}
-                    </p>
+                    <p className="text-lg">{reviewEmptyState.title}</p>
+                    <p className="text-sm mt-2">{reviewEmptyState.subtitle}</p>
                   </div>
                 )}
               </div>
@@ -496,12 +502,8 @@ export default function Banking() {
                   </>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
-                    <p className="text-lg">
-                      {searchTerm || activeFilterCount > 0 ? 'No transactions match your filters' : 'No categorized transactions'}
-                    </p>
-                    <p className="text-sm mt-2">
-                      {searchTerm || activeFilterCount > 0 ? 'Try adjusting your search or filter criteria' : 'Start categorizing transactions from the \"For Review\" tab'}
-                    </p>
+                    <p className="text-lg">{categorizedEmptyState.title}</p>
+                    <p className="text-sm mt-2">{categorizedEmptyState.subtitle}</p>
                   </div>
                 )}
               </div>
@@ -533,12 +535,8 @@ export default function Banking() {
                   </>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
-                    <p className="text-lg">
-                      {searchTerm || activeFilterCount > 0 ? 'No transactions match your filters' : 'No excluded transactions'}
-                    </p>
-                    <p className="text-sm mt-2">
-                      {searchTerm || activeFilterCount > 0 ? 'Try adjusting your search or filter criteria' : 'Duplicate or personal transactions will appear here'}
-                    </p>
+                    <p className="text-lg">{excludedEmptyState.title}</p>
+                    <p className="text-sm mt-2">{excludedEmptyState.subtitle}</p>
                   </div>
                 )}
               </div>

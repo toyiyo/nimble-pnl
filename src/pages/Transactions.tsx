@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -104,10 +104,12 @@ const Transactions = () => {
     }
   };
 
-  const listStatus: 'for_review' | 'categorized' | 'excluded' =
-    transactions.every(t => t.excluded_reason) ? 'excluded'
-    : transactions.every(t => t.is_categorized) ? 'categorized'
-    : 'for_review';
+  const listStatus: 'for_review' | 'categorized' | 'excluded' = useMemo(() => {
+    if (transactions.length === 0) return 'for_review';
+    if (transactions.every(t => t.excluded_reason)) return 'excluded';
+    if (transactions.every(t => t.is_categorized)) return 'categorized';
+    return 'for_review';
+  }, [transactions]);
 
   const totalDebits = transactions
     .filter(t => t.amount < 0)
@@ -140,6 +142,9 @@ const Transactions = () => {
   }
 
   const activeFilterCount = Object.values(filters).filter(v => v !== undefined && v !== '').length;
+  const emptyStateMessage = activeFilterCount > 0
+    ? 'No transactions match your filters. Try adjusting your filters.'
+    : 'Click "Sync Transactions" on your connected banks to import transactions';
 
   return (
     <div className="space-y-4 md:space-y-6 w-full max-w-full overflow-x-hidden px-4 md:px-0">
@@ -360,10 +365,7 @@ const Transactions = () => {
               <MetricIcon icon={Receipt} variant="blue" className="mx-auto mb-4" />
               <h3 className="text-base md:text-lg font-semibold mb-2">No Transactions Yet</h3>
               <p className="text-xs md:text-sm text-muted-foreground mb-6">
-                {activeFilterCount > 0 
-                  ? 'No transactions match your filters. Try adjusting your filters.'
-                  : 'Click "Sync Transactions" on your connected banks to import transactions'
-                }
+                {emptyStateMessage}
               </p>
               <Button onClick={() => window.location.href = '/banking'}>
                 Go to Banking

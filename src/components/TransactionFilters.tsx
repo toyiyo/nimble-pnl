@@ -25,7 +25,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import type { TransactionFilters } from '@/types/transactions';
-export type { TransactionFilters };
+export type { TransactionFilters } from '@/types/transactions';
 
 interface TransactionFiltersProps {
   restaurantId: string;

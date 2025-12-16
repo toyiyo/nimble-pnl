@@ -9,6 +9,10 @@ const mockSupabase = vi.hoisted(() => ({
   from: vi.fn(),
 }));
 
+const mockRestaurantContext = vi.hoisted(() => ({
+  selectedRestaurant: { restaurant_id: 'rest-123' } as { restaurant_id: string } | null,
+}));
+
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: mockSupabase,
 }));
@@ -20,9 +24,7 @@ vi.mock('@/hooks/use-toast', () => ({
 }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({
-  useRestaurantContext: () => ({
-    selectedRestaurant: { restaurant_id: 'rest-123' },
-  }),
+  useRestaurantContext: () => mockRestaurantContext,
 }));
 
 const createWrapper = () => {
@@ -153,5 +155,24 @@ describe('useBankTransactions (paginated)', () => {
     await waitFor(() => expect(result.current.transactions).toHaveLength(3));
     expect(result.current.hasMore).toBe(false);
     expect(builders[1].range).toHaveBeenCalledWith(2, 3);
+  });
+
+  it('returns empty results when no restaurant is selected', async () => {
+    mockRestaurantContext.selectedRestaurant = null;
+    mockSupabase.from.mockReset();
+
+    const { result } = renderHook(
+      () => useBankTransactions('for_review'),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.transactions).toEqual([]);
+    expect(result.current.totalCount).toBe(0);
+    expect(result.current.hasMore).toBe(false);
+    expect(mockSupabase.from).not.toHaveBeenCalled();
+
+    mockRestaurantContext.selectedRestaurant = { restaurant_id: 'rest-123' }; // restore for other tests
   });
 });

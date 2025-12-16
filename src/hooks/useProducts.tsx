@@ -99,23 +99,27 @@ export const useProducts = (restaurantId: string | null) => {
     if (!user) return null;
 
     try {
+      // Avoid sending fields that might not exist in the DB schema
+      // (e.g., pos_item_name can be absent in some environments)
+      const { pos_item_name: _omitPosItemName, ...insertData } = productData as any;
+
       const { data, error } = await supabase
         .from('products')
-        .insert([productData])
+        .insert([insertData])
         .select()
         .single();
 
       if (error) throw error;
 
       // Create product-supplier relationship if supplier info is provided
-      if (data && productData.supplier_id && productData.cost_per_unit) {
+      if (data && productData.supplier_id) {
         const { error: supplierError } = await supabase
           .from('product_suppliers')
           .insert({
             restaurant_id: data.restaurant_id,
             product_id: data.id,
             supplier_id: productData.supplier_id,
-            last_unit_cost: productData.cost_per_unit,
+            last_unit_cost: productData.cost_per_unit ?? null,
             supplier_sku: productData.supplier_sku,
             is_preferred: true,  // First supplier is default preferred
           });
@@ -191,10 +195,12 @@ export const useProducts = (restaurantId: string | null) => {
         current_stock: newStock,
         updated_at: new Date().toISOString()
       };
+      // Filter fields that may not exist in all schemas
+      const { pos_item_name: _omitPosItemName, ...safeUpdateData } = updatedData as any;
 
       const { error } = await supabase
         .from('products')
-        .update(updatedData)
+        .update(safeUpdateData)
         .eq('id', id);
 
       if (error) throw error;

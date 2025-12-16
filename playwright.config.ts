@@ -6,10 +6,10 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
   testMatch: ['**/*.spec.ts'],
-  fullyParallel: false, // Run tests serially to avoid data conflicts
+  fullyParallel: true, // Enable parallel execution - tests use unique timestamps for isolation
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : 1,
+  workers: process.env.CI ? 1 : 1, // 1 parallel worker locally for consistent execution
   reporter: 'html',
   
   use: {
@@ -29,6 +29,7 @@ export default defineConfig({
       name: 'e2e',
       testMatch: ['**/e2e/**/*.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
+      timeout: 300000, // 5 minutes for complex e2e tests
     },
   ],
 

@@ -16,7 +16,6 @@ import { SmartBarcodeScanner } from '@/components/SmartBarcodeScanner';
 import { OCRBarcodeScanner } from '@/components/OCRBarcodeScanner';
 import { KeyboardBarcodeScanner } from '@/components/KeyboardBarcodeScanner';
 import { ImageCapture } from '@/components/ImageCapture';
-import { ProductDialog } from '@/components/ProductDialog';
 import { ProductCard } from '@/components/ProductCard';
 import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
 import { DeleteProductDialog } from '@/components/DeleteProductDialog';
@@ -60,10 +59,8 @@ export const Inventory: React.FC = () => {
   const { lowStockItems: lowStockProducts, exportLowStockCSV } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [showProductDialog, setShowProductDialog] = useState(false);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [scannedProductData, setScannedProductData] = useState<Partial<CreateProductData> | null>(null);
   const [lookupResult, setLookupResult] = useState<ProductLookupResult | null>(null);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lastScannedGtin, setLastScannedGtin] = useState<string>('');
@@ -91,7 +88,7 @@ export const Inventory: React.FC = () => {
   // Check for ?create=true query parameter to open product dialog from recipes
   useEffect(() => {
     if (searchParams.get('create') === 'true') {
-      setShowProductDialog(true);
+      handleCreateManually();
       // Remove the query parameter
       searchParams.delete('create');
       setSearchParams(searchParams);
@@ -478,7 +475,6 @@ export const Inventory: React.FC = () => {
         reorder_point: 0,
         supplier_name: ocrData?.supplier || null,
         supplier_sku: ocrData?.batchLot || null,
-        pos_item_name: ocrData?.productName || enhancedData?.productName || grokOCRResult.text || '',
         image_url: uploadedImageUrl, // Use the captured image
         barcode_data: ocrData?.upcBarcode || null,
         created_at: new Date().toISOString(),
@@ -532,7 +528,6 @@ export const Inventory: React.FC = () => {
           reorder_point: 0,
           supplier_name: null,
           supplier_sku: null,
-          pos_item_name: '',
           image_url: uploadedImageUrl,
           barcode_data: null,
           created_at: new Date().toISOString(),
@@ -572,8 +567,6 @@ export const Inventory: React.FC = () => {
   const handleCreateProduct = async (productData: CreateProductData) => {
     const newProduct = await createProduct(productData);
     if (newProduct) {
-      setShowProductDialog(false);
-      setScannedProductData(null);
       setLookupResult(null);
       setLastScannedGtin('');
       setCapturedImage(null);
@@ -654,13 +647,15 @@ export const Inventory: React.FC = () => {
         package_qty: updates.package_qty || selectedProduct.package_qty, // FIX: Use updates.package_qty first
         uom_purchase: updates.uom_purchase || selectedProduct.uom_purchase,
         uom_recipe: updates.uom_recipe || selectedProduct.uom_recipe, // FIX: Use updates.uom_recipe first
-        cost_per_unit: updates.cost_per_unit || selectedProduct.cost_per_unit,
+        image_url: updates.image_url ?? selectedProduct.image_url ?? null,
+        cost_per_unit: updates.cost_per_unit ?? selectedProduct.cost_per_unit ?? null,
         current_stock: quantityToAdd, // Set initial stock to the quantity being added
         par_level_min: updates.par_level_min || selectedProduct.par_level_min, // FIX: Use updates.par_level_min first
         par_level_max: updates.par_level_max || selectedProduct.par_level_max, // FIX: Use updates.par_level_max first
         reorder_point: updates.reorder_point || selectedProduct.reorder_point, // FIX: Use updates.reorder_point first
         supplier_name: updates.supplier_name || selectedProduct.supplier_name,
         supplier_sku: updates.supplier_sku || selectedProduct.supplier_sku, // FIX: Use updates.supplier_sku first
+        supplier_id: updates.supplier_id ?? selectedProduct.supplier_id ?? null,
         barcode_data: selectedProduct.barcode_data,
       };
 
@@ -1519,7 +1514,7 @@ export const Inventory: React.FC = () => {
                   ) : (
                     <Button 
                       className="mt-4" 
-                      onClick={() => setShowProductDialog(true)}
+                      onClick={handleCreateManually}
                     >
                       Add Your First Product
                     </Button>
@@ -1855,14 +1850,6 @@ export const Inventory: React.FC = () => {
           </TabsContent>
         </Tabs>
       </div>
-
-      <ProductDialog
-        open={showProductDialog}
-        onOpenChange={setShowProductDialog}
-        onSubmit={handleCreateProduct}
-        restaurantId={selectedRestaurant?.restaurant_id || ''}
-        initialData={scannedProductData}
-      />
 
       {selectedProduct && (
         <ProductUpdateDialog

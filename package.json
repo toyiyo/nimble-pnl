@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:full": "concurrently \"npm run db:start\" \"npm run functions:serve\" \"npm run dev\"",
+    "dev:full:sequential": "npm run db:start && sleep 3 && concurrently \"npm run functions:serve\" \"npm run dev\"",
     "build": "node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build",
     "build:dev": "node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build --mode development",
     "lint": "eslint .",

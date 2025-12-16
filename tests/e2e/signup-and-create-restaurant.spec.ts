@@ -89,16 +89,13 @@ test.describe('Signup and Create Restaurant Flow', () => {
     }
 
     // Step 9: Submit restaurant creation
-    await dialog.getByRole('button', { name: /create|add|save/i }).click();
+  await dialog.getByRole('button', { name: /create|add|save/i }).click();
 
-    // Step 10: Verify restaurant was created
-    // Dialog should close and restaurant should be selected
-    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+  // Step 10: Verify restaurant was created
+  // Dialog should close and restaurant should be selected
+  await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
-    // Wait for success toast or page to stabilize
-    await page.waitForTimeout(1000);
-
-    // Restaurant name should appear in the main content area (dashboard)
+  // Restaurant name should appear in the main content area (dashboard)
     const mainContent = page.getByRole('main');
     await expect(mainContent.getByText(testUser.restaurantName).first()).toBeVisible({ timeout: 5000 });
 

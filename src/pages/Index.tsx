@@ -66,8 +66,13 @@ const Index = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const { lowStockItems, reorderAlerts, loading: alertsLoading } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
   const { data: connectedBanks, isLoading: banksLoading } = useConnectedBanks(selectedRestaurant?.restaurant_id || null);
-  const { data: transactionsData } = useBankTransactions('for_review');
-  const { data: allTransactions } = useBankTransactions(); // Fetch all transactions for spending calculation
+  const {
+    transactions: uncategorizedTransactions = [],
+    totalCount: uncategorizedCount = 0,
+  } = useBankTransactions('for_review', { pageSize: 100 });
+  const {
+    transactions: allTransactions = [],
+  } = useBankTransactions(undefined, { autoLoadAll: true, pageSize: 200, sortBy: 'date', sortDirection: 'desc' }); // Fetch transactions incrementally for spending calculation
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { totalPending: totalPendingOutflows } = usePendingOutflowsSummary();
   const navigate = useNavigate();
@@ -1030,12 +1035,12 @@ const Index = () => {
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
-                    <OperationsHealthCard
+                      <OperationsHealthCard
                       primeCost={periodData?.prime_cost_percentage || 0}
                       primeCostTarget={62}
                       lowInventoryCount={lowStockItems.length}
                       unmappedPOSCount={unmappedItems?.length || 0}
-                      uncategorizedTransactions={transactionsData?.length || 0}
+                      uncategorizedTransactions={uncategorizedCount}
                     />
                   </CollapsibleContent>
                 </div>

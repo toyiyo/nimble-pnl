@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 
 export function ReconciliationReport() {
   const { data: boundary } = useReconciliationBoundary();
-  const { data: allTransactions } = useBankTransactions();
+  const { transactions: allTransactions = [] } = useBankTransactions(undefined, { autoLoadAll: true });
 
   if (!boundary) {
     return (

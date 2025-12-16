@@ -16,7 +16,7 @@ interface MatchSuggestionCardProps {
 
 export function MatchSuggestionCard({ match, pendingOutflow }: MatchSuggestionCardProps) {
   const { confirmMatch } = usePendingOutflowMutations();
-  const { data: allTransactions } = useBankTransactions('for_review');
+  const { transactions: allTransactions = [] } = useBankTransactions('for_review', { autoLoadAll: true });
 
   const transaction = allTransactions?.find(t => t.id === match.bank_transaction_id);
 

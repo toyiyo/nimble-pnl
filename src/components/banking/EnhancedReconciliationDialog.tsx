@@ -68,7 +68,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
   }, [bankAccountBalances, selectedAccountBalanceId]);
 
   // Fetch categorized (but not yet reconciled) transactions
-  const { data: categorizedTransactions } = useBankTransactions('categorized');
+  const { transactions: categorizedTransactions = [] } = useBankTransactions('categorized', { autoLoadAll: true });
   
   // Filter transactions for selected account and before ending date
   const eligibleTransactions = useMemo(() => {

@@ -9,7 +9,7 @@ export default defineConfig({
   fullyParallel: true, // Enable parallel execution - tests use unique timestamps for isolation
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : 3, // 3 parallel workers locally for faster execution
+  workers: process.env.CI ? 1 : 1, // 1 parallel worker locally for consistent execution
   reporter: 'html',
   
   use: {

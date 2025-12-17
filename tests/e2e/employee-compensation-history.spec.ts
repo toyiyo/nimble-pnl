@@ -1,5 +1,4 @@
 import { test, expect, Page } from '@playwright/test';
-import { addDays, format } from 'date-fns';
 
 const generateTestUser = () => {
   const timestamp = Date.now();
@@ -163,7 +162,8 @@ test.describe('Employee compensation history', () => {
     const employeeId = await fetchEmployeeId(page, employee.name);
     expect(employeeId).toBeTruthy();
 
-    const today = format(new Date(), 'yyyy-MM-dd');
+    // Use UTC date to match backend's default effective_date calculation
+    const today = new Date().toISOString().split('T')[0];
     const initialHistory = await fetchCompHistory(page, employeeId!);
     expect(initialHistory).toHaveLength(1);
     expect(initialHistory[0]).toMatchObject({
@@ -184,9 +184,13 @@ test.describe('Employee compensation history', () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     const effectiveDateInput = modal.getByLabel(/effective date/i);
+    // Input should default to today (UTC)
     await expect(effectiveDateInput).toHaveValue(today);
 
-    const futureDate = format(addDays(new Date(), 3), 'yyyy-MM-dd');
+    // Use UTC to avoid timezone conflicts with database constraint
+    const future = new Date();
+    future.setUTCDate(future.getUTCDate() + 3);
+    const futureDate = future.toISOString().split('T')[0];
     await effectiveDateInput.fill(futureDate);
     await modal.getByRole('button', { name: /save new rate|apply new rate/i }).click();
 
@@ -252,7 +256,8 @@ test.describe('Employee compensation history', () => {
     const employeeId = await fetchEmployeeId(page, employee.name);
     expect(employeeId).toBeTruthy();
 
-    const today = format(new Date(), 'yyyy-MM-dd');
+    // Use UTC date to match backend's default effective_date calculation
+    const today = new Date().toISOString().split('T')[0];
     const initialHistory = await fetchCompHistory(page, employeeId!);
     expect(initialHistory).toHaveLength(1);
     expect(initialHistory[0]).toMatchObject({
@@ -276,7 +281,10 @@ test.describe('Employee compensation history', () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     const effectiveDateInput = modal.getByLabel(/effective date/i);
-    const futureDate = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+    // Use UTC to avoid timezone conflicts with database constraint
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const futureDate = tomorrow.toISOString().split('T')[0];
     await effectiveDateInput.fill(futureDate);
     await modal.getByRole('button', { name: /save new rate|apply new rate/i }).click();
 

@@ -14,10 +14,14 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateDailyContractorAllocation,
   calculateDailyLaborCost,
+  calculateEmployeeDailyCostForDate,
   calculateLaborBreakdown,
+  calculateSalaryForPeriod,
   generateDailyAllocation,
+  getEmployeeSnapshotForDate,
   getPayPeriodDates,
   getDaysInPayPeriod,
+  resolveCompensationForDate,
   validateCompensationFields,
   requiresTimePunches,
 } from '@/utils/compensationCalculations';
@@ -830,11 +834,100 @@ describe('Validation Edge Cases', () => {
   });
 
   describe('Compensation Type Transitions', () => {
-    // HOLE: What happens when an employee changes compensation type?
-    
-    it.todo('handle employee transitioning from hourly to salary mid-period');
-    it.todo('handle employee transitioning from contractor to employee');
-    it.todo('track compensation history for audit trail');
+    it('uses historical hourly rates when calculating pay', () => {
+      const employee = createEmployee({
+        compensation_type: 'hourly',
+        hourly_rate: 2000,
+        compensation_history: [
+          {
+            id: 'hist-1',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'hourly',
+            amount_cents: 1500,
+            pay_period_type: null,
+            effective_date: '2024-01-01',
+            created_at: '2024-01-01T00:00:00Z',
+          },
+          {
+            id: 'hist-2',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'hourly',
+            amount_cents: 2000,
+            pay_period_type: null,
+            effective_date: '2024-02-01',
+            created_at: '2024-02-01T00:00:00Z',
+          },
+        ],
+      });
+
+      const januarySnapshot = resolveCompensationForDate(employee, '2024-01-15');
+      const febSnapshot = resolveCompensationForDate(employee, '2024-02-10');
+
+      expect(januarySnapshot.hourly_rate).toBe(1500);
+      expect(febSnapshot.hourly_rate).toBe(2000);
+
+      expect(calculateEmployeeDailyCostForDate(employee, '2024-01-15', 8)).toBe(12000); // 8h @ $15
+      expect(calculateEmployeeDailyCostForDate(employee, '2024-02-10', 8)).toBe(16000); // 8h @ $20
+    });
+
+    it('splits salary calculations when a new rate takes effect mid-period', () => {
+      const employee = createEmployee({
+        compensation_type: 'salary',
+        salary_amount: 400000, // $4,000/month in cents
+        pay_period_type: 'monthly',
+        compensation_history: [
+          {
+            id: 's1',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'salary',
+            amount_cents: 400000,
+            pay_period_type: 'monthly',
+            effective_date: '2024-01-01',
+            created_at: '2024-01-01T00:00:00Z',
+          },
+          {
+            id: 's2',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'salary',
+            amount_cents: 500000, // $5,000/month
+            pay_period_type: 'monthly',
+            effective_date: '2024-01-15',
+            created_at: '2024-01-15T00:00:00Z',
+          },
+        ],
+      });
+
+      const total = calculateSalaryForPeriod(
+        employee,
+        new Date('2024-01-10'),
+        new Date('2024-01-20')
+      );
+
+      // Jan 10-14 at $4,000/month ≈ 65,703 cents
+      // Jan 15-20 at $5,000/month ≈ 98,554 cents
+      // Total ≈ 164,258 cents (rounded once per period)
+      expect(total).toBe(164258);
+    });
+
+    it('keeps weekly salary whole when using daily allocations (no penny loss)', () => {
+      const employee = createEmployee({
+        compensation_type: 'salary',
+        salary_amount: 200000, // $2,000/week
+        pay_period_type: 'weekly',
+      });
+
+      const total = calculateSalaryForPeriod(
+        employee,
+        new Date('2024-01-01'),
+        new Date('2024-01-07')
+      );
+
+      expect(total).toBe(200000);
+    });
   });
 });
 

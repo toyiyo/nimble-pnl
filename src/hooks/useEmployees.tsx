@@ -24,7 +24,10 @@ export const useEmployees = (
 
       let query = supabase
         .from('employees')
-        .select('*')
+        .select(`
+          *,
+          compensation_history:employee_compensation_history(*)
+        `)
         .eq('restaurant_id', restaurantId);
 
       // Apply status filter
@@ -35,7 +38,9 @@ export const useEmployees = (
       }
       // 'all' = no filter
 
-      query = query.order('name');
+      query = query
+        .order('name')
+        .order('effective_date', { referencedTable: 'employee_compensation_history', ascending: false });
 
       const { data, error } = await query;
 

@@ -17,6 +17,10 @@
 import {
   calculateDailySalaryAllocation,
   calculateDailyContractorAllocation,
+  calculateEmployeeDailyCostForDate,
+  getEmployeeSnapshotForDate,
+  calculateSalaryForPeriod,
+  calculateContractorPayForPeriod,
 } from '@/utils/compensationCalculations';
 import { parseWorkPeriods } from '@/utils/payrollCalculations';
 import type { Employee, Shift, CompensationType } from '@/types/scheduling';
@@ -179,21 +183,25 @@ export function calculateEmployeePeriodCost(
 
   for (const dateStr of dates) {
     const hours = hoursPerDay?.get(dateStr) || 0;
+    const snapshot = getEmployeeSnapshotForDate(employee, dateStr);
 
-    switch (employee.compensation_type) {
+    switch (snapshot.compensation_type) {
       case 'hourly':
-        totalCost += calculateEmployeeDailyCost(employee, hours);
+        totalCost += calculateEmployeeDailyCostForDate(snapshot, dateStr, hours);
         break;
-
       case 'salary':
-        // Salary employees get daily allocation for every day in period
-        totalCost += calculateEmployeeDailyCost(employee);
+        // Calculate once per period to avoid penny loss and distribute later if needed
+        if (dateStr === dates[dates.length - 1]) {
+          const periodCost = calculateSalaryForPeriod(employee, new Date(startDate), new Date(endDate));
+          totalCost += periodCost;
+        }
         break;
-
       case 'contractor':
-        // Non per-job contractors get daily allocation
-        if (employee.contractor_payment_interval !== 'per-job') {
-          totalCost += calculateEmployeeDailyCost(employee);
+        if (snapshot.contractor_payment_interval !== 'per-job') {
+          if (dateStr === dates[dates.length - 1]) {
+            const contractorCost = calculateContractorPayForPeriod(employee, new Date(startDate), new Date(endDate));
+            totalCost += contractorCost;
+          }
         }
         break;
     }
@@ -260,6 +268,8 @@ export function calculateScheduledLaborCost(
     const dayData = dateMap.get(shiftDate);
     if (!dayData) return;
 
+    const effectiveEmployee = getEmployeeSnapshotForDate(employee, shiftDate);
+
     // Track scheduled employees
     if (!employeesScheduledPerDay.has(shiftDate)) {
       employeesScheduledPerDay.set(shiftDate, new Set());
@@ -267,9 +277,9 @@ export function calculateScheduledLaborCost(
     employeesScheduledPerDay.get(shiftDate)?.add(employee.id);
 
     // Calculate cost based on compensation type
-    if (employee.compensation_type === 'hourly') {
+    if (effectiveEmployee.compensation_type === 'hourly') {
       const hours = calculateShiftHours(shift);
-      const cost = calculateEmployeeDailyCost(employee, hours) / 100; // Convert to dollars
+      const cost = calculateEmployeeDailyCost(effectiveEmployee, hours) / 100; // Convert to dollars
       
       dayData.hourly_cost += cost;
       dayData.hours_worked += hours;
@@ -483,13 +493,14 @@ export function calculateActualLaborCost(
       const employee = employeeMap.get(empId);
       if (!employee) return;
 
+      const effectiveEmployee = getEmployeeSnapshotForDate(employee, dateStr);
       const employeeHours = hoursPerEmployeePerDay.get(empId);
       const hoursWorked = employeeHours?.get(dateStr) || 0;
 
-      switch (employee.compensation_type) {
+      switch (effectiveEmployee.compensation_type) {
         case 'hourly': {
           if (hoursWorked > 0) {
-            const hourlyCost = (employee.hourly_rate / 100) * hoursWorked; // Convert cents to dollars
+            const hourlyCost = calculateEmployeeDailyCostForDate(employee, dateStr, hoursWorked) / 100; // Convert to dollars
             dayData.hourly_cost += hourlyCost;
             dayData.hours_worked += hoursWorked;
             dayData.total_cost += hourlyCost;
@@ -498,15 +509,15 @@ export function calculateActualLaborCost(
         }
 
         case 'salary': {
-          const salaryCost = calculateEmployeeDailyCost(employee) / 100; // Convert to dollars
+          const salaryCost = calculateEmployeeDailyCostForDate(employee, dateStr) / 100; // Convert to dollars
           dayData.salary_cost += salaryCost;
           dayData.total_cost += salaryCost;
           break;
         }
 
         case 'contractor': {
-          if (employee.contractor_payment_interval !== 'per-job') {
-            const contractorCost = calculateEmployeeDailyCost(employee) / 100; // Convert to dollars
+          if (effectiveEmployee.contractor_payment_interval !== 'per-job') {
+            const contractorCost = calculateEmployeeDailyCostForDate(employee, dateStr) / 100; // Convert to dollars
             dayData.contractor_cost += contractorCost;
             dayData.total_cost += contractorCost;
           }

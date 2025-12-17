@@ -3,7 +3,8 @@ import { Employee, CompensationType } from '@/types/scheduling';
 import { startOfWeek, format } from 'date-fns';
 import { 
   calculateSalaryForPeriod, 
-  calculateContractorPayForPeriod 
+  calculateContractorPayForPeriod,
+  calculateEmployeeDailyCostForDate,
 } from '@/utils/compensationCalculations';
 
 // Maximum shift length in hours (shifts longer than this are flagged as incomplete)
@@ -350,26 +351,6 @@ export function calculateWorkedHoursWithAnomalies(punches: TimePunch[]): {
 }
 
 /**
- * Group punches by calendar week (Sunday to Saturday)
- */
-function groupPunchesByWeek(punches: TimePunch[]): Map<string, TimePunch[]> {
-  const weekMap = new Map<string, TimePunch[]>();
-  
-  punches.forEach(punch => {
-    const punchDate = new Date(punch.punch_time);
-    const weekStart = startOfWeek(punchDate, { weekStartsOn: 0 });
-    const weekKey = weekStart.toISOString();
-    
-    if (!weekMap.has(weekKey)) {
-      weekMap.set(weekKey, []);
-    }
-    weekMap.get(weekKey)!.push(punch);
-  });
-  
-  return weekMap;
-}
-
-/**
  * Calculate regular and overtime hours per week
  * Overtime is hours worked beyond 40 in a calendar week at 1.5x rate
  */
@@ -418,20 +399,36 @@ export function calculateEmployeePay(
   
   // Calculate based on compensation type
   if (compensationType === 'hourly') {
-    // Hourly employees: calculate from time punches
-    const punchesByWeek = groupPunchesByWeek(punches);
-    
-    punchesByWeek.forEach((weekPunches) => {
-      const { hours: weekWorkedHours, incompleteShifts } = calculateWorkedHoursWithAnomalies(weekPunches);
-      const { regularHours, overtimeHours } = calculateRegularAndOvertimeHours(weekWorkedHours);
-      
-      totalRegularHours += regularHours;
-      totalOvertimeHours += overtimeHours;
-      allIncompleteShifts.push(...incompleteShifts);
+    const parsed = parseWorkPeriods(punches);
+    const hoursByDate = new Map<string, number>();
+
+    parsed.periods.forEach(period => {
+      if (period.isBreak) return;
+      const dateKey = format(new Date(period.startTime), 'yyyy-MM-dd');
+      hoursByDate.set(dateKey, (hoursByDate.get(dateKey) || 0) + period.hours);
     });
 
-    regularPay = Math.round(totalRegularHours * employee.hourly_rate);
-    overtimePay = Math.round(totalOvertimeHours * employee.hourly_rate * 1.5);
+    const weeklyTotals = new Map<string, { hours: number; payCents: number }>();
+    hoursByDate.forEach((hours, dateStr) => {
+      const payCents = calculateEmployeeDailyCostForDate(employee, dateStr, hours);
+      const weekKey = format(startOfWeek(new Date(dateStr)), 'yyyy-MM-dd');
+      const current = weeklyTotals.get(weekKey) || { hours: 0, payCents: 0 };
+      current.hours += hours;
+      current.payCents += payCents;
+      weeklyTotals.set(weekKey, current);
+    });
+
+    weeklyTotals.forEach(({ hours, payCents }) => {
+      const { regularHours, overtimeHours } = calculateRegularAndOvertimeHours(hours);
+      totalRegularHours += regularHours;
+      totalOvertimeHours += overtimeHours;
+
+      const baseRatePerHour = hours > 0 ? payCents / hours : 0;
+      regularPay += Math.round(regularHours * baseRatePerHour);
+      overtimePay += Math.round(overtimeHours * baseRatePerHour * 1.5);
+    });
+
+    allIncompleteShifts.push(...parsed.incompleteShifts);
     
   } else if (compensationType === 'salary' && periodStartDate && periodEndDate) {
     // Salaried employees: calculate prorated salary for the period

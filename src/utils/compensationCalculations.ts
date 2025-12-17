@@ -17,6 +17,7 @@ import type {
   DailyLaborAllocation,
   LaborCostBreakdown,
   CompensationSummary,
+  CompensationHistoryEntry,
 } from '@/types/scheduling';
 
 // ============================================================================
@@ -40,6 +41,95 @@ export const DAYS_PER_CONTRACTOR_INTERVAL: Record<
   'bi-weekly': 14,
   monthly: 30.44,
 };
+
+// ============================================================================
+// Compensation History Helpers
+// ============================================================================
+
+function normalizeDateString(input: string | Date): string {
+  const date = typeof input === 'string' ? new Date(input) : new Date(input);
+  return date.toISOString().split('T')[0];
+}
+
+function getSortedHistory(employee: Employee): CompensationHistoryEntry[] {
+  const history = employee.compensation_history || [];
+  return [...history].sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+}
+
+export type CompensationSnapshot = {
+  compensation_type: CompensationType;
+  hourly_rate?: number;
+  salary_amount?: number;
+  pay_period_type?: PayPeriodType;
+  contractor_payment_amount?: number;
+  contractor_payment_interval?: ContractorPaymentInterval;
+};
+
+/**
+ * Resolve the compensation snapshot for an employee on a specific date
+ * Falls back to the employee's current fields when no history entry exists
+ */
+export function resolveCompensationForDate(
+  employee: Employee,
+  targetDate: string | Date
+): CompensationSnapshot {
+  const dateStr = normalizeDateString(targetDate);
+  const history = getSortedHistory(employee);
+  const entry = history.find(h => h.effective_date <= dateStr);
+
+  const snapshot: CompensationSnapshot = {
+    compensation_type: entry?.compensation_type || employee.compensation_type,
+  };
+
+  switch (snapshot.compensation_type) {
+    case 'hourly':
+      snapshot.hourly_rate = entry?.amount_cents ?? employee.hourly_rate;
+      break;
+    case 'salary':
+      snapshot.salary_amount = entry?.amount_cents ?? employee.salary_amount;
+      snapshot.pay_period_type =
+        (entry?.pay_period_type as PayPeriodType | null) ?? employee.pay_period_type;
+      break;
+    case 'contractor':
+      snapshot.contractor_payment_amount = entry?.amount_cents ?? employee.contractor_payment_amount;
+      snapshot.contractor_payment_interval = employee.contractor_payment_interval;
+      break;
+  }
+
+  return snapshot;
+}
+
+/**
+ * Get an Employee object adjusted to the effective rate for a specific date
+ */
+export function getEmployeeSnapshotForDate(
+  employee: Employee,
+  targetDate: string | Date
+): Employee {
+  const snapshot = resolveCompensationForDate(employee, targetDate);
+
+  return {
+    ...employee,
+    compensation_type: snapshot.compensation_type,
+    hourly_rate: snapshot.hourly_rate ?? 0,
+    salary_amount: snapshot.salary_amount,
+    pay_period_type: snapshot.pay_period_type,
+    contractor_payment_amount: snapshot.contractor_payment_amount,
+    contractor_payment_interval: snapshot.contractor_payment_interval,
+  };
+}
+
+/**
+ * Calculate daily cost using the effective rate for the given date
+ */
+export function calculateEmployeeDailyCostForDate(
+  employee: Employee,
+  targetDate: string | Date,
+  hoursWorked?: number
+): number {
+  const snapshot = getEmployeeSnapshotForDate(employee, targetDate);
+  return calculateDailyLaborCost(snapshot, hoursWorked);
+}
 
 // ============================================================================
 // Salary Calculations
@@ -519,38 +609,6 @@ function getDaysBetween(startDate: Date, endDate: Date): number {
 }
 
 /**
- * Get the effective start date for an employee in a period
- * Returns the later of: period start or hire date
- * Returns null if employee was hired after period ends
- */
-function getEffectivePeriodStart(
-  periodStart: Date,
-  periodEnd: Date,
-  hireDate?: string
-): Date | null {
-  const start = new Date(periodStart);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(periodEnd);
-  end.setHours(0, 0, 0, 0);
-  
-  // No hire date? Use full period
-  if (!hireDate) {
-    return start;
-  }
-  
-  const hire = new Date(hireDate);
-  hire.setHours(0, 0, 0, 0);
-  
-  // Hired after period ends? No pay for this period
-  if (hire > end) {
-    return null;
-  }
-  
-  // Return the later of period start or hire date
-  return new Date(Math.max(start.getTime(), hire.getTime()));
-}
-
-/**
  * Calculate salary pay for a given date range
  * Prorates the salary based on the number of days in the period
  * Respects hire date - only calculates from hire date forward
@@ -570,26 +628,28 @@ export function calculateSalaryForPeriod(
   startDate: Date,
   endDate: Date
 ): number {
-  // Only calculate for salary employees
-  if (employee.compensation_type !== 'salary') {
-    return 0;
+  let totalRawCents = 0;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dayDate = new Date(normalizeDateString(d));
+    const hireDate = employee.hire_date ? new Date(employee.hire_date) : null;
+    const terminationDate = employee.termination_date ? new Date(employee.termination_date) : null;
+
+    if (hireDate && dayDate < hireDate) continue;
+    if (terminationDate && dayDate > terminationDate) continue;
+
+    const snapshot = resolveCompensationForDate(employee, dayDate);
+    if (snapshot.compensation_type !== 'salary' || !snapshot.salary_amount || !snapshot.pay_period_type) {
+      continue;
+    }
+
+    const daysInPeriod = DAYS_PER_PAY_PERIOD[snapshot.pay_period_type];
+    totalRawCents += snapshot.salary_amount / daysInPeriod;
   }
-  
-  // Need salary amount and pay period type
-  if (!employee.salary_amount || !employee.pay_period_type) {
-    return 0;
-  }
-  
-  // Get effective start date (respecting hire date)
-  const effectiveStart = getEffectivePeriodStart(startDate, endDate, employee.hire_date);
-  if (!effectiveStart) {
-    return 0; // Employee not hired yet
-  }
-  
-  const daysInPeriod = getDaysBetween(effectiveStart, endDate);
-  const dailyRate = calculateDailySalaryAllocation(employee.salary_amount, employee.pay_period_type);
-  
-  return dailyRate * daysInPeriod;
+
+  return Math.round(totalRawCents);
 }
 
 /**
@@ -612,34 +672,35 @@ export function calculateContractorPayForPeriod(
   startDate: Date,
   endDate: Date
 ): number {
-  // Only calculate for contractors
-  if (employee.compensation_type !== 'contractor') {
-    return 0;
+  let total = 0;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dayDate = new Date(normalizeDateString(d));
+    const hireDate = employee.hire_date ? new Date(employee.hire_date) : null;
+    const terminationDate = employee.termination_date ? new Date(employee.termination_date) : null;
+
+    if (hireDate && dayDate < hireDate) continue;
+    if (terminationDate && dayDate > terminationDate) continue;
+
+    const snapshot = resolveCompensationForDate(employee, dayDate);
+    if (
+      snapshot.compensation_type !== 'contractor' ||
+      !snapshot.contractor_payment_amount ||
+      !snapshot.contractor_payment_interval ||
+      snapshot.contractor_payment_interval === 'per-job'
+    ) {
+      continue;
+    }
+
+    total += calculateDailyContractorAllocation(
+      snapshot.contractor_payment_amount,
+      snapshot.contractor_payment_interval
+    );
   }
-  
-  // Need payment amount and interval
-  if (!employee.contractor_payment_amount || !employee.contractor_payment_interval) {
-    return 0;
-  }
-  
-  // Per-job contractors don't get automatic prorated pay
-  if (employee.contractor_payment_interval === 'per-job') {
-    return 0;
-  }
-  
-  // Get effective start date (respecting hire date)
-  const effectiveStart = getEffectivePeriodStart(startDate, endDate, employee.hire_date);
-  if (!effectiveStart) {
-    return 0; // Contractor not engaged yet
-  }
-  
-  const daysInPeriod = getDaysBetween(effectiveStart, endDate);
-  const dailyRate = calculateDailyContractorAllocation(
-    employee.contractor_payment_amount,
-    employee.contractor_payment_interval
-  );
-  
-  return dailyRate * daysInPeriod;
+
+  return total;
 }
 
 // ============================================================================
@@ -773,5 +834,3 @@ export function isPerJobContractor(employee: Employee): boolean {
     employee.contractor_payment_interval === 'per-job'
   );
 }
-
-

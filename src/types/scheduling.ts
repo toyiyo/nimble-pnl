@@ -4,6 +4,17 @@ export type PayPeriodType = 'weekly' | 'bi-weekly' | 'semi-monthly' | 'monthly';
 export type ContractorPaymentInterval = 'weekly' | 'bi-weekly' | 'monthly' | 'per-job';
 export type DeactivationReason = 'seasonal' | 'left_company' | 'on_leave' | 'other';
 
+export interface CompensationHistoryEntry {
+  id: string;
+  employee_id: string;
+  restaurant_id: string;
+  compensation_type: CompensationType;
+  amount_cents: number;
+  pay_period_type?: PayPeriodType | null;
+  effective_date: string; // YYYY-MM-DD
+  created_at: string;
+}
+
 export interface Employee {
   id: string;
   restaurant_id: string;
@@ -46,6 +57,9 @@ export interface Employee {
   // Time tracking & tips
   requires_time_punch?: boolean; // Must clock in/out (true for hourly, optional for others)
   tip_eligible?: boolean; // Can receive tip pool distributions
+
+  // Compensation history (optional join)
+  compensation_history?: CompensationHistoryEntry[];
 }
 
 export type RecurrenceType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'weekday' | 'custom';

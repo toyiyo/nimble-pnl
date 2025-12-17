@@ -49,6 +49,7 @@ import Expenses from "./pages/Expenses";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import PurchaseOrderEditor from "./pages/PurchaseOrderEditor";
 import KioskMode from "./pages/KioskMode";
+import PayrollCalculationsHelp from "./pages/Help/PayrollCalculations";
 
 const queryClient = new QueryClient();
 
@@ -173,6 +174,7 @@ const App = () => (
           <Route path="/chart-of-accounts" element={<ProtectedRoute><ChartOfAccounts /></ProtectedRoute>} />
           <Route path="/financial-statements" element={<ProtectedRoute><FinancialStatements /></ProtectedRoute>} />
             <Route path="/ai-assistant" element={<ProtectedRoute><AiAssistant /></ProtectedRoute>} />
+            <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/clover/callback" element={<CloverCallback />} />
             <Route path="/toast/callback" element={<ToastCallback />} />

@@ -1461,6 +1461,68 @@ export type Database = {
           },
         ]
       }
+      employee_compensation_history: {
+        Row: {
+          amount_cents: number
+          compensation_type: string
+          created_at: string | null
+          effective_date: string
+          employee_id: string
+          id: string
+          pay_period_type: string | null
+          restaurant_id: string
+        }
+        Insert: {
+          amount_cents: number
+          compensation_type: string
+          created_at?: string | null
+          effective_date: string
+          employee_id: string
+          id?: string
+          pay_period_type?: string | null
+          restaurant_id: string
+        }
+        Update: {
+          amount_cents?: number
+          compensation_type?: string
+          created_at?: string | null
+          effective_date?: string
+          employee_id?: string
+          id?: string
+          pay_period_type?: string | null
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_compensation_history_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_compensation_history_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_compensation_history_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_compensation_history_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_pins: {
         Row: {
           created_at: string

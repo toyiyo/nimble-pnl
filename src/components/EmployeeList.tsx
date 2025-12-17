@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,9 +7,15 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useEmployees, EmployeeStatusFilter } from '@/hooks/useEmployees';
 import { Employee } from '@/types/scheduling';
-import { Users, UserX, UsersRound, Plus, RotateCcw, Edit, UserMinus } from 'lucide-react';
+import { Users, UserX, UsersRound, Plus, RotateCcw, Edit, UserMinus, HelpCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface EmployeeListProps {
   restaurantId: string;
@@ -27,6 +34,7 @@ export const EmployeeList = ({
   onAddEmployee,
   showInactiveCount = true 
 }: EmployeeListProps) => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<EmployeeStatusFilter>('active');
 
   // Fetch employees based on active tab
@@ -53,14 +61,34 @@ export const EmployeeList = ({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Employees
-            </CardTitle>
-            <CardDescription>
-              Manage your restaurant staff
-            </CardDescription>
+          <div className="flex items-center gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Employees
+              </CardTitle>
+              <CardDescription>
+                Manage your restaurant staff
+              </CardDescription>
+            </div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => navigate('/help/payroll-calculations')}
+                    aria-label="Learn how payroll is calculated"
+                  >
+                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>How payroll is calculated</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           {onAddEmployee && (
             <Button onClick={onAddEmployee}>

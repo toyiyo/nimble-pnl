@@ -39,10 +39,13 @@ vi.mock('@/hooks/use-toast', () => ({
 }));
 
 // Test wrapper with QueryClient
+let queryClient: QueryClient;
+
 const createWrapper = () => {
-  const queryClient = new QueryClient({
+  // Create fresh query client for each test
+  queryClient = new QueryClient({
     defaultOptions: {
-      queries: { retry: false },
+      queries: { retry: false, gcTime: 0, staleTime: 0 },
       mutations: { retry: false },
     },
   });
@@ -55,6 +58,7 @@ const createWrapper = () => {
 describe('Employee Activation Status', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    queryClient?.clear(); // Clear query cache
   });
 
   describe('useEmployees with status filter', () => {
@@ -64,15 +68,17 @@ describe('Employee Activation Status', () => {
         { id: '2', name: 'Active Employee 2', status: 'active', is_active: true },
       ];
 
-      const mockSelect = vi.fn().mockReturnThis();
-      const mockEq = vi.fn().mockReturnThis();
-      const mockOrder = vi.fn().mockResolvedValue({ data: mockActiveEmployees, error: null });
+      const mockChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(), // Must return 'this' for chaining!
+      };
 
-      mockSupabase.from.mockReturnValue({
-        select: mockSelect,
-        eq: mockEq,
-        order: mockOrder,
-      });
+      // Only the LAST .order() call should return the promise
+      mockChain.order.mockReturnValueOnce(mockChain) // First .order() for main table
+        .mockResolvedValueOnce({ data: mockActiveEmployees, error: null }); // Second .order() for nested table
+
+      mockSupabase.from.mockReturnValue(mockChain);
 
       // Import after mocks are set up
       const { useEmployees } = await import('@/hooks/useEmployees');
@@ -86,8 +92,8 @@ describe('Employee Activation Status', () => {
       });
 
       expect(mockSupabase.from).toHaveBeenCalledWith('employees');
-      expect(mockEq).toHaveBeenCalledWith('restaurant_id', 'restaurant-123');
-      expect(mockEq).toHaveBeenCalledWith('is_active', true);
+      expect(mockChain.eq).toHaveBeenCalledWith('restaurant_id', 'restaurant-123');
+      expect(mockChain.eq).toHaveBeenCalledWith('is_active', true);
       expect(result.current.employees).toHaveLength(2);
       expect(result.current.employees[0].status).toBe('active');
     });
@@ -104,15 +110,16 @@ describe('Employee Activation Status', () => {
         },
       ];
 
-      const mockSelect = vi.fn().mockReturnThis();
-      const mockEq = vi.fn().mockReturnThis();
-      const mockOrder = vi.fn().mockResolvedValue({ data: mockInactiveEmployees, error: null });
+      const mockChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+      };
 
-      mockSupabase.from.mockReturnValue({
-        select: mockSelect,
-        eq: mockEq,
-        order: mockOrder,
-      });
+      mockChain.order.mockReturnValueOnce(mockChain)
+        .mockResolvedValueOnce({ data: mockInactiveEmployees, error: null });
+
+      mockSupabase.from.mockReturnValue(mockChain);
 
       const { useEmployees } = await import('@/hooks/useEmployees');
 
@@ -124,7 +131,7 @@ describe('Employee Activation Status', () => {
         expect(result.current.loading).toBe(false);
       });
 
-      expect(mockEq).toHaveBeenCalledWith('is_active', false);
+      expect(mockChain.eq).toHaveBeenCalledWith('is_active', false);
       expect(result.current.employees).toHaveLength(1);
       expect(result.current.employees[0].is_active).toBe(false);
       expect(result.current.employees[0].deactivation_reason).toBe('seasonal');
@@ -136,15 +143,16 @@ describe('Employee Activation Status', () => {
         { id: '2', name: 'Inactive Employee', status: 'inactive', is_active: false },
       ];
 
-      const mockSelect = vi.fn().mockReturnThis();
-      const mockEq = vi.fn().mockReturnThis();
-      const mockOrder = vi.fn().mockResolvedValue({ data: mockAllEmployees, error: null });
+      const mockChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+      };
 
-      mockSupabase.from.mockReturnValue({
-        select: mockSelect,
-        eq: mockEq,
-        order: mockOrder,
-      });
+      mockChain.order.mockReturnValueOnce(mockChain)
+        .mockResolvedValueOnce({ data: mockAllEmployees, error: null });
+
+      mockSupabase.from.mockReturnValue(mockChain);
 
       const { useEmployees } = await import('@/hooks/useEmployees');
 
@@ -156,8 +164,8 @@ describe('Employee Activation Status', () => {
         expect(result.current.loading).toBe(false);
       });
 
-      expect(mockEq).toHaveBeenCalledWith('restaurant_id', 'restaurant-123');
-      expect(mockEq).not.toHaveBeenCalledWith('is_active', expect.anything());
+      expect(mockChain.eq).toHaveBeenCalledWith('restaurant_id', 'restaurant-123');
+      expect(mockChain.eq).not.toHaveBeenCalledWith('is_active', expect.anything());
       expect(result.current.employees).toHaveLength(2);
     });
   });

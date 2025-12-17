@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
+import { useTimePunches } from '@/hooks/useTimePunches';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
@@ -40,6 +41,10 @@ export const Tips = () => {
   const { settings, updateSettings, isLoading: settingsLoading } = useTipPoolSettings(restaurantId);
 
   const today = format(new Date(), 'yyyy-MM-dd');
+  const todayStart = new Date(today + 'T00:00:00');
+  const todayEnd = new Date(today + 'T23:59:59');
+  
+  const { punches } = useTimePunches(restaurantId, undefined, todayStart, todayEnd);
   const { saveTipSplit, isSaving } = useTipSplits(restaurantId, today, today);
 
   const { tipData: posTipData, hasTips: hasPOSTips } = usePOSTipsForDate(restaurantId, today);
@@ -73,12 +78,36 @@ export const Tips = () => {
     if (eligibleEmployees.length && !settings?.enabled_employee_ids?.length) {
       setSelectedEmployees(new Set(eligibleEmployees.map(e => e.id)));
     }
-    const initialHours: Record<string, string> = {};
-    eligibleEmployees.forEach(e => {
-      initialHours[e.id] = '0';
+    
+    // Calculate actual hours from time punches
+    const hoursFromPunches: Record<string, string> = {};
+    eligibleEmployees.forEach(emp => {
+      const employeePunches = punches.filter(p => p.employee_id === emp.id);
+      let totalMinutes = 0;
+      
+      // Match clock-in with clock-out pairs
+      for (let i = 0; i < employeePunches.length; i++) {
+        const punch = employeePunches[i];
+        if (punch.punch_type === 'clock_in') {
+          // Find corresponding clock_out
+          const clockOut = employeePunches.find((p, idx) => 
+            idx > i && p.punch_type === 'clock_out' && 
+            new Date(p.punch_time) > new Date(punch.punch_time)
+          );
+          
+          if (clockOut) {
+            const start = new Date(punch.punch_time);
+            const end = new Date(clockOut.punch_time);
+            totalMinutes += (end.getTime() - start.getTime()) / (1000 * 60);
+          }
+        }
+      }
+      
+      hoursFromPunches[emp.id] = (totalMinutes / 60).toFixed(2);
     });
-    setHoursByEmployee(initialHours);
-  }, [eligibleEmployees, settings]);
+    
+    setHoursByEmployee(hoursFromPunches);
+  }, [eligibleEmployees, settings, punches]);
 
   // Helper functions for display text
   const getShareMethodLabel = (method: ShareMethod): string => {

@@ -11,6 +11,13 @@ import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { PositionCombobox } from '@/components/PositionCombobox';
+import { HelpCircle, Info } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -443,11 +450,21 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                 </Select>
               </div>
 
-              {/* Hourly Rate - shown for hourly employees */}
+              {/* Hourly Fields - shown for hourly employees */}
               {compensationType === 'hourly' && (
                 <div className="space-y-2">
-                  <Label htmlFor="hourlyRate">
+                  <Label htmlFor="hourlyRate" className="flex items-center gap-1.5">
                     Hourly Rate ($) <span className="text-destructive">*</span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-xs">
+                          <p className="text-xs">Regular hourly rate. Overtime (over 40 hrs/week) automatically calculated at 1.5× this rate.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </Label>
                   <Input
                     id="hourlyRate"
@@ -463,12 +480,22 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                 </div>
               )}
 
-              {/* Salary Fields - shown for salaried employees */}
+              {/* Salary Fields - shown for salary employees */}
               {compensationType === 'salary' && (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="salaryAmount">
+                    <Label htmlFor="salaryAmount" className="flex items-center gap-1.5">
                       Salary Amount ($) <span className="text-destructive">*</span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-xs">
+                            <p className="text-xs">Enter the amount paid per pay period (e.g., $2,000 for bi-weekly means $2,000 every two weeks, not per year)</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </Label>
                     <Input
                       id="salaryAmount"
@@ -483,8 +510,23 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="payPeriodType">
+                    <Label htmlFor="payPeriodType" className="flex items-center gap-1.5">
                       Pay Period <span className="text-destructive">*</span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-xs">
+                            <div className="text-xs space-y-1">
+                              <p><strong>Weekly:</strong> 52 paychecks/year</p>
+                              <p><strong>Bi-Weekly:</strong> 26 paychecks/year</p>
+                              <p><strong>Semi-Monthly:</strong> 24 paychecks/year (1st & 15th)</p>
+                              <p><strong>Monthly:</strong> 12 paychecks/year</p>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </Label>
                     <Select 
                       value={payPeriodType} 
@@ -501,16 +543,35 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="allocateDaily"
-                      checked={allocateDaily}
-                      onCheckedChange={(checked) => setAllocateDaily(checked === true)}
-                      aria-label="Allocate to Daily P&L"
-                    />
-                    <Label htmlFor="allocateDaily" className="cursor-pointer">
-                      Allocate to Daily P&L
-                    </Label>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="allocateDaily"
+                        checked={allocateDaily}
+                        onCheckedChange={(checked) => setAllocateDaily(checked === true)}
+                        aria-label="Allocate to Daily P&L"
+                      />
+                      <Label htmlFor="allocateDaily" className="cursor-pointer flex items-center gap-1.5">
+                        Allocate to Daily P&L
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-xs">
+                              <p className="font-semibold text-xs mb-1">Accrual vs Cash Basis</p>
+                              <div className="text-xs space-y-1">
+                                <p><strong>On (Accrual):</strong> Salary appears daily on dashboard</p>
+                                <p><strong>Off (Cash):</strong> Appears only on payday</p>
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground ml-6">
+                      When enabled, salary costs are spread evenly across each day for smoother P&L reporting.
+                    </p>
                   </div>
                 </>
               )}
@@ -519,8 +580,18 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
               {compensationType === 'contractor' && (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="contractorPaymentAmount">
+                    <Label htmlFor="contractorPaymentAmount" className="flex items-center gap-1.5">
                       Payment Amount ($) <span className="text-destructive">*</span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-xs">
+                            <p className="text-xs">Amount paid per interval (weekly/monthly) or per completed project. No overtime or benefits included.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </Label>
                     <Input
                       id="contractorPaymentAmount"

@@ -49,6 +49,7 @@ import Expenses from "./pages/Expenses";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import PurchaseOrderEditor from "./pages/PurchaseOrderEditor";
 import KioskMode from "./pages/KioskMode";
+import Tips from "./pages/Tips";
 import PayrollCalculationsHelp from "./pages/Help/PayrollCalculations";
 
 const queryClient = new QueryClient();
@@ -165,6 +166,7 @@ const App = () => (
           <Route path="/kiosk" element={<ProtectedRoute allowStaff={true} noChrome={true}><KioskMode /></ProtectedRoute>} />
           <Route path="/time-punches" element={<ProtectedRoute><TimePunchesManager /></ProtectedRoute>} />
           <Route path="/payroll" element={<ProtectedRoute><Payroll /></ProtectedRoute>} />
+          <Route path="/tips" element={<ProtectedRoute><Tips /></ProtectedRoute>} />
           <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />
           <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
           <Route path="/financial-intelligence" element={<ProtectedRoute><FinancialIntelligence /></ProtectedRoute>} />

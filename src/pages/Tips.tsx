@@ -22,7 +22,8 @@ import { POSTipImporter } from '@/components/tips/POSTipImporter';
 import { DisputeManager } from '@/components/tips/DisputeManager';
 import { TipDraftsList } from '@/components/tips/TipDraftsList';
 import { TipHistoricalEntry } from '@/components/tips/TipHistoricalEntry';
-import { Info, Settings } from 'lucide-react';
+import { calculateWorkedHours } from '@/utils/payrollCalculations';
+import { Info, Settings, RefreshCw, Clock } from 'lucide-react';
 
 const defaultWeights: Record<string, number> = {
   'Server': 1,
@@ -59,6 +60,7 @@ export const Tips = () => {
   const [splitCadence, setSplitCadence] = useState<SplitCadence>(settings?.split_cadence || 'daily');
   const [tipAmount, setTipAmount] = useState<number | null>(null);
   const [hoursByEmployee, setHoursByEmployee] = useState<Record<string, string>>({});
+  const [autoCalculatedHours, setAutoCalculatedHours] = useState<Record<string, boolean>>({}); // Track which hours are auto-calculated
   const [roleWeights, setRoleWeights] = useState<Record<string, number>>(settings?.role_weights || defaultWeights);
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [showReview, setShowReview] = useState(false);
@@ -76,6 +78,41 @@ export const Tips = () => {
       }
     }
   }, [settings]);
+
+  // Auto-calculate hours from time punches when share method is 'hours'
+  useEffect(() => {
+    if (shareMethod !== 'hours' || !punches?.length) return;
+
+    const calculatedHours: Record<string, string> = {};
+    const autoFlags: Record<string, boolean> = {};
+
+    eligibleEmployees.forEach(emp => {
+      // Get punches for this employee on the selected date
+      const employeePunches = punches.filter(p => p.employee_id === emp.id);
+      
+      if (employeePunches.length > 0) {
+        const hours = calculateWorkedHours(employeePunches);
+        const roundedHours = Math.round(hours * 10) / 10; // Round to 1 decimal
+        
+        calculatedHours[emp.id] = roundedHours.toString();
+        autoFlags[emp.id] = true;
+      }
+    });
+
+    if (Object.keys(calculatedHours).length > 0) {
+      setHoursByEmployee(prev => {
+        const updated = { ...prev };
+        // Only update values that haven't been manually edited
+        Object.keys(calculatedHours).forEach(empId => {
+          if (!prev[empId] || prev[empId] === '0') {
+            updated[empId] = calculatedHours[empId];
+          }
+        });
+        return updated;
+      });
+      setAutoCalculatedHours(prev => ({ ...prev, ...autoFlags }));
+    }
+  }, [punches, shareMethod, selectedDate, eligibleEmployees]);
 
   useEffect(() => {
     if (eligibleEmployees.length && !settings?.enabled_employee_ids?.length) {
@@ -318,30 +355,98 @@ export const Tips = () => {
         {shareMethod === 'hours' && (
           <Card>
             <CardHeader>
-              <CardTitle>Hours worked</CardTitle>
-              <CardDescription>Enter hours for each employee</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Hours worked</CardTitle>
+                  <CardDescription>
+                    Hours auto-calculated from time punches. You can manually override any value.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const calculatedHours: Record<string, string> = {};
+                    const autoFlags: Record<string, boolean> = {};
+
+                    participants.forEach(emp => {
+                      const employeePunches = punches?.filter(p => p.employee_id === emp.id) || [];
+                      if (employeePunches.length > 0) {
+                        const hours = calculateWorkedHours(employeePunches);
+                        const roundedHours = Math.round(hours * 10) / 10;
+                        calculatedHours[emp.id] = roundedHours.toString();
+                        autoFlags[emp.id] = true;
+                      } else {
+                        calculatedHours[emp.id] = '0';
+                        autoFlags[emp.id] = false;
+                      }
+                    });
+
+                    setHoursByEmployee(calculatedHours);
+                    setAutoCalculatedHours(autoFlags);
+                    toast({
+                      title: 'Hours recalculated',
+                      description: 'All hours have been recalculated from time punches.',
+                    });
+                  }}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Recalculate from punches
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-2 gap-3">
-                {participants.map(emp => (
-                  <div key={emp.id} className="space-y-1">
-                    <Label htmlFor={`hours-${emp.id}`}>{emp.name}</Label>
-                    <Input
-                      id={`hours-${emp.id}`}
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={hoursByEmployee[emp.id] ?? '0'}
-                      onChange={e =>
-                        setHoursByEmployee(prev => ({
-                          ...prev,
-                          [emp.id]: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                ))}
+                {participants.map(emp => {
+                  const isAutoCalculated = autoCalculatedHours[emp.id];
+                  const employeePunches = punches?.filter(p => p.employee_id === emp.id) || [];
+                  const hasPunches = employeePunches.length > 0;
+
+                  return (
+                    <div key={emp.id} className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor={`hours-${emp.id}`} className="flex items-center gap-1">
+                          {emp.name}
+                          {isAutoCalculated && hasPunches && (
+                            <Clock className="h-3 w-3 text-muted-foreground" aria-label="Auto-calculated from time punches" />
+                          )}
+                        </Label>
+                        {!hasPunches && (
+                          <span className="text-xs text-muted-foreground">No punches</span>
+                        )}
+                      </div>
+                      <Input
+                        id={`hours-${emp.id}`}
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={hoursByEmployee[emp.id] ?? '0'}
+                        onChange={e => {
+                          setHoursByEmployee(prev => ({
+                            ...prev,
+                            [emp.id]: e.target.value,
+                          }));
+                          // Mark as manually edited
+                          setAutoCalculatedHours(prev => ({
+                            ...prev,
+                            [emp.id]: false,
+                          }));
+                        }}
+                        className={isAutoCalculated && hasPunches ? 'border-primary/50' : ''}
+                      />
+                    </div>
+                  );
+                })}
               </div>
+              {punches && punches.length > 0 && (
+                <Alert className="mt-4">
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    Found {punches.length} time punch{punches.length === 1 ? '' : 'es'} for {format(selectedDate, 'MMM d, yyyy')}.
+                    Hours are automatically calculated and can be manually adjusted if needed.
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         )}

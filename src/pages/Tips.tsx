@@ -20,6 +20,8 @@ import { TipReviewScreen } from '@/components/tips/TipReviewScreen';
 import { TipEntryDialog } from '@/components/tips/TipEntryDialog';
 import { POSTipImporter } from '@/components/tips/POSTipImporter';
 import { DisputeManager } from '@/components/tips/DisputeManager';
+import { TipDraftsList } from '@/components/tips/TipDraftsList';
+import { TipHistoricalEntry } from '@/components/tips/TipHistoricalEntry';
 import { Info, Settings } from 'lucide-react';
 
 const defaultWeights: Record<string, number> = {
@@ -40,16 +42,17 @@ export const Tips = () => {
 
   const { settings, updateSettings, isLoading: settingsLoading } = useTipPoolSettings(restaurantId);
 
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const [viewMode, setViewMode] = useState<ViewMode>('daily');
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
+  const today = format(selectedDate, 'yyyy-MM-dd');
   const todayStart = new Date(today + 'T00:00:00');
   const todayEnd = new Date(today + 'T23:59:59');
   
   const { punches } = useTimePunches(restaurantId, undefined, todayStart, todayEnd);
-  const { saveTipSplit, isSaving } = useTipSplits(restaurantId, today, today);
+  const { saveTipSplit, isSaving, splits } = useTipSplits(restaurantId, today, today);
 
   const { tipData: posTipData, hasTips: hasPOSTips } = usePOSTipsForDate(restaurantId, today);
-
-  const [viewMode, setViewMode] = useState<ViewMode>('daily');
 
   const [tipSource, setTipSource] = useState<TipSource>(settings?.tip_source || 'manual');
   const [shareMethod, setShareMethod] = useState<ShareMethod>(settings?.share_method || 'hours');
@@ -155,6 +158,27 @@ export const Tips = () => {
 
   const handleContinueToReview = (amountCents: number) => {
     setTipAmount(amountCents);
+    setShowReview(true);
+  };
+
+  const handleResumeDraft = (draftId: string) => {
+    const draft = splits?.find(s => s.id === draftId);
+    if (!draft) return;
+
+    // Populate form with draft data
+    setTipAmount(draft.total_amount);
+    setSelectedDate(new Date(draft.split_date));
+    setShareMethod(draft.share_method || 'hours');
+    
+    // Populate hours from items
+    const hours: Record<string, string> = {};
+    draft.items.forEach(item => {
+      if (item.hours_worked) {
+        hours[item.employee_id] = item.hours_worked.toString();
+      }
+    });
+    setHoursByEmployee(hours);
+    
     setShowReview(true);
   };
 
@@ -344,6 +368,18 @@ export const Tips = () => {
 
       {viewMode === 'daily' && (
         <>
+          <TipHistoricalEntry 
+            currentDate={selectedDate} 
+            onDateSelected={setSelectedDate} 
+          />
+
+          {restaurantId && (
+            <TipDraftsList 
+              restaurantId={restaurantId} 
+              onResumeDraft={handleResumeDraft} 
+            />
+          )}
+
           {tipSource === 'pos' && hasPOSTips && posTipData ? (
             <POSTipImporter
               tipData={posTipData}
@@ -353,9 +389,9 @@ export const Tips = () => {
           ) : (
             <Card>
               <CardHeader>
-                <CardTitle>Enter today's tips</CardTitle>
+                <CardTitle>Enter tips</CardTitle>
                 <CardDescription>
-                  {format(new Date(), 'EEEE, MMMM d, yyyy')}
+                  {format(selectedDate, 'EEEE, MMMM d, yyyy')}
                 </CardDescription>
               </CardHeader>
               <CardContent>

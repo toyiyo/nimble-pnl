@@ -57,6 +57,7 @@ const EmployeeTips = () => {
 
         return {
           id: split.id,
+          split_id: split.id,
           date: split.split_date,
           amount: myItem.amount,
           hours: myItem.hours_worked,

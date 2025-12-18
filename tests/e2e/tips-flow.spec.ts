@@ -100,9 +100,14 @@ test.describe('Tip pooling flow', () => {
     await page.goto('/tips');
     const tipsHeading = page.getByRole('heading', { name: /^tips$/i }).first();
     await expect(tipsHeading).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('#tipAmount')).toBeVisible({ timeout: 15000 });
+    
+    // Click to open tip entry dialog
+    const enterTipsButton = page.getByRole('button', { name: /enter.*tips/i }).first();
+    await enterTipsButton.click();
+    await expect(page.locator('#tip-amount')).toBeVisible({ timeout: 10000 });
 
-    await page.locator('#tipAmount').fill('100');
+    await page.locator('#tip-amount').fill('100');
+    await page.getByRole('button', { name: /continue/i }).click();
     await page.getByRole('spinbutton', { name: /alice tips/i }).fill('5');
     await page.getByRole('spinbutton', { name: /bob tips/i }).fill('3');
 

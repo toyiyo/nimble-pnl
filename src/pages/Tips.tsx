@@ -294,6 +294,27 @@ export const Tips = () => {
           <h1 className="text-2xl font-bold">Review Tip Split</h1>
         </header>
 
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle>Tip amount</CardTitle>
+            <CardDescription>Adjust before approving.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Label htmlFor="tipAmount" className="sr-only">Tip amount</Label>
+            <Input
+              id="tipAmount"
+              type="number"
+              step="0.01"
+              min="0"
+              value={(totalTipsCents / 100).toString()}
+              onChange={e => {
+                const cents = Math.round(Number.parseFloat(e.target.value || '0') * 100);
+                setTipAmount(cents);
+              }}
+            />
+          </CardContent>
+        </Card>
+
         {shareMethod === 'hours' && (
           <Card>
             <CardHeader>

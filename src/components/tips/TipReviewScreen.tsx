@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,11 @@ export function TipReviewScreen({
 }: TipReviewScreenProps) {
   const [shares, setShares] = useState<TipShare[]>(initialShares);
   const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
+
+  // Keep local editable state in sync with recalculated shares (e.g., after hours input changes)
+  useEffect(() => {
+    setShares(initialShares);
+  }, [initialShares]);
 
   const totalAllocated = useMemo(
     () => shares.reduce((sum, s) => sum + s.amountCents, 0),

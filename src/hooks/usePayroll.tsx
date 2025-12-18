@@ -15,6 +15,26 @@ interface EmployeeTip {
   tip_amount: number;
 }
 
+// Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of dollars.
+export function aggregateTips(
+  tipItems: Array<{ employee_id: string; amount: number }> = [],
+  employeeTips: Array<{ employee_id: string; tip_amount: number }> = []
+): Map<string, number> {
+  const tipsPerEmployee = new Map<string, number>();
+
+  tipItems.forEach(({ employee_id, amount }) => {
+    const current = tipsPerEmployee.get(employee_id) || 0;
+    tipsPerEmployee.set(employee_id, current + amount / 100);
+  });
+
+  employeeTips.forEach(({ employee_id, tip_amount }) => {
+    const current = tipsPerEmployee.get(employee_id) || 0;
+    tipsPerEmployee.set(employee_id, current + tip_amount / 100);
+  });
+
+  return tipsPerEmployee;
+}
+
 interface ManualPaymentDB {
   id: string;
   employee_id: string;
@@ -122,13 +142,20 @@ export const usePayroll = (
         punchesPerEmployee.get(punch.employee_id)?.push(typedPunch);
       });
 
-      // Sum tips by employee
-      const tipsPerEmployee = new Map<string, number>();
-      (tips || []).forEach((tip: any) => {
-        const currentTips = tipsPerEmployee.get(tip.employee_id) || 0;
-        // amount is in cents, convert to dollars
-        tipsPerEmployee.set(tip.employee_id, currentTips + (tip.amount / 100));
-      });
+      // Include tips from tip_split_items and legacy/other tip entries in employee_tips for the period
+      const { data: employeeTips, error: employeeTipsError } = await supabase
+        .from('employee_tips')
+        .select('employee_id, tip_amount, recorded_at')
+        .eq('restaurant_id', restaurantId)
+        .gte('recorded_at', startDate.toISOString())
+        .lte('recorded_at', endDate.toISOString());
+
+      if (employeeTipsError) throw employeeTipsError;
+
+      const tipsPerEmployee = aggregateTips(
+        (tips || []) as Array<{ employee_id: string; amount: number }>,
+        (employeeTips || []) as Array<{ employee_id: string; tip_amount: number }>
+      );
 
       // Group manual payments by employee
       const manualPaymentsPerEmployee = new Map<string, ManualPayment[]>();

@@ -9,10 +9,73 @@ import {
 } from '@/utils/payrollCalculations';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import type { Employee } from '@/types/scheduling';
 
 interface EmployeeTip {
   employee_id: string;
   tip_amount: number;
+}
+
+// Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of cents.
+export function aggregateTips(
+  tipItems: Array<{ employee_id: string; amount: number }> = [],
+  employeeTips: Array<{ employee_id: string; tip_amount: number }> = []
+): Map<string, number> {
+  const tipsPerEmployee = new Map<string, number>();
+
+  tipItems.forEach(({ employee_id, amount }) => {
+    const current = tipsPerEmployee.get(employee_id) || 0;
+    tipsPerEmployee.set(employee_id, current + amount); // Keep in cents
+  });
+
+  employeeTips.forEach(({ employee_id, tip_amount }) => {
+    const current = tipsPerEmployee.get(employee_id) || 0;
+    tipsPerEmployee.set(employee_id, current + tip_amount); // Keep in cents
+  });
+
+  return tipsPerEmployee;
+}
+
+type TipSplitForFallback = { id: string; total_amount: number };
+
+/**
+ * Combines tips from items + employee_tips, and optionally falls back to split totals
+ * when no items exist. Returns tips in CENTS to match what calculateEmployeePay expects.
+ */
+export function computeTipTotals(
+  tipItems: Array<{ employee_id: string; amount: number; tip_split_id?: string }>,
+  employeeTips: Array<{ employee_id: string; tip_amount: number }>,
+  tipSplits: TipSplitForFallback[],
+  employees: Employee[],
+): Map<string, number> {
+  const base = aggregateTips(tipItems, employeeTips);
+  if (!tipSplits.length) return base;
+
+  const itemsBySplit = new Set(tipItems.map(t => t.tip_split_id).filter(Boolean));
+  const activeEmployees = employees.filter(e => e.status !== 'terminated');
+  const recipients = activeEmployees.length ? activeEmployees : employees;
+
+  tipSplits.forEach(split => {
+    if (itemsBySplit.has(split.id)) return; // already detailed by items
+    if (!recipients.length) return;
+
+    let remainingCents = split.total_amount;
+    const shareCents = Math.floor(remainingCents / recipients.length);
+
+    recipients.forEach((emp, idx) => {
+      let cents = shareCents;
+      // last employee gets remainder to preserve total
+      if (idx === recipients.length - 1) {
+        cents = remainingCents;
+      } else {
+        remainingCents -= cents;
+      }
+      const current = base.get(emp.id) || 0;
+      base.set(emp.id, current + cents); // Keep in cents, don't divide by 100
+    });
+  });
+
+  return base;
 }
 
 interface ManualPaymentDB {
@@ -71,13 +134,27 @@ export const usePayroll = (
 
       if (punchesError) throw punchesError;
 
-      // Fetch all tips for the period
-      const { data: tips, error: tipsError } = await supabase
-        .from('employee_tips')
-        .select('employee_id, tip_amount')
+      // Fetch all approved tips for the period from tip_split_items
+      // First get the approved tip splits for this period
+      const { data: approvedSplits, error: splitsError } = await supabase
+        .from('tip_splits')
+        .select('id, total_amount')
         .eq('restaurant_id', restaurantId)
-        .gte('recorded_at', startDate.toISOString())
-        .lte('recorded_at', endDate.toISOString());
+        .eq('status', 'approved')
+        .gte('split_date', format(startDate, 'yyyy-MM-dd'))
+        .lte('split_date', format(endDate, 'yyyy-MM-dd'));
+
+      if (splitsError) throw splitsError;
+
+      const splitIds = (approvedSplits || []).map(s => s.id);
+      
+      // Then fetch the tip split items for those splits
+      const { data: tips, error: tipsError } = splitIds.length > 0
+        ? await supabase
+            .from('tip_split_items')
+            .select('employee_id, amount, tip_split_id')
+            .in('tip_split_id', splitIds)
+        : { data: [], error: null };
 
       if (tipsError) throw tipsError;
 
@@ -108,12 +185,22 @@ export const usePayroll = (
         punchesPerEmployee.get(punch.employee_id)?.push(typedPunch);
       });
 
-      // Sum tips by employee
-      const tipsPerEmployee = new Map<string, number>();
-      (tips || []).forEach((tip: EmployeeTip) => {
-        const currentTips = tipsPerEmployee.get(tip.employee_id) || 0;
-        tipsPerEmployee.set(tip.employee_id, currentTips + tip.tip_amount);
-      });
+      // Include tips from tip_split_items and legacy/other tip entries in employee_tips for the period
+      const { data: employeeTips, error: employeeTipsError } = await supabase
+        .from('employee_tips')
+        .select('employee_id, tip_amount, recorded_at')
+        .eq('restaurant_id', restaurantId)
+        .gte('recorded_at', startDate.toISOString())
+        .lte('recorded_at', endDate.toISOString());
+
+      if (employeeTipsError) throw employeeTipsError;
+
+      const tipsPerEmployee = computeTipTotals(
+        (tips || []) as Array<{ employee_id: string; amount: number; tip_split_id?: string }>,
+        (employeeTips || []) as Array<{ employee_id: string; tip_amount: number }>,
+        (approvedSplits || []) as Array<{ id: string; total_amount: number }>,
+        employees
+      );
 
       // Group manual payments by employee
       const manualPaymentsPerEmployee = new Map<string, ManualPayment[]>();

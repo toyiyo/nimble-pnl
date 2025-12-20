@@ -34,6 +34,7 @@ import {
   DollarSign,
   ShoppingBag,
   CalendarDays,
+  Coins,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -58,6 +59,7 @@ const navigationGroups = [
       { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
       { path: '/employee/clock', label: 'Time Clock', icon: Clock },
       { path: '/time-punches', label: 'Time Punches', icon: ClipboardList },
+      { path: '/tips', label: 'Tip Pooling', icon: Coins },
       { path: '/payroll', label: 'Payroll', icon: Wallet },
     ],
   },

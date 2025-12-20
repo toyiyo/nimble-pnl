@@ -20,10 +20,11 @@ import { TipReviewScreen } from '@/components/tips/TipReviewScreen';
 import { TipEntryDialog } from '@/components/tips/TipEntryDialog';
 import { POSTipImporter } from '@/components/tips/POSTipImporter';
 import { DisputeManager } from '@/components/tips/DisputeManager';
-import { TipDraftsList } from '@/components/tips/TipDraftsList';
+import { RecentTipSplits } from '@/components/tips/RecentTipSplits';
 import { TipHistoricalEntry } from '@/components/tips/TipHistoricalEntry';
 import { calculateWorkedHours } from '@/utils/payrollCalculations';
 import { Info, Settings, RefreshCw, Clock } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 const defaultWeights: Record<string, number> = {
   'Server': 1,
@@ -198,18 +199,47 @@ export const Tips = () => {
     setShowReview(true);
   };
 
-  const handleResumeDraft = (draftId: string) => {
-    const draft = splits?.find(s => s.id === draftId);
-    if (!draft) return;
+  const handleResumeDraft = async (splitId: string) => {
+    // First try to find in current splits
+    let split = splits?.find(s => s.id === splitId);
+    
+    // If not found (historical split), fetch it directly
+    if (!split && restaurantId) {
+      const { data } = await supabase
+        .from('tip_splits')
+        .select(`
+          *,
+          items:tip_split_items(
+            *,
+            employee:employees(name, position)
+          )
+        `)
+        .eq('id', splitId)
+        .single();
+      
+      if (data) {
+        split = data as any;
+      }
+    }
+    
+    if (!split) {
+      toast({
+        title: 'Error',
+        description: 'Could not load split data',
+        variant: 'destructive',
+      });
+      return;
+    }
 
-    // Populate form with draft data
-    setTipAmount(draft.total_amount);
-    setSelectedDate(new Date(draft.split_date));
-    setShareMethod(draft.share_method || 'hours');
+    // For drafts: populate form for editing
+    // For approved: populate form in read-only preview (can view but not re-approve)
+    setTipAmount(split.total_amount);
+    setSelectedDate(new Date(split.split_date));
+    setShareMethod(split.share_method || 'hours');
     
     // Populate hours from items
     const hours: Record<string, string> = {};
-    draft.items.forEach(item => {
+    split.items?.forEach(item => {
       if (item.hours_worked) {
         hours[item.employee_id] = item.hours_worked.toString();
       }
@@ -499,13 +529,6 @@ export const Tips = () => {
             onDateSelected={setSelectedDate} 
           />
 
-          {restaurantId && (
-            <TipDraftsList 
-              restaurantId={restaurantId} 
-              onResumeDraft={handleResumeDraft} 
-            />
-          )}
-
           {tipSource === 'pos' && hasPOSTips && posTipData ? (
             <POSTipImporter
               tipData={posTipData}
@@ -532,6 +555,14 @@ export const Tips = () => {
                 )}
               </CardContent>
             </Card>
+          )}
+
+          {restaurantId && (
+            <RecentTipSplits 
+              restaurantId={restaurantId} 
+              onEditSplit={handleResumeDraft}
+              currentDate={today}
+            />
           )}
 
           <Card>

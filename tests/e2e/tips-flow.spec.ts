@@ -118,7 +118,7 @@ test.describe('Tip pooling flow', () => {
     await page.getByRole('button', { name: /approve tips/i }).click();
     await page.waitForTimeout(1000);
 
-    // Verify persistence
+    // Verify persistence - check tip_split_items (new system)
     let tipRows: any[] = [];
     for (let i = 0; i < 5; i++) {
       tipRows = await page.evaluate(async () => {
@@ -132,10 +132,13 @@ test.describe('Tip pooling flow', () => {
           .limit(1)
           .single();
         if (!ur?.restaurant_id) throw new Error('No restaurant');
+        
+        // Query tip_split_items instead of employee_tips
         const { data, error } = await supabase
-          .from('employee_tips')
-          .select('*')
-          .eq('restaurant_id', ur.restaurant_id)
+          .from('tip_split_items')
+          .select('*, tip_splits!inner(restaurant_id, status)')
+          .eq('tip_splits.restaurant_id', ur.restaurant_id)
+          .eq('tip_splits.status', 'approved')
           .order('created_at', { ascending: false });
         if (error) throw error;
         return data || [];
@@ -146,10 +149,10 @@ test.describe('Tip pooling flow', () => {
 
     expect(Array.isArray(tipRows)).toBe(true);
     expect(tipRows.length).toBeGreaterThanOrEqual(2);
-    const sum = tipRows.slice(0, 2).reduce((s: number, row: any) => s + row.tip_amount, 0);
+    const sum = tipRows.slice(0, 2).reduce((s: number, row: any) => s + row.amount, 0);
     expect(sum).toBe(10000);
 
-    // History section shows entries
-    await expect(page.getByText(/recent splits/i)).toBeVisible();
+    // Verify the Recent Tip Splits section appears (shows approved splits)
+    await expect(page.getByText(/recent tip splits/i)).toBeVisible({ timeout: 5000 });
   });
 });

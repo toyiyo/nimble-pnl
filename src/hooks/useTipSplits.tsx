@@ -110,8 +110,8 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
 
       let splitId: string;
 
-      if (existing && existing.status === 'draft') {
-        // Update existing draft
+      if (existing) {
+        // Update existing split (draft or approved)
         const { data: updatedSplit, error: updateError } = await supabase
           .from('tip_splits')
           .update({

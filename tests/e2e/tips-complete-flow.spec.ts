@@ -303,6 +303,10 @@ test.describe('Tips - Complete Customer Journey', () => {
     await expect(page.locator('#tip-amount')).toBeVisible({ timeout: 10000 });
     await page.locator('#tip-amount').fill('100');
     await page.getByRole('button', { name: /continue/i }).click();
+    
+    // Wait for dialog to close before proceeding
+    await expect(page.locator('#tip-amount')).not.toBeVisible({ timeout: 5000 });
+    
     await page.getByRole('spinbutton', { name: /lisa chen/i }).fill('8');
     await page.getByRole('button', { name: /approve tips/i }).click();
     await expect(page.getByText(/tips approved/i).first()).toBeVisible({ timeout: 5000 });

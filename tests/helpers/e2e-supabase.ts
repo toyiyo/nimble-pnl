@@ -98,6 +98,49 @@ export async function exposeSupabaseHelpers(page: Page) {
       return (count || 0) > 0;
     };
 
+    (window as any).__getApprovedTipAmounts = async (restaurantId?: string): Promise<number[]> => {
+      const user = await waitForUser();
+      if (!user?.id) return [];
+
+      let restaurantIdToUse = restaurantId;
+      if (!restaurantIdToUse) {
+        const { data: ur } = await supabase
+          .from('user_restaurants')
+          .select('restaurant_id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single();
+        restaurantIdToUse = ur?.restaurant_id || undefined;
+      }
+
+      if (!restaurantIdToUse) return [];
+
+      const { data: items, error } = await supabase
+        .from('tip_split_items')
+        .select('amount, tip_splits!inner(restaurant_id, status)')
+        .eq('tip_splits.restaurant_id', restaurantIdToUse)
+        .eq('tip_splits.status', 'approved')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching tip_split_items', error);
+      }
+
+      if (items?.length) {
+        return items.map(i => i.amount);
+      }
+
+      // Fallback to legacy employee_tips table
+      const { data: legacy } = await supabase
+        .from('employee_tips')
+        .select('amount')
+        .eq('restaurant_id', restaurantIdToUse)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      return (legacy || []).map(l => l.amount);
+    };
+
     (window as any).__supabaseHelpersReady = true;
   };
 

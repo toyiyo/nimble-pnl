@@ -1,4 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
+import { exposeSupabaseHelpers } from '../helpers/e2e-supabase';
 
 const generateTestUser = () => {
   const ts = Date.now();
@@ -93,6 +94,7 @@ test.describe('Tip pooling flow', () => {
   test('manual tips split by hours with live preview', async ({ page }) => {
     const user = generateTestUser();
     await signUpAndCreateRestaurant(page, user);
+    await exposeSupabaseHelpers(page);
 
     const employeeNames = ['Alice Tips', 'Bob Tips'];
     await createEmployeesViaAPI(page, employeeNames);
@@ -119,52 +121,13 @@ test.describe('Tip pooling flow', () => {
 
     // Verify persistence using Playwright's built-in retry
     await expect(async () => {
-      const tipRows = await page.evaluate(async () => {
-        // Import from browser-accessible path
-        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        const supabase = createClient(supabaseUrl, supabaseKey, {
-          auth: { persistSession: true }
-        });
-
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('No session');
-        
-        const { data: ur } = await supabase
-          .from('user_restaurants')
-          .select('restaurant_id')
-          .eq('user_id', user.id)
-          .limit(1)
-          .single();
-        if (!ur?.restaurant_id) throw new Error('No restaurant');
-        
-        // Try new system first (tip_split_items)
-        const { data: newTips } = await supabase
-          .from('tip_split_items')
-          .select('amount, tip_splits!inner(restaurant_id, status)')
-          .eq('tip_splits.restaurant_id', ur.restaurant_id)
-          .eq('tip_splits.status', 'approved')
-          .order('created_at', { ascending: false });
-        
-        if (newTips && newTips.length >= 2) {
-          return newTips.map(t => ({ amount: t.amount }));
-        }
-        
-        // Fallback to old system (employee_tips)
-        const { data: oldTips } = await supabase
-          .from('employee_tips')
-          .select('amount')
-          .eq('restaurant_id', ur.restaurant_id)
-          .order('created_at', { ascending: false })
-          .limit(10);
-        
-        return oldTips || [];
+      const amounts = await page.evaluate(async () => {
+        return await (window as any).__getApprovedTipAmounts();
       });
 
-      expect(Array.isArray(tipRows)).toBe(true);
-      expect(tipRows.length).toBeGreaterThanOrEqual(2);
-      const sum = tipRows.slice(0, 2).reduce((s: number, row: any) => s + row.amount, 0);
+      expect(Array.isArray(amounts)).toBe(true);
+      expect(amounts.length).toBeGreaterThanOrEqual(2);
+      const sum = amounts.slice(0, 2).reduce((s: number, amt: number) => s + amt, 0);
       expect(sum).toBe(10000);
     }).toPass({ timeout: 10000 });
 

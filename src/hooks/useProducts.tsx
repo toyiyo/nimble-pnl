@@ -5,6 +5,30 @@ import { useToast } from '@/hooks/use-toast';
 import { useInventoryAudit } from '@/hooks/useInventoryAudit';
 import { sanitizeForOrFilter } from '@/lib/utils';
 
+const formatSupabaseError = (error: any): string => {
+  if (!error) return 'Unknown error';
+  if (typeof error === 'string') return error;
+  if (error.message) return error.message;
+  if (error.error_description) return error.error_description;
+  if (error.details) return error.details;
+  if (error.statusText) return error.statusText;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+};
+
+const isAuthError = (error: any): boolean => {
+  const message = (error?.message || '').toString().toLowerCase();
+  return (
+    error?.status === 401 ||
+    message.includes('jwt') ||
+    message.includes('auth') ||
+    message.includes('token')
+  );
+};
+
 export interface Product {
   id: string;
   restaurant_id: string;
@@ -75,21 +99,70 @@ export const useProducts = (restaurantId: string | null) => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('name', { ascending: true });
+      const loadProducts = async () => {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .order('name', { ascending: true });
 
-      if (error) throw error;
-      setProducts(data || []);
+        if (error) throw error;
+        return data || [];
+      };
+
+      try {
+        const data = await loadProducts();
+        setProducts(data);
+      } catch (error: any) {
+        let message = formatSupabaseError(error);
+        const context = { restaurantId, userId: user.id, code: error?.code };
+        console.error(`Error fetching products: ${message}`, context);
+
+        if (isAuthError(error)) {
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (!refreshError) {
+            try {
+              const data = await loadProducts();
+              setProducts(data);
+              return;
+            } catch (retryError: any) {
+              message = formatSupabaseError(retryError);
+              console.error(`Error fetching products after session refresh: ${message}`, {
+                restaurantId,
+                userId: user.id,
+                code: retryError?.code,
+              });
+            }
+          } else {
+            console.warn('Supabase session refresh failed while fetching products', {
+              restaurantId,
+              userId: user.id,
+              code: refreshError?.code,
+              message: refreshError?.message,
+            });
+          }
+        }
+
+        toast({
+          title: "Error loading products",
+          description: message,
+          variant: "destructive",
+        });
+        setProducts([]);
+      }
     } catch (error: any) {
-      console.error('Error fetching products:', error);
+      const message = formatSupabaseError(error);
+      console.error(`Error fetching products: ${message}`, {
+        restaurantId,
+        userId: user.id,
+        code: error?.code,
+      });
       toast({
         title: "Error loading products",
-        description: error.message,
+        description: message,
         variant: "destructive",
       });
+      setProducts([]);
     } finally {
       setLoading(false);
     }

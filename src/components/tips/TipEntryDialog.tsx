@@ -27,7 +27,7 @@ export function TipEntryDialog({ onContinue, defaultAmount, trigger }: TipEntryD
   const [amount, setAmount] = useState(defaultAmount ? (defaultAmount / 100).toFixed(2) : '');
 
   const handleContinue = () => {
-    const amountCents = Math.round(parseFloat(amount || '0') * 100);
+    const amountCents = Math.round(Number.parseFloat(amount || '0') * 100);
     if (amountCents > 0) {
       onContinue(amountCents);
       setOpen(false);
@@ -81,7 +81,7 @@ export function TipEntryDialog({ onContinue, defaultAmount, trigger }: TipEntryD
           onClick={handleContinue} 
           size="lg" 
           className="w-full"
-          disabled={!amount || parseFloat(amount) <= 0}
+          disabled={!amount || Number.parseFloat(amount) <= 0}
         >
           Continue
         </Button>

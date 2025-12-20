@@ -125,7 +125,7 @@ export function TipReviewScreen({
                         max={totalTipsCents / 100}
                         value={(share.amountCents / 100).toFixed(2)}
                         onChange={(e) => {
-                          const newAmount = Math.round(parseFloat(e.target.value || '0') * 100);
+                          const newAmount = Math.round(Number.parseFloat(e.target.value || '0') * 100);
                           handleAmountChange(share.employeeId, newAmount);
                         }}
                         onBlur={handleAmountBlur}

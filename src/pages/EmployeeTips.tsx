@@ -137,13 +137,14 @@ const EmployeeTips = () => {
 
         {/* Breakdown Tab */}
         <TabsContent value="breakdown" className="space-y-4">
-          {isLoading ? (
+          {isLoading && (
             <div className="space-y-3">
               {[1, 2, 3].map(i => (
                 <Skeleton key={i} className="h-24" />
               ))}
             </div>
-          ) : myTips.length === 0 ? (
+          )}
+          {!isLoading && myTips.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center">
                 <Banknote className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -153,7 +154,8 @@ const EmployeeTips = () => {
                 </p>
               </CardContent>
             </Card>
-          ) : (
+          )}
+          {!isLoading && myTips.length > 0 && (
             <>
               {myTips.map((tip) => (
                 <Card key={tip!.id}>
@@ -167,7 +169,7 @@ const EmployeeTips = () => {
                       </Badge>
                     </div>
                     <CardDescription className="flex items-center gap-4">
-                      {tip!.hours && (
+                      {Boolean(tip!.hours) && (
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           {tip!.hours.toFixed(1)} hours
@@ -197,15 +199,15 @@ const EmployeeTips = () => {
 
         {/* History Tab */}
         <TabsContent value="history" className="space-y-4">
-          {isLoading ? (
-            <Skeleton className="h-64" />
-          ) : myTips.length === 0 ? (
+          {isLoading && <Skeleton className="h-64" />}
+          {!isLoading && myTips.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center">
                 <p className="text-muted-foreground">No tip history available.</p>
               </CardContent>
             </Card>
-          ) : (
+          )}
+          {!isLoading && myTips.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle>Tip History</CardTitle>

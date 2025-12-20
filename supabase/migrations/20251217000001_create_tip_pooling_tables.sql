@@ -264,6 +264,11 @@ CREATE POLICY "Employees can insert their own tip disputes"
     employee_id IN (
       SELECT id FROM employees WHERE user_id = auth.uid()
     )
+    AND restaurant_id = (
+      SELECT restaurant_id FROM employees 
+      WHERE user_id = auth.uid() AND id = employee_id
+      LIMIT 1
+    )
   );
 
 DROP POLICY IF EXISTS "Managers can update tip disputes" ON tip_disputes;

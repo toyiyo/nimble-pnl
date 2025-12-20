@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -13,17 +12,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { useTipDisputes } from '@/hooks/useTipDisputes';
 import { AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
-type DisputeType = 'missing_hours' | 'wrong_role' | 'other';
+type DisputeType = 'missing_hours' | 'incorrect_amount' | 'wrong_date' | 'missing_tips' | 'other';
 
 interface TipDisputeProps {
-  restaurantId: string;
-  employeeId: string;
-  tipSplitId: string;
-  tipDate: string;
+  readonly restaurantId: string;
+  readonly employeeId: string;
+  readonly tipSplitId: string;
+  readonly tipDate: string;
 }
 
 /**
@@ -35,44 +34,37 @@ export function TipDispute({ restaurantId, employeeId, tipSplitId, tipDate }: Ti
   const [disputeType, setDisputeType] = useState<DisputeType>('missing_hours');
   const [message, setMessage] = useState('');
   const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const { createDispute, isCreating } = useTipDisputes(restaurantId);
 
-  const { mutate: submitDispute, isPending } = useMutation({
-    mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { error } = await supabase
-        .from('tip_disputes')
-        .insert({
-          restaurant_id: restaurantId,
-          employee_id: employeeId,
-          tip_split_id: tipSplitId,
-          dispute_type: disputeType,
-          message: message || null,
-          status: 'open',
-        });
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tip-disputes'] });
-      toast({
-        title: 'Issue reported',
-        description: 'Your manager has been notified and will review this.',
-      });
-      setOpen(false);
-      setMessage('');
-      setDisputeType('missing_hours');
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error submitting report',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
-  });
+  const handleSubmit = () => {
+    createDispute(
+      {
+        restaurant_id: restaurantId,
+        employee_id: employeeId,
+        tip_split_id: tipSplitId,
+        dispute_type: disputeType,
+        message: message,
+      },
+      {
+        onSuccess: () => {
+          toast({
+            title: 'Issue reported',
+            description: 'Your manager has been notified and will review this.',
+          });
+          setOpen(false);
+          setMessage('');
+          setDisputeType('missing_hours');
+        },
+        onError: (error) => {
+          toast({
+            title: 'Error submitting report',
+            description: error.message,
+            variant: 'destructive',
+          });
+        },
+      }
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -100,9 +92,21 @@ export function TipDispute({ restaurantId, employeeId, tipSplitId, tipDate }: Ti
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="wrong_role" id="wrong_role" />
-                <Label htmlFor="wrong_role" className="font-normal cursor-pointer">
-                  Wrong role
+                <RadioGroupItem value="incorrect_amount" id="incorrect_amount" />
+                <Label htmlFor="incorrect_amount" className="font-normal cursor-pointer">
+                  Incorrect amount
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="wrong_date" id="wrong_date" />
+                <Label htmlFor="wrong_date" className="font-normal cursor-pointer">
+                  Wrong date
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="missing_tips" id="missing_tips" />
+                <Label htmlFor="missing_tips" className="font-normal cursor-pointer">
+                  Missing tips
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
@@ -131,11 +135,11 @@ export function TipDispute({ restaurantId, employeeId, tipSplitId, tipDate }: Ti
         </div>
         <div className="flex gap-2">
           <Button 
-            onClick={() => submitDispute()} 
-            disabled={isPending}
+            onClick={handleSubmit} 
+            disabled={isCreating}
             className="flex-1"
           >
-            {isPending ? 'Submitting...' : 'Submit report'}
+            {isCreating ? 'Submitting...' : 'Submit report'}
           </Button>
           <Button 
             onClick={() => setOpen(false)} 

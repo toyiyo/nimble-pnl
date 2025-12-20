@@ -97,6 +97,84 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
     return splits?.find(s => s.split_date === date);
   };
 
+  // Helper: Update existing split
+  const updateExistingSplit = async (
+    existingId: string,
+    input: CreateTipSplitInput,
+    userId: string
+  ): Promise<string> => {
+    const { data: updatedSplit, error: updateError } = await supabase
+      .from('tip_splits')
+      .update({
+        total_amount: input.total_amount,
+        share_method: input.share_method,
+        tip_source: input.tip_source,
+        notes: input.notes,
+        status: input.status || 'draft',
+        approved_by: input.status === 'approved' ? userId : null,
+        approved_at: input.status === 'approved' ? new Date().toISOString() : null,
+      })
+      .eq('id', existingId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Delete old items
+    const { error: deleteError } = await supabase
+      .from('tip_split_items')
+      .delete()
+      .eq('tip_split_id', updatedSplit.id);
+
+    if (deleteError) throw deleteError;
+    return updatedSplit.id;
+  };
+
+  // Helper: Create new split
+  const createNewSplit = async (
+    input: CreateTipSplitInput,
+    userId: string
+  ): Promise<string> => {
+    const { data: newSplit, error: insertError } = await supabase
+      .from('tip_splits')
+      .insert({
+        restaurant_id: restaurantId!,
+        split_date: input.split_date,
+        total_amount: input.total_amount,
+        share_method: input.share_method,
+        tip_source: input.tip_source,
+        notes: input.notes,
+        status: input.status || 'draft',
+        created_by: userId,
+        approved_by: input.status === 'approved' ? userId : null,
+        approved_at: input.status === 'approved' ? new Date().toISOString() : null,
+      })
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+    return newSplit.id;
+  };
+
+  // Helper: Insert split items
+  const insertSplitItems = async (splitId: string, input: CreateTipSplitInput): Promise<void> => {
+    const items = input.shares.map(share => ({
+      tip_split_id: splitId,
+      employee_id: share.employeeId,
+      amount: share.amountCents,
+      hours_worked: share.hours || null,
+      role: share.role || null,
+      role_weight: null,
+      manually_edited: false,
+    }));
+
+    const { error: itemsError } = await supabase
+      .from('tip_split_items')
+      .insert(items);
+
+    if (itemsError) throw itemsError;
+  };
+
   // Create or update tip split
   const { mutate: saveTipSplit, isPending: isSaving } = useMutation({
     mutationFn: async (input: CreateTipSplitInput) => {
@@ -105,78 +183,12 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Check if split already exists for this date
       const existing = getSplitForDate(input.split_date);
+      const splitId = existing 
+        ? await updateExistingSplit(existing.id, input, user.id)
+        : await createNewSplit(input, user.id);
 
-      let splitId: string;
-
-      if (existing) {
-        // Update existing split (draft or approved)
-        const { data: updatedSplit, error: updateError } = await supabase
-          .from('tip_splits')
-          .update({
-            total_amount: input.total_amount,
-            share_method: input.share_method,
-            tip_source: input.tip_source,
-            notes: input.notes,
-            status: input.status || 'draft',
-            approved_by: input.status === 'approved' ? user.id : null,
-            approved_at: input.status === 'approved' ? new Date().toISOString() : null,
-          })
-          .eq('id', existing.id)
-          .select()
-          .single();
-
-        if (updateError) throw updateError;
-        splitId = updatedSplit.id;
-
-        // Delete old items
-        const { error: deleteError } = await supabase
-          .from('tip_split_items')
-          .delete()
-          .eq('tip_split_id', splitId);
-
-        if (deleteError) throw deleteError;
-      } else {
-        // Create new split
-        const { data: newSplit, error: insertError } = await supabase
-          .from('tip_splits')
-          .insert({
-            restaurant_id: restaurantId,
-            split_date: input.split_date,
-            total_amount: input.total_amount,
-            share_method: input.share_method,
-            tip_source: input.tip_source,
-            notes: input.notes,
-            status: input.status || 'draft',
-            created_by: user.id,
-            approved_by: input.status === 'approved' ? user.id : null,
-            approved_at: input.status === 'approved' ? new Date().toISOString() : null,
-          })
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-        splitId = newSplit.id;
-      }
-
-      // Insert items
-      const items = input.shares.map(share => ({
-        tip_split_id: splitId,
-        employee_id: share.employeeId,
-        amount: share.amountCents,
-        hours_worked: share.hours || null,
-        role: share.role || null,
-        role_weight: null, // Could be added if needed
-        manually_edited: false,
-      }));
-
-      const { error: itemsError } = await supabase
-        .from('tip_split_items')
-        .insert(items);
-
-      if (itemsError) throw itemsError;
-
+      await insertSplitItems(splitId, input);
       return splitId;
     },
     onSuccess: (_, variables) => {
@@ -204,7 +216,7 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
   });
 
   // Delete a draft split
-  const { mutate: deleteTipSplit, isPending: isDeleting } = useMutation({
+  const { mutate: deleteTipSplit, mutateAsync: deleteTipSplitAsync, isPending: isDeleting } = useMutation({
     mutationFn: async (splitId: string) => {
       const { error } = await supabase
         .from('tip_splits')
@@ -237,6 +249,7 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
     saveTipSplit,
     isSaving,
     deleteTipSplit,
+    deleteTipSplitAsync,
     isDeleting,
   };
 }

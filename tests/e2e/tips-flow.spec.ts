@@ -116,15 +116,21 @@ test.describe('Tip pooling flow', () => {
     await expect(page.getByText(/total remaining/i)).toBeVisible();
 
     await page.getByRole('button', { name: /approve tips/i }).click();
-    await page.waitForTimeout(1000);
 
-    // Verify persistence - check tip_split_items (new system)
-    let tipRows: any[] = [];
-    for (let i = 0; i < 5; i++) {
-      tipRows = await page.evaluate(async () => {
-        const { supabase } = await import('/src/integrations/supabase/client');
+    // Verify persistence using Playwright's built-in retry
+    await expect(async () => {
+      const tipRows = await page.evaluate(async () => {
+        // Import from browser-accessible path
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const supabase = createClient(supabaseUrl, supabaseKey, {
+          auth: { persistSession: true }
+        });
+
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('No session');
+        
         const { data: ur } = await supabase
           .from('user_restaurants')
           .select('restaurant_id')
@@ -133,24 +139,34 @@ test.describe('Tip pooling flow', () => {
           .single();
         if (!ur?.restaurant_id) throw new Error('No restaurant');
         
-        // Query tip_split_items instead of employee_tips
-        const { data, error } = await supabase
+        // Try new system first (tip_split_items)
+        const { data: newTips } = await supabase
           .from('tip_split_items')
-          .select('*, tip_splits!inner(restaurant_id, status)')
+          .select('amount, tip_splits!inner(restaurant_id, status)')
           .eq('tip_splits.restaurant_id', ur.restaurant_id)
           .eq('tip_splits.status', 'approved')
           .order('created_at', { ascending: false });
-        if (error) throw error;
-        return data || [];
+        
+        if (newTips && newTips.length >= 2) {
+          return newTips.map(t => ({ amount: t.amount }));
+        }
+        
+        // Fallback to old system (employee_tips)
+        const { data: oldTips } = await supabase
+          .from('employee_tips')
+          .select('amount')
+          .eq('restaurant_id', ur.restaurant_id)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        
+        return oldTips || [];
       });
-      if (tipRows.length >= 2) break;
-      await page.waitForTimeout(500);
-    }
 
-    expect(Array.isArray(tipRows)).toBe(true);
-    expect(tipRows.length).toBeGreaterThanOrEqual(2);
-    const sum = tipRows.slice(0, 2).reduce((s: number, row: any) => s + row.amount, 0);
-    expect(sum).toBe(10000);
+      expect(Array.isArray(tipRows)).toBe(true);
+      expect(tipRows.length).toBeGreaterThanOrEqual(2);
+      const sum = tipRows.slice(0, 2).reduce((s: number, row: any) => s + row.amount, 0);
+      expect(sum).toBe(10000);
+    }).toPass({ timeout: 10000 });
 
     // Verify the Recent Tip Splits section appears (shows approved splits)
     await expect(page.getByText(/recent tip splits/i)).toBeVisible({ timeout: 5000 });

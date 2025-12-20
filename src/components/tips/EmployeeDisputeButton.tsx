@@ -14,7 +14,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 import { AlertCircle, Flag } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { useTipDisputes } from '@/hooks/useTipDisputes';
 
 interface EmployeeDisputeButtonProps {
   tipSplitId: string;
@@ -65,8 +65,8 @@ export const EmployeeDisputeButton = ({
   const [open, setOpen] = useState(false);
   const [disputeType, setDisputeType] = useState<DisputeType>('missing_hours');
   const [message, setMessage] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { createDispute, isCreating } = useTipDisputes(restaurantId);
 
   const handleSubmit = async () => {
     if (!disputeType) {
@@ -77,28 +77,35 @@ export const EmployeeDisputeButton = ({
       return;
     }
 
-    setIsSubmitting(true);
-
     try {
-      const { error } = await supabase.from('tip_disputes').insert({
-        restaurant_id: restaurantId,
-        employee_id: employeeId,
-        tip_split_id: tipSplitId,
-        dispute_type: disputeType,
-        message: message.trim() || null,
-        status: 'open',
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: 'Review request sent',
-        description: 'Your manager will review this and get back to you.',
-      });
-
-      setOpen(false);
-      setMessage('');
-      setDisputeType('missing_hours');
+      createDispute(
+        {
+          restaurant_id: restaurantId,
+          employee_id: employeeId,
+          tip_split_id: tipSplitId,
+          dispute_type: disputeType,
+          message: message,
+        },
+        {
+          onSuccess: () => {
+            toast({
+              title: 'Review request sent',
+              description: 'Your manager will review this and get back to you.',
+            });
+            setOpen(false);
+            setMessage('');
+            setDisputeType('missing_hours');
+          },
+          onError: (error) => {
+            console.error('Error submitting dispute:', error);
+            toast({
+              title: 'Error',
+              description: 'Failed to submit review request. Please try again.',
+              variant: 'destructive',
+            });
+          },
+        }
+      );
     } catch (error) {
       console.error('Error submitting dispute:', error);
       toast({
@@ -106,8 +113,6 @@ export const EmployeeDisputeButton = ({
         description: 'Failed to submit review request. Please try again.',
         variant: 'destructive',
       });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -161,11 +166,11 @@ export const EmployeeDisputeButton = ({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={isSubmitting}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={isCreating}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? 'Sending...' : 'Send request'}
+          <Button onClick={handleSubmit} disabled={isCreating}>
+            {isCreating ? 'Sending...' : 'Send request'}
           </Button>
         </DialogFooter>
       </DialogContent>

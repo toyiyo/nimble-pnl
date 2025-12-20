@@ -1,5 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import { format, subDays } from 'date-fns';
+import { exposeSupabaseHelpers } from '../helpers/e2e-supabase';
 
 const generateTestUser = () => {
   const ts = Date.now();
@@ -47,32 +48,19 @@ async function signUpAndCreateRestaurant(page: Page, user: ReturnType<typeof gen
 }
 
 async function createEmployeesWithAuth(page: Page, employees: Array<{name: string, email: string, position: string}>) {
-  // Create auth users and employees
+  // Expose helpers first
+  await exposeSupabaseHelpers(page);
+  
+  // Create employees using exposed functions
   await page.evaluate(async ({ empData }) => {
-    const { supabase } = await import('/src/integrations/supabase/client');
-    let user = null;
-    for (let i = 0; i < 5; i++) {
-      const { data: { user: u } } = await supabase.auth.getUser();
-      if (u) {
-        user = u;
-        break;
-      }
-      await new Promise(r => setTimeout(r, 300));
-    }
-    if (!user) throw new Error('No user session');
+    const user = await (window as any).__getAuthUser();
+    if (!user?.id) throw new Error('No user session');
 
-    const { data: ur } = await supabase
-      .from('user_restaurants')
-      .select('restaurant_id')
-      .eq('user_id', user.id)
-      .limit(1)
-      .single();
-
-    if (!ur?.restaurant_id) throw new Error('No restaurant');
+    const restaurantId = await (window as any).__getRestaurantId();
+    if (!restaurantId) throw new Error('No restaurant');
 
     // Create employees
     const rows = empData.map((emp: any) => ({
-      restaurant_id: ur.restaurant_id,
       name: emp.name,
       email: emp.email,
       position: emp.position,
@@ -83,8 +71,7 @@ async function createEmployeesWithAuth(page: Page, employees: Array<{name: strin
       tip_eligible: true,
     }));
 
-    const { error } = await supabase.from('employees').insert(rows);
-    if (error) throw error;
+    await (window as any).__insertEmployees(rows, restaurantId);
   }, { empData: employees });
 }
 
@@ -114,25 +101,15 @@ async function waitForApprovalOrBackend(page: Page) {
     // fall back to backend verification
   }
 
+  // Ensure helpers are exposed
+  await exposeSupabaseHelpers(page);
+
   let approved = false;
   for (let i = 0; i < 5; i++) {
     approved = await page.evaluate(async () => {
-      const { supabase } = await import('/src/integrations/supabase/client');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return false;
-      const { data: ur } = await supabase
-        .from('user_restaurants')
-        .select('restaurant_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .single();
-      if (!ur?.restaurant_id) return false;
-      const { count } = await supabase
-        .from('tip_splits')
-        .select('id', { count: 'exact', head: true })
-        .eq('restaurant_id', ur.restaurant_id)
-        .eq('status', 'approved');
-      return (count ?? 0) > 0;
+      const restaurantId = await (window as any).__getRestaurantId();
+      if (!restaurantId) return false;
+      return await (window as any).__checkApprovedSplits(restaurantId);
     });
     if (approved) break;
     await page.waitForTimeout(1000);
@@ -253,46 +230,24 @@ test.describe('Tips - Complete Customer Journey', () => {
     await signUpAndCreateRestaurant(page, user);
 
     // Create employee with auth user
+    await exposeSupabaseHelpers(page);
     await page.evaluate(async () => {
-      const { supabase } = await import('/src/integrations/supabase/client');
-      let managerUser = null;
-      for (let i = 0; i < 5; i++) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          managerUser = user;
-          break;
-        }
-        await new Promise(r => setTimeout(r, 300));
-      }
-      if (!managerUser) throw new Error('No manager session');
+      const restaurantId = await (window as any).__getRestaurantId();
+      if (!restaurantId) throw new Error('No restaurant');
 
-      const { data: ur } = await supabase
-        .from('user_restaurants')
-        .select('restaurant_id')
-        .eq('user_id', managerUser.id)
-        .limit(1)
-        .single();
+      // Create employee record
+      const employees = [{
+        name: 'Lisa Chen',
+        email: `employee-${Date.now()}@test.com`,
+        position: 'Server',
+        status: 'active',
+        compensation_type: 'hourly',
+        hourly_rate: 1500,
+        tip_eligible: true,
+      }];
 
-      if (!ur?.restaurant_id) throw new Error('No restaurant');
-
-      // Create employee record (without auth user for now)
-      const { data: empData, error: empError } = await supabase
-        .from('employees')
-        .insert({
-          restaurant_id: ur.restaurant_id,
-          name: 'Lisa Chen',
-          email: `employee-${Date.now()}@test.com`,
-          position: 'Server',
-          status: 'active',
-          compensation_type: 'hourly',
-          hourly_rate: 1500,
-          tip_eligible: true,
-        })
-        .select()
-        .single();
-
-      if (empError) throw empError;
-      return { employeeId: empData.id, restaurantId: ur.restaurant_id };
+      const result = await (window as any).__insertEmployees(employees, restaurantId);
+      return { employeeId: result[0].id, restaurantId };
     });
 
     await page.goto('/tips');

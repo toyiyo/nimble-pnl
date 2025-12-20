@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge';
 import { FileText, Edit, Trash2, Calendar } from 'lucide-react';
 import { formatCurrencyFromCents } from '@/utils/tipPooling';
 import { useTipSplits } from '@/hooks/useTipSplits';
-import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,17 +23,21 @@ interface TipDraftsListProps {
 }
 
 export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProps) => {
-  const { splits, isLoading, deleteTipSplit } = useTipSplits(restaurantId);
-  const { toast } = useToast();
+  const { splits, isLoading, deleteTipSplitAsync, isDeleting } = useTipSplits(restaurantId);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [draftToDelete, setDraftToDelete] = useState<string | null>(null);
 
   // Filter for drafts only
   const drafts = splits?.filter(s => s.status === 'draft') || [];
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!draftToDelete) return;
-    deleteTipSplit(draftToDelete);
+    try {
+      await deleteTipSplitAsync(draftToDelete);
+    } catch {
+      // Error handled by hook's onError callback
+      return;
+    }
     setDeleteDialogOpen(false);
     setDraftToDelete(null);
   };
@@ -148,9 +151,13 @@ export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProp
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-              Delete
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDelete} 
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

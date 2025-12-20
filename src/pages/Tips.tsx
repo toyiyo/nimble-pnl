@@ -331,7 +331,7 @@ export const Tips = () => {
       shareMethod !== settings.share_method ||
       splitCadence !== settings.split_cadence ||
       JSON.stringify(roleWeights) !== JSON.stringify(settings.role_weights) ||
-      JSON.stringify(Array.from(selectedEmployees).sort()) !== JSON.stringify((settings.enabled_employee_ids || []).sort());
+      JSON.stringify(Array.from(selectedEmployees).sort((a, b) => a.localeCompare(b))) !== JSON.stringify((settings.enabled_employee_ids || []).sort((a, b) => a.localeCompare(b)));
     
     if (!hasChanges) return;
 

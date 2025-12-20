@@ -64,6 +64,35 @@ export function useTipDisputes(restaurantId: string | null, status?: 'open' | 'r
     staleTime: 30000,
   });
 
+  // Create dispute
+  const { mutate: createDispute, isPending: isCreating } = useMutation({
+    mutationFn: async (input: {
+      restaurant_id: string;
+      employee_id: string;
+      tip_split_id: string;
+      dispute_type: 'missing_hours' | 'incorrect_amount' | 'wrong_date' | 'missing_tips' | 'other';
+      message?: string;
+    }) => {
+      const { error } = await supabase.from('tip_disputes').insert({
+        restaurant_id: input.restaurant_id,
+        employee_id: input.employee_id,
+        tip_split_id: input.tip_split_id,
+        dispute_type: input.dispute_type,
+        message: input.message?.trim() || null,
+        status: 'open',
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tip-disputes', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['tip-splits'] });
+    },
+    onError: (error: Error) => {
+      throw error;
+    },
+  });
+
   // Resolve dispute
   const { mutate: resolveDispute, isPending: isResolving } = useMutation({
     mutationFn: async ({ disputeId, notes }: { disputeId: string; notes?: string }) => {
@@ -139,6 +168,8 @@ export function useTipDisputes(restaurantId: string | null, status?: 'open' | 'r
     openDisputes,
     isLoading,
     error,
+    createDispute,
+    isCreating,
     resolveDispute,
     isResolving,
     dismissDispute,

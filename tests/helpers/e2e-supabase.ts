@@ -10,123 +10,98 @@ import type { Page } from '@playwright/test';
  * This avoids dynamic imports from /src/ which Vite doesn't serve
  */
 export async function exposeSupabaseHelpers(page: Page) {
-  // Get current user from browser's localStorage
-  await page.exposeFunction('__getAuthUser', async (): Promise<{ id: string } | null> => {
-    const session = await page.evaluate(() => {
-      const item = localStorage.getItem('sb-localhost-auth-token');
-      if (!item) return null;
-      try {
-        const parsed = JSON.parse(item);
-        return parsed?.user || null;
-      } catch {
+  // Inject helpers into the browser so they share the same Supabase client/session as the app
+  const injectHelpers = async () => {
+    if ((window as any).__supabaseHelpersReady) return;
+
+    const { supabase } = await import('/src/integrations/supabase/client');
+
+    const waitForUser = async (): Promise<{ id: string } | null> => {
+      for (let i = 0; i < 10; i++) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) return user;
+        await new Promise(res => setTimeout(res, 200));
+      }
+      return null;
+    };
+
+    (window as any).__getAuthUser = waitForUser;
+
+    (window as any).__getRestaurantId = async (userId?: string): Promise<string | null> => {
+      const user = userId ? { id: userId } : await waitForUser();
+      if (!user?.id) return null;
+
+      const { data, error } = await supabase
+        .from('user_restaurants')
+        .select('restaurant_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .single();
+
+      if (error) {
+        console.error('Failed to load restaurant for user', error);
         return null;
       }
-    });
-    return session;
-  });
 
-  // Get restaurant ID for current user (takes userId as parameter since we can't call other exposed functions)
-  await page.exposeFunction('__getRestaurantId', async (userId: string): Promise<string | null> => {
-    if (!userId) return null;
+      return data?.restaurant_id || null;
+    };
 
-    const url = process.env.SUPABASE_URL || 'http://localhost:54321';
-    const key = process.env.SUPABASE_ANON_KEY || '';
-    
-    const response = await fetch(`${url}/rest/v1/user_restaurants?user_id=eq.${userId}&select=restaurant_id&limit=1`, {
-      headers: {
-        'apikey': key,
-        'Authorization': `Bearer ${key}`
+    (window as any).__insertEmployees = async (employees: any[], restaurantId: string) => {
+      const { data, error } = await supabase
+        .from('employees')
+        .insert(employees.map(emp => ({
+          ...emp,
+          restaurant_id: restaurantId,
+        })))
+        .select();
+
+      if (error) {
+        throw new Error(error.message);
       }
-    });
-    
-    const data = await response.json();
-    return data?.[0]?.restaurant_id || null;
-  });
+      return data;
+    };
 
-  // Insert employees
-  await page.exposeFunction('__insertEmployees', async (employees: any[], restaurantId: string) => {
-    const url = process.env.SUPABASE_URL || 'http://localhost:54321';
-    const key = process.env.SUPABASE_ANON_KEY || '';
-    
-    const response = await fetch(`${url}/rest/v1/employees`, {
-      method: 'POST',
-      headers: {
-        'apikey': key,
-        'Authorization': `Bearer ${key}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-      },
-      body: JSON.stringify(employees.map(emp => ({
-        ...emp,
-        restaurant_id: restaurantId
-      })))
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to insert employees: ${response.statusText}`);
-    }
-    
-    return await response.json();
-  });
+    (window as any).__checkApprovedSplits = async (restaurantId: string): Promise<boolean> => {
+      const { count, error } = await supabase
+        .from('tip_splits')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'approved');
 
-  // Check if splits exist
-  await page.exposeFunction('__checkApprovedSplits', async (restaurantId: string): Promise<boolean> => {
-    const url = process.env.SUPABASE_URL || 'http://localhost:54321';
-    const key = process.env.SUPABASE_ANON_KEY || '';
-    
-    const response = await fetch(
-      `${url}/rest/v1/tip_splits?restaurant_id=eq.${restaurantId}&status=eq.approved&select=id`,
-      {
-        headers: {
-          'apikey': key,
-          'Authorization': `Bearer ${key}`,
-          'Prefer': 'count=exact'
-        }
+      if (error) {
+        console.error('Error checking approved splits', error);
+        return false;
       }
-    );
-    
-    const count = response.headers.get('Content-Range')?.split('/')[1];
-    return parseInt(count || '0') > 0;
-  });
 
-  // Insert dispute
-  await page.exposeFunction('__insertDispute', async (dispute: any) => {
-    const url = process.env.SUPABASE_URL || 'http://localhost:54321';
-    const key = process.env.SUPABASE_ANON_KEY || '';
-    
-    const response = await fetch(`${url}/rest/v1/tip_disputes`, {
-      method: 'POST',
-      headers: {
-        'apikey': key,
-        'Authorization': `Bearer ${key}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify(dispute)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to insert dispute: ${response.statusText}`);
-    }
-  });
+      return (count || 0) > 0;
+    };
 
-  // Check if disputes exist
-  await page.exposeFunction('__checkResolvedDisputes', async (restaurantId: string): Promise<boolean> => {
-    const url = process.env.SUPABASE_URL || 'http://localhost:54321';
-    const key = process.env.SUPABASE_ANON_KEY || '';
-    
-    const response = await fetch(
-      `${url}/rest/v1/tip_disputes?restaurant_id=eq.${restaurantId}&status=eq.resolved&select=id`,
-      {
-        headers: {
-          'apikey': key,
-          'Authorization': `Bearer ${key}`,
-          'Prefer': 'count=exact'
-        }
+    (window as any).__insertDispute = async (dispute: any) => {
+      const { error } = await supabase.from('tip_disputes').insert(dispute);
+      if (error) {
+        throw new Error(error.message);
       }
-    );
-    
-    const count = response.headers.get('Content-Range')?.split('/')[1];
-    return parseInt(count || '0') > 0;
-  });
+    };
+
+    (window as any).__checkResolvedDisputes = async (restaurantId: string): Promise<boolean> => {
+      const { count, error } = await supabase
+        .from('tip_disputes')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'resolved');
+
+      if (error) {
+        console.error('Error checking disputes', error);
+        return false;
+      }
+
+      return (count || 0) > 0;
+    };
+
+    (window as any).__supabaseHelpersReady = true;
+  };
+
+  // Ensure helpers exist now and on future navigations
+  await page.addInitScript(injectHelpers);
+  await page.evaluate(injectHelpers);
 }

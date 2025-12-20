@@ -123,6 +123,8 @@ async function waitForApprovalOrBackend(page: Page) {
 }
 
 test.describe('Tips - Complete Customer Journey', () => {
+  // Run this suite serially to avoid racing Supabase auth/restaurant setup
+  test.describe.configure({ mode: 'serial' });
 
   test('Manager: Save draft, view drafts, resume and approve', async ({ page }) => {
     const user = generateTestUser();

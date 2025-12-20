@@ -56,7 +56,7 @@ async function createEmployeesWithAuth(page: Page, employees: Array<{name: strin
     const user = await (window as any).__getAuthUser();
     if (!user?.id) throw new Error('No user session');
 
-    const restaurantId = await (window as any).__getRestaurantId();
+    const restaurantId = await (window as any).__getRestaurantId(user.id);
     if (!restaurantId) throw new Error('No restaurant');
 
     // Create employees
@@ -107,7 +107,9 @@ async function waitForApprovalOrBackend(page: Page) {
   let approved = false;
   for (let i = 0; i < 5; i++) {
     approved = await page.evaluate(async () => {
-      const restaurantId = await (window as any).__getRestaurantId();
+      const user = await (window as any).__getAuthUser();
+      if (!user?.id) return false;
+      const restaurantId = await (window as any).__getRestaurantId(user.id);
       if (!restaurantId) return false;
       return await (window as any).__checkApprovedSplits(restaurantId);
     });
@@ -232,7 +234,9 @@ test.describe('Tips - Complete Customer Journey', () => {
     // Create employee with auth user
     await exposeSupabaseHelpers(page);
     await page.evaluate(async () => {
-      const restaurantId = await (window as any).__getRestaurantId();
+      const user = await (window as any).__getAuthUser();
+      if (!user?.id) throw new Error('No user session');
+      const restaurantId = await (window as any).__getRestaurantId(user.id);
       if (!restaurantId) throw new Error('No restaurant');
 
       // Create employee record

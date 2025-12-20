@@ -25,15 +25,14 @@ export async function exposeSupabaseHelpers(page: Page) {
     return session;
   });
 
-  // Get restaurant ID for current user
-  await page.exposeFunction('__getRestaurantId', async (): Promise<string | null> => {
-    const user = await (page as any).evaluate(() => (window as any).__getAuthUser());
-    if (!user?.id) return null;
+  // Get restaurant ID for current user (takes userId as parameter since we can't call other exposed functions)
+  await page.exposeFunction('__getRestaurantId', async (userId: string): Promise<string | null> => {
+    if (!userId) return null;
 
     const url = process.env.SUPABASE_URL || 'http://localhost:54321';
     const key = process.env.SUPABASE_ANON_KEY || '';
     
-    const response = await fetch(`${url}/rest/v1/user_restaurants?user_id=eq.${user.id}&select=restaurant_id&limit=1`, {
+    const response = await fetch(`${url}/rest/v1/user_restaurants?user_id=eq.${userId}&select=restaurant_id&limit=1`, {
       headers: {
         'apikey': key,
         'Authorization': `Bearer ${key}`

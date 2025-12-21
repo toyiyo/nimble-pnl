@@ -183,8 +183,9 @@ serve(async (req) => {
           us_bank_account_ach_payments: { requested: true },
         },
         controller: {
-          fees: { payer: "application" },
-          losses: { payments: "application" },
+          // Connected account pays Stripe fees; Stripe covers losses
+          fees: { payer: "account" },
+          losses: { payments: "stripe" },
           stripe_dashboard: { type: "express" },
         },
         metadata: {

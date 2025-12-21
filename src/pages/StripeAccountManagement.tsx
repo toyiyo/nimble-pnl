@@ -40,10 +40,10 @@ export default function StripeAccountManagement() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5" />
-              Set up Stripe Connect
+              Set up Payment Processing
             </CardTitle>
             <CardDescription>
-              Connect your restaurant to Stripe to accept payments, manage payouts, and access financial tools.
+              Connect your restaurant to accept payments, manage payouts, and access financial tools.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -52,7 +52,7 @@ export default function StripeAccountManagement() {
               disabled={isCreatingAccount}
               className="w-full md:w-auto"
             >
-              {isCreatingAccount ? "Setting up..." : "Set up Stripe Connect"}
+              {isCreatingAccount ? "Setting up..." : "Set up Payment Processing"}
             </Button>
           </CardContent>
         </Card>
@@ -65,9 +65,9 @@ export default function StripeAccountManagement() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Stripe Account Management</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Financial Account Management</h1>
           <p className="text-muted-foreground">
-            Complete your Stripe account setup to access all financial features
+            Complete your account setup to access all financial features
           </p>
         </div>
 
@@ -76,7 +76,7 @@ export default function StripeAccountManagement() {
           <AlertTitle>Complete Account Setup</AlertTitle>
           <AlertDescription className="space-y-3">
             <p>
-              Your Stripe Connect account was created but needs to be fully configured.
+              Your payment processing account was created but needs to be fully configured.
               Please complete the onboarding process below.
             </p>
             <StripeEmbeddedConnect
@@ -97,9 +97,9 @@ export default function StripeAccountManagement() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Stripe Account Management</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Financial Account Management</h1>
           <p className="text-muted-foreground">
-            Manage your Stripe Connect account, payments, and financial operations
+            Manage your financial operations, payments, and account settings
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -222,7 +222,7 @@ export default function StripeAccountManagement() {
                 Account Details
               </CardTitle>
               <CardDescription>
-                View and manage your Stripe account information
+                View and manage your account information
               </CardDescription>
             </CardHeader>
             <CardContent>

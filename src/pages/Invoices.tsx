@@ -36,8 +36,8 @@ export default function Invoices() {
 
     if (success) {
       toast({
-        title: "Stripe Setup Complete",
-        description: "Your Stripe Connect account has been successfully configured. You can now create and send invoices.",
+        title: "Payment Setup Complete",
+        description: "Your payment processing account has been successfully configured. You can now create and send invoices.",
       });
       queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id] });
       searchParams.delete('success');
@@ -46,7 +46,7 @@ export default function Invoices() {
     if (refresh) {
       toast({
         title: "Setup Incomplete",
-        description: "Please complete your Stripe Connect onboarding to start creating invoices.",
+        description: "Please complete your payment processing onboarding to start creating invoices.",
         variant: "destructive",
       });
       searchParams.delete('refresh');
@@ -153,7 +153,7 @@ export default function Invoices() {
     );
   }
 
-  // Show Stripe Connect setup if not configured
+  // Show payment processing setup if not configured
   if (!connectedAccount) {
     return (
       <div className="space-y-6">
@@ -173,9 +173,9 @@ export default function Invoices() {
 
         <Alert>
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Stripe Connect Setup Required</AlertTitle>
+          <AlertTitle>Payment Processing Setup Required</AlertTitle>
           <AlertDescription>
-            To create invoices and accept payments, you need to set up a Stripe Connect account.
+            To create invoices and accept payments, you need to set up payment processing.
             This allows your customers to pay by credit card or US bank account (ACH).
           </AlertDescription>
         </Alert>
@@ -183,13 +183,13 @@ export default function Invoices() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center space-y-4">
-              <h3 className="text-lg font-semibold">Get Started with Stripe Connect</h3>
+              <h3 className="text-lg font-semibold">Get Started with Payment Processing</h3>
               <p className="text-muted-foreground">
-                Stripe Connect is a secure payment processing platform that allows you to accept payments directly.
+                Set up secure payment processing to accept payments directly from your customers.
                 Funds will be deposited into your bank account.
               </p>
               <Button onClick={() => createAccount('express')} disabled={isCreatingAccount}>
-                {isCreatingAccount ? "Setting up..." : "Set Up Stripe Connect"}
+                {isCreatingAccount ? "Setting up..." : "Set Up Payment Processing"}
               </Button>
             </div>
           </CardContent>
@@ -218,10 +218,10 @@ export default function Invoices() {
 
         <Alert>
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Complete Stripe Onboarding</AlertTitle>
+          <AlertTitle>Complete Account Onboarding</AlertTitle>
           <AlertDescription className="space-y-3">
             <p>
-              Your Stripe Connect account was created but onboarding wasn't completed.
+              Your payment processing account was created but onboarding wasn't completed.
               Please finish the setup process to start creating invoices.
             </p>
             <StripeEmbeddedOnboarding

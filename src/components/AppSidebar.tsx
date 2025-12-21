@@ -79,7 +79,7 @@ const navigationGroups = [
     items: [
       { path: '/customers', label: 'Customers', icon: Users },
       { path: '/invoices', label: 'Invoices', icon: FileText },
-      { path: '/stripe-account', label: 'Stripe Account', icon: CreditCard },
+      { path: '/stripe-account', label: 'Financial Account', icon: CreditCard },
       { path: '/banking', label: 'Banks', icon: Wallet },
       { path: '/expenses', label: 'Expenses', icon: DollarSign },
       { path: '/financial-intelligence', label: 'Financial Intelligence', icon: TrendingUp },

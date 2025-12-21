@@ -2,8 +2,9 @@ import { useState, useCallback } from "react";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { supabase } from "@/integrations/supabase/client";
 
-const BRAND_PRIMARY = "#0f172a";
-const BRAND_BACKGROUND = "#f1f5f9";
+// Use app's primary and secondary colors for Stripe embed branding
+const BRAND_PRIMARY = "#0f1419"; // App's primary color (hsl(222.2, 47.4%, 11.2%))
+const BRAND_BACKGROUND = "#f4f7fa"; // App's secondary color (hsl(210, 40%, 96.1%))
 
 interface UseStripeEmbeddedConnectOptions {
   onReady?: (clientSecret: string) => void;

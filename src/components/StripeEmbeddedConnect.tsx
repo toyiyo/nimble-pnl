@@ -81,7 +81,7 @@ export function StripeEmbeddedConnect({
       <div className={`flex items-center justify-center p-8 ${className}`}>
         <div className="text-center space-y-2">
           <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-          <p className="text-sm text-muted-foreground">Loading Stripe interface...</p>
+          <p className="text-sm text-muted-foreground">Loading payment interface...</p>
         </div>
       </div>
     );
@@ -101,14 +101,14 @@ export function StripeEmbeddedConnect({
     return (
       <div className={`p-4 ${className}`}>
         <Button onClick={() => start()} disabled={isLoading} className="w-full">
-          {isLoading ? "Loading..." : "Load Stripe Interface"}
+          {isLoading ? "Loading..." : "Load Payment Interface"}
         </Button>
       </div>
     );
   }
 
   return (
-    <div className={`rounded-lg border bg-white ${className}`}>
+    <div className={`rounded-lg border ${className}`}>
       <ConnectComponentsProvider connectInstance={connectInstance}>
         {renderComponent()}
       </ConnectComponentsProvider>

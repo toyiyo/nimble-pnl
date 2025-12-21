@@ -83,14 +83,14 @@ export default function Customers() {
         </CardHeader>
       </Card>
 
-      {/* Stripe Connect Setup Banner */}
+      {/* Payment Processing Setup Banner */}
       {filteredCustomers.length > 0 && !isReadyForInvoicing && (
         <Alert>
           <CreditCard className="h-4 w-4" />
           <AlertTitle>Enable Invoice Payments</AlertTitle>
           <AlertDescription className="space-y-3">
             <p>
-              Set up Stripe Connect to create and send invoices with payment collection.
+              Set up payment processing to create and send invoices with payment collection.
               Your customers can pay by credit card or US bank account (ACH).
             </p>
             <Button 
@@ -98,7 +98,7 @@ export default function Customers() {
               disabled={isCreatingAccount}
               size="sm"
             >
-              {isCreatingAccount ? "Setting up..." : "Set up Stripe Connect"}
+              {isCreatingAccount ? "Setting up..." : "Set up Payment Processing"}
             </Button>
           </AlertDescription>
         </Alert>

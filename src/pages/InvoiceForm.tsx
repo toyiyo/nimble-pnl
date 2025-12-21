@@ -129,10 +129,12 @@ export default function InvoiceForm() {
       return sum + (quantity * unitAmount);
     }, 0);
 
-    // Add estimated processing fee if passFeesToCustomer is enabled
+    // Add grossed-up processing fee if passFeesToCustomer is enabled
     if (passFeesToCustomer) {
-      const estimatedFee = Math.round(subtotal * 100 * 0.029) + 30; // Convert to cents, calculate fee, convert back to dollars
-      subtotal += estimatedFee / 100;
+      const baseCents = Math.round(subtotal * 100);
+      const gross = Math.round((baseCents + 30) / (1 - 0.029));
+      const feeCents = Math.max(0, gross - baseCents);
+      subtotal += feeCents / 100;
     }
 
     return subtotal;
@@ -309,7 +311,20 @@ export default function InvoiceForm() {
                 {passFeesToCustomer && (
                   <div className="flex justify-between text-sm text-muted-foreground">
                     <span>Processing Fee (est.)</span>
-                    <span>${(Math.round(calculateSubtotal() * 100 * 0.029) + 30) / 100}</span>
+                    <span>
+                      {(() => {
+                        const baseCents = Math.round(
+                          lineItems.reduce((sum, item) => {
+                            const quantity = Number(item.quantity) || 0;
+                            const unitAmount = Number(item.unit_amount) || 0;
+                            return sum + quantity * unitAmount;
+                          }, 0) * 100
+                        );
+                        const gross = Math.round((baseCents + 30) / (1 - 0.029));
+                        const feeCents = Math.max(0, gross - baseCents);
+                        return formatCurrency(feeCents / 100);
+                      })()}
+                    </span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg font-semibold">

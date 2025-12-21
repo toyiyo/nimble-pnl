@@ -15,6 +15,13 @@ interface LineItem {
   tax_rate?: number;
 }
 
+const computeProcessingFeeCents = (baseCents: number, rate = 0.029, fixedCents = 30) => {
+  if (baseCents <= 0) return 0;
+  const gross = Math.round((baseCents + fixedCents) / (1 - rate));
+  const fee = gross - baseCents;
+  return Math.max(0, fee);
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -197,8 +204,8 @@ serve(async (req) => {
 
     // Add processing fee line item if passFeesToCustomer is enabled
     if (passFeesToCustomer) {
-      // Estimate Stripe processing fee: 2.9% + $0.30 for card payments
-      const estimatedFeeCents = Math.round(subtotalCents * 0.029) + 30;
+      // Gross-up so the restaurant nets subtotalCents after Stripe fees
+      const estimatedFeeCents = computeProcessingFeeCents(subtotalCents);
       subtotalCents += estimatedFeeCents;
       normalizedLineItems.push({
         description: "Processing Fee",

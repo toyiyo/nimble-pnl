@@ -183,10 +183,10 @@ serve(async (req) => {
           us_bank_account_ach_payments: { requested: true },
         },
         controller: {
-          // Connected account pays Stripe fees; Stripe covers losses
+          // Full dashboard allows connected account to pay Stripe fees
           fees: { payer: "account" },
           losses: { payments: "stripe" },
-          stripe_dashboard: { type: "express" },
+          stripe_dashboard: { type: "full" },
         },
         metadata: {
           restaurant_id: restaurantId,

@@ -137,6 +137,7 @@ export const useInvoices = (restaurantId: string | null) => {
       },
       enabled: !!invoiceId,
       staleTime: 30000,
+      initialData: !invoiceId ? null : undefined,
     });
   };
 

@@ -14,7 +14,7 @@ export default defineConfig({
     ? Number(process.env.PLAYWRIGHT_WORKERS)
     : process.env.CI
       ? 2
-      : 10,
+      : 2,
   reporter: 'html',
   
   use: {

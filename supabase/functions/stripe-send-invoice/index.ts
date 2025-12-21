@@ -231,19 +231,9 @@ serve(async (req) => {
       sentInvoice = finalizedInvoice;
     } else {
       console.log("[SEND-INVOICE] Sending finalized invoice");
-      
-      // If pass_fees_to_customer is true, estimate and add application fee
-      const sendParams: any = {};
-      if (invoice.pass_fees_to_customer) {
-        // Estimate Stripe fee: 2.9% + $0.30 for card payments
-        const estimatedStripeFee = Math.round(finalizedInvoice.amount_due * 0.029) + 30; // in cents
-        sendParams.application_fee_amount = estimatedStripeFee;
-        console.log("[SEND-INVOICE] Adding application fee to pass fees to customer:", estimatedStripeFee);
-      }
-      
       sentInvoice = await stripe.invoices.sendInvoice(
         invoice.stripe_invoice_id,
-        sendParams,
+        {},
         {
           stripeAccount: connectedAccount.stripe_account_id,
         }

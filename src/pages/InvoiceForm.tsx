@@ -116,11 +116,19 @@ export default function InvoiceForm() {
   };
 
   const calculateSubtotal = () => {
-    return lineItems.reduce((sum, item) => {
+    let subtotal = lineItems.reduce((sum, item) => {
       const quantity = Number(item.quantity) || 0;
       const unitAmount = Number(item.unit_amount) || 0;
       return sum + (quantity * unitAmount);
     }, 0);
+
+    // Add estimated processing fee if passFeesToCustomer is enabled
+    if (passFeesToCustomer) {
+      const estimatedFee = Math.round(subtotal * 100 * 0.029) + 30; // Convert to cents, calculate fee, convert back to dollars
+      subtotal += estimatedFee / 100;
+    }
+
+    return subtotal;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -289,12 +297,16 @@ export default function InvoiceForm() {
             </div>
 
             <div className="mt-6 pt-6 border-t">
-              <div className="flex justify-end">
-                <div className="space-y-2 w-64">
-                  <div className="flex justify-between text-lg font-semibold">
-                    <span>Total:</span>
-                    <span>{formatCurrency(calculateSubtotal())}</span>
+              <div className="space-y-2">
+                {passFeesToCustomer && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Processing Fee (est.)</span>
+                    <span>${(Math.round(calculateSubtotal() * 100 * 0.029) + 30) / 100}</span>
                   </div>
+                )}
+                <div className="flex justify-between text-lg font-semibold">
+                  <span>Total:</span>
+                  <span>{formatCurrency(calculateSubtotal())}</span>
                 </div>
               </div>
             </div>
@@ -336,9 +348,9 @@ export default function InvoiceForm() {
                 onCheckedChange={(checked) => setPassFeesToCustomer(checked as boolean)}
               />
               <Label htmlFor="passFees" className="text-sm">
-                Pass Stripe processing fees to customer
+                Add processing fee to invoice
                 <span className="text-muted-foreground block text-xs">
-                  Customer will pay an additional ~2.9% + $0.30 for processing fees
+                  Customer will see and pay ~2.9% + $0.30 processing fee on their invoice
                 </span>
               </Label>
             </div>

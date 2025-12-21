@@ -186,6 +186,22 @@ serve(async (req) => {
       }
     }
 
+    // Add processing fee line item if passFeesToCustomer is enabled
+    let processingFeeItem = null;
+    if (passFeesToCustomer) {
+      // Estimate Stripe processing fee: 2.9% + $0.30 for card payments
+      const estimatedFee = Math.round(subtotal * 0.029) + 30; // in cents
+      processingFeeItem = {
+        description: "Processing Fee",
+        quantity: 1,
+        unit_amount: estimatedFee / 100, // Convert to dollars for display
+        amount: estimatedFee,
+        tax_behavior: "unspecified" as const,
+        tax_rate: null,
+      };
+      subtotal += estimatedFee; // Add to subtotal
+    }
+
     const total = subtotal + tax;
 
     // Create invoice in Stripe (empty first)
@@ -215,8 +231,10 @@ serve(async (req) => {
 
     // Now add invoice items to the specific invoice
     const stripeLineItems = [];
-    for (const item of lineItems) {
-      const itemAmount = Math.round(item.quantity * item.unit_amount);
+    const allLineItems = processingFeeItem ? [...lineItems, processingFeeItem] : lineItems;
+    
+    for (const item of allLineItems) {
+      const itemAmount = Math.round(item.quantity * item.unit_amount * 100); // Convert dollars to cents
 
       const invoiceItem = await stripe.invoiceItems.create(
         {
@@ -224,7 +242,7 @@ serve(async (req) => {
           invoice: stripeInvoice.id, // Attach to specific invoice
           description: item.description,
           quantity: item.quantity,
-          unit_amount_decimal: item.unit_amount.toString(),
+          unit_amount_decimal: itemAmount.toString(),
           currency: "usd",
           tax_behavior: item.tax_behavior || "unspecified",
         },
@@ -237,7 +255,7 @@ serve(async (req) => {
         stripe_invoice_item_id: invoiceItem.id,
         description: item.description,
         quantity: item.quantity,
-        unit_amount: item.unit_amount,
+        unit_amount: itemAmount, // Store in cents
         amount: itemAmount,
         tax_behavior: item.tax_behavior || "unspecified",
         tax_rate: item.tax_rate || null,

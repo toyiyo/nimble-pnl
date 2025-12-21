@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@18.5.0";
+import Stripe from "https://esm.sh/stripe@20.1.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
@@ -29,8 +29,36 @@ serve(async (req) => {
     }
 
     const stripe = new Stripe(stripeKey, {
-      apiVersion: "2025-08-27.basil" as any
+      apiVersion: "2024-12-18.acacia" as any
     });
+
+    const deriveStatuses = (acct: any) => {
+      const chargesEnabled =
+        acct?.charges_enabled ??
+        acct?.configuration?.merchant?.capabilities?.card_payments?.status === "active";
+
+      const payoutsEnabled =
+        acct?.payouts_enabled ??
+        acct?.configuration?.merchant?.capabilities?.transfers?.status === "active";
+
+      const requirementsSatisfied = Array.isArray(acct?.requirements?.currently_due)
+        ? acct.requirements.currently_due.length === 0
+        : undefined;
+
+      const detailsSubmitted =
+        acct?.details_submitted ??
+        requirementsSatisfied ??
+        false;
+
+      const onboardingComplete = Boolean(detailsSubmitted && chargesEnabled);
+
+      return {
+        chargesEnabled: Boolean(chargesEnabled),
+        payoutsEnabled: Boolean(payoutsEnabled),
+        detailsSubmitted: Boolean(detailsSubmitted),
+        onboardingComplete,
+      };
+    };
 
     // Authenticate user
     const authHeader = req.headers.get("Authorization");
@@ -48,11 +76,34 @@ serve(async (req) => {
     console.log("[CREATE-CONNECTED-ACCOUNT] User authenticated:", user.id);
 
     // Get request body
-    const { restaurantId, accountType = 'express' } = await req.json();
+    const { restaurantId, accountType = 'standard' } = await req.json();
     
     if (!restaurantId) {
       throw new Error("Restaurant ID is required");
     }
+
+    if (accountType !== 'standard') {
+      console.log("[CREATE-CONNECTED-ACCOUNT] Overriding requested account type to standard/full dashboard to align with Connect v2 guidance");
+    }
+
+    const includeFields = [
+      "configuration.merchant",
+      "configuration.recipient",
+      "identity",
+      "defaults",
+    ];
+
+    const fetchAccount = async (accountId: string) => {
+      try {
+        return await stripe.v2.core.accounts.retrieve(
+          accountId,
+          { include: includeFields as any }
+        );
+      } catch (err) {
+        console.warn("[CREATE-CONNECTED-ACCOUNT] v2 account retrieval failed, falling back to v1:", err);
+        return await stripe.accounts.retrieve(accountId);
+      }
+    };
 
     console.log("[CREATE-CONNECTED-ACCOUNT] Creating account for restaurant:", restaurantId);
 
@@ -90,22 +141,19 @@ serve(async (req) => {
       console.log("[CREATE-CONNECTED-ACCOUNT] Account already exists:", existingAccount.stripe_account_id);
 
       // Always check live status from Stripe to ensure database is up to date
-      const liveAccount = await stripe.accounts.retrieve(existingAccount.stripe_account_id);
-      console.log("[CREATE-CONNECTED-ACCOUNT] Live account status:", {
-        charges_enabled: liveAccount.charges_enabled,
-        payouts_enabled: liveAccount.payouts_enabled,
-        details_submitted: liveAccount.details_submitted,
-        onboarding_complete: liveAccount.details_submitted && liveAccount.charges_enabled
-      });
+      const liveAccount = await fetchAccount(existingAccount.stripe_account_id);
+
+      const liveStatuses = deriveStatuses(liveAccount);
+      console.log("[CREATE-CONNECTED-ACCOUNT] Live account status:", liveStatuses);
 
       // Update database with live status
       const { error: updateError } = await supabaseAdmin
         .from("stripe_connected_accounts")
         .update({
-          charges_enabled: liveAccount.charges_enabled || false,
-          payouts_enabled: liveAccount.payouts_enabled || false,
-          details_submitted: liveAccount.details_submitted || false,
-          onboarding_complete: (liveAccount.details_submitted && liveAccount.charges_enabled) || false,
+          charges_enabled: liveStatuses.chargesEnabled,
+          payouts_enabled: liveStatuses.payoutsEnabled,
+          details_submitted: liveStatuses.detailsSubmitted,
+          onboarding_complete: liveStatuses.onboardingComplete,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingAccount.id);
@@ -115,7 +163,7 @@ serve(async (req) => {
       }
 
       // Check if onboarding is now complete
-      const isOnboardingComplete = liveAccount.details_submitted && liveAccount.charges_enabled;
+      const isOnboardingComplete = liveStatuses.onboardingComplete;
 
       if (isOnboardingComplete) {
         return new Response(
@@ -151,33 +199,42 @@ serve(async (req) => {
     let account;
     if (existingAccount) {
       // Use existing Stripe account
-      account = await stripe.accounts.retrieve(existingAccount.stripe_account_id);
+      account = await fetchAccount(existingAccount.stripe_account_id);
       console.log("[CREATE-CONNECTED-ACCOUNT] Retrieved existing Stripe account:", account.id);
     } else {
-      // Create new Stripe Connect account
-      const accountParams: Stripe.AccountCreateParams = {
-        type: accountType,
-        country: "US",
-        email: user.email || undefined,
-        business_type: "company",
-        capabilities: {
-          card_payments: { requested: true },
-          us_bank_account_ach_payments: { requested: true },
-          transfers: { requested: true },
+      // Create new Stripe Connect account (Accounts v2, full dashboard)
+      const accountParams = {
+        dashboard: "full",
+        defaults: {
+          responsibilities: {
+            fees_collector: "stripe",
+            losses_collector: "stripe",
+          },
         },
+        configuration: {
+          merchant: {
+            capabilities: {
+              card_payments: { requested: true },
+              us_bank_account_ach_payments: { requested: true },
+              transfers: { requested: true },
+            },
+          },
+        },
+        identity: {
+          country: "US",
+        },
+        include: includeFields,
         metadata: {
           restaurant_id: restaurantId,
+          restaurant_name: restaurant.name,
+          requested_by_user_id: user.id,
         },
       };
 
-      if (accountType === 'express') {
-        accountParams.business_profile = {
-          name: restaurant.name,
-        };
-      }
-
-      account = await stripe.accounts.create(accountParams);
+      account = await stripe.v2.core.accounts.create(accountParams as any);
       console.log("[CREATE-CONNECTED-ACCOUNT] Stripe account created:", account.id);
+
+      const accountStatuses = deriveStatuses(account);
 
       // Store the connected account in database
       const { error: insertError } = await supabaseAdmin
@@ -185,11 +242,11 @@ serve(async (req) => {
         .insert({
           restaurant_id: restaurantId,
           stripe_account_id: account.id,
-          account_type: accountType,
-          charges_enabled: account.charges_enabled || false,
-          payouts_enabled: account.payouts_enabled || false,
-          details_submitted: account.details_submitted || false,
-          onboarding_complete: false,
+          account_type: "standard",
+          charges_enabled: accountStatuses.chargesEnabled,
+          payouts_enabled: accountStatuses.payoutsEnabled,
+          details_submitted: accountStatuses.detailsSubmitted,
+          onboarding_complete: accountStatuses.onboardingComplete,
         });
 
       if (insertError) {
@@ -201,12 +258,28 @@ serve(async (req) => {
 
     // Create account link for onboarding
     const origin = req.headers.get("origin") || "http://localhost:3000";
-    const accountLink = await stripe.accountLinks.create({
-      account: account.id,
-      refresh_url: `${origin}/invoices?refresh=true`,
-      return_url: `${origin}/invoices?success=true`,
-      type: "account_onboarding",
-    });
+    let accountLink;
+    try {
+      accountLink = await stripe.v2.core.accountLinks.create({
+        account: account.id,
+        use_case: {
+          type: "account_onboarding",
+          account_onboarding: {
+            configurations: ["merchant"],
+            refresh_url: `${origin}/invoices?refresh=true&account=${account.id}`,
+            return_url: `${origin}/invoices?success=true&account=${account.id}`,
+          },
+        },
+      });
+    } catch (linkError) {
+      console.warn("[CREATE-CONNECTED-ACCOUNT] v2 account link creation failed, falling back to v1:", linkError);
+      accountLink = await stripe.accountLinks.create({
+        account: account.id,
+        refresh_url: `${origin}/invoices?refresh=true&account=${account.id}`,
+        return_url: `${origin}/invoices?success=true&account=${account.id}`,
+        type: "account_onboarding",
+      });
+    }
 
     console.log("[CREATE-CONNECTED-ACCOUNT] Onboarding link created");
 

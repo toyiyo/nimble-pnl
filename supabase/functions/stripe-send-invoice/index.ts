@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@18.5.0";
+import Stripe from "https://esm.sh/stripe@20.1.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
@@ -59,6 +59,38 @@ serve(async (req) => {
       id: invoice.id,
       stripe_invoice_id: invoice.stripe_invoice_id,
       status: invoice.status
+    });
+
+    // Verify user has access
+    const { data: userRestaurant } = await supabaseAdmin
+      .from("user_restaurants")
+      .select("role")
+      .eq("restaurant_id", invoice.restaurant_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!userRestaurant || !["owner", "manager"].includes(userRestaurant.role)) {
+      throw new Error("Access denied");
+    }
+
+    // Get connected account
+    const { data: connectedAccount } = await supabaseAdmin
+      .from("stripe_connected_accounts")
+      .select("stripe_account_id")
+      .eq("restaurant_id", invoice.restaurant_id)
+      .single();
+
+    if (!connectedAccount) {
+      throw new Error("Restaurant Stripe Connect account not found");
+    }
+
+    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+    if (!stripeKey) {
+      throw new Error("Stripe secret key not configured");
+    }
+
+    const stripe = new Stripe(stripeKey, { 
+      apiVersion: "2024-12-18.acacia" as any
     });
 
     if (!invoice.stripe_invoice_id) {
@@ -129,38 +161,6 @@ serve(async (req) => {
     if (invoice.status !== 'draft') {
       throw new Error("Only draft invoices can be sent");
     }
-
-    // Verify user has access
-    const { data: userRestaurant } = await supabaseAdmin
-      .from("user_restaurants")
-      .select("role")
-      .eq("restaurant_id", invoice.restaurant_id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (!userRestaurant || !["owner", "manager"].includes(userRestaurant.role)) {
-      throw new Error("Access denied");
-    }
-
-    // Get connected account
-    const { data: connectedAccount } = await supabaseAdmin
-      .from("stripe_connected_accounts")
-      .select("stripe_account_id")
-      .eq("restaurant_id", invoice.restaurant_id)
-      .single();
-
-    if (!connectedAccount) {
-      throw new Error("Restaurant Stripe Connect account not found");
-    }
-
-    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    if (!stripeKey) {
-      throw new Error("Stripe secret key not configured");
-    }
-
-    const stripe = new Stripe(stripeKey, { 
-      apiVersion: "2025-08-27.basil" as any
-    });
 
     // Verify the invoice exists in Stripe
     let stripeInvoiceCheck;

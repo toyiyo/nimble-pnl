@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@18.5.0";
+import Stripe from "https://esm.sh/stripe@20.1.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
@@ -10,7 +10,7 @@ const corsHeaders = {
 interface LineItem {
   description: string;
   quantity: number;
-  unit_amount: number;
+  unit_amount: number; // expected in cents from the client
   tax_behavior?: 'inclusive' | 'exclusive' | 'unspecified';
   tax_rate?: number;
 }
@@ -104,7 +104,7 @@ serve(async (req) => {
     }
 
     const stripe = new Stripe(stripeKey, {
-      apiVersion: "2025-08-27.basil" as any
+      apiVersion: "2024-12-18.acacia" as any
     });
 
     // Get customer with Stripe ID
@@ -171,38 +171,46 @@ serve(async (req) => {
       customer.stripe_customer_id = stripeCustomer.id;
     }
 
-    // Calculate totals
-    let subtotal = 0;
-    let tax = 0;
+    // Normalize and calculate totals in cents
+    let subtotalCents = 0;
+    let taxCents = 0;
 
-    // Calculate totals first
-    for (const item of lineItems) {
-      const itemAmount = Math.round(item.quantity * item.unit_amount);
-      subtotal += itemAmount;
+    const normalizedLineItems = lineItems.map((item) => {
+      const unitAmountCents = Math.max(0, Math.round(item.unit_amount)); // already cents from client
+      const lineTotalCents = Math.round(unitAmountCents * item.quantity);
 
-      // Calculate tax if provided
+      subtotalCents += lineTotalCents;
+
       if (item.tax_rate) {
-        tax += Math.round(itemAmount * item.tax_rate);
+        taxCents += Math.round(lineTotalCents * item.tax_rate);
       }
-    }
+
+      return {
+        description: item.description,
+        quantity: item.quantity,
+        unitAmountCents,
+        lineTotalCents,
+        tax_behavior: item.tax_behavior || "unspecified",
+        tax_rate: item.tax_rate ?? null,
+      };
+    });
 
     // Add processing fee line item if passFeesToCustomer is enabled
-    let processingFeeItem = null;
     if (passFeesToCustomer) {
       // Estimate Stripe processing fee: 2.9% + $0.30 for card payments
-      const estimatedFee = Math.round(subtotal * 0.029) + 30; // in cents
-      processingFeeItem = {
+      const estimatedFeeCents = Math.round(subtotalCents * 0.029) + 30;
+      subtotalCents += estimatedFeeCents;
+      normalizedLineItems.push({
         description: "Processing Fee",
         quantity: 1,
-        unit_amount: estimatedFee / 100, // Convert to dollars for display
-        amount: estimatedFee,
-        tax_behavior: "unspecified" as const,
+        unitAmountCents: estimatedFeeCents,
+        lineTotalCents: estimatedFeeCents,
+        tax_behavior: "unspecified",
         tax_rate: null,
-      };
-      subtotal += estimatedFee; // Add to subtotal
+      });
     }
 
-    const total = subtotal + tax;
+    const totalCents = subtotalCents + taxCents;
 
     // Create invoice in Stripe (empty first)
     const stripeInvoice = await stripe.invoices.create(
@@ -231,20 +239,16 @@ serve(async (req) => {
 
     // Now add invoice items to the specific invoice
     const stripeLineItems = [];
-    const allLineItems = processingFeeItem ? [...lineItems, processingFeeItem] : lineItems;
-    
-    for (const item of allLineItems) {
-      const itemAmount = Math.round(item.quantity * item.unit_amount * 100); // Convert dollars to cents
-
+    for (const item of normalizedLineItems) {
       const invoiceItem = await stripe.invoiceItems.create(
         {
           customer: customer.stripe_customer_id,
           invoice: stripeInvoice.id, // Attach to specific invoice
           description: item.description,
           quantity: item.quantity,
-          unit_amount_decimal: itemAmount.toString(),
+          unit_amount: item.unitAmountCents,
           currency: "usd",
-          tax_behavior: item.tax_behavior || "unspecified",
+          tax_behavior: item.tax_behavior,
         },
         {
           stripeAccount: connectedAccount.stripe_account_id,
@@ -255,10 +259,10 @@ serve(async (req) => {
         stripe_invoice_item_id: invoiceItem.id,
         description: item.description,
         quantity: item.quantity,
-        unit_amount: itemAmount, // Store in cents
-        amount: itemAmount,
-        tax_behavior: item.tax_behavior || "unspecified",
-        tax_rate: item.tax_rate || null,
+        unit_amount: item.unitAmountCents, // cents per unit
+        amount: item.lineTotalCents, // total for the line in cents
+        tax_behavior: item.tax_behavior,
+        tax_rate: item.tax_rate,
       });
     }
 
@@ -283,12 +287,12 @@ serve(async (req) => {
         invoice_number: updatedInvoice.number || null,
         status: "draft",
         currency: "usd",
-        subtotal: updatedInvoice.subtotal || subtotal,
-        tax: updatedInvoice.tax || tax,
-        total: updatedInvoice.total || total,
-        amount_due: updatedInvoice.amount_due || total,
+        subtotal: updatedInvoice.subtotal ?? subtotalCents,
+        tax: updatedInvoice.tax ?? taxCents,
+        total: updatedInvoice.total ?? totalCents,
+        amount_due: updatedInvoice.amount_due ?? totalCents,
         amount_paid: updatedInvoice.amount_paid || 0,
-        amount_remaining: updatedInvoice.amount_remaining || total,
+        amount_remaining: updatedInvoice.amount_remaining ?? totalCents,
         due_date: dueDate || null,
         invoice_date: new Date().toISOString().split('T')[0],
         description: description || null,
@@ -327,7 +331,7 @@ serve(async (req) => {
         invoiceId: invoice.id,
         stripeInvoiceId: stripeInvoice.id,
         status: "draft",
-        total,
+        total: totalCents,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

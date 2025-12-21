@@ -35,7 +35,7 @@ serve(async (req) => {
     const { data: existingEvent } = await supabaseAdmin
       .from("stripe_events")
       .select("id")
-      .eq("event_id", event.id)
+      .eq("stripe_event_id", event.id)
       .maybeSingle();
 
     if (existingEvent) {
@@ -50,7 +50,7 @@ serve(async (req) => {
     await supabaseAdmin
       .from("stripe_events")
       .insert({
-        event_id: event.id,
+        stripe_event_id: event.id,
         event_type: event.type,
         processed_at: new Date().toISOString(),
       });

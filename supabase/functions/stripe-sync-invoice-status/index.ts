@@ -95,13 +95,40 @@ serve(async (req) => {
     console.log("[SYNC-INVOICE-STATUS] Fetching invoice from Stripe:", invoice.stripe_invoice_id);
     const stripeInvoice = await stripe.invoices.retrieve(
       invoice.stripe_invoice_id,
-      {},
+      {
+        expand: ['payment_intent', 'payment_intent.latest_charge', 'payment_intent.latest_charge.balance_transaction']
+      },
       {
         stripeAccount: connectedAccount.stripe_account_id,
       }
     );
 
     console.log("[SYNC-INVOICE-STATUS] Stripe invoice status:", stripeInvoice.status);
+
+    // Extract fee information from Stripe
+    let stripeFeeAmount = 0;
+    let stripeFeeDescription = null;
+    let applicationFeeAmount = 0;
+
+    if (stripeInvoice.payment_intent && typeof stripeInvoice.payment_intent !== 'string') {
+      const paymentIntent = stripeInvoice.payment_intent;
+      
+      // Get application fee if it exists
+      if (paymentIntent.application_fee_amount) {
+        applicationFeeAmount = paymentIntent.application_fee_amount;
+      }
+
+      // Get Stripe fee from the latest charge's balance transaction
+      if (paymentIntent.latest_charge && typeof paymentIntent.latest_charge !== 'string') {
+        const charge = paymentIntent.latest_charge;
+        if (charge.balance_transaction && typeof charge.balance_transaction !== 'string') {
+          const balanceTx = charge.balance_transaction;
+          // Stripe fee is the difference between the charge amount and the net amount
+          stripeFeeAmount = balanceTx.fee;
+          stripeFeeDescription = `Stripe processing fee (${balanceTx.fee_details?.map(d => d.description).join(', ') || 'Standard processing'})`;
+        }
+      }
+    }
 
     // Map Stripe status to our status
     let status: string;
@@ -134,6 +161,9 @@ serve(async (req) => {
       amount_paid: stripeInvoice.amount_paid || 0,
       amount_remaining: stripeInvoice.amount_remaining || 0,
       amount_due: stripeInvoice.amount_due || 0,
+      stripe_fee_amount: stripeFeeAmount,
+      stripe_fee_description: stripeFeeDescription,
+      application_fee_amount: applicationFeeAmount,
       updated_by: user.id,
     };
 
@@ -163,6 +193,9 @@ serve(async (req) => {
         amount_remaining: updateData.amount_remaining,
         hosted_invoice_url: updateData.hosted_invoice_url,
         invoice_pdf_url: updateData.invoice_pdf_url,
+        stripe_fee_amount: updateData.stripe_fee_amount,
+        stripe_fee_description: updateData.stripe_fee_description,
+        application_fee_amount: updateData.application_fee_amount,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

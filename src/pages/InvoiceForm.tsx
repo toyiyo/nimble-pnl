@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FileText, Plus, Trash2, ArrowLeft, AlertCircle, CreditCard } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -33,6 +34,7 @@ export default function InvoiceForm() {
   const [description, setDescription] = useState("");
   const [footer, setFooter] = useState("");
   const [memo, setMemo] = useState("");
+  const [passFeesToCustomer, setPassFeesToCustomer] = useState(false);
   const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([
     { description: "", quantity: 1, unit_amount: 0 },
   ]);
@@ -149,6 +151,7 @@ export default function InvoiceForm() {
       description: description || undefined,
       footer: footer || undefined,
       memo: memo || undefined,
+      passFeesToCustomer,
     });
 
     // Navigation will happen in useEffect when createdInvoice is available
@@ -324,6 +327,20 @@ export default function InvoiceForm() {
                 placeholder="Internal notes (not visible to customer)"
                 rows={2}
               />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="passFees"
+                checked={passFeesToCustomer}
+                onCheckedChange={(checked) => setPassFeesToCustomer(checked as boolean)}
+              />
+              <Label htmlFor="passFees" className="text-sm">
+                Pass Stripe processing fees to customer
+                <span className="text-muted-foreground block text-xs">
+                  Customer will pay an additional ~2.9% + $0.30 for processing fees
+                </span>
+              </Label>
             </div>
           </CardContent>
         </Card>

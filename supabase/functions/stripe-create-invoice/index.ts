@@ -49,6 +49,7 @@ serve(async (req) => {
       description,
       footer,
       memo,
+      passFeesToCustomer,
     } = await req.json() as {
       restaurantId: string;
       customerId: string;
@@ -57,6 +58,7 @@ serve(async (req) => {
       description?: string;
       footer?: string;
       memo?: string;
+      passFeesToCustomer?: boolean;
     };
     
     if (!restaurantId || !customerId || !lineItems || lineItems.length === 0) {
@@ -274,6 +276,7 @@ serve(async (req) => {
         description: description || null,
         footer: footer || null,
         memo: memo || null,
+        pass_fees_to_customer: passFeesToCustomer || false,
         created_by: user.id,
         updated_by: user.id,
       })

@@ -37,6 +37,10 @@ export interface Invoice {
   paid_at: string | null;
   hosted_invoice_url: string | null;
   invoice_pdf_url: string | null;
+  stripe_fee_amount: number;
+  stripe_fee_description: string | null;
+  application_fee_amount: number;
+  pass_fees_to_customer: boolean;
   description: string | null;
   footer: string | null;
   memo: string | null;
@@ -56,6 +60,7 @@ export interface InvoiceFormData {
   description?: string;
   footer?: string;
   memo?: string;
+  passFeesToCustomer?: boolean;
 }
 
 export const useInvoices = (restaurantId: string | null) => {

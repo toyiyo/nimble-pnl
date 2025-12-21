@@ -78,6 +78,12 @@ CREATE TABLE IF NOT EXISTS public.invoices (
   hosted_invoice_url TEXT,
   invoice_pdf_url TEXT,
   
+  -- Stripe fees and charges (in cents)
+  stripe_fee_amount INTEGER DEFAULT 0,
+  stripe_fee_description TEXT,
+  application_fee_amount INTEGER DEFAULT 0,
+  pass_fees_to_customer BOOLEAN NOT NULL DEFAULT false,
+  
   -- Metadata
   description TEXT,
   footer TEXT,

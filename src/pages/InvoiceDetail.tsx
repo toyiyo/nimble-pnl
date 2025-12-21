@@ -335,6 +335,20 @@ export default function InvoiceDetail() {
                 <span>Total</span>
                 <span>{formatCurrency(invoice.total / 100, invoice.currency)}</span>
               </div>
+              {invoice.stripe_fee_amount > 0 && (
+                <div className="flex justify-between text-muted-foreground text-sm">
+                  <span title={invoice.stripe_fee_description || 'Stripe processing fee'}>
+                    Processing Fee
+                  </span>
+                  <span>{formatCurrency(invoice.stripe_fee_amount / 100, invoice.currency)}</span>
+                </div>
+              )}
+              {invoice.application_fee_amount > 0 && (
+                <div className="flex justify-between text-muted-foreground text-sm">
+                  <span>Application Fee</span>
+                  <span>{formatCurrency(invoice.application_fee_amount / 100, invoice.currency)}</span>
+                </div>
+              )}
               {invoice.amount_paid > 0 && (
                 <div className="flex justify-between text-green-600">
                   <span>Paid</span>

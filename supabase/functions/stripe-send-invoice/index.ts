@@ -55,6 +55,77 @@ serve(async (req) => {
       throw new Error("Invoice not found");
     }
 
+    console.log("[SEND-INVOICE] Invoice data:", {
+      id: invoice.id,
+      stripe_invoice_id: invoice.stripe_invoice_id,
+      status: invoice.status
+    });
+
+    if (!invoice.stripe_invoice_id) {
+      console.log("[SEND-INVOICE] No Stripe invoice ID found, attempting to recreate invoice in Stripe");
+      
+      // Recreate the invoice in Stripe
+      const stripeInvoice = await stripe.invoices.create(
+        {
+          customer: invoice.customers.stripe_customer_id,
+          auto_advance: false,
+          collection_method: "send_invoice",
+          days_until_due: invoice.due_date ? Math.max(1, Math.ceil((new Date(invoice.due_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 30,
+          description: invoice.description || undefined,
+          footer: invoice.footer || undefined,
+          metadata: {
+            restaurant_id: invoice.restaurant_id,
+            customer_id: invoice.customer_id,
+            memo: invoice.memo || "",
+          },
+          payment_settings: {
+            payment_method_types: ["card", "us_bank_account"],
+          },
+        },
+        {
+          stripeAccount: connectedAccount.stripe_account_id,
+        }
+      );
+
+      console.log("[SEND-INVOICE] Recreated Stripe invoice:", stripeInvoice.id);
+
+      // Update the invoice in our database with the new Stripe ID
+      await supabaseAdmin
+        .from("invoices")
+        .update({
+          stripe_invoice_id: stripeInvoice.id,
+          updated_by: user.id,
+        })
+        .eq("id", invoiceId);
+
+      // Add line items to the recreated invoice
+      const { data: lineItems } = await supabaseAdmin
+        .from("invoice_line_items")
+        .select("*")
+        .eq("invoice_id", invoiceId);
+
+      if (lineItems && lineItems.length > 0) {
+        for (const item of lineItems) {
+          await stripe.invoiceItems.create(
+            {
+              customer: invoice.customers.stripe_customer_id,
+              invoice: stripeInvoice.id,
+              amount: item.amount,
+              currency: "usd",
+              description: item.description,
+              quantity: item.quantity,
+            },
+            {
+              stripeAccount: connectedAccount.stripe_account_id,
+            }
+          );
+        }
+      }
+
+      // Use the newly created invoice
+      invoice.stripe_invoice_id = stripeInvoice.id;
+    }
+
     if (invoice.status !== 'draft') {
       throw new Error("Only draft invoices can be sent");
     }
@@ -91,23 +162,83 @@ serve(async (req) => {
       apiVersion: "2025-08-27.basil" as any
     });
 
+    // Verify the invoice exists in Stripe
+    let stripeInvoiceCheck;
+    try {
+      stripeInvoiceCheck = await stripe.invoices.retrieve(
+        invoice.stripe_invoice_id,
+        {},
+        {
+          stripeAccount: connectedAccount.stripe_account_id,
+        }
+      );
+      console.log("[SEND-INVOICE] Stripe invoice verified:", stripeInvoiceCheck.id, "status:", stripeInvoiceCheck.status);
+    } catch (stripeError) {
+      console.error("[SEND-INVOICE] Stripe invoice not found:", stripeError);
+      throw new Error(`Invoice not found in Stripe: ${invoice.stripe_invoice_id}`);
+    }
+
+    // Check if invoice is already finalized
+    if (stripeInvoiceCheck.status === 'open') {
+      console.log("[SEND-INVOICE] Invoice is already open (finalized and sent)");
+      // Update our database to match Stripe status
+      await supabaseAdmin
+        .from("invoices")
+        .update({
+          status: "open",
+          invoice_number: stripeInvoiceCheck.number,
+          hosted_invoice_url: stripeInvoiceCheck.hosted_invoice_url,
+          invoice_pdf_url: stripeInvoiceCheck.invoice_pdf,
+          updated_by: user.id,
+        })
+        .eq("id", invoiceId);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          status: "open",
+          hostedInvoiceUrl: stripeInvoiceCheck.hosted_invoice_url,
+          invoicePdfUrl: stripeInvoiceCheck.invoice_pdf,
+          message: "Invoice was already sent",
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        }
+      );
+    }
+
     // Finalize the invoice (makes it immutable and ready to send)
-    const finalizedInvoice = await stripe.invoices.finalizeInvoice(
-      invoice.stripe_invoice_id,
-      {},
-      {
-        stripeAccount: connectedAccount.stripe_account_id,
-      }
-    );
+    let finalizedInvoice;
+    if (stripeInvoiceCheck.status === 'draft') {
+      console.log("[SEND-INVOICE] Finalizing draft invoice");
+      finalizedInvoice = await stripe.invoices.finalizeInvoice(
+        invoice.stripe_invoice_id,
+        {},
+        {
+          stripeAccount: connectedAccount.stripe_account_id,
+        }
+      );
+    } else {
+      console.log("[SEND-INVOICE] Invoice already finalized, using existing data");
+      finalizedInvoice = stripeInvoiceCheck;
+    }
 
     // Send the invoice via email
-    const sentInvoice = await stripe.invoices.sendInvoice(
-      invoice.stripe_invoice_id,
-      {},
-      {
-        stripeAccount: connectedAccount.stripe_account_id,
-      }
-    );
+    let sentInvoice;
+    if (finalizedInvoice.status === 'open') {
+      console.log("[SEND-INVOICE] Invoice already sent");
+      sentInvoice = finalizedInvoice;
+    } else {
+      console.log("[SEND-INVOICE] Sending finalized invoice");
+      sentInvoice = await stripe.invoices.sendInvoice(
+        invoice.stripe_invoice_id,
+        {},
+        {
+          stripeAccount: connectedAccount.stripe_account_id,
+        }
+      );
+    }
 
     console.log("[SEND-INVOICE] Invoice sent:", sentInvoice.id);
 

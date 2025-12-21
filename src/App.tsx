@@ -54,6 +54,7 @@ import EmployeeTips from "./pages/EmployeeTips";
 import Customers from "./pages/Customers";
 import Invoices from "./pages/Invoices";
 import InvoiceForm from "./pages/InvoiceForm";
+import InvoiceDetail from "./pages/InvoiceDetail";
 import PayrollCalculationsHelp from "./pages/Help/PayrollCalculations";
 
 const queryClient = new QueryClient();
@@ -175,6 +176,7 @@ const App = () => (
           <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
           <Route path="/invoices/new" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
+          <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetail /></ProtectedRoute>} />
           <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />
           <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
           <Route path="/financial-intelligence" element={<ProtectedRoute><FinancialIntelligence /></ProtectedRoute>} />

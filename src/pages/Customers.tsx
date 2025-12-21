@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useCustomers } from "@/hooks/useCustomers";
+import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, User, Mail, Phone, MapPin, Edit, Trash2, FileText } from "lucide-react";
+import { Plus, Search, User, Mail, Phone, MapPin, Edit, Trash2, FileText, CreditCard } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +23,8 @@ import { useNavigate } from "react-router-dom";
 
 export default function Customers() {
   const { selectedRestaurant } = useRestaurantContext();
-  const { customers, loading, deleteCustomer } = useCustomers(selectedRestaurant);
+  const { customers, loading, deleteCustomer } = useCustomers(selectedRestaurant?.restaurant_id || null);
+  const { isReadyForInvoicing, createAccount, isCreatingAccount } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
@@ -69,7 +72,7 @@ export default function Customers() {
                 <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                   Customers
                 </CardTitle>
-                <CardDescription>Manage your customer directory</CardDescription>
+                <CardDescription>Manage your customer directory and create invoices</CardDescription>
               </div>
             </div>
             <Button onClick={() => { setEditingCustomer(null); setIsFormOpen(true); }}>
@@ -79,6 +82,27 @@ export default function Customers() {
           </div>
         </CardHeader>
       </Card>
+
+      {/* Stripe Connect Setup Banner */}
+      {filteredCustomers.length > 0 && !isReadyForInvoicing && (
+        <Alert>
+          <CreditCard className="h-4 w-4" />
+          <AlertTitle>Enable Invoice Payments</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>
+              Set up Stripe Connect to create and send invoices with payment collection.
+              Your customers can pay by credit card or US bank account (ACH).
+            </p>
+            <Button 
+              onClick={() => createAccount('express')} 
+              disabled={isCreatingAccount}
+              size="sm"
+            >
+              {isCreatingAccount ? "Setting up..." : "Set up Stripe Connect"}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Search */}
       <Card>
@@ -102,7 +126,7 @@ export default function Customers() {
             <User className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-2">No customers found</h3>
             <p className="text-muted-foreground mb-4">
-              {searchTerm ? "Try a different search term" : "Get started by adding your first customer"}
+              {searchTerm ? "Try a different search term" : "Get started by adding your first customer. Once added, you can create and send invoices with payment collection."}
             </p>
             {!searchTerm && (
               <Button onClick={() => setIsFormOpen(true)}>

@@ -80,23 +80,7 @@ serve(async (req) => {
       throw new Error("Access denied");
     }
 
-    // Get customer with Stripe ID
-    const { data: customer, error: customerError } = await supabaseAdmin
-      .from("customers")
-      .select("stripe_customer_id")
-      .eq("id", customerId)
-      .eq("restaurant_id", restaurantId)
-      .single();
-
-    if (customerError || !customer) {
-      throw new Error("Customer not found");
-    }
-
-    if (!customer.stripe_customer_id) {
-      throw new Error("Customer must be synced with Stripe first");
-    }
-
-    // Get connected account
+    // Get connected account first (needed for customer syncing)
     const { data: connectedAccount } = await supabaseAdmin
       .from("stripe_connected_accounts")
       .select("stripe_account_id, charges_enabled")
@@ -111,31 +95,134 @@ serve(async (req) => {
       throw new Error("Stripe Connect account must complete onboarding before creating invoices");
     }
 
+    // Initialize Stripe client
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) {
       throw new Error("Stripe secret key not configured");
     }
 
-    const stripe = new Stripe(stripeKey, { 
+    const stripe = new Stripe(stripeKey, {
       apiVersion: "2025-08-27.basil" as any
     });
+
+    // Get customer with Stripe ID
+    const { data: customer, error: customerError } = await supabaseAdmin
+      .from("customers")
+      .select("stripe_customer_id")
+      .eq("id", customerId)
+      .eq("restaurant_id", restaurantId)
+      .single();
+
+    if (customerError || !customer) {
+      throw new Error("Customer not found");
+    }
+
+    if (!customer.stripe_customer_id) {
+      // Auto-sync customer with Stripe
+      console.log("[CREATE-INVOICE] Customer not synced with Stripe, syncing now...");
+
+      // Get full customer details for Stripe customer creation
+      const { data: fullCustomer, error: fullCustomerError } = await supabaseAdmin
+        .from("customers")
+        .select("*")
+        .eq("id", customerId)
+        .eq("restaurant_id", restaurantId)
+        .single();
+
+      if (fullCustomerError || !fullCustomer) {
+        throw new Error("Failed to fetch customer details for Stripe sync");
+      }
+
+      // Create Stripe customer on behalf of connected account
+      const stripeCustomer = await stripe.customers.create(
+        {
+          name: fullCustomer.name,
+          email: fullCustomer.email || undefined,
+          phone: fullCustomer.phone || undefined,
+          address: fullCustomer.billing_address_line1 ? {
+            line1: fullCustomer.billing_address_line1,
+            line2: fullCustomer.billing_address_line2 || undefined,
+            city: fullCustomer.billing_address_city || undefined,
+            state: fullCustomer.billing_address_state || undefined,
+            postal_code: fullCustomer.billing_address_postal_code || undefined,
+            country: fullCustomer.billing_address_country || "US",
+          } : undefined,
+          metadata: {
+            customer_id: customerId,
+            restaurant_id: restaurantId,
+          },
+        },
+        {
+          stripeAccount: connectedAccount.stripe_account_id,
+        }
+      );
+
+      console.log("[CREATE-INVOICE] Customer synced with Stripe:", stripeCustomer.id);
+
+      // Update customer record with Stripe ID
+      await supabaseAdmin
+        .from("customers")
+        .update({ stripe_customer_id: stripeCustomer.id })
+        .eq("id", customerId);
+
+      // Update the customer object for invoice creation
+      customer.stripe_customer_id = stripeCustomer.id;
+    }
 
     // Calculate totals
     let subtotal = 0;
     let tax = 0;
 
-    // Create invoice items in Stripe
-    const stripeLineItems = [];
+    // Calculate totals first
     for (const item of lineItems) {
       const itemAmount = Math.round(item.quantity * item.unit_amount);
       subtotal += itemAmount;
 
+      // Calculate tax if provided
+      if (item.tax_rate) {
+        tax += Math.round(itemAmount * item.tax_rate);
+      }
+    }
+
+    const total = subtotal + tax;
+
+    // Create invoice in Stripe (empty first)
+    const stripeInvoice = await stripe.invoices.create(
+      {
+        customer: customer.stripe_customer_id,
+        auto_advance: false, // Don't automatically finalize (keep as draft)
+        collection_method: "send_invoice",
+        days_until_due: dueDate ? Math.max(1, Math.ceil((new Date(dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 30,
+        description: description || undefined,
+        footer: footer || undefined,
+        metadata: {
+          restaurant_id: restaurantId,
+          customer_id: customerId,
+          memo: memo || "",
+        },
+        payment_settings: {
+          payment_method_types: ["card", "us_bank_account"], // Enable card + ACH
+        },
+      },
+      {
+        stripeAccount: connectedAccount.stripe_account_id,
+      }
+    );
+
+    console.log("[CREATE-INVOICE] Stripe invoice created:", stripeInvoice.id);
+
+    // Now add invoice items to the specific invoice
+    const stripeLineItems = [];
+    for (const item of lineItems) {
+      const itemAmount = Math.round(item.quantity * item.unit_amount);
+
       const invoiceItem = await stripe.invoiceItems.create(
         {
           customer: customer.stripe_customer_id,
+          invoice: stripeInvoice.id, // Attach to specific invoice
           description: item.description,
           quantity: item.quantity,
-          unit_amount: item.unit_amount,
+          unit_amount_decimal: item.unit_amount.toString(),
           currency: "usd",
           tax_behavior: item.tax_behavior || "unspecified",
         },
@@ -153,43 +240,18 @@ serve(async (req) => {
         tax_behavior: item.tax_behavior || "unspecified",
         tax_rate: item.tax_rate || null,
       });
-
-      // Calculate tax if provided
-      if (item.tax_rate) {
-        tax += Math.round(itemAmount * item.tax_rate);
-      }
     }
 
-    const total = subtotal + tax;
-
-    // Create invoice in Stripe
-    const stripeInvoice = await stripe.invoices.create(
-      {
-        customer: customer.stripe_customer_id,
-        auto_advance: false, // Don't automatically finalize (keep as draft)
-        collection_method: "send_invoice",
-        days_until_due: dueDate ? Math.ceil((new Date(dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 30,
-        description: description || undefined,
-        footer: footer || undefined,
-        metadata: {
-          restaurant_id: restaurantId,
-          customer_id: customerId,
-          memo: memo || "",
-        },
-        payment_settings: {
-          payment_method_types: ["card", "us_bank_account"], // Enable card + ACH
-        },
-        on_behalf_of: connectedAccount.stripe_account_id,
-        transfer_data: {
-          destination: connectedAccount.stripe_account_id,
-        },
-      },
+    // Retrieve the updated invoice with calculated totals
+    const updatedInvoice = await stripe.invoices.retrieve(
+      stripeInvoice.id,
+      {},
       {
         stripeAccount: connectedAccount.stripe_account_id,
       }
     );
 
-    console.log("[CREATE-INVOICE] Stripe invoice created:", stripeInvoice.id);
+    console.log("[CREATE-INVOICE] Invoice totals - subtotal:", updatedInvoice.subtotal, "tax:", updatedInvoice.tax, "total:", updatedInvoice.total);
 
     // Store invoice in database
     const { data: invoice, error: invoiceError } = await supabaseAdmin
@@ -198,15 +260,15 @@ serve(async (req) => {
         restaurant_id: restaurantId,
         customer_id: customerId,
         stripe_invoice_id: stripeInvoice.id,
-        invoice_number: stripeInvoice.number || null,
+        invoice_number: updatedInvoice.number || null,
         status: "draft",
         currency: "usd",
-        subtotal,
-        tax,
-        total,
-        amount_due: total,
-        amount_paid: 0,
-        amount_remaining: total,
+        subtotal: updatedInvoice.subtotal || subtotal,
+        tax: updatedInvoice.tax || tax,
+        total: updatedInvoice.total || total,
+        amount_due: updatedInvoice.amount_due || total,
+        amount_paid: updatedInvoice.amount_paid || 0,
+        amount_remaining: updatedInvoice.amount_remaining || total,
         due_date: dueDate || null,
         invoice_date: new Date().toISOString().split('T')[0],
         description: description || null,

@@ -23,7 +23,7 @@ interface CustomerFormDialogProps {
 
 export function CustomerFormDialog({ open, onOpenChange, customer }: CustomerFormDialogProps) {
   const { selectedRestaurant } = useRestaurantContext();
-  const { createCustomer, updateCustomer, isCreating, isUpdating } = useCustomers(selectedRestaurant);
+  const { createCustomer, updateCustomer, isCreating, isUpdating } = useCustomers(selectedRestaurant?.restaurant_id || null);
   
   const {
     register,

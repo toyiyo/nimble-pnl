@@ -156,12 +156,13 @@ export const useInvoices = (restaurantId: string | null) => {
 
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['invoices', restaurantId] });
       toast({
         title: "Invoice Created",
         description: "The invoice has been created successfully",
       });
+      return data; // Return the created invoice data
     },
     onError: (error) => {
       console.error('Error creating invoice:', error);
@@ -241,5 +242,6 @@ export const useInvoices = (restaurantId: string | null) => {
     isCreating: createInvoiceMutation.isPending,
     isSending: sendInvoiceMutation.isPending,
     isDeleting: deleteInvoiceMutation.isPending,
+    createdInvoice: createInvoiceMutation.data,
   };
 };

@@ -1,24 +1,60 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useInvoices, type InvoiceStatus } from "@/hooks/useInvoices";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
+import { useCustomers } from "@/hooks/useCustomers";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, FileText, AlertCircle, CheckCircle, Clock, XCircle, Ban } from "lucide-react";
+import { Plus, Search, FileText, AlertCircle, CheckCircle, Clock, XCircle, Ban, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { formatCurrency } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Invoices() {
   const { selectedRestaurant } = useRestaurantContext();
-  const { invoices, loading } = useInvoices(selectedRestaurant);
-  const { connectedAccount, isReadyForInvoicing, createAccount, isCreatingAccount } = useStripeConnect(selectedRestaurant);
+  const { invoices, loading } = useInvoices(selectedRestaurant?.restaurant_id || null);
+  const { connectedAccount, isReadyForInvoicing, createAccount, isCreatingAccount } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
+  const { customers } = useCustomers(selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Handle success/refresh messages from Stripe onboarding
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const refresh = searchParams.get('refresh');
+
+    if (success === 'true') {
+      toast({
+        title: "Stripe Setup Complete",
+        description: "Your Stripe Connect account has been successfully configured. You can now create and send invoices.",
+      });
+      // Force refetch of account status
+      queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id] });
+      // Remove the query parameter
+      searchParams.delete('success');
+      setSearchParams(searchParams);
+    }
+
+    if (refresh === 'true') {
+      toast({
+        title: "Setup Incomplete",
+        description: "Please complete your Stripe Connect onboarding to start creating invoices.",
+        variant: "destructive",
+      });
+      // Remove the query parameter
+      searchParams.delete('refresh');
+      setSearchParams(searchParams);
+    }
+  }, [searchParams, setSearchParams, toast]);
 
   const filteredInvoices = invoices.filter((invoice) => {
     const matchesSearch = 
@@ -51,6 +87,52 @@ export default function Invoices() {
       <div className="space-y-4">
         <Skeleton className="h-12 w-full" />
         <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  // Show initial setup message when no customers exist
+  if (customers.length === 0) {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <FileText className="h-6 w-6 text-primary" />
+              <div>
+                <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                  Invoices
+                </CardTitle>
+                <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+
+        <Alert>
+          <Users className="h-4 w-4" />
+          <AlertTitle>Get Started with Invoicing</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>
+              To create invoices, you first need to add customers to your directory.
+              Once you have customers, you can create professional invoices with payment collection.
+            </p>
+            <div className="flex gap-3">
+              <Button onClick={() => navigate('/customers')} className="flex-1">
+                <Users className="h-4 w-4 mr-2" />
+                Add Customers
+              </Button>
+              <Button 
+                onClick={() => createAccount('express')} 
+                disabled={isCreatingAccount}
+                variant="outline"
+                className="flex-1"
+              >
+                {isCreatingAccount ? "Setting up..." : "Set up Payments"}
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -101,7 +183,7 @@ export default function Invoices() {
   }
 
   // Show onboarding incomplete message
-  if (!isReadyForInvoicing) {
+  if (!isReadyForInvoicing && connectedAccount) {
     return (
       <div className="space-y-6">
         <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
@@ -121,9 +203,14 @@ export default function Invoices() {
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Complete Stripe Onboarding</AlertTitle>
-          <AlertDescription>
-            Your Stripe Connect account needs to complete onboarding before you can create invoices.
-            Please return to the Stripe onboarding flow to finish setup.
+          <AlertDescription className="space-y-3">
+            <p>
+              Your Stripe Connect account was created but onboarding wasn't completed.
+              Please finish the setup process to start creating invoices.
+            </p>
+            <Button onClick={() => createAccount('express')} disabled={isCreatingAccount}>
+              {isCreatingAccount ? "Loading..." : "Continue Onboarding"}
+            </Button>
           </AlertDescription>
         </Alert>
       </div>

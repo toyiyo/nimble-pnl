@@ -76,6 +76,8 @@ const navigationGroups = [
   {
     label: 'Accounting',
     items: [
+      { path: '/customers', label: 'Customers', icon: Users },
+      { path: '/invoices', label: 'Invoices', icon: FileText },
       { path: '/banking', label: 'Banks', icon: Wallet },
       { path: '/expenses', label: 'Expenses', icon: DollarSign },
       { path: '/financial-intelligence', label: 'Financial Intelligence', icon: TrendingUp },

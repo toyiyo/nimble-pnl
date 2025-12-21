@@ -79,18 +79,12 @@ export const useStripeConnect = (restaurantId: string | null) => {
 
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', restaurantId] });
-      
-      // Open onboarding URL if provided
-      if (data.onboardingUrl) {
-        (globalThis as typeof window).location.href = data.onboardingUrl;
-      } else {
-        toast({
-          title: "Account Created",
-          description: "Your Stripe Connect account has been created",
-        });
-      }
+      toast({
+        title: "Account Created",
+        description: "Stripe Connect account created. Continue onboarding below.",
+      });
     },
     onError: (error: unknown) => {
       let errorMessage = "An unexpected error occurred while creating your Stripe account";

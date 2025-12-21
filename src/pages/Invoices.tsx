@@ -4,6 +4,7 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useInvoices, type InvoiceStatus } from "@/hooks/useInvoices";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { useCustomers } from "@/hooks/useCustomers";
+import { StripeEmbeddedOnboarding } from "@/components/StripeEmbeddedOnboarding";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,20 +122,31 @@ export default function Invoices() {
               To create invoices, you first need to add customers to your directory.
               Once you have customers, you can create professional invoices with payment collection.
             </p>
-            <div className="flex gap-3">
+            <div className="flex gap-3 flex-col md:flex-row">
               <Button onClick={() => navigate('/customers')} className="flex-1">
                 <Users className="h-4 w-4 mr-2" />
                 Add Customers
               </Button>
-              <Button 
-                onClick={() => createAccount('express')} 
-                disabled={isCreatingAccount}
-                variant="outline"
-                className="flex-1"
-              >
-                {isCreatingAccount ? "Setting up..." : "Set up Payments"}
-              </Button>
+              {!connectedAccount && (
+                <Button 
+                  onClick={() => createAccount('express')} 
+                  disabled={isCreatingAccount}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  {isCreatingAccount ? "Setting up..." : "Set up Payments"}
+                </Button>
+              )}
             </div>
+            {connectedAccount && !isReadyForInvoicing && (
+              <StripeEmbeddedOnboarding
+                restaurantId={selectedRestaurant?.restaurant_id || null}
+                onCompleted={() => {
+                  queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id] });
+                  queryClient.invalidateQueries({ queryKey: ['invoices', selectedRestaurant?.restaurant_id] });
+                }}
+              />
+            )}
           </AlertDescription>
         </Alert>
       </div>
@@ -212,9 +224,13 @@ export default function Invoices() {
               Your Stripe Connect account was created but onboarding wasn't completed.
               Please finish the setup process to start creating invoices.
             </p>
-            <Button onClick={() => createAccount('express')} disabled={isCreatingAccount}>
-              {isCreatingAccount ? "Loading..." : "Continue Onboarding"}
-            </Button>
+            <StripeEmbeddedOnboarding
+              restaurantId={selectedRestaurant?.restaurant_id || null}
+              onCompleted={() => {
+                queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id] });
+                queryClient.invalidateQueries({ queryKey: ['invoices', selectedRestaurant?.restaurant_id] });
+              }}
+            />
           </AlertDescription>
         </Alert>
       </div>

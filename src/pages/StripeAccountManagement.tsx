@@ -19,11 +19,17 @@ import {
   Shield
 } from "lucide-react";
 import { StripeEmbeddedConnect } from "@/components/StripeEmbeddedConnect";
+import { Navigate } from "react-router-dom";
 
 export default function StripeAccountManagement() {
   const { selectedRestaurant } = useRestaurantContext();
   const { connectedAccount, isReadyForInvoicing, createAccount, isCreatingAccount } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
   const [activeTab, setActiveTab] = useState("setup");
+
+  // Only owners can access financial account management
+  if (selectedRestaurant?.role !== 'owner') {
+    return <Navigate to="/" replace />;
+  }
 
   // Show setup prompt if no account exists
   if (!connectedAccount) {

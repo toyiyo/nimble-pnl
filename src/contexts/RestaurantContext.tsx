@@ -80,7 +80,7 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
     }
   };
 
-  // Centralized logic: Allow creation if user has no restaurants (first-time) OR is an owner
+  // Centralized logic: First-time users and owners can create restaurants
   const canCreateRestaurant = canUserCreateRestaurant(restaurants);
 
   // Memoize context value to prevent unnecessary re-renders

@@ -138,8 +138,13 @@ export const useCreateShift = () => {
         } as Shift;
       }
     },
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurant_id] });
+    onSuccess: async (data, variables) => {
+      await queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === 'shifts' && query.queryKey[1] === data.restaurant_id,
+      });
+      await queryClient.refetchQueries({
+        predicate: (query) => query.queryKey[0] === 'shifts' && query.queryKey[1] === data.restaurant_id,
+      });
       
       const message = variables.is_recurring 
         ? 'Recurring shifts created successfully'
@@ -200,8 +205,13 @@ export const useUpdateShift = () => {
         recurrence_pattern: data.recurrence_pattern as unknown as RecurrencePattern | null,
       } as Shift;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurant_id] });
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === 'shifts' && query.queryKey[1] === data.restaurant_id,
+      });
+      await queryClient.refetchQueries({
+        predicate: (query) => query.queryKey[0] === 'shifts' && query.queryKey[1] === data.restaurant_id,
+      });
       toast({
         title: 'Shift updated',
         description: 'The shift has been updated.',
@@ -244,8 +254,13 @@ export const useDeleteShift = () => {
       if (error) throw error;
       return { id, restaurantId };
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === 'shifts' && query.queryKey[1] === data.restaurantId,
+      });
+      await queryClient.refetchQueries({
+        predicate: (query) => query.queryKey[0] === 'shifts' && query.queryKey[1] === data.restaurantId,
+      });
       toast({
         title: 'Shift deleted',
         description: 'The shift has been removed from the schedule.',

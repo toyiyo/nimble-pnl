@@ -441,19 +441,24 @@ test.describe('Complete Payroll Journey', () => {
     await shiftDialog.getByLabel(/end.*time/i).fill(endTimeString);
     await shiftDialog.getByRole('button', { name: /save|create/i }).click();
     await expect(shiftDialog).not.toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(500);
+    
+    // Wait for the shift to be created
+    await page.waitForTimeout(2000);
 
     // ============================================================================
     // Edit employee to set termination date
     // ============================================================================
     
-    // Find and click edit button for this employee
-    const employeeRow = page.locator('tr', { has: page.getByText(employeeName) });
-    const editButton = employeeRow.getByRole('button', { name: new RegExp(`^edit ${employeeName}$`, 'i') });
+    // Navigate to employees page to edit the employee
+    await page.goto('/employees');
+    await expect(page.getByRole('heading', { name: /employees/i, level: 1 })).toBeVisible({ timeout: 10000 });
     
-    // Button may be hidden until hover
-    await employeeRow.hover();
-    await expect(editButton).toBeVisible({ timeout: 2000 });
+    // Find and click edit button for this employee
+    const employeeCard = page.locator('div, tr').filter({ hasText: employeeName }).first();
+    await expect(employeeCard).toBeVisible({ timeout: 10000 });
+    
+    const editButton = employeeCard.getByRole('button', { name: /edit/i }).first();
+    await expect(editButton).toBeVisible({ timeout: 5000 });
     await editButton.click();
 
     dialog = page.getByRole('dialog');

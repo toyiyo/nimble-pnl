@@ -18,7 +18,7 @@ export default defineConfig({
   reporter: 'html',
   
   use: {
-    baseURL: 'http://localhost:4173', // Vite dev server (override port to avoid sandbox restrictions)
+    baseURL: 'http://localhost:8080', // Vite dev server (override port to avoid sandbox restrictions)
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

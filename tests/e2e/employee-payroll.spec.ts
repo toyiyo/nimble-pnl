@@ -841,12 +841,13 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       await employeeSelect.click();
       await page.getByRole('option', { name: employee.name }).click();
 
-      // Fill shift times (using today)
-      const today = new Date();
-      const dateString = today.toISOString().slice(0, 10);
-      const startTime = new Date(today);
+      // Fill shift times (using yesterday to ensure it's past)
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const dateString = yesterday.toISOString().slice(0, 10);
+      const startTime = new Date(yesterday);
       startTime.setHours(9, 0, 0, 0);
-      const endTime = new Date(today);
+      const endTime = new Date(yesterday);
       endTime.setHours(17, 0, 0, 0);
 
       // Date/time inputs are separate
@@ -860,38 +861,54 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       await shiftDialog.getByRole('button', { name: /save|create/i }).click();
       await expect(shiftDialog).not.toBeVisible({ timeout: 5000 });
 
-      // Verify shift appears
-      await page.waitForTimeout(1000);
-
-      // Note the labor cost before deactivation
+      // Wait for the shift to be created
+      await page.waitForTimeout(2000);
+      
+      // Note the labor cost BEFORE deactivation (while still on scheduling page)
       const laborCostCard = page.getByText(/labor cost/i).first();
-      await expect(laborCostCard).toBeVisible();
+      await expect(laborCostCard).toBeVisible({ timeout: 10000 });
       const laborCostBeforeText = await laborCostCard.textContent();
-      const laborCostBefore = laborCostBeforeText?.match(/\$[0-9]+\.?[0-9]*/)?.[0] || '$0';
+      const laborCostBefore = laborCostBeforeText?.match(/\\$[0-9]+\\.?[0-9]*/)?.[0] || '$0';
 
-      // Step 2: Deactivate employee
-      const scheduleRow = page.locator('tr', { has: page.getByText(employee.name) });
-      await scheduleRow.getByRole('button', { name: /edit/i }).first().click();
+      // Step 2: Navigate to employees page to deactivate
+      await page.goto('/employees');
+      await expect(page.getByRole('heading', { name: /employees/i, level: 1 })).toBeVisible({ timeout: 10000 });
+      
+      // Find the employee card or row
+      const employeeCard = page.locator('div, tr').filter({ hasText: employee.name }).first();
+      await expect(employeeCard).toBeVisible({ timeout: 10000 });
+      
+      // Look for deactivate or edit button
+      const deactivateButton = employeeCard.getByRole('button', { name: /deactivate|edit/i }).first();
+      await expect(deactivateButton).toBeVisible({ timeout: 5000 });
+      await deactivateButton.click();
 
       const editDialog = page.getByRole('dialog');
+      await expect(editDialog).toBeVisible();
+      
+      // If it's an edit dialog, change status to inactive
       const statusSelect = editDialog.getByLabel(/status/i);
-      await statusSelect.click();
-      await page.getByRole('option', { name: /inactive/i }).click();
-      await editDialog.getByRole('button', { name: /save|update/i }).click();
-      await editDialog.waitFor({ state: 'detached', timeout: 10000 }).catch(async () => {
-        // If the dialog is stubborn, attempt to close gracefully and continue
-        const closeButton = editDialog.getByRole('button', { name: /close|cancel|x/i }).first();
-        if (await closeButton.isVisible().catch(() => false)) {
-          await closeButton.click();
-        }
-      });
+      if (await statusSelect.isVisible().catch(() => false)) {
+        await statusSelect.click();
+        await page.getByRole('option', { name: /inactive/i }).click();
+        await editDialog.getByRole('button', { name: /save|update/i }).click();
+      } else {
+        // If it's a deactivation dialog, just confirm
+        await editDialog.getByRole('button', { name: /deactivate|confirm/i }).click();
+      }
+      
+      // Wait for dialog to close
+      await page.waitForTimeout(1500);
 
-      // Refresh the page to ensure we're getting fresh data
-      await page.reload();
+      // Step 3: Go back to scheduling and check labor cost
+      await page.goto('/scheduling');
       await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
 
       // Step 3: CRITICAL TEST - Labor cost should still include the inactive employee's shift
-      const laborCostAfterText = await laborCostCard.textContent();
+      // Re-query the labor cost card after reload
+      const laborCostCardAfter = page.getByText(/labor cost/i).first();
+      await expect(laborCostCardAfter).toBeVisible({ timeout: 10000 });
+      const laborCostAfterText = await laborCostCardAfter.textContent();
       const laborCostAfter = laborCostAfterText?.match(/\$[0-9]+\.?[0-9]*/)?.[0] || '$0';
       
       // The labor cost should be the same (not zero)

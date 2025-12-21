@@ -75,8 +75,13 @@ export const useCreateEmployee = () => {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['employees', data.restaurant_id] });
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === 'employees' && query.queryKey[1] === data.restaurant_id,
+      });
+      await queryClient.refetchQueries({
+        predicate: (query) => query.queryKey[0] === 'employees' && query.queryKey[1] === data.restaurant_id,
+      });
       toast({
         title: 'Employee created',
         description: `${data.name} has been added to the team.`,
@@ -108,8 +113,13 @@ export const useUpdateEmployee = () => {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['employees', data.restaurant_id] });
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === 'employees' && query.queryKey[1] === data.restaurant_id,
+      });
+      await queryClient.refetchQueries({
+        predicate: (query) => query.queryKey[0] === 'employees' && query.queryKey[1] === data.restaurant_id,
+      });
       toast({
         title: 'Employee updated',
         description: `${data.name}'s information has been updated.`,
@@ -139,8 +149,13 @@ export const useDeleteEmployee = () => {
       if (error) throw error;
       return { id, restaurantId };
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['employees', data.restaurantId] });
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === 'employees' && query.queryKey[1] === data.restaurantId,
+      });
+      await queryClient.refetchQueries({
+        predicate: (query) => query.queryKey[0] === 'employees' && query.queryKey[1] === data.restaurantId,
+      });
       toast({
         title: 'Employee deleted',
         description: 'The employee has been removed.',
@@ -183,9 +198,14 @@ export const useDeactivateEmployee = () => {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data, variables) => {
-      // Invalidate all employee queries for this restaurant
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    onSuccess: async (data, variables) => {
+      // Invalidate and refetch all employee queries for this restaurant
+      await queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === 'employees',
+      });
+      await queryClient.refetchQueries({
+        predicate: (query) => query.queryKey[0] === 'employees',
+      });
       toast({
         title: 'Employee deactivated',
         description: 'The employee has been deactivated and will no longer appear in active lists.',
@@ -227,9 +247,14 @@ export const useReactivateEmployee = () => {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data, variables) => {
-      // Invalidate all employee queries
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    onSuccess: async (data, variables) => {
+      // Invalidate and refetch all employee queries
+      await queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === 'employees',
+      });
+      await queryClient.refetchQueries({
+        predicate: (query) => query.queryKey[0] === 'employees',
+      });
       toast({
         title: 'Employee reactivated',
         description: 'The employee has been reactivated and can now log in, punch, and be scheduled.',

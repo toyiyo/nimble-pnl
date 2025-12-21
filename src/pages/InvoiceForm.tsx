@@ -27,7 +27,7 @@ export default function InvoiceForm() {
   const { selectedRestaurant } = useRestaurantContext();
   const { customers } = useCustomers(selectedRestaurant?.restaurant_id || null);
   const { createInvoice, isCreating, createdInvoice } = useInvoices(selectedRestaurant?.restaurant_id || null);
-  const { connectedAccount, isReadyForInvoicing, createAccount, isCreatingAccount } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
+  const { connectedAccount, isReadyForInvoicing, createAccount, isCreatingAccount, openDashboard, isOpeningDashboard } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
   
   const [customerId, setCustomerId] = useState(searchParams.get("customer") || "");
   const [dueDate, setDueDate] = useState("");
@@ -52,9 +52,9 @@ export default function InvoiceForm() {
       <div className="space-y-6">
         {/* Header */}
         <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+         <CardHeader>
+           <div className="flex items-center justify-between">
+             <div className="flex items-center gap-3">
                 <FileText className="h-6 w-6 text-primary" />
                 <div>
                   <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
@@ -67,6 +67,12 @@ export default function InvoiceForm() {
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back
               </Button>
+              {connectedAccount && (
+                <Button variant="secondary" onClick={() => openDashboard()} disabled={isOpeningDashboard}>
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  {isOpeningDashboard ? "Opening Dashboard..." : "Open Stripe Dashboard"}
+                </Button>
+              )}
             </div>
           </CardHeader>
         </Card>
@@ -94,6 +100,16 @@ export default function InvoiceForm() {
               >
                 View Invoices
               </Button>
+              {connectedAccount && (
+                <Button 
+                  variant="outline" 
+                  onClick={() => openDashboard()}
+                  disabled={isOpeningDashboard}
+                  className="flex-1"
+                >
+                  {isOpeningDashboard ? "Opening..." : "Open Stripe Dashboard"}
+                </Button>
+              )}
             </div>
           </AlertDescription>
         </Alert>

@@ -62,7 +62,7 @@ export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
     const currentTime = new Date(current.punch_time);
     
     // Look ahead for noise patterns
-    let noiseGroup: TimePunch[] = [current];
+    const noiseGroup: TimePunch[] = [current];
     let j = i + 1;
     
     // Collect punches within 60 seconds (potential noise)

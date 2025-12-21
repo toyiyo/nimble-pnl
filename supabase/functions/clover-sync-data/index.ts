@@ -218,13 +218,13 @@ Deno.serve(async (req) => {
     }
     console.log("Syncing Clover data from", startDate.toISOString(), "to", endDate.toISOString());
     let ordersSynced = 0;
-    let errors = [];
+    const errors = [];
     try {
       // Fetch orders with pagination
       let offset = 0;
       const limit = 100;
       let hasMore = true;
-      let maxIterations = 50; // Safety limit to prevent infinite loops
+      const maxIterations = 50; // Safety limit to prevent infinite loops
       let iterations = 0;
       while (hasMore && iterations < maxIterations) {
         iterations++;

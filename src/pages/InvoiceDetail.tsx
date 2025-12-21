@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useInvoices } from "@/hooks/useInvoices";
+import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,8 +39,9 @@ export default function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
-  const { useInvoice, sendInvoice, syncInvoiceStatus, isSending, isSyncingStatus } = useInvoices(selectedRestaurant?.restaurant_id || null);
+  const { useInvoice, sendInvoiceAsync, syncInvoiceStatusAsync, isSending, isSyncingStatus } = useInvoices(selectedRestaurant?.restaurant_id || null);
   const { data: invoice, isLoading, error } = useInvoice(id || null);
+  const { openDashboard, isOpeningDashboard } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
 
   if (isLoading) {
@@ -90,7 +92,7 @@ export default function InvoiceDetail() {
 
   const handleSendInvoice = async () => {
     try {
-      await sendInvoice(invoice.id);
+      await sendInvoiceAsync(invoice.id);
       toast({
         title: "Invoice Sent",
         description: "The invoice has been sent to the customer successfully.",
@@ -114,7 +116,7 @@ export default function InvoiceDetail() {
 
   const handleSyncStatus = async () => {
     try {
-      await syncInvoiceStatus(invoice.id);
+      await syncInvoiceStatusAsync(invoice.id);
     } catch (error) {
       console.error('Error syncing invoice status:', error);
     }
@@ -157,6 +159,17 @@ export default function InvoiceDetail() {
         </div>
 
         <div className="flex gap-2">
+          {openDashboard && (
+            <Button
+              variant="secondary"
+              onClick={() => openDashboard()}
+              disabled={isOpeningDashboard}
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              {isOpeningDashboard ? "Opening Dashboard..." : "Open Stripe Dashboard"}
+            </Button>
+          )}
+
           {invoice.status === 'draft' && (
             <Button
               onClick={handleSendInvoice}

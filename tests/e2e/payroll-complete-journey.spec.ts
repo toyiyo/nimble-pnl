@@ -422,7 +422,7 @@ test.describe('Complete Payroll Journey', () => {
 
     // Create a shift so the employee appears in the schedule table for editing
     await page.getByRole('button', { name: /create shift/i }).first().click();
-    let shiftDialog = page.getByRole('dialog');
+    const shiftDialog = page.getByRole('dialog');
     await expect(shiftDialog).toBeVisible();
     const employeeSelect = shiftDialog.getByLabel(/employee/i);
     await employeeSelect.click();

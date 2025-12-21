@@ -27,43 +27,47 @@ export default function Invoices() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Handle success/refresh messages from Stripe onboarding
   useEffect(() => {
-    const success = searchParams.get('success');
-    const refresh = searchParams.get('refresh');
+    const success = searchParams.get('success') === 'true';
+    const refresh = searchParams.get('refresh') === 'true';
 
-    if (success === 'true') {
+    if (!success && !refresh) return;
+
+    if (success) {
       toast({
         title: "Stripe Setup Complete",
         description: "Your Stripe Connect account has been successfully configured. You can now create and send invoices.",
       });
-      // Force refetch of account status
       queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id] });
-      // Remove the query parameter
       searchParams.delete('success');
-      setSearchParams(searchParams);
     }
 
-    if (refresh === 'true') {
+    if (refresh) {
       toast({
         title: "Setup Incomplete",
         description: "Please complete your Stripe Connect onboarding to start creating invoices.",
         variant: "destructive",
       });
-      // Remove the query parameter
       searchParams.delete('refresh');
-      setSearchParams(searchParams);
     }
-  }, [searchParams, setSearchParams, toast]);
 
+    setSearchParams(searchParams);
+  }, [queryClient, searchParams, selectedRestaurant?.restaurant_id, setSearchParams, toast]);
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
   const filteredInvoices = invoices.filter((invoice) => {
-    const matchesSearch = 
-      invoice.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.customers?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.customers?.email?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+    const name = invoice.customers?.name?.toLowerCase() || "";
+    const email = invoice.customers?.email?.toLowerCase() || "";
+    const number = invoice.invoice_number?.toLowerCase() || "";
+
+    const matchesSearch =
+      normalizedSearch === "" ||
+      number.includes(normalizedSearch) ||
+      name.includes(normalizedSearch) ||
+      email.includes(normalizedSearch);
+
     const matchesStatus = statusFilter === 'all' || invoice.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 

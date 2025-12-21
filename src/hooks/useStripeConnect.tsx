@@ -117,6 +117,46 @@ export const useStripeConnect = (restaurantId: string | null) => {
   // Check if account is ready for invoicing
   const isReadyForInvoicing = connectedAccount?.charges_enabled && connectedAccount?.onboarding_complete;
 
+  // Create a dashboard login link
+  const createDashboardLinkMutation = useMutation({
+    mutationFn: async () => {
+      if (!restaurantId) {
+        throw new Error("No restaurant selected");
+      }
+
+      const { data, error } = await supabase.functions.invoke('stripe-create-login-link', {
+        body: { restaurantId },
+      });
+
+      if (error) {
+        console.error('Supabase function error (login link):', error.message || 'Unknown error');
+        throw new Error(error.message || 'Failed to create Stripe dashboard link');
+      }
+
+      return data as { url?: string };
+    },
+    onSuccess: (data) => {
+      if (data?.url) {
+        window.open(data.url, '_blank', 'noopener,noreferrer');
+      } else {
+        toast({
+          title: "Dashboard Link Unavailable",
+          description: "Could not get a Stripe dashboard link right now.",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "An error occurred";
+      console.error('Error creating Stripe dashboard link:', message);
+      toast({
+        title: "Failed to Open Dashboard",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
   return {
     connectedAccount,
     loading,
@@ -124,5 +164,7 @@ export const useStripeConnect = (restaurantId: string | null) => {
     isReadyForInvoicing,
     createAccount: createAccountMutation.mutate,
     isCreatingAccount: createAccountMutation.isPending,
+    openDashboard: createDashboardLinkMutation.mutate,
+    isOpeningDashboard: createDashboardLinkMutation.isPending,
   };
 };

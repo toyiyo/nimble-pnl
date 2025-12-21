@@ -171,7 +171,6 @@ serve(async (req) => {
     } else {
       // Create new Stripe Connect account (Accounts v1, Express)
       const accountParams: Stripe.AccountCreateParams = {
-        type: "express",
         country: "US",
         email: user.email || undefined,
         business_type: "company",

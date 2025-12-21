@@ -191,7 +191,7 @@ function createSSEStream(
       );
 
       let fullContent = '';
-      let toolCalls: any[] = [];
+      const toolCalls: any[] = [];
 
       try {
         for await (const chunk of parseSSEStream(openRouterStream)) {
@@ -250,7 +250,7 @@ function createSSEStream(
         if (toolCalls.length > 0) {
           for (const toolCall of toolCalls) {
             // Clean up arguments string - remove any special tokens
-            let argsString = toolCall.function.arguments
+            const argsString = toolCall.function.arguments
               .replace(/<\|python_end\|>/g, '')
               .replace(/<\|python_start\|>/g, '')
               .replace(/<\|[^|]+\|>/g, '') // Remove any other special tokens

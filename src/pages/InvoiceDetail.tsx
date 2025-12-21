@@ -19,7 +19,8 @@ import {
   AlertCircle,
   Mail,
   Phone,
-  MapPin
+  MapPin,
+  RefreshCw
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -37,7 +38,7 @@ export default function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
-  const { useInvoice, sendInvoice, isSending } = useInvoices(selectedRestaurant?.restaurant_id || null);
+  const { useInvoice, sendInvoice, syncInvoiceStatus, isSending, isSyncingStatus } = useInvoices(selectedRestaurant?.restaurant_id || null);
   const { data: invoice, isLoading, error } = useInvoice(id || null);
   const { toast } = useToast();
 
@@ -111,6 +112,14 @@ export default function InvoiceDetail() {
     }
   };
 
+  const handleSyncStatus = async () => {
+    try {
+      await syncInvoiceStatus(invoice.id);
+    } catch (error) {
+      console.error('Error syncing invoice status:', error);
+    }
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
@@ -156,6 +165,17 @@ export default function InvoiceDetail() {
             >
               <Send className="h-4 w-4 mr-2" />
               {isSending ? 'Sending...' : 'Send Invoice'}
+            </Button>
+          )}
+
+          {invoice.stripe_invoice_id && (
+            <Button
+              variant="outline"
+              onClick={handleSyncStatus}
+              disabled={isSyncingStatus}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncingStatus ? 'animate-spin' : ''}`} />
+              {isSyncingStatus ? 'Syncing...' : 'Sync Status'}
             </Button>
           )}
 

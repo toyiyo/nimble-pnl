@@ -31,3 +31,5 @@ playwright-report/
 supabase/.temp/
 coverage/
 supabase/functions/.env
+stripe
+stripe.tar.gz

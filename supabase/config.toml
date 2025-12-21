@@ -109,13 +109,19 @@ verify_jwt = true
 [functions.clover-webhooks]
 verify_jwt = false
 
-[functions.stripe-financial-connections-session]
-verify_jwt = true
-
-[functions.stripe-financial-connections-webhook]
+[functions.stripe-invoice-webhook]
 verify_jwt = false
 
-[functions.stripe-disconnect-bank]
+[functions.stripe-create-connected-account]
+verify_jwt = true
+
+[functions.stripe-create-customer]
+verify_jwt = true
+
+[functions.stripe-create-invoice]
+verify_jwt = true
+
+[functions.stripe-send-invoice]
 verify_jwt = true
 
 [functions.stripe-refresh-balance]
@@ -150,6 +156,9 @@ verify_jwt = false
 
 [functions.shift4-webhooks]
 verify_jwt = false
+
+[functions.stripe-sync-invoice-status]
+verify_jwt = true
 
 [functions.ai-chat-stream]
 verify_jwt = true

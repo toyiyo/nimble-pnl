@@ -203,6 +203,36 @@ export const useInvoices = (restaurantId: string | null) => {
     },
   });
 
+  // Sync invoice status from Stripe
+  const syncInvoiceStatusMutation = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { data, error } = await supabase.functions.invoke(
+        'stripe-sync-invoice-status',
+        { body: { invoiceId } }
+      );
+
+      if (error) throw error;
+
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', data?.invoiceId] });
+      toast({
+        title: "Invoice Status Updated",
+        description: `Status: ${data?.status}`,
+      });
+    },
+    onError: (error) => {
+      console.error('Error syncing invoice status:', error);
+      toast({
+        title: "Failed to Sync Invoice Status",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Delete draft invoice
   const deleteInvoiceMutation = useMutation({
     mutationFn: async (invoiceId: string) => {
@@ -238,9 +268,11 @@ export const useInvoices = (restaurantId: string | null) => {
     useInvoice,
     createInvoice: createInvoiceMutation.mutate,
     sendInvoice: sendInvoiceMutation.mutate,
+    syncInvoiceStatus: syncInvoiceStatusMutation.mutate,
     deleteInvoice: deleteInvoiceMutation.mutate,
     isCreating: createInvoiceMutation.isPending,
     isSending: sendInvoiceMutation.isPending,
+    isSyncingStatus: syncInvoiceStatusMutation.isPending,
     isDeleting: deleteInvoiceMutation.isPending,
     createdInvoice: createInvoiceMutation.data,
   };

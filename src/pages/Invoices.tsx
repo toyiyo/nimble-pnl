@@ -313,9 +313,10 @@ export default function Invoices() {
           <CardContent className="p-0">
             <div className="divide-y">
               {filteredInvoices.map((invoice) => (
-                <div
+                <button
+                  type="button"
                   key={invoice.id}
-                  className="p-4 hover:bg-muted/50 cursor-pointer transition-colors"
+                  className="w-full text-left p-4 hover:bg-muted/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   onClick={() => navigate(`/invoices/${invoice.id}`)}
                 >
                   <div className="flex items-center justify-between">
@@ -342,7 +343,7 @@ export default function Invoices() {
                       )}
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </CardContent>

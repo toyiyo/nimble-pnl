@@ -2,7 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useInvoices } from "@/hooks/useInvoices";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,7 +15,6 @@ import {
   ExternalLink,
   CheckCircle,
   Clock,
-  XCircle,
   Ban,
   AlertCircle,
   Mail,

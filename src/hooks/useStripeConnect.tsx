@@ -84,7 +84,7 @@ export const useStripeConnect = (restaurantId: string | null) => {
       
       // Open onboarding URL if provided
       if (data.onboardingUrl) {
-        window.location.href = data.onboardingUrl;
+        (globalThis as typeof window).location.href = data.onboardingUrl;
       } else {
         toast({
           title: "Account Created",

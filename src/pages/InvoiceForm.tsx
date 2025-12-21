@@ -17,17 +17,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FileText, Plus, Trash2, ArrowLeft, AlertCircle, CreditCard } from "lucide-react";
+import { FileText, Plus, Trash2, ArrowLeft, CreditCard } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function InvoiceForm() {
+  type LocalLineItem = InvoiceLineItem & { localId: string };
+
+  const makeId = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { selectedRestaurant } = useRestaurantContext();
   const { customers } = useCustomers(selectedRestaurant?.restaurant_id || null);
   const { createInvoice, isCreating, createdInvoice } = useInvoices(selectedRestaurant?.restaurant_id || null);
-  const { connectedAccount, isReadyForInvoicing, createAccount, isCreatingAccount, openDashboard, isOpeningDashboard } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
+  const { isReadyForInvoicing, createAccount, isCreatingAccount, openDashboard, isOpeningDashboard } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
   
   const [customerId, setCustomerId] = useState(searchParams.get("customer") || "");
   const [dueDate, setDueDate] = useState("");
@@ -35,8 +42,8 @@ export default function InvoiceForm() {
   const [footer, setFooter] = useState("");
   const [memo, setMemo] = useState("");
   const [passFeesToCustomer, setPassFeesToCustomer] = useState(false);
-  const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([
-    { description: "", quantity: 1, unit_amount: 0 },
+  const [lineItems, setLineItems] = useState<LocalLineItem[]>([
+    { localId: makeId(), description: "", quantity: 1, unit_amount: 0 },
   ]);
 
   // Navigate to invoice detail page when invoice is created
@@ -67,12 +74,6 @@ export default function InvoiceForm() {
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back
               </Button>
-              {connectedAccount && (
-                <Button variant="secondary" onClick={() => openDashboard()} disabled={isOpeningDashboard}>
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  {isOpeningDashboard ? "Opening Dashboard..." : "Open Stripe Dashboard"}
-                </Button>
-              )}
             </div>
           </CardHeader>
         </Card>
@@ -100,16 +101,6 @@ export default function InvoiceForm() {
               >
                 View Invoices
               </Button>
-              {connectedAccount && (
-                <Button 
-                  variant="outline" 
-                  onClick={() => openDashboard()}
-                  disabled={isOpeningDashboard}
-                  className="flex-1"
-                >
-                  {isOpeningDashboard ? "Opening..." : "Open Stripe Dashboard"}
-                </Button>
-              )}
             </div>
           </AlertDescription>
         </Alert>
@@ -118,7 +109,7 @@ export default function InvoiceForm() {
   }
 
   const addLineItem = () => {
-    setLineItems([...lineItems, { description: "", quantity: 1, unit_amount: 0 }]);
+    setLineItems([...lineItems, { localId: makeId(), description: "", quantity: 1, unit_amount: 0 }]);
   };
 
   const removeLineItem = (index: number) => {
@@ -155,7 +146,7 @@ export default function InvoiceForm() {
       return;
     }
 
-    if (lineItems.length === 0 || lineItems.every(item => !item.description)) {
+    if (lineItems.every(item => !item.description)) {
       alert("Please add at least one line item");
       return;
     }
@@ -165,6 +156,7 @@ export default function InvoiceForm() {
       .filter(item => item.description.trim() !== "")
       .map(item => ({
         ...item,
+        localId: item.localId,
         unit_amount: Math.round(Number(item.unit_amount) * 100),
       }));
 
@@ -267,7 +259,7 @@ export default function InvoiceForm() {
           <CardContent>
             <div className="space-y-4">
               {lineItems.map((item, index) => (
-                <div key={index} className="flex gap-2 items-start">
+                <div key={item.id || item.localId} className="flex gap-2 items-start">
                   <div className="flex-1 space-y-2">
                     <Input
                       placeholder="Description"
@@ -363,8 +355,8 @@ export default function InvoiceForm() {
                 checked={passFeesToCustomer}
                 onCheckedChange={(checked) => setPassFeesToCustomer(checked as boolean)}
               />
-              <Label htmlFor="passFees" className="text-sm">
-                Add processing fee to invoice
+              <Label htmlFor="passFees" className="text-sm space-y-1">
+                <span>Add processing fee to invoice</span>
                 <span className="text-muted-foreground block text-xs">
                   Customer will see and pay ~2.9% + $0.30 processing fee on their invoice
                 </span>

@@ -16,9 +16,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 interface CustomerFormDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  customer?: any;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly customer?: any;
 }
 
 export function CustomerFormDialog({ open, onOpenChange, customer }: CustomerFormDialogProps) {
@@ -173,7 +173,11 @@ export function CustomerFormDialog({ open, onOpenChange, customer }: CustomerFor
               Cancel
             </Button>
             <Button type="submit" disabled={isCreating || isUpdating}>
-              {isCreating || isUpdating ? "Saving..." : customer ? "Update" : "Create"}
+              {isCreating || isUpdating
+                ? "Saving..."
+                : customer
+                  ? "Update"
+                  : "Create"}
             </Button>
           </DialogFooter>
         </form>

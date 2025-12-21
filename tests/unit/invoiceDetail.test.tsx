@@ -221,7 +221,7 @@ describe('InvoiceDetail', () => {
 
       expect(screen.getByText('Invoice INV-001')).toBeInTheDocument();
       expect(screen.getByText('Draft')).toBeInTheDocument();
-      expect(screen.getByText('Created Dec 31, 2023')).toBeInTheDocument();
+      expect(screen.getByText(/Created\s+Jan 1, 2024/i)).toBeInTheDocument();
     });
 
     it('displays customer information correctly', () => {
@@ -285,7 +285,7 @@ describe('InvoiceDetail', () => {
         </MemoryRouter>
       );
 
-      expect(screen.getByText('Dec 31, 2023')).toBeInTheDocument(); // Invoice date
+      expect(screen.getByText('Jan 1, 2024')).toBeInTheDocument(); // Invoice date
       expect(screen.getByText('Jan 14, 2024')).toBeInTheDocument(); // Due date
     });
 

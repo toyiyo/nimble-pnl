@@ -33,29 +33,15 @@ serve(async (req) => {
     });
 
     const deriveStatuses = (acct: any) => {
-      const chargesEnabled =
-        acct?.charges_enabled ??
-        acct?.configuration?.merchant?.capabilities?.card_payments?.status === "active";
-
-      const payoutsEnabled =
-        acct?.payouts_enabled ??
-        acct?.configuration?.merchant?.capabilities?.transfers?.status === "active";
-
-      const requirementsSatisfied = Array.isArray(acct?.requirements?.currently_due)
-        ? acct.requirements.currently_due.length === 0
-        : undefined;
-
-      const detailsSubmitted =
-        acct?.details_submitted ??
-        requirementsSatisfied ??
-        false;
-
+      const chargesEnabled = Boolean(acct?.charges_enabled);
+      const payoutsEnabled = Boolean(acct?.payouts_enabled);
+      const detailsSubmitted = Boolean(acct?.details_submitted);
       const onboardingComplete = Boolean(detailsSubmitted && chargesEnabled);
 
       return {
-        chargesEnabled: Boolean(chargesEnabled),
-        payoutsEnabled: Boolean(payoutsEnabled),
-        detailsSubmitted: Boolean(detailsSubmitted),
+        chargesEnabled,
+        payoutsEnabled,
+        detailsSubmitted,
         onboardingComplete,
       };
     };
@@ -76,33 +62,14 @@ serve(async (req) => {
     console.log("[CREATE-CONNECTED-ACCOUNT] User authenticated:", user.id);
 
     // Get request body
-    const { restaurantId, accountType = 'standard' } = await req.json();
+    const { restaurantId, accountType = 'express' } = await req.json();
     
     if (!restaurantId) {
       throw new Error("Restaurant ID is required");
     }
 
-    if (accountType !== 'standard') {
-      console.log("[CREATE-CONNECTED-ACCOUNT] Overriding requested account type to standard/full dashboard to align with Connect v2 guidance");
-    }
-
-    const includeFields = [
-      "configuration.merchant",
-      "configuration.recipient",
-      "identity",
-      "defaults",
-    ];
-
     const fetchAccount = async (accountId: string) => {
-      try {
-        return await stripe.v2.core.accounts.retrieve(
-          accountId,
-          { include: includeFields as any }
-        );
-      } catch (err) {
-        console.warn("[CREATE-CONNECTED-ACCOUNT] v2 account retrieval failed, falling back to v1:", err);
-        return await stripe.accounts.retrieve(accountId);
-      }
+      return await stripe.accounts.retrieve(accountId);
     };
 
     console.log("[CREATE-CONNECTED-ACCOUNT] Creating account for restaurant:", restaurantId);
@@ -202,28 +169,25 @@ serve(async (req) => {
       account = await fetchAccount(existingAccount.stripe_account_id);
       console.log("[CREATE-CONNECTED-ACCOUNT] Retrieved existing Stripe account:", account.id);
     } else {
-      // Create new Stripe Connect account (Accounts v2, full dashboard)
-      const accountParams = {
-        dashboard: "full",
-        defaults: {
-          responsibilities: {
-            fees_collector: "stripe",
-            losses_collector: "stripe",
-          },
+      // Create new Stripe Connect account (Accounts v1, Express)
+      const accountParams: Stripe.AccountCreateParams = {
+        type: "express",
+        country: "US",
+        email: user.email || undefined,
+        business_type: "company",
+        business_profile: {
+          name: restaurant.name,
         },
-        configuration: {
-          merchant: {
-            capabilities: {
-              card_payments: { requested: true },
-              us_bank_account_ach_payments: { requested: true },
-              transfers: { requested: true },
-            },
-          },
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+          us_bank_account_ach_payments: { requested: true },
         },
-        identity: {
-          country: "US",
+        controller: {
+          fees: { payer: "application" },
+          losses: { payments: "application" },
+          stripe_dashboard: { type: "express" },
         },
-        include: includeFields,
         metadata: {
           restaurant_id: restaurantId,
           restaurant_name: restaurant.name,
@@ -231,7 +195,7 @@ serve(async (req) => {
         },
       };
 
-      account = await stripe.v2.core.accounts.create(accountParams as any);
+      account = await stripe.accounts.create(accountParams);
       console.log("[CREATE-CONNECTED-ACCOUNT] Stripe account created:", account.id);
 
       const accountStatuses = deriveStatuses(account);
@@ -242,7 +206,7 @@ serve(async (req) => {
         .insert({
           restaurant_id: restaurantId,
           stripe_account_id: account.id,
-          account_type: "standard",
+          account_type: "express",
           charges_enabled: accountStatuses.chargesEnabled,
           payouts_enabled: accountStatuses.payoutsEnabled,
           details_submitted: accountStatuses.detailsSubmitted,
@@ -258,28 +222,15 @@ serve(async (req) => {
 
     // Create account link for onboarding
     const origin = req.headers.get("origin") || "http://localhost:3000";
-    let accountLink;
-    try {
-      accountLink = await stripe.v2.core.accountLinks.create({
-        account: account.id,
-        use_case: {
-          type: "account_onboarding",
-          account_onboarding: {
-            configurations: ["merchant"],
-            refresh_url: `${origin}/invoices?refresh=true&account=${account.id}`,
-            return_url: `${origin}/invoices?success=true&account=${account.id}`,
-          },
-        },
-      });
-    } catch (linkError) {
-      console.warn("[CREATE-CONNECTED-ACCOUNT] v2 account link creation failed, falling back to v1:", linkError);
-      accountLink = await stripe.accountLinks.create({
-        account: account.id,
-        refresh_url: `${origin}/invoices?refresh=true&account=${account.id}`,
-        return_url: `${origin}/invoices?success=true&account=${account.id}`,
-        type: "account_onboarding",
-      });
-    }
+    const accountLink = await stripe.accountLinks.create({
+      account: account.id,
+      refresh_url: `${origin}/invoices?refresh=true&account=${account.id}`,
+      return_url: `${origin}/invoices?success=true&account=${account.id}`,
+      type: "account_onboarding",
+      collection_options: {
+        fields: "eventually_due",
+      },
+    });
 
     console.log("[CREATE-CONNECTED-ACCOUNT] Onboarding link created");
 

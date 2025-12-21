@@ -173,13 +173,13 @@ describe('InvoiceDetail', () => {
       application_fee_amount: 0,
       pass_fees_to_customer: false,
       currency: 'usd',
-      invoice_date: '2024-01-01T00:00:00Z',
-      due_date: '2024-01-15T00:00:00Z',
+      invoice_date: '2024-01-15T12:00:00Z',
+      due_date: '2024-02-15T12:00:00Z',
       paid_at: null,
       description: 'Test invoice description',
       memo: 'Internal memo',
       footer: 'Payment terms',
-      created_at: '2024-01-01T00:00:00Z',
+      created_at: '2024-01-15T12:00:00Z',
       customers: {
         name: 'Test Customer',
         email: 'test@example.com',
@@ -221,7 +221,7 @@ describe('InvoiceDetail', () => {
 
       expect(screen.getByText('Invoice INV-001')).toBeInTheDocument();
       expect(screen.getByText('Draft')).toBeInTheDocument();
-      expect(screen.getByText(/Created\s+Jan 1, 2024/i)).toBeInTheDocument();
+      expect(screen.getByText(/Created\s+Jan 15, 2024/i)).toBeInTheDocument();
     });
 
     it('displays customer information correctly', () => {
@@ -285,8 +285,8 @@ describe('InvoiceDetail', () => {
         </MemoryRouter>
       );
 
-      expect(screen.getByText('Jan 1, 2024')).toBeInTheDocument(); // Invoice date
-      expect(screen.getByText('Jan 14, 2024')).toBeInTheDocument(); // Due date
+      expect(screen.getByText('Jan 15, 2024')).toBeInTheDocument(); // Invoice date
+      expect(screen.getByText('Feb 15, 2024')).toBeInTheDocument(); // Due date
     });
 
     it('displays additional details when present', () => {
@@ -321,9 +321,9 @@ describe('InvoiceDetail', () => {
         application_fee_amount: 0,
         pass_fees_to_customer: true,
         currency: 'usd',
-        invoice_date: '2024-01-01',
-        paid_at: '2024-01-15T00:00:00Z',
-        created_at: '2024-01-01T00:00:00Z',
+        invoice_date: '2024-01-15',
+        paid_at: '2024-02-15T12:00:00Z',
+        created_at: '2024-01-15T12:00:00Z',
         customers: { name: 'Test Customer', email: 'test@example.com' },
         invoice_line_items: [],
       };
@@ -360,8 +360,8 @@ describe('InvoiceDetail', () => {
         stripe_fee_amount: 0,
         application_fee_amount: 100,
         currency: 'usd',
-        invoice_date: '2024-01-01',
-        created_at: '2024-01-01T00:00:00Z',
+        invoice_date: '2024-01-15',
+        created_at: '2024-01-15T12:00:00Z',
         customers: { name: 'Test Customer' },
         invoice_line_items: [],
       };
@@ -393,8 +393,8 @@ describe('InvoiceDetail', () => {
         stripe_fee_amount: 0,
         application_fee_amount: 0,
         currency: 'usd',
-        invoice_date: '2024-01-01',
-        created_at: '2024-01-01T00:00:00Z',
+        invoice_date: '2024-01-15',
+        created_at: '2024-01-15T12:00:00Z',
         customers: { name: 'Test Customer' },
         invoice_line_items: [],
       };
@@ -427,8 +427,8 @@ describe('InvoiceDetail', () => {
       stripe_fee_amount: 0,
       application_fee_amount: 0,
       currency: 'usd',
-      invoice_date: '2024-01-01',
-      created_at: '2024-01-01T00:00:00Z',
+      invoice_date: '2024-01-15',
+      created_at: '2024-01-15T12:00:00Z',
       customers: { name: 'Test Customer' },
       invoice_line_items: [],
     };
@@ -525,8 +525,8 @@ describe('InvoiceDetail', () => {
       stripe_fee_amount: 0,
       application_fee_amount: 0,
       currency: 'usd',
-      invoice_date: '2024-01-01',
-      created_at: '2024-01-01T00:00:00Z',
+      invoice_date: '2024-01-15',
+      created_at: '2024-01-15T12:00:00Z',
       customers: { name: 'Test Customer' },
       invoice_line_items: [],
     };
@@ -650,8 +650,8 @@ describe('InvoiceDetail', () => {
       stripe_fee_amount: 0,
       application_fee_amount: 0,
       currency: 'usd',
-      invoice_date: '2024-01-01',
-      created_at: '2024-01-01T00:00:00Z',
+      invoice_date: '2024-01-15',
+      created_at: '2024-01-15T12:00:00Z',
       customers: { name: 'Test Customer' },
       invoice_line_items: [],
     };
@@ -785,8 +785,8 @@ describe('InvoiceDetail', () => {
         stripe_fee_amount: 0,
         application_fee_amount: 0,
         currency: 'usd',
-        invoice_date: '2024-01-01',
-        created_at: '2024-01-01T00:00:00Z',
+        invoice_date: '2024-01-15',
+        created_at: '2024-01-15T12:00:00Z',
         customers: { name: 'Test Customer' },
         invoice_line_items: [],
       };
@@ -820,8 +820,8 @@ describe('InvoiceDetail', () => {
         stripe_fee_amount: 0,
         application_fee_amount: 0,
         currency: 'usd',
-        invoice_date: '2024-01-01',
-        created_at: '2024-01-01T00:00:00Z',
+        invoice_date: '2024-01-15',
+        created_at: '2024-01-15T12:00:00Z',
         customers: null,
         invoice_line_items: [],
       };
@@ -855,8 +855,8 @@ describe('InvoiceDetail', () => {
         stripe_fee_amount: 0,
         application_fee_amount: 0,
         currency: 'usd',
-        invoice_date: '2024-01-01',
-        created_at: '2024-01-01T00:00:00Z',
+        invoice_date: '2024-01-15',
+        created_at: '2024-01-15T12:00:00Z',
         customers: { name: 'Test Customer' },
         invoice_line_items: [],
       };
@@ -888,8 +888,8 @@ describe('InvoiceDetail', () => {
         stripe_fee_amount: 330000, // $3,300
         application_fee_amount: 0,
         currency: 'usd',
-        invoice_date: '2024-01-01',
-        created_at: '2024-01-01T00:00:00Z',
+        invoice_date: '2024-01-15',
+        created_at: '2024-01-15T12:00:00Z',
         customers: { name: 'Test Customer' },
         invoice_line_items: [],
       };
@@ -924,8 +924,8 @@ describe('InvoiceDetail', () => {
         stripe_fee_amount: 0,
         application_fee_amount: 0,
         currency: 'eur',
-        invoice_date: '2024-01-01',
-        created_at: '2024-01-01T00:00:00Z',
+        invoice_date: '2024-01-15',
+        created_at: '2024-01-15T12:00:00Z',
         customers: { name: 'Test Customer' },
         invoice_line_items: [],
       };

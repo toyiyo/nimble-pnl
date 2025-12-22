@@ -172,10 +172,14 @@ serve(async (req) => {
       updateData.paid_at = new Date(stripeInvoice.status_transitions.paid_at * 1000).toISOString();
     }
 
-    await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from("invoices")
       .update(updateData)
       .eq("id", invoiceId);
+
+    if (updateError) {
+      throw new Error(`Failed to update invoice: ${updateError.message}`);
+    }
 
     console.log("[SYNC-INVOICE-STATUS] Invoice status updated:", {
       id: invoiceId,

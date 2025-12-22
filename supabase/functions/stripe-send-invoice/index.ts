@@ -93,6 +93,11 @@ serve(async (req) => {
       apiVersion: "2024-12-18.acacia" as any
     });
 
+    // Only draft invoices can be sent; guard before any Stripe creation
+    if (invoice.status !== 'draft') {
+      throw new Error("Only draft invoices can be sent");
+    }
+
     if (!invoice.stripe_invoice_id) {
       console.log("[SEND-INVOICE] No Stripe invoice ID found, attempting to recreate invoice in Stripe");
       
@@ -156,10 +161,6 @@ serve(async (req) => {
 
       // Use the newly created invoice
       invoice.stripe_invoice_id = stripeInvoice.id;
-    }
-
-    if (invoice.status !== 'draft') {
-      throw new Error("Only draft invoices can be sent");
     }
 
     // Verify the invoice exists in Stripe

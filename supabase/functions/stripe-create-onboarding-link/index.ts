@@ -71,11 +71,14 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2024-12-18.acacia" as any });
 
+    const baseUrl = (Deno.env.get("VITE_APP_URL") || "http://localhost:8080").replace(/\/$/, "");
+    const targetUrl = returnUrl || `${baseUrl}/stripe-account`;
+
     // Create account link for onboarding
     const accountLink = await stripe.accountLinks.create({
       account: connectedAccount.stripe_account_id,
-      refresh_url: returnUrl || `${Deno.env.get("VITE_APP_URL") || "http://localhost:5173"}/settings`,
-      return_url: returnUrl || `${Deno.env.get("VITE_APP_URL") || "http://localhost:5173"}/settings`,
+      refresh_url: targetUrl,
+      return_url: targetUrl,
       type: "account_onboarding",
     });
 

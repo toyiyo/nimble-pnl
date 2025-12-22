@@ -70,13 +70,15 @@ describe('InvoiceForm', () => {
     vi.clearAllMocks();
   });
 
+  const Wrapper = createWrapper();
+
   describe('Basic Rendering', () => {
     it('renders the form with correct title', () => {
       render(
         <MemoryRouter>
-          <createWrapper>
+          <Wrapper>
             <InvoiceForm />
-          </createWrapper>
+          </Wrapper>
         </MemoryRouter>
       );
 
@@ -87,9 +89,9 @@ describe('InvoiceForm', () => {
     it('renders all main sections', () => {
       render(
         <MemoryRouter>
-          <createWrapper>
+          <Wrapper>
             <InvoiceForm />
-          </createWrapper>
+          </Wrapper>
         </MemoryRouter>
       );
 
@@ -101,9 +103,9 @@ describe('InvoiceForm', () => {
     it('renders form inputs correctly', () => {
       render(
         <MemoryRouter>
-          <createWrapper>
+          <Wrapper>
             <InvoiceForm />
-          </createWrapper>
+          </Wrapper>
         </MemoryRouter>
       );
 
@@ -117,9 +119,9 @@ describe('InvoiceForm', () => {
     it('renders line item inputs', () => {
       render(
         <MemoryRouter>
-          <createWrapper>
+          <Wrapper>
             <InvoiceForm />
-          </createWrapper>
+          </Wrapper>
         </MemoryRouter>
       );
 
@@ -133,9 +135,9 @@ describe('InvoiceForm', () => {
     it('navigates back when back button is clicked', () => {
       render(
         <MemoryRouter>
-          <createWrapper>
+          <Wrapper>
             <InvoiceForm />
-          </createWrapper>
+          </Wrapper>
         </MemoryRouter>
       );
 
@@ -148,9 +150,9 @@ describe('InvoiceForm', () => {
     it('navigates back when cancel button is clicked', () => {
       render(
         <MemoryRouter>
-          <createWrapper>
+          <Wrapper>
             <InvoiceForm />
-          </createWrapper>
+          </Wrapper>
         </MemoryRouter>
       );
 
@@ -165,9 +167,9 @@ describe('InvoiceForm', () => {
     it('allows filling line item fields', () => {
       render(
         <MemoryRouter>
-          <createWrapper>
+          <Wrapper>
             <InvoiceForm />
-          </createWrapper>
+          </Wrapper>
         </MemoryRouter>
       );
 
@@ -187,9 +189,9 @@ describe('InvoiceForm', () => {
     it('allows filling optional fields', () => {
       render(
         <MemoryRouter>
-          <createWrapper>
+          <Wrapper>
             <InvoiceForm />
-          </createWrapper>
+          </Wrapper>
         </MemoryRouter>
       );
 
@@ -212,9 +214,9 @@ describe('InvoiceForm', () => {
     it('allows toggling fee pass-through', () => {
       render(
         <MemoryRouter>
-          <createWrapper>
+          <Wrapper>
             <InvoiceForm />
-          </createWrapper>
+          </Wrapper>
         </MemoryRouter>
       );
 
@@ -235,9 +237,9 @@ describe('InvoiceForm', () => {
 
       render(
         <MemoryRouter>
-          <createWrapper>
+          <Wrapper>
             <InvoiceForm />
-          </createWrapper>
+          </Wrapper>
         </MemoryRouter>
       );
 
@@ -254,9 +256,9 @@ describe('InvoiceForm', () => {
     it('does not show setup message when Stripe is ready', () => {
       render(
         <MemoryRouter>
-          <createWrapper>
+          <Wrapper>
             <InvoiceForm />
-          </createWrapper>
+          </Wrapper>
         </MemoryRouter>
       );
 

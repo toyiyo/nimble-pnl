@@ -338,7 +338,12 @@ CREATE POLICY "Users can view payments for their restaurant invoices"
 -- Only service role can insert/update payments (via webhooks)
 CREATE POLICY "Service role can manage all payments"
   ON public.invoice_payments FOR ALL
-  USING (auth.uid() IS NULL); -- Service role has no uid
+  USING (
+    current_setting('request.jwt.claims', true)::json->>'role' = 'service_role'
+  )
+  WITH CHECK (
+    current_setting('request.jwt.claims', true)::json->>'role' = 'service_role'
+  );
 
 -- Triggers for updated_at timestamps
 CREATE OR REPLACE FUNCTION update_updated_at_column()

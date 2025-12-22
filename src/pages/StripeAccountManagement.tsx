@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +25,12 @@ import { Navigate } from "react-router-dom";
 export default function StripeAccountManagement() {
   const { selectedRestaurant } = useRestaurantContext();
   const { connectedAccount, isReadyForInvoicing, createAccount, isCreatingAccount } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("setup");
+
+  const refreshStripeStatus = () => {
+    queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id || null] });
+  };
 
   // Only owners can access financial account management
   if (selectedRestaurant?.role !== 'owner') {
@@ -83,16 +89,23 @@ export default function StripeAccountManagement() {
           <AlertDescription className="space-y-3">
             <p>
               Your payment processing account was created but needs to be fully configured.
-              Please complete the onboarding process below.
+              Please complete the onboarding process below. Stripe may take a few minutes to validate submitted details.
             </p>
             <StripeEmbeddedConnect
               restaurantId={selectedRestaurant?.restaurant_id || null}
               component="account_onboarding"
               onCompleted={() => {
-                // Refresh will happen via React Query
-                window.location.reload();
+                refreshStripeStatus();
               }}
             />
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={refreshStripeStatus}>
+                Refresh status
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Validation can take a couple of minutes. Use the refresh button to check status without leaving this page.
+            </p>
           </AlertDescription>
         </Alert>
       </div>
@@ -152,13 +165,14 @@ export default function StripeAccountManagement() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <StripeEmbeddedConnect
-                restaurantId={selectedRestaurant?.restaurant_id || null}
-                component="account_management"
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
+                <StripeEmbeddedConnect
+                  restaurantId={selectedRestaurant?.restaurant_id || null}
+                  component="account_management"
+                  onCompleted={refreshStripeStatus}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
 
         <TabsContent value="payments" className="space-y-4">
           <Card>

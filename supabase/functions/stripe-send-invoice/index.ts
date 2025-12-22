@@ -267,11 +267,11 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("[SEND-INVOICE] Error:", errorMessage);
-    
+    // Log full error details server-side but return sanitized response to client
+    console.error("[SEND-INVOICE] Error:", error);
+
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: "Internal server error" }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,

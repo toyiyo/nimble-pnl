@@ -153,14 +153,14 @@ serve(async (req) => {
     }
 
     // Update invoice in database with latest Stripe data
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       status,
       invoice_number: stripeInvoice.number || invoice.invoice_number,
       hosted_invoice_url: stripeInvoice.hosted_invoice_url || invoice.hosted_invoice_url,
       invoice_pdf_url: stripeInvoice.invoice_pdf || invoice.invoice_pdf_url,
-      amount_paid: stripeInvoice.amount_paid || 0,
-      amount_remaining: stripeInvoice.amount_remaining || 0,
-      amount_due: stripeInvoice.amount_due || 0,
+      amount_paid: stripeInvoice.amount_paid ?? 0,
+      amount_remaining: stripeInvoice.amount_remaining ?? 0,
+      amount_due: stripeInvoice.amount_due ?? 0,
       stripe_fee_amount: stripeFeeAmount,
       stripe_fee_description: stripeFeeDescription,
       application_fee_amount: applicationFeeAmount,

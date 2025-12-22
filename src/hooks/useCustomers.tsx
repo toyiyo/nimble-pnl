@@ -105,10 +105,15 @@ export const useCustomers = (restaurantId: string | null) => {
   // Update customer
   const updateCustomerMutation = useMutation({
     mutationFn: async ({ id, ...data }: CustomerFormData & { id: string }) => {
+      if (!restaurantId) {
+        throw new Error("No restaurant selected");
+      }
+
       const { data: customer, error } = await supabase
         .from('customers')
         .update(data)
         .eq('id', id)
+        .eq('restaurant_id', restaurantId)
         .select()
         .single();
 
@@ -136,10 +141,15 @@ export const useCustomers = (restaurantId: string | null) => {
   // Delete customer
   const deleteCustomerMutation = useMutation({
     mutationFn: async (customerId: string) => {
+      if (!restaurantId) {
+        throw new Error("No restaurant selected");
+      }
+
       const { error } = await supabase
         .from('customers')
         .delete()
-        .eq('id', customerId);
+        .eq('id', customerId)
+        .eq('restaurant_id', restaurantId);
 
       if (error) throw error;
     },

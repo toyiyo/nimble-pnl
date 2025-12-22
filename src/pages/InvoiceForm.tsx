@@ -116,7 +116,7 @@ export default function InvoiceForm() {
     setLineItems(lineItems.filter((_, i) => i !== index));
   };
 
-  const updateLineItem = (index: number, field: keyof InvoiceLineItem, value: any) => {
+  const updateLineItem = (index: number, field: keyof InvoiceLineItem, value: string | number | ('inclusive' | 'exclusive' | 'unspecified') | undefined) => {
     const updated = [...lineItems];
     updated[index] = { ...updated[index], [field]: value };
     setLineItems(updated);

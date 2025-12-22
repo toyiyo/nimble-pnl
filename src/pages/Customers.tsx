@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
-import { useCustomers } from "@/hooks/useCustomers";
+import { useCustomers, type Customer } from "@/hooks/useCustomers";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ export default function Customers() {
     customer.phone?.includes(searchTerm)
   );
 
-  const handleEdit = (customer: any) => {
+  const handleEdit = (customer: Customer) => {
     setEditingCustomer(customer);
     setIsFormOpen(true);
   };

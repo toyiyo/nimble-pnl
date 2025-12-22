@@ -242,10 +242,15 @@ export const useInvoices = (restaurantId: string | null) => {
   // Delete draft invoice
   const deleteInvoiceMutation = useMutation({
     mutationFn: async (invoiceId: string) => {
+      if (!restaurantId) {
+        throw new Error("No restaurant selected");
+      }
+
       const { error } = await supabase
         .from('invoices')
         .delete()
         .eq('id', invoiceId)
+        .eq('restaurant_id', restaurantId)
         .eq('status', 'draft'); // Only allow deleting drafts
 
       if (error) throw error;

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
-import { useCustomers, type CustomerFormData } from "@/hooks/useCustomers";
+import { useCustomers, type CustomerFormData, type Customer } from "@/hooks/useCustomers";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 interface CustomerFormDialogProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
-  readonly customer?: any;
+  readonly customer?: Customer;
 }
 
 export function CustomerFormDialog({ open, onOpenChange, customer }: CustomerFormDialogProps) {

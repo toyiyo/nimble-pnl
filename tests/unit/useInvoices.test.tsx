@@ -32,12 +32,14 @@ vi.mock('@supabase/supabase-js', () => {
           error: null,
         })),
       })),
-      delete: vi.fn(() => ({
-        eq: vi.fn(() => ({
+      delete: vi.fn(() => {
+        const chainable = {
+          eq: vi.fn(() => chainable),
           data: [],
           error: null,
-        })),
-      })),
+        };
+        return chainable;
+      }),
     })),
     functions: {
       invoke: vi.fn(() => ({

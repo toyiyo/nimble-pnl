@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@20.1.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { computeProcessingFeeCents } from "../_shared/invoiceUtils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,13 +15,6 @@ interface LineItem {
   tax_behavior?: 'inclusive' | 'exclusive' | 'unspecified';
   tax_rate?: number;
 }
-
-const computeProcessingFeeCents = (baseCents: number, rate = 0.029, fixedCents = 30) => {
-  if (baseCents <= 0) return 0;
-  const gross = Math.round((baseCents + fixedCents) / (1 - rate));
-  const fee = gross - baseCents;
-  return Math.max(0, fee);
-};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {

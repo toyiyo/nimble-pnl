@@ -158,17 +158,6 @@ export default function InvoiceDetail() {
         </div>
 
         <div className="flex gap-2">
-          {openDashboard && (
-            <Button
-              variant="secondary"
-              onClick={() => openDashboard()}
-              disabled={isOpeningDashboard}
-            >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              {isOpeningDashboard ? "Opening Dashboard..." : "Open Stripe Dashboard"}
-            </Button>
-          )}
-
           {invoice.status === 'draft' && (
             <Button
               onClick={handleSendInvoice}

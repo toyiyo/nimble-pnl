@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
-import { useInvoices } from "@/hooks/useInvoices";
+import { useInvoices, useInvoice } from "@/hooks/useInvoices";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export default function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
-  const { useInvoice, sendInvoiceAsync, syncInvoiceStatusAsync, isSending, isSyncingStatus } = useInvoices(selectedRestaurant?.restaurant_id || null);
+  const { sendInvoiceAsync, syncInvoiceStatusAsync, isSending, isSyncingStatus } = useInvoices(selectedRestaurant?.restaurant_id || null);
   const { data: invoice, isLoading, error } = useInvoice(id || null);
   const { openDashboard, isOpeningDashboard } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();

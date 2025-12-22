@@ -63,6 +63,44 @@ export interface InvoiceFormData {
   passFeesToCustomer?: boolean;
 }
 
+export const useInvoice = (invoiceId: string | null) => {
+  return useQuery({
+    queryKey: ['invoice', invoiceId],
+    queryFn: async () => {
+      if (!invoiceId) {
+        return null;
+      }
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .select(`
+          *,
+          customers (
+            name,
+            email,
+            phone,
+            billing_address_line1,
+            billing_address_line2,
+            billing_address_city,
+            billing_address_state,
+            billing_address_postal_code,
+            billing_address_country
+          ),
+          invoice_line_items (*)
+        `)
+        .eq('id', invoiceId)
+        .single();
+
+      if (error) throw error;
+
+      return data as Invoice;
+    },
+    enabled: !!invoiceId,
+    staleTime: 30000,
+    initialData: !invoiceId ? null : undefined,
+  });
+};
+
 export const useInvoices = (restaurantId: string | null) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -101,45 +139,6 @@ export const useInvoices = (restaurantId: string | null) => {
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
-
-  // Get single invoice
-  const useInvoice = (invoiceId: string | null) => {
-    return useQuery({
-      queryKey: ['invoice', invoiceId],
-      queryFn: async () => {
-        if (!invoiceId) {
-          return null;
-        }
-
-        const { data, error } = await supabase
-          .from('invoices')
-          .select(`
-            *,
-            customers (
-              name,
-              email,
-              phone,
-              billing_address_line1,
-              billing_address_line2,
-              billing_address_city,
-              billing_address_state,
-              billing_address_postal_code,
-              billing_address_country
-            ),
-            invoice_line_items (*)
-          `)
-          .eq('id', invoiceId)
-          .single();
-
-        if (error) throw error;
-
-        return data as Invoice;
-      },
-      enabled: !!invoiceId,
-      staleTime: 30000,
-      initialData: !invoiceId ? null : undefined,
-    });
-  };
 
   // Create invoice
   const createInvoiceMutation = useMutation({
@@ -276,7 +275,6 @@ export const useInvoices = (restaurantId: string | null) => {
     invoices,
     loading,
     error: queryError,
-    useInvoice,
     createInvoice: createInvoiceMutation.mutate,
     sendInvoice: sendInvoiceMutation.mutate,
     sendInvoiceAsync: sendInvoiceMutation.mutateAsync,

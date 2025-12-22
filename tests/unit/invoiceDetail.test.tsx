@@ -44,7 +44,6 @@ vi.mock('@/hooks/useInvoices', () => {
 
   // Default implementation
   mockUseInvoices.mockReturnValue({
-    useInvoice: mockUseInvoice,
     sendInvoiceAsync: mockSendInvoiceAsync,
     syncInvoiceStatusAsync: mockSyncInvoiceStatusAsync,
     isSending: false,
@@ -53,6 +52,7 @@ vi.mock('@/hooks/useInvoices', () => {
 
   return {
     useInvoices: mockUseInvoices,
+    useInvoice: mockUseInvoice,
     // Export for testing
     mockUseInvoices,
     mockUseInvoice,
@@ -82,7 +82,6 @@ describe('InvoiceDetail', () => {
 
     // Default mock implementation for useInvoices hook
     mockUseInvoices.mockReturnValue({
-      useInvoice: mockUseInvoice,
       sendInvoiceAsync: mockSendInvoiceAsync,
       syncInvoiceStatusAsync: mockSyncInvoiceStatusAsync,
       isSending: false,

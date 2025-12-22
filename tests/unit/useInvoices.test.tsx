@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useInvoices } from '@/hooks/useInvoices';
+import { useInvoices, useInvoice } from '@/hooks/useInvoices';
 import { createClient, mockClient } from '@supabase/supabase-js';
 
 vi.mock('@supabase/supabase-js', () => {
@@ -249,11 +249,7 @@ describe('useInvoices', () => {
         })),
       });
 
-      const { result } = renderHook(() => useInvoices('rest-1'), {
-        wrapper: createWrapper(),
-      });
-
-      const { result: invoiceResult } = renderHook(() => result.current.useInvoice('inv-1'), {
+      const { result: invoiceResult } = renderHook(() => useInvoice('inv-1'), {
         wrapper: createWrapper(),
       });
 
@@ -266,11 +262,7 @@ describe('useInvoices', () => {
     });
 
     it('returns null when no invoice ID provided', async () => {
-      const { result } = renderHook(() => useInvoices('rest-1'), {
-        wrapper: createWrapper(),
-      });
-
-      const { result: invoiceResult } = renderHook(() => result.current.useInvoice(null), {
+      const { result: invoiceResult } = renderHook(() => useInvoice(null), {
         wrapper: createWrapper(),
       });
 
@@ -280,11 +272,7 @@ describe('useInvoices', () => {
     });
 
     it('returns null when invoice ID is empty string', async () => {
-      const { result } = renderHook(() => useInvoices('rest-1'), {
-        wrapper: createWrapper(),
-      });
-
-      const { result: invoiceResult } = renderHook(() => result.current.useInvoice(''), {
+      const { result: invoiceResult } = renderHook(() => useInvoice(''), {
         wrapper: createWrapper(),
       });
 

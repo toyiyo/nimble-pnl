@@ -1,0 +1,48 @@
+name: Deploy Supabase Functions
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-supabase-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Supabase Functions
+    runs-on: ubuntu-latest
+    # Extra guard so manual runs on non-main branches are skipped
+    if: github.ref == 'refs/heads/main'
+    env:
+      SUPABASE_PROJECT_ID: ncdujvdgqtaunuyigflp
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy edge functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          functions=$(find supabase/functions -mindepth 1 -maxdepth 1 -type d ! -name "_shared" -print | xargs -n1 basename | sort)
+
+          if [ -z "$functions" ]; then
+            echo "No functions found to deploy."
+            exit 0
+          fi
+
+          for fn in $functions; do
+            echo "Deploying $fn"
+            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_ID"
+          done

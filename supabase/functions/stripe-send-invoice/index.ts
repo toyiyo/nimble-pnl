@@ -162,10 +162,7 @@ serve(async (req) => {
           if (!isValidAmount || !isValidQuantity) {
             const message = `[SEND-INVOICE] Invalid line item values: amount=${item.amount}, quantity=${item.quantity}, id=${item.id || 'unknown'}`;
             console.error(message);
-            throw new Response(message, {
-              status: 400,
-              headers: { ...corsHeaders, "Content-Type": "text/plain" },
-            });
+            throw new Error(message);
           }
 
           await stripe.invoiceItems.create(

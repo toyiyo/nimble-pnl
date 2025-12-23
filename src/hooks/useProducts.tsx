@@ -422,8 +422,8 @@ export const useProducts = (restaurantId: string | null) => {
         
         // Check for foreign key constraint errors
         if (error.code === '23503') {
-          let userMessage = "Cannot delete this product because it's being used in:";
-          let details: string[] = [];
+          const userMessage = "Cannot delete this product because it's being used in:";
+          const details: string[] = [];
           
           // Parse which table is blocking deletion
           if (error.details?.includes('receipt_line_items')) {

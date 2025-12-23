@@ -117,7 +117,7 @@ export class ReceiptTextNormalizer {
     if (!text) return '';
 
     // Step 1: Basic cleanup
-    let normalized = text.toLowerCase()
+    const normalized = text.toLowerCase()
       .replace(/[^\w\s]/g, ' ') // Remove special chars except word chars and spaces
       .replace(/\s+/g, ' ')      // Collapse multiple spaces
       .trim();

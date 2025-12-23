@@ -1261,7 +1261,7 @@ async function executeGetAiInsights(
   const { focus_area = 'overall_health' } = args;
 
   // Fetch relevant data based on focus area
-  let dataContext: any = {};
+  const dataContext: any = {};
 
   try {
     // Get KPIs

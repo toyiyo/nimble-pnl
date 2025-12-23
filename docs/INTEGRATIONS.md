@@ -9,6 +9,7 @@
 - [Bank Connections](#bank-connections)
 - [POS System Integrations](#pos-system-integrations)
 - [AI & Machine Learning](#ai--machine-learning)
+- [Invoicing & Payments](#invoicing--payments)
 - [Supabase Usage Patterns](#supabase-usage-patterns)
 - [Edge Functions Architecture](#edge-functions-architecture)
 - [Security Best Practices](#security-best-practices)
@@ -522,6 +523,246 @@ try {
   // Handle gracefully
 }
 ```
+
+---
+
+## 💳 Invoicing & Payments
+
+### Overview
+
+We use **Stripe Connect** and **Stripe Invoicing** to enable restaurants to create invoices and receive payments directly. This follows **Model A: Restaurant as Merchant of Record**, where each restaurant onboards as a Stripe Connect account and receives funds directly.
+
+### Payment Methods Supported
+
+- **Credit/Debit Cards** - Instant settlement
+- **ACH Direct Debit (US Bank Account)** - 5-7 business day settlement
+- Both use Stripe Financial Connections for secure bank account linking
+
+### Architecture Pattern
+
+**Hook**: `useStripeConnect.tsx`, `useCustomers.tsx`, `useInvoices.tsx`
+
+```typescript
+// 1. Onboard restaurant to Stripe Connect
+const { createAccount } = useStripeConnect(restaurantId);
+await createAccount('express'); // Creates account and opens onboarding
+
+// 2. Create customer
+const { createCustomer } = useCustomers(restaurantId);
+await createCustomer({
+  name: "Acme Corp",
+  email: "billing@acme.com",
+  phone: "(555) 123-4567",
+});
+
+// 3. Create invoice
+const { createInvoice } = useInvoices(restaurantId);
+await createInvoice({
+  customerId: customer.id,
+  lineItems: [
+    { description: "Catering Service", quantity: 1, unit_amount: 50000 }, // $500 in cents
+    { description: "Additional Staff", quantity: 2, unit_amount: 15000 },  // $150 in cents
+  ],
+  dueDate: "2024-12-31",
+  description: "Holiday Party Catering",
+});
+
+// 4. Send invoice to customer
+const { sendInvoice } = useInvoices(restaurantId);
+await sendInvoice(invoice.id); // Finalizes and emails to customer
+```
+
+### Database Schema
+
+#### `customers` Table
+Stores customer information for invoicing:
+- `id`, `restaurant_id`, `stripe_customer_id`
+- `name`, `email`, `phone`
+- Billing address fields
+- `notes` for internal use
+
+#### `stripe_connected_accounts` Table
+Tracks Stripe Connect account status:
+- `restaurant_id`, `stripe_account_id`
+- `account_type` ('express' or 'standard')
+- `charges_enabled`, `payouts_enabled`, `onboarding_complete`
+
+#### `invoices` Table
+Mirrors Stripe invoice state (source of truth: Stripe):
+- `id`, `restaurant_id`, `customer_id`
+- `stripe_invoice_id`, `invoice_number`
+- `status` ('draft', 'open', 'paid', 'void', 'uncollectible')
+- Financial fields (all in cents): `subtotal`, `tax`, `total`, `amount_due`, `amount_paid`
+- `hosted_invoice_url`, `invoice_pdf_url`
+
+#### `invoice_line_items` Table
+Itemized invoice details:
+- `invoice_id`, `description`, `quantity`, `unit_amount`
+- `tax_behavior`, `tax_rate`
+
+#### `invoice_payments` Table
+Payment attempt tracking (updated via webhooks):
+- `invoice_id`, `stripe_payment_intent_id`
+- `amount`, `currency`, `payment_method_type`
+- `status`, `failure_message`
+
+### Edge Functions
+
+#### 1. `stripe-create-connected-account`
+Creates Stripe Connect account for restaurant.
+- **Input**: `{ restaurantId, accountType }`
+- **Output**: `{ accountId, onboardingUrl }`
+- **Flow**: 
+  1. Verify user is restaurant owner
+  2. Create Stripe Connect account (Express by default)
+  3. Enable capabilities: `card_payments`, `us_bank_account_ach_payments`, `transfers`
+  4. Generate onboarding link
+- **Security**: Only restaurant owners can create accounts
+
+#### 2. `stripe-create-customer`
+Syncs local customer to Stripe (on connected account).
+- **Input**: `{ customerId }`
+- **Output**: `{ stripeCustomerId }`
+- **Flow**:
+  1. Get customer from local database
+  2. Create Stripe customer on behalf of connected account
+  3. Store `stripe_customer_id` in local database
+
+#### 3. `stripe-create-invoice`
+Creates invoice with line items.
+- **Input**: `{ restaurantId, customerId, lineItems, dueDate, description }`
+- **Output**: `{ invoiceId, stripeInvoiceId, status, total }`
+- **Flow**:
+  1. Verify connected account is active
+  2. Create invoice items in Stripe
+  3. Create invoice with:
+     - `payment_method_types: ['card', 'us_bank_account']`
+     - `on_behalf_of: connectedAccountId`
+     - `transfer_data.destination: connectedAccountId`
+  4. Store invoice and line items in local database
+- **Status**: Invoice created as 'draft'
+
+#### 4. `stripe-send-invoice`
+Finalizes and sends invoice to customer.
+- **Input**: `{ invoiceId }`
+- **Output**: `{ status, hostedInvoiceUrl, invoicePdfUrl }`
+- **Flow**:
+  1. Verify invoice is in 'draft' status
+  2. Finalize invoice (makes immutable)
+  3. Send invoice via Stripe (emails customer)
+  4. Update local status to 'open'
+- **Note**: Customer can pay via hosted invoice page
+
+#### 5. `stripe-invoice-webhook`
+Handles invoice lifecycle events.
+- **Events**: 
+  - `invoice.finalized`, `invoice.sent`
+  - `invoice.payment_succeeded`, `invoice.payment_failed`
+  - `invoice.voided`, `invoice.marked_uncollectible`
+- **Flow**:
+  1. Verify webhook signature
+  2. Check for duplicate events
+  3. Update local invoice status
+  4. Record payment attempts
+- **Security**: Webhook secret required
+
+### UI Flow
+
+1. **Customers Page** (`/customers`)
+   - List all customers
+   - Create/edit customer information
+   - Quick "Create Invoice" action per customer
+
+2. **Invoices Page** (`/invoices`)
+   - List all invoices with status badges
+   - Filter by status (draft, open, paid, etc.)
+   - View Stripe Connect onboarding status
+
+3. **Invoice Form** (`/invoices/new`)
+   - Select customer
+   - Add multiple line items (description, quantity, price)
+   - Set due date, footer, internal memo
+   - Real-time total calculation
+   - Save as draft or send immediately
+
+4. **Invoice Details** (future)
+   - View full invoice
+   - Send/resend invoice
+   - View payment history
+   - Download PDF
+   - Mark as void/uncollectible
+
+### Payment Flow
+
+```
+User Creates Invoice (Draft)
+  ↓
+Manager Sends Invoice → Stripe Finalizes → Email to Customer
+  ↓
+Customer Opens Hosted Invoice Page
+  ↓
+Customer Selects Payment Method:
+  - Card: Instant authorization → Settlement in 2-7 days
+  - ACH: Micro-deposit verification (if first time) → Debit in 5-7 days
+  ↓
+Stripe Webhook: invoice.payment_succeeded
+  ↓
+Update Local Status to "Paid"
+  ↓
+Funds Settle to Restaurant's Bank Account
+```
+
+### Stripe Connect Onboarding
+
+**Requirements for charges_enabled = true:**
+- Business details (name, address, EIN/SSN)
+- Bank account for payouts (can use Financial Connections)
+- Identity verification (owner)
+- Terms of service acceptance
+
+**Express vs Standard:**
+- **Express** (recommended): Stripe-hosted onboarding, faster setup
+- **Standard**: Full API control, more complex
+
+### Best Practices
+
+✅ **DO:**
+- Always check `charges_enabled` before allowing invoice creation
+- Use webhook events as source of truth for payment status
+- Store amounts in cents (integers) to avoid floating-point errors
+- Set `on_behalf_of` and `transfer_data` for proper fund routing
+- Enable both card and ACH payment methods
+- Validate invoice totals before sending
+
+❌ **DON'T:**
+- Don't compute payment status locally - trust Stripe webhooks
+- Don't allow editing invoices after finalization
+- Don't skip webhook signature verification
+- Don't store raw Stripe customer tokens in database
+- Don't create invoices on platform account (use connected account)
+
+### RLS Policies
+
+All tables enforce restaurant-level isolation:
+- Users can only access data for restaurants they belong to
+- Only owners/managers can create/manage invoices
+- Staff cannot access invoicing features
+- Service role can write payments (via webhooks)
+
+### Testing
+
+**Unit Tests**: `tests/unit/invoiceCalculations.test.ts`
+- Line item calculations (quantity × unit_amount)
+- Tax calculations (per-item and subtotal)
+- Total calculations (subtotal + tax)
+- Currency conversion (dollars ↔ cents)
+- Payment tracking (amount_remaining)
+
+**SQL Tests**: `supabase/tests/10_invoicing_tables.sql`
+- Table existence
+- Column definitions
+- Foreign key relationships
+- RLS policy enforcement
 
 ---
 

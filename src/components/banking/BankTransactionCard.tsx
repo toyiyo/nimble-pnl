@@ -86,10 +86,10 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
       ruleName: hasSpecificMerchant 
         ? `Auto-categorize ${merchantName.substring(0, 30)}${merchantName.length > 30 ? '...' : ''}`
         : 'Transaction categorization rule',
-      appliesTo: 'bank_transactions' as 'bank_transactions',
+      appliesTo: 'bank_transactions' as const,
       // Only use merchant name if it's specific, not generic description
       descriptionPattern: hasSpecificMerchant ? merchantName : '',
-      descriptionMatchType: 'contains' as 'contains',
+      descriptionMatchType: 'contains' as const,
       supplierId: transaction.supplier?.id || '',
       transactionType: (isExpense ? 'debit' : 'credit') as 'debit' | 'credit',
       categoryId: transaction.category_id || transaction.suggested_category_id || '',

@@ -81,7 +81,7 @@ const KioskMode = () => {
       await mutateRef.current(payload);
     }).then((result) => setQueuedCount(result.remaining));
     // Only run on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const lockSeconds = useMemo(() => {

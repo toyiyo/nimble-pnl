@@ -332,7 +332,7 @@ Deno.serve(async (req)=>{
         const [mm, dd, yyyy] = mdy.split('/').map((n)=>parseInt(n, 10));
         const timeMatch = timeRaw.match(/(\d{1,2}):(\d{2})(AM|PM)/i);
         if (!mm || !dd || !yyyy || !timeMatch) return null;
-        let [, hh, min, ampm] = timeMatch;
+        const [, hh, min, ampm] = timeMatch;
         let hour = parseInt(hh, 10);
         const minute = parseInt(min, 10);
         if (ampm.toUpperCase() === 'PM' && hour !== 12) hour += 12;

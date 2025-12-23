@@ -50,7 +50,7 @@ export function normalizeGTIN(barcode: string): string {
   }
   
   // Pad to 13 digits (we'll add check digit to make 14)
-  let base13 = digits.slice(0, 13).padStart(13, '0');
+  const base13 = digits.slice(0, 13).padStart(13, '0');
   
   // Calculate and append check digit
   const checkDigit = calculateGS1CheckDigit(base13);

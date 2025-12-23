@@ -2,11 +2,7 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@20.1.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { computeProcessingFeeCents } from "../_shared/invoiceUtils.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 interface LineItem {
   description: string;
@@ -323,7 +319,25 @@ serve(async (req) => {
 
     if (lineItemsError) {
       console.error("[CREATE-INVOICE] Failed to store line items:", lineItemsError);
-      // Don't fail the request - invoice was created
+      // Attempt cleanup: delete Stripe invoice and DB invoice to avoid partial state
+      try {
+        await stripe.invoices.del(
+          stripeInvoice.id,
+          {
+            stripeAccount: connectedAccount.stripe_account_id,
+          }
+        );
+      } catch (cleanupErr) {
+        console.error("[CREATE-INVOICE] Failed to delete Stripe invoice after line item error:", cleanupErr);
+      }
+
+      try {
+        await supabaseAdmin.from("invoices").delete().eq("id", invoice.id);
+      } catch (dbCleanupErr) {
+        console.error("[CREATE-INVOICE] Failed to delete local invoice after line item error:", dbCleanupErr);
+      }
+
+      throw new Error(`Failed to store line items: ${lineItemsError.message}`);
     }
 
     return new Response(

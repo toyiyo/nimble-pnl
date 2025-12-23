@@ -105,13 +105,19 @@ serve(async (req) => {
     if (!invoice.stripe_invoice_id) {
       console.log("[SEND-INVOICE] No Stripe invoice ID found, attempting to recreate invoice in Stripe");
       
+      // Compute days_until_due with basic validation
+      const dueDateMs = invoice.due_date ? new Date(invoice.due_date).getTime() : null;
+      const daysUntilDue = dueDateMs && dueDateMs > Date.now()
+        ? Math.ceil((dueDateMs - Date.now()) / (1000 * 60 * 60 * 24))
+        : 30;
+
       // Recreate the invoice in Stripe
       const stripeInvoice = await stripe.invoices.create(
         {
           customer: invoice.customers.stripe_customer_id,
           auto_advance: false,
           collection_method: "send_invoice",
-          days_until_due: invoice.due_date ? Math.max(1, Math.ceil((new Date(invoice.due_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 30,
+          days_until_due: daysUntilDue,
           description: invoice.description || undefined,
           footer: invoice.footer || undefined,
           metadata: {
@@ -147,14 +153,29 @@ serve(async (req) => {
 
       if (lineItems && lineItems.length > 0) {
         for (const item of lineItems) {
+          const amount = Number(item.amount);
+          const quantity = item.quantity ? Math.floor(Number(item.quantity)) : 1;
+
+          const isValidAmount = Number.isFinite(amount) && Number.isInteger(amount) && amount >= 0;
+          const isValidQuantity = Number.isFinite(quantity) && Number.isInteger(quantity) && quantity >= 1;
+
+          if (!isValidAmount || !isValidQuantity) {
+            const message = `[SEND-INVOICE] Invalid line item values: amount=${item.amount}, quantity=${item.quantity}, id=${item.id || 'unknown'}`;
+            console.error(message);
+            throw new Response(message, {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "text/plain" },
+            });
+          }
+
           await stripe.invoiceItems.create(
             {
               customer: invoice.customers.stripe_customer_id,
               invoice: stripeInvoice.id,
-              amount: item.amount,
+              amount,
               currency: "usd",
               description: item.description,
-              quantity: item.quantity,
+              quantity,
             },
             {
               stripeAccount: connectedAccount.stripe_account_id,

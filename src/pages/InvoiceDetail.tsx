@@ -135,7 +135,6 @@ export default function InvoiceDetail() {
             Back to Invoices
           </Button>
           <div>
-          <div>
             <h1 className="text-2xl font-bold">
               Invoice {invoice.invoice_number || invoice.id.slice(-8)}
             </h1>
@@ -153,7 +152,6 @@ export default function InvoiceDetail() {
                 </span>
               )}
             </div>
-          </div>
           </div>
         </div>
 

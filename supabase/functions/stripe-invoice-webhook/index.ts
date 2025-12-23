@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@20.1.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { updateInvoiceFromStripe } from "../_shared/invoiceSync.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,12 @@ const webhookSecret = Deno.env.get("STRIPE_INVOICE_WEBHOOK_SECRET") ?? "";
 
 // @ts-expect-error: using future Stripe API version for embedded support
 const stripe = new Stripe(stripeSecret, { apiVersion: "2025-08-27.basil" });
+
+const isInvoiceObject = (obj: unknown): obj is Stripe.Invoice => {
+  if (!obj || typeof obj !== "object") return false;
+  const invoice = obj as Record<string, unknown>;
+  return invoice.object === "invoice" && typeof invoice.id === "string" && typeof invoice.status === "string";
+};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -43,57 +50,50 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    switch (event.type) {
-      case "invoice.created":
-      case "invoice.finalized":
-      case "invoice.paid":
-      case "invoice.payment_failed":
-      case "invoice.payment_action_required":
-      case "invoice.marked_uncollectible":
-      case "invoice.voided": {
-        const invoice = event.data.object as Stripe.Invoice;
-
-        const statusMap: Record<string, string> = {
-          draft: "draft",
-          open: "open",
-          paid: "paid",
-          void: "void",
-          uncollectible: "uncollectible",
-        };
-
-        const mappedStatus = statusMap[invoice.status ?? ""] ?? "open";
-
-        const updateData: Record<string, unknown> = {
-          status: mappedStatus,
-          invoice_number: invoice.number,
-          hosted_invoice_url: invoice.hosted_invoice_url,
-          invoice_pdf_url: invoice.invoice_pdf,
-          amount_due: invoice.amount_due ?? 0,
-          amount_paid: invoice.amount_paid ?? 0,
-          amount_remaining: invoice.amount_remaining ?? 0,
-          stripe_fee_amount: invoice.total_tax_amounts?.reduce((sum, tax) => sum + (tax.amount ?? 0), 0) ?? undefined,
-          updated_at: new Date().toISOString(),
-        };
-
-        if (mappedStatus === "paid" && invoice.status_transitions?.paid_at) {
-          updateData.paid_at = new Date(invoice.status_transitions.paid_at * 1000).toISOString();
-        }
-
-        const { error } = await supabaseAdmin
-          .from("invoices")
-          .update(updateData)
-          .eq("stripe_invoice_id", invoice.id);
-
-        if (error) {
-          console.error("[INVOICE-WEBHOOK] Failed to update invoice:", error.message);
-          throw new Error(error.message);
-        }
-
-        break;
-      }
-      default:
-        console.log("[INVOICE-WEBHOOK] Unhandled event type:", event.type);
+    // Only handle invoice events; ignore the noise but return 200 to Stripe
+    if (!event.type.startsWith("invoice.")) {
+      console.log("[INVOICE-WEBHOOK] Ignoring non-invoice event:", event.type);
+      return new Response(JSON.stringify({ ignored: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
+
+    const invoiceObject = event.data.object;
+
+    if (!isInvoiceObject(invoiceObject)) {
+      console.log("[INVOICE-WEBHOOK] Event is not an invoice or missing fields:", event.type);
+      return new Response(JSON.stringify({ ignored: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    const invoice = invoiceObject;
+
+    // Find our invoice record
+    const { data: invoiceRow } = await supabaseAdmin
+      .from("invoices")
+      .select("id, paid_at")
+      .eq("stripe_invoice_id", invoice.id)
+      .maybeSingle();
+
+    if (!invoiceRow) {
+      console.log("[INVOICE-WEBHOOK] Invoice not found locally for Stripe ID:", invoice.id);
+      return new Response(JSON.stringify({ received: true, skipped: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    await updateInvoiceFromStripe(
+      supabaseAdmin,
+      invoiceRow.id,
+      invoice,
+      { existingInvoice: invoiceRow }
+    );
+
+    console.log("[INVOICE-WEBHOOK] Invoice updated from event:", event.type, invoice.id);
 
     return new Response(JSON.stringify({ received: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

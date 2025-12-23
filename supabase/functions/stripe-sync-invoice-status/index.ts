@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { updateInvoiceFromStripe } from "../_shared/invoiceSync.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -152,38 +153,23 @@ serve(async (req) => {
         status = invoice.status; // Keep existing status if unknown
     }
 
-    // Update invoice in database with latest Stripe data
-    const updateData: Record<string, unknown> = {
-      status,
-      invoice_number: stripeInvoice.number || invoice.invoice_number,
-      hosted_invoice_url: stripeInvoice.hosted_invoice_url || invoice.hosted_invoice_url,
-      invoice_pdf_url: stripeInvoice.invoice_pdf || invoice.invoice_pdf_url,
-      amount_paid: stripeInvoice.amount_paid ?? 0,
-      amount_remaining: stripeInvoice.amount_remaining ?? 0,
-      amount_due: stripeInvoice.amount_due ?? 0,
-      stripe_fee_amount: stripeFeeAmount,
-      stripe_fee_description: stripeFeeDescription,
-      application_fee_amount: applicationFeeAmount,
-      updated_by: user.id,
-    };
-
-    // Set paid_at if status is paid and we don't have it yet
-    if (status === 'paid' && !invoice.paid_at && stripeInvoice.status_transitions?.paid_at) {
-      updateData.paid_at = new Date(stripeInvoice.status_transitions.paid_at * 1000).toISOString();
-    }
-
-    const { error: updateError } = await supabaseAdmin
-      .from("invoices")
-      .update(updateData)
-      .eq("id", invoiceId);
-
-    if (updateError) {
-      throw new Error(`Failed to update invoice: ${updateError.message}`);
-    }
+    // Update invoice in database with latest Stripe data via shared helper
+    const { status: updatedStatus, updateData } = await updateInvoiceFromStripe(
+      supabaseAdmin,
+      invoiceId,
+      stripeInvoice,
+      {
+        updated_by: user.id,
+        existingInvoice: invoice,
+        stripe_fee_amount: stripeFeeAmount,
+        stripe_fee_description: stripeFeeDescription,
+        application_fee_amount: applicationFeeAmount,
+      }
+    );
 
     console.log("[SYNC-INVOICE-STATUS] Invoice status updated:", {
       id: invoiceId,
-      status,
+      status: updatedStatus,
       amount_paid: updateData.amount_paid,
       amount_remaining: updateData.amount_remaining,
     });

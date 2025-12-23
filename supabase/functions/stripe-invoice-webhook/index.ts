@@ -93,7 +93,7 @@ serve(async (req) => {
       { existingInvoice: invoiceRow }
     );
 
-    console.log("[INVOICE-WEBHOOK] Invoice updated from event:", event.type, invoice.id);
+    console.log("[INVOICE-WEBHOOK] Handled invoice event:", event.type, "stripe_id:", invoice.id, "local_id:", invoiceRow.id);
 
     return new Response(JSON.stringify({ received: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

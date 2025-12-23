@@ -99,11 +99,19 @@ serve(async (req) => {
     }
 
     // Check if account already exists
-    const { data: existingAccount } = await supabaseAdmin
+    const { data: existingAccount, error: existingAccountError } = await supabaseAdmin
       .from("stripe_connected_accounts")
       .select("*")
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
+
+    if (existingAccountError) {
+      console.error("[CREATE-CONNECTED-ACCOUNT] Error fetching existing account:", {
+        restaurantId,
+        error: existingAccountError.message,
+      });
+      throw new Error(`Database error: ${existingAccountError.message}`);
+    }
 
     if (existingAccount) {
       console.log("[CREATE-CONNECTED-ACCOUNT] Account already exists:", existingAccount.stripe_account_id);

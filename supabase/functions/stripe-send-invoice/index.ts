@@ -55,6 +55,10 @@ serve(async (req) => {
       throw new Error("Invoice not found");
     }
 
+    if (!invoice.customers?.stripe_customer_id) {
+      throw new Error("Customer does not have a Stripe customer ID");
+    }
+
     console.log("[SEND-INVOICE] Invoice data:", {
       id: invoice.id,
       stripe_invoice_id: invoice.stripe_invoice_id,

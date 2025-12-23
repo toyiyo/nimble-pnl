@@ -224,7 +224,7 @@ export default function Banking() {
         }
       />
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="w-full px-4 py-8">
         <div className="space-y-6">
           {/* Stats Overview */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

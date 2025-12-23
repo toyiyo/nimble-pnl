@@ -47,7 +47,7 @@ const Team = () => {
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60" role="navigation" aria-label="Team management navigation">
-        <div className="container px-4">
+        <div className="w-full px-4">
           <div className="flex h-14 items-center justify-between">
             <div className="flex items-center gap-2 md:gap-4 min-w-0">
               <Button 
@@ -95,7 +95,7 @@ const Team = () => {
         </div>
       </nav>
       
-      <main className="container px-4 py-4 md:py-6" role="main">
+      <main className="w-full px-4 py-4 md:py-6" role="main">
         {/* Hero Section with Gradient */}
         <Card className="mb-6 md:mb-8 bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
           <CardContent className="pt-6">

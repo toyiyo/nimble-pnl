@@ -274,7 +274,7 @@ export default function InventoryAudit() {
 
   if (!user) {
     return (
-      <div className="container mx-auto px-4 py-8 text-center">
+      <div className="w-full px-4 py-8 text-center">
         <p>Please log in to access inventory audit.</p>
       </div>
     );
@@ -282,7 +282,7 @@ export default function InventoryAudit() {
 
   if (!selectedRestaurant) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="w-full px-4 py-8">
         <Card className="bg-gradient-to-br from-muted/50 to-transparent">
           <CardContent className="py-12">
             <div className="text-center space-y-4">
@@ -307,7 +307,7 @@ export default function InventoryAudit() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="w-full px-4 py-8">
       {/* Header */}
       <Card className="mb-6 bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
         <CardContent className="pt-6">

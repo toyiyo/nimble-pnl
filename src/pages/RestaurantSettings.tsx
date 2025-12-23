@@ -92,7 +92,7 @@ export default function RestaurantSettings() {
 
   if (!user) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="w-full px-4 py-8">
         <div className="text-center p-8 rounded-lg bg-gradient-to-br from-destructive/5 via-destructive/10 to-transparent border border-destructive/20">
           <MetricIcon icon={AlertCircle} variant="red" className="mx-auto mb-4" />
           <h2 className="text-xl font-semibold mb-2">Authentication Required</h2>
@@ -104,7 +104,7 @@ export default function RestaurantSettings() {
 
   if (restaurantLoading) {
     return (
-      <div className="container mx-auto px-4 py-8 max-w-3xl">
+      <div className="w-full px-4 py-8">
         <div className="space-y-6">
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-96 w-full" />
@@ -116,7 +116,7 @@ export default function RestaurantSettings() {
 
   if (!selectedRestaurant) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="w-full px-4 py-8">
         <div className="text-center space-y-6 p-8 rounded-lg bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50">
           <MetricIcon icon={Settings} variant="blue" className="mx-auto" />
           <div>
@@ -139,7 +139,7 @@ export default function RestaurantSettings() {
   const canEdit = selectedRestaurant.role === 'owner' || selectedRestaurant.role === 'manager';
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-3xl">
+    <div className="w-full px-4 py-8">
       {/* Hero Section with Gradient */}
       <Card className="mb-6 bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
         <CardContent className="pt-6">

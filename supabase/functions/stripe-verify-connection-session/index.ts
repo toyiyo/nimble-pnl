@@ -97,6 +97,17 @@ serve(async (req) => {
       try {
         console.log(`[VERIFY-SESSION] Processing account: ${account.id} - ${account.display_name}`);
 
+        // Fetch full account with institution so we can store icon/logo
+        const accountWithInstitution = await stripe.financialConnections.accounts.retrieve(
+          account.id,
+          { expand: ["institution"] }
+        );
+        const institutionLogoUrl = accountWithInstitution.institution?.icon?.default 
+          || accountWithInstitution.institution?.logo?.default 
+          || (account.institution_name 
+            ? `https://financialconnections.stripe.com/v1/institution/${account.institution_name.toLowerCase().replace(/\s+/g, '-')}/logo`
+            : null);
+
         // Check if this account already exists (reconnection case)
         const { data: existingBank, error: checkError } = await supabaseAdmin
           .from('connected_banks')
@@ -124,9 +135,7 @@ serve(async (req) => {
               disconnected_at: null,
               sync_error: null,
               institution_name: account.institution_name,
-              institution_logo_url: account.institution_name ? 
-                `https://financialconnections.stripe.com/v1/institution/${account.institution_name.toLowerCase().replace(/\s+/g, '-')}/logo` : 
-                null,
+              institution_logo_url: institutionLogoUrl,
             })
             .eq('id', existingBank.id);
 
@@ -146,9 +155,7 @@ serve(async (req) => {
               restaurant_id: restaurantId,
               stripe_financial_account_id: account.id,
               institution_name: account.institution_name,
-              institution_logo_url: account.institution_name ? 
-                `https://financialconnections.stripe.com/v1/institution/${account.institution_name.toLowerCase().replace(/\s+/g, '-')}/logo` : 
-                null,
+              institution_logo_url: institutionLogoUrl,
               status: 'connected',
               connected_at: new Date().toISOString(),
             })

@@ -78,6 +78,23 @@ serve(async (req) => {
         const account = event.data.object as Stripe.FinancialConnections.Account;
         console.log("[FC-WEBHOOK] Account connected:", account.id);
 
+        // Fetch full account with institution/icon details and balance if missing
+        let accountDetails = account;
+        if (!account.institution || !account.balance) {
+          try {
+            accountDetails = await stripe.financialConnections.accounts.retrieve(account.id, {
+              expand: ["institution"],
+            }) as Stripe.FinancialConnections.Account;
+            console.log("[FC-WEBHOOK] Enriched account with institution and balance data");
+          } catch (fetchError) {
+            console.error("[FC-WEBHOOK] Error fetching full account details:", fetchError);
+          }
+        }
+
+        const institutionLogoUrl = (accountDetails as any).institution?.icon?.default 
+          || (accountDetails as any).institution?.logo?.default 
+          || null;
+
         // Get customer ID from account holder
         const customerId = account.account_holder?.customer;
         
@@ -123,6 +140,7 @@ serve(async (req) => {
               disconnected_at: null,
               last_sync_at: new Date().toISOString(),
               sync_error: null,
+              institution_logo_url: institutionLogoUrl,
             })
             .eq("id", existingBank.id)
             .select()
@@ -142,7 +160,7 @@ serve(async (req) => {
               restaurant_id: restaurantId,
               stripe_financial_account_id: account.id,
               institution_name: account.institution_name,
-              institution_logo_url: null,
+              institution_logo_url: institutionLogoUrl,
               status: "connected",
               connected_at: new Date().toISOString(),
               last_sync_at: new Date().toISOString(),
@@ -185,7 +203,7 @@ serve(async (req) => {
         }
 
         // Fetch account details with balance from Stripe (since webhook may not include it)
-        let balanceData = account.balance;
+        let balanceData = accountDetails.balance || account.balance;
         if (!balanceData) {
           console.log("[FC-WEBHOOK] No balance in event, fetching from Stripe...");
           try {

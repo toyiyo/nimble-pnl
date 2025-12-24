@@ -314,7 +314,7 @@ export default function Banking() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-3">
                 {connectedBanks.map((bank) => (
                   <BankConnectionCard
                     key={bank.id}

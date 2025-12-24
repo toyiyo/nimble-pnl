@@ -90,20 +90,17 @@ serve(async (req) => {
       httpClient: Stripe.createFetchHttpClient(),
     });
 
-    // Unsubscribe from transaction updates in Stripe
+    // Disconnect the account in Stripe so it no longer appears as connected
     try {
-      logStep("Unsubscribing from Stripe transaction updates");
-      await stripe.financialConnections.accounts.unsubscribe(
-        bank.stripe_financial_account_id,
-        { features: ['transactions'] }
-      );
-      logStep("Successfully unsubscribed from Stripe");
+      logStep("Disconnecting Stripe financial connections account");
+      await stripe.financialConnections.accounts.disconnect(bank.stripe_financial_account_id);
+      logStep("Stripe financial connections account disconnected");
     } catch (stripeError: any) {
-      // Log but don't fail - the subscription might already be inactive
-      logStep("Stripe unsubscribe error (non-fatal)", { 
+      logStep("Stripe disconnect error", { 
         error: stripeError.message,
         code: stripeError.code 
       });
+      throw new Error(`Failed to disconnect bank in Stripe: ${stripeError.message}`);
     }
 
     // If deleteData is true, delete related data in the background

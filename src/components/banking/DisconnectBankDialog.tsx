@@ -19,14 +19,14 @@ import { cn } from '@/lib/utils';
 
 interface DisconnectBankDialogProps {
   bankName: string;
-  bankId: string;
+  bankIds: string | string[];
   onDisconnect: (bankId: string, deleteData: boolean) => Promise<void>;
   children?: React.ReactNode;
 }
 
 export const DisconnectBankDialog = ({
   bankName,
-  bankId,
+  bankIds,
   onDisconnect,
   children,
 }: DisconnectBankDialogProps) => {
@@ -38,7 +38,10 @@ export const DisconnectBankDialog = ({
   const handleDisconnect = async () => {
     setIsDisconnecting(true);
     try {
-      await onDisconnect(bankId, deleteData);
+      const ids = Array.isArray(bankIds) ? bankIds : [bankIds];
+      for (const id of ids) {
+        await onDisconnect(id, deleteData);
+      }
       setIsOpen(false);
       // Reset state
       setDeleteData(false);

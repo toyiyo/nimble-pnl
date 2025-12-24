@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { loadStripe } from "@stripe/stripe-js";
 import { supabase } from "@/integrations/supabase/client";
+import { type BankStatus, type GroupedBank } from "@/utils/financialConnections";
 
 export default function Banking() {
   const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation' | 'upload_statement'>('for_review');
@@ -38,7 +39,6 @@ export default function Banking() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const { selectedRestaurant } = useRestaurantContext();
   const hasActiveFilters = searchTerm.length > 0 || Object.values(filters).some(v => v !== undefined && v !== '');
-  
   const {
     transactions: reviewTransactions = [],
     totalCount: reviewCount = 0,
@@ -90,6 +90,10 @@ export default function Banking() {
     syncTransactions,
     disconnectBank,
     verifyConnectionSession,
+    groupedBanks,
+    totalBalance,
+    bankCount,
+    accountCount,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
 
   const { recalculateBankBalance } = useBankStatementImport();
@@ -167,9 +171,6 @@ export default function Banking() {
     }
   };
 
-  const totalBalance = connectedBanks
-    .flatMap((bank) => bank.balances || [])
-    .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
   const activeFilterCount = Object.values(filters).filter(v => v !== undefined && v !== '').length;
   const reviewEmptyState = hasActiveFilters
     ? { title: 'No transactions match your filters', subtitle: 'Try adjusting your search or filter criteria' }
@@ -247,8 +248,8 @@ export default function Banking() {
                 <div className="flex items-center gap-4">
                   <MetricIcon icon={Building2} variant="blue" />
                   <div>
-                    <div className="text-3xl font-bold">{connectedBanks.length}</div>
-                    <div className="text-sm text-muted-foreground">Connected Banks</div>
+                    <div className="text-3xl font-bold">{bankCount}</div>
+                    <div className="text-sm text-muted-foreground">Institutions • {accountCount} account{accountCount !== 1 ? 's' : ''}</div>
                   </div>
                 </div>
               </CardContent>
@@ -314,12 +315,11 @@ export default function Banking() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {connectedBanks.map((bank) => (
+              <div className="space-y-3">
+                {groupedBanks.map((bank) => (
                   <BankConnectionCard
                     key={bank.id}
                     bank={bank}
-                    restaurantId={selectedRestaurant?.restaurant_id || ""}
                     onRefreshBalance={refreshBalance}
                     onSyncTransactions={syncTransactions}
                     onDisconnect={disconnectBank}

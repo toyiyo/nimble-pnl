@@ -28,6 +28,10 @@ const Accounting = () => {
     syncTransactions,
     disconnectBank,
     verifyConnectionSession,
+    groupedBanks,
+    totalBalance,
+    bankCount,
+    accountCount,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
 
@@ -84,10 +88,6 @@ const Accounting = () => {
       });
     }
   };
-
-  const totalBalance = connectedBanks
-    .flatMap((bank) => bank.balances || [])
-    .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
 
   return (
     <>
@@ -149,8 +149,8 @@ const Accounting = () => {
                 <div className="flex items-center gap-4">
                   <MetricIcon icon={Building2} variant="blue" />
                   <div>
-                    <div className="text-3xl font-bold">{connectedBanks.length}</div>
-                    <div className="text-sm text-muted-foreground">Connected Banks</div>
+                    <div className="text-3xl font-bold">{bankCount}</div>
+                    <div className="text-sm text-muted-foreground">Institutions</div>
                   </div>
                 </div>
               </CardContent>
@@ -161,9 +161,7 @@ const Accounting = () => {
                 <div className="flex items-center gap-4">
                   <MetricIcon icon={TrendingUp} variant="purple" />
                   <div>
-                    <div className="text-3xl font-bold">
-                      {connectedBanks.reduce((sum, bank) => sum + (bank.balances?.length || 0), 0)}
-                    </div>
+                    <div className="text-3xl font-bold">{accountCount}</div>
                     <div className="text-sm text-muted-foreground">Accounts</div>
                   </div>
                 </div>
@@ -199,12 +197,11 @@ const Accounting = () => {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {connectedBanks.map((bank) => (
+              <div className="space-y-3">
+                {groupedBanks.map((bank) => (
                   <BankConnectionCard
                     key={bank.id}
                     bank={bank}
-                    restaurantId={selectedRestaurant.restaurant_id}
                     onRefreshBalance={refreshBalance}
                     onSyncTransactions={syncTransactions}
                     onDisconnect={disconnectBank}

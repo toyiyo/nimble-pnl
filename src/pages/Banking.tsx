@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { loadStripe } from "@stripe/stripe-js";
 import { supabase } from "@/integrations/supabase/client";
+import { type BankStatus, type GroupedBank } from "@/utils/financialConnections";
 
 export default function Banking() {
   const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation' | 'upload_statement'>('for_review');
@@ -38,19 +39,6 @@ export default function Banking() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const { selectedRestaurant } = useRestaurantContext();
   const hasActiveFilters = searchTerm.length > 0 || Object.values(filters).some(v => v !== undefined && v !== '');
-  type BankStatus = 'connected' | 'disconnected' | 'error' | 'requires_reauth';
-  type GroupedBank = {
-    id: string;
-    institution_name: string;
-    institution_logo_url: string | null;
-    status: BankStatus;
-    connected_at: string;
-    last_sync_at: string | null;
-    sync_error?: string | null;
-    bankIds: string[];
-    balances: typeof connectedBanks[number]['balances'];
-  };
-  
   const {
     transactions: reviewTransactions = [],
     totalCount: reviewCount = 0,

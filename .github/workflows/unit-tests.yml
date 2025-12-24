@@ -62,7 +62,7 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.65.5
 
       - name: Install PostgreSQL client
         run: |
@@ -127,7 +127,7 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.65.5
 
       - name: Start Supabase local database
         run: supabase start

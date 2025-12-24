@@ -141,9 +141,12 @@ for test_file in "$SCRIPT_DIR"/*.sql; do
     echo ""
     echo "Running: $filename"
     
-    # Run the test and capture output
-    output=$(run_psql_file "$test_file" 2>&1)
-    exit_code=$?
+    # Run the test and capture output; avoid set -e stopping before we can print failures
+    if output=$(run_psql_file "$test_file" 2>&1); then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
     
     # Always show output for debugging in CI
     echo "--- Test Output ---"

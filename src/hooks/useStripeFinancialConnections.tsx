@@ -1,31 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-
-interface ConnectedBank {
-  id: string;
-  stripe_financial_account_id: string;
-  institution_name: string;
-  institution_logo_url: string | null;
-  status: 'connected' | 'disconnected' | 'error' | 'requires_reauth';
-  connected_at: string;
-  disconnected_at: string | null;
-  last_sync_at: string | null;
-  sync_error: string | null;
-  balances: Array<{
-    id: string;
-    connected_bank_id?: string | null;
-    account_name: string;
-    account_type: string | null;
-    account_mask: string | null;
-    current_balance: number;
-    available_balance: number | null;
-    currency: string;
-    as_of_date: string;
-    is_active: boolean;
-  }>;
-}
+import { type ConnectedBank, type GroupedBank, groupBanks, totalBalance as computeTotalBalance, accountCount as computeAccountCount } from '@/utils/financialConnections';
 
 interface FinancialConnectionSession {
   clientSecret: string;
@@ -100,6 +77,18 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
       });
     }
   }, [queryError, toast]);
+
+  const groupedBanks = useMemo(() => groupBanks(connectedBanks), [connectedBanks]);
+
+  const totalBalance = useMemo(
+    () => computeTotalBalance(connectedBanks),
+    [connectedBanks]
+  );
+
+  const accountCount = useMemo(
+    () => computeAccountCount(connectedBanks),
+    [connectedBanks]
+  );
 
   // Create Financial Connections session
   const createFinancialConnectionsSession = async (): Promise<FinancialConnectionSession | null> => {
@@ -346,6 +335,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
 
   return {
     connectedBanks,
+    groupedBanks,
     loading,
     isCreatingSession,
     createFinancialConnectionsSession,
@@ -354,5 +344,8 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     refreshBalance,
     syncTransactions,
     verifyConnectionSession,
+    totalBalance,
+    bankCount: groupedBanks.length,
+    accountCount,
   };
 };

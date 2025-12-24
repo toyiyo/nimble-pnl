@@ -35,7 +35,6 @@ interface BankConnectionCardProps {
     bankIds: string[];
     balances: BankBalance[];
   };
-  restaurantId: string;
   onRefreshBalance?: (bankId: string) => Promise<void>;
   onSyncTransactions?: (bankId: string) => Promise<void>;
   onDisconnect?: (bankId: string, deleteData: boolean) => Promise<void>;
@@ -174,7 +173,7 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9">
+              <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Open bank options">
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -190,7 +189,7 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
               {onDisconnect && (
                 <DisconnectBankDialog
                   bankName={bank.institution_name}
-                  bankId={bank.bankIds[0]}
+                  bankIds={bank.bankIds}
                   onDisconnect={onDisconnect}
                 >
                   <DropdownMenuItem className="flex items-center gap-2 text-destructive focus:text-destructive">
@@ -242,7 +241,7 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Open account options">
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -266,7 +265,7 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
                         {onDisconnect && (
                           <DisconnectBankDialog
                             bankName={balance.account_name}
-                            bankId={balance.connected_bank_id || bank.bankIds[0]}
+                            bankIds={balance.connected_bank_id || bank.bankIds[0]}
                             onDisconnect={onDisconnect}
                           >
                             <DropdownMenuItem className="flex items-center gap-2 text-destructive focus:text-destructive">

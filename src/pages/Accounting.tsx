@@ -202,7 +202,6 @@ const Accounting = () => {
                   <BankConnectionCard
                     key={bank.id}
                     bank={bank}
-                    restaurantId={selectedRestaurant.restaurant_id}
                     onRefreshBalance={refreshBalance}
                     onSyncTransactions={syncTransactions}
                     onDisconnect={disconnectBank}

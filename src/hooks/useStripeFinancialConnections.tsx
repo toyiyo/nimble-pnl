@@ -15,6 +15,7 @@ interface ConnectedBank {
   sync_error: string | null;
   balances: Array<{
     id: string;
+    connected_bank_id?: string | null;
     account_name: string;
     account_type: string | null;
     account_mask: string | null;
@@ -63,6 +64,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
           sync_error,
           balances:bank_account_balances(
             id,
+            connected_bank_id,
             account_name,
             account_type,
             account_mask,

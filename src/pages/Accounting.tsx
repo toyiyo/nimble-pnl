@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
@@ -30,6 +30,64 @@ const Accounting = () => {
     verifyConnectionSession,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
+  type BankStatus = 'connected' | 'disconnected' | 'error' | 'requires_reauth';
+  type GroupedBank = {
+    id: string;
+    institution_name: string;
+    institution_logo_url: string | null;
+    status: BankStatus;
+    connected_at: string;
+    last_sync_at: string | null;
+    sync_error?: string | null;
+    bankIds: string[];
+    balances: typeof connectedBanks[number]['balances'];
+  };
+
+  const groupedBanks = useMemo(() => {
+    const statusPriority: BankStatus[] = ['error', 'requires_reauth', 'disconnected', 'connected'];
+    const pickStatus = (a: BankStatus | undefined, b: BankStatus) => {
+      if (!a) return b;
+      return statusPriority.indexOf(b) < statusPriority.indexOf(a) ? b : a;
+    };
+
+    const map = new Map<string, GroupedBank>();
+    connectedBanks.forEach((bank) => {
+      const key = bank.institution_name || bank.id;
+      const existing = map.get(key);
+      const merged: GroupedBank = existing ?? {
+        id: key,
+        institution_name: bank.institution_name,
+        institution_logo_url: bank.institution_logo_url,
+        status: bank.status,
+        connected_at: bank.connected_at,
+        last_sync_at: bank.last_sync_at,
+        sync_error: bank.sync_error,
+        bankIds: [] as string[],
+        balances: [] as typeof bank.balances,
+      };
+
+      merged.institution_logo_url = merged.institution_logo_url || bank.institution_logo_url;
+      merged.status = pickStatus(merged.status, bank.status);
+      merged.connected_at = merged.connected_at && new Date(merged.connected_at) < new Date(bank.connected_at)
+        ? merged.connected_at
+        : bank.connected_at;
+      merged.last_sync_at = merged.last_sync_at && bank.last_sync_at && new Date(merged.last_sync_at) > new Date(bank.last_sync_at)
+        ? merged.last_sync_at
+        : bank.last_sync_at || merged.last_sync_at;
+      merged.sync_error = merged.sync_error || bank.sync_error;
+      merged.bankIds.push(bank.id);
+      merged.balances = [
+        ...merged.balances,
+        ...bank.balances.map((bal) => ({
+          ...bal,
+          connected_bank_id: bal.connected_bank_id || bank.id,
+        })),
+      ];
+
+      map.set(key, merged);
+    });
+    return Array.from(map.values());
+  }, [connectedBanks]);
 
   // Clean up Stripe iframes when leaving the Accounting page
   useEffect(() => {
@@ -88,6 +146,8 @@ const Accounting = () => {
   const totalBalance = connectedBanks
     .flatMap((bank) => bank.balances || [])
     .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
+  const bankCount = groupedBanks.length;
+  const accountCount = connectedBanks.reduce((sum, bank) => sum + (bank.balances?.length || 0), 0);
 
   return (
     <>
@@ -149,8 +209,8 @@ const Accounting = () => {
                 <div className="flex items-center gap-4">
                   <MetricIcon icon={Building2} variant="blue" />
                   <div>
-                    <div className="text-3xl font-bold">{connectedBanks.length}</div>
-                    <div className="text-sm text-muted-foreground">Connected Banks</div>
+                    <div className="text-3xl font-bold">{bankCount}</div>
+                    <div className="text-sm text-muted-foreground">Institutions</div>
                   </div>
                 </div>
               </CardContent>
@@ -161,9 +221,7 @@ const Accounting = () => {
                 <div className="flex items-center gap-4">
                   <MetricIcon icon={TrendingUp} variant="purple" />
                   <div>
-                    <div className="text-3xl font-bold">
-                      {connectedBanks.reduce((sum, bank) => sum + (bank.balances?.length || 0), 0)}
-                    </div>
+                    <div className="text-3xl font-bold">{accountCount}</div>
                     <div className="text-sm text-muted-foreground">Accounts</div>
                   </div>
                 </div>
@@ -200,7 +258,7 @@ const Accounting = () => {
               </Card>
             ) : (
               <div className="space-y-3">
-                {connectedBanks.map((bank) => (
+                {groupedBanks.map((bank) => (
                   <BankConnectionCard
                     key={bank.id}
                     bank={bank}

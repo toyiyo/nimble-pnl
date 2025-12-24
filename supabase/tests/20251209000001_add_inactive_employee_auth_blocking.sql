@@ -124,7 +124,9 @@ SELECT results_eq(
 DELETE FROM auth_audit_log WHERE employee_id = '00000000-0000-0000-0000-000000000407'::uuid;
 
 -- Call function as authenticated user
-SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000403", "role": "authenticated"}';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000403","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000403', true);
+SELECT set_config('request.jwt.claim.role', 'authenticated', true);
 
 SELECT * FROM verify_employee_can_login('00000000-0000-0000-0000-000000000403'::uuid);
 
@@ -197,6 +199,8 @@ SELECT ok(
 -- Test 13: verify_employee_pin audit log in anon mode (kiosk) should handle NULL auth.uid()
 -- Reset to anon role
 RESET request.jwt.claims;
+RESET request.jwt.claim.sub;
+RESET request.jwt.claim.role;
 SET LOCAL role TO 'anon';
 
 -- Clear audit log
@@ -228,7 +232,9 @@ SELECT results_eq(
 
 -- Reset to authenticated for remaining tests
 RESET role;
-SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000404", "role": "authenticated"}';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000404","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000404', true);
+SELECT set_config('request.jwt.claim.role', 'authenticated', true);
 
 -- Test 16: auth_audit_log table has correct columns
 SELECT has_column('auth_audit_log', 'user_id', 'auth_audit_log should have user_id column');
@@ -255,6 +261,8 @@ SELECT ok(
 
 -- Cleanup
 RESET request.jwt.claims;
+RESET request.jwt.claim.sub;
+RESET request.jwt.claim.role;
 RESET role;
 DELETE FROM auth_audit_log WHERE employee_id IN (
   SELECT id FROM employees WHERE restaurant_id = '00000000-0000-0000-0000-000000000401'::uuid

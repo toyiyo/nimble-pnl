@@ -117,11 +117,6 @@ SELECT is_empty(
   'Other restaurants data is excluded'
 );
 
--- Cleanup any preexisting data for other restaurant to avoid interference
-DELETE FROM unified_sales WHERE restaurant_id = '99999999-9999-9999-9999-999999999999';
-DELETE FROM daily_sales WHERE restaurant_id = '99999999-9999-9999-9999-999999999999';
-DELETE FROM chart_of_accounts WHERE restaurant_id = '99999999-9999-9999-9999-999999999999';
-
 SELECT is_empty(
   format(
     $fmt$

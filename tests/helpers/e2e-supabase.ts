@@ -207,6 +207,20 @@ export async function exposeSupabaseHelpers(page: Page) {
       const cogsId = getId('5000');
       const expenseId = getId('6000');
 
+      // Validate that all required account IDs were found
+      if (!cashId) {
+        throw new Error('Cash account (1000) not found after upsert. Check chart_of_accounts setup.');
+      }
+      if (!revenueId) {
+        throw new Error('Revenue account (4000) not found after upsert. Check chart_of_accounts setup.');
+      }
+      if (!cogsId) {
+        throw new Error('COGS account (5000) not found after upsert. Check chart_of_accounts setup.');
+      }
+      if (!expenseId) {
+        throw new Error('Expense account (6000) not found after upsert. Check chart_of_accounts setup.');
+      }
+
       // Seed POS revenue + pass-through
       const { error: salesError } = await supabase.from('unified_sales').insert([
         {

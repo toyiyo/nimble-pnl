@@ -87,7 +87,8 @@ test('Income Statement shows seeded POS + journal data', async ({ page }) => {
   await expect(page.getByText('Total COGS')).toBeVisible();
   await expect(page.getByText('$500.00').first()).toBeVisible();
   await expect(page.getByText('Total Expenses')).toBeVisible();
-  await expect(page.getByText('$400.00')).toBeVisible();
+  const totalExpensesRow = page.getByText('Total Expenses').locator('xpath=ancestor::div[1]');
+  await expect(totalExpensesRow.getByText('$400.00')).toBeVisible();
 
   // Scope Net Income to its row to avoid duplicate amounts elsewhere
   const netIncomeRow = page.getByText('Net Income').locator('xpath=ancestor::div[1]');

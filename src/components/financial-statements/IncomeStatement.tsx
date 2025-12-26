@@ -163,6 +163,64 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         }
       }
 
+      // Payroll expense fallback: if no payroll expense JE exists, include hourly punches + salary/contractor allocations
+      const payrollExpenseJE = accountsWithBalances
+        .filter(acc =>
+          acc.account_type === 'expense' &&
+          (
+            (acc as any).account_subtype === 'payroll' ||
+            (acc.account_name || '').toLowerCase().includes('payroll')
+          )
+        )
+        .reduce((sum, acc) => sum + acc.current_balance, 0);
+
+      if (payrollExpenseJE === 0) {
+        const fromStr = dateFrom.toISOString().split('T')[0];
+        const toStr = dateTo.toISOString().split('T')[0];
+
+        const { data: hourlyAgg, error: hourlyErr } = await supabase
+          .from('daily_labor_costs')
+          .select('sum:sum(total_labor_cost)')
+          .eq('restaurant_id', restaurantId)
+          .gte('date', fromStr)
+          .lte('date', toStr)
+          .maybeSingle();
+
+        const { data: allocationAgg, error: allocErr } = await supabase
+          .from('daily_labor_allocations')
+          .select('sum:sum(allocated_cost)')
+          .eq('restaurant_id', restaurantId)
+          .gte('date', fromStr)
+          .lte('date', toStr)
+          .maybeSingle();
+
+        if (hourlyErr) {
+          console.warn('Failed to fetch hourly labor costs for IS:', hourlyErr);
+        }
+        if (allocErr) {
+          console.warn('Failed to fetch salary/contractor allocations for IS:', allocErr);
+        }
+
+        const payrollFallback =
+          Math.abs(Number(hourlyAgg?.sum) || 0) + Math.abs(Number(allocationAgg?.sum) || 0);
+
+        if (payrollFallback > 0) {
+          accountsWithBalances = [
+            ...accountsWithBalances,
+            {
+              id: 'payroll-expense-fallback',
+              account_code: 'PAYROLL-EXP',
+              account_name: 'Payroll Expense (unposted)',
+              account_type: 'expense',
+              account_subtype: 'operating_expenses',
+              normal_balance: 'debit',
+              current_balance: payrollFallback,
+              is_payroll_fallback: true,
+            },
+          ];
+        }
+      }
+
       return {
         revenue: accountsWithBalances.filter(a => a.account_type === 'revenue'),
         expenses: accountsWithBalances.filter(a => a.account_type === 'expense'),

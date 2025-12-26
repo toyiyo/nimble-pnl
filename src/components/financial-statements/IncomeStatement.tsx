@@ -17,6 +17,29 @@ interface IncomeStatementProps {
 export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatementProps) {
   const { toast } = useToast();
 
+  // Merge inventory usage (source of truth for COGS) into COGS accounts when no journaled COGS exist
+  const mergeInventoryCOGS = (
+    cogsAccounts: any[],
+    inventoryUsageTotal: number
+  ) => {
+    const existingCOGSTotal = cogsAccounts.reduce((sum, acc) => sum + (acc.current_balance || 0), 0);
+    if (existingCOGSTotal > 0 || inventoryUsageTotal <= 0) return cogsAccounts;
+
+    return [
+      ...cogsAccounts,
+      {
+        id: 'inventory-usage',
+        account_code: 'COGS-INV',
+        account_name: 'Inventory Usage (unposted)',
+        account_type: 'cogs',
+        account_subtype: 'cost_of_goods_sold',
+        normal_balance: 'debit',
+        current_balance: inventoryUsageTotal,
+        is_inventory_usage: true,
+      },
+    ];
+  };
+
   // Fetch revenue breakdown from categorized POS sales
   const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
     restaurantId,
@@ -85,7 +108,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       // Map accounts with their calculated balances
       // Revenue accounts: credits increase, debits decrease (normal balance = credit)
       // Expense/COGS accounts: debits increase, credits decrease (normal balance = debit)
-      const accountsWithBalances = accounts?.map(account => {
+      let accountsWithBalances = accounts?.map(account => {
         const balance = accountBalances.get(account.id) || { debits: 0, credits: 0 };
         let amount = 0;
         
@@ -102,6 +125,43 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
           current_balance: amount,
         };
       }) || [];
+
+      // If no journaled COGS, pull inventory usage as accrual COGS and append a synthetic entry
+      const totalJournalCOGS = accountsWithBalances
+        .filter(a => a.account_type === 'cogs')
+        .reduce((sum, acc) => sum + acc.current_balance, 0);
+
+      if (totalJournalCOGS === 0) {
+        const { data: inventoryUsage, error: inventoryError } = await supabase
+          .from('inventory_transactions')
+          .select('total_cost')
+          .eq('restaurant_id', restaurantId)
+          .eq('transaction_type', 'usage')
+          .gte('transaction_date', dateFrom.toISOString().split('T')[0])
+          .lte('transaction_date', dateTo.toISOString().split('T')[0])
+          .limit(10000);
+
+        if (inventoryError) {
+          console.warn('Failed to fetch inventory usage for COGS:', inventoryError);
+        } else {
+          const inventoryCOGSTotal = inventoryUsage?.reduce(
+            (sum, tx) => sum + Math.abs(Number(tx.total_cost) || 0),
+            0
+          ) || 0;
+
+          if (inventoryCOGSTotal > 0) {
+            const mergedCogs = mergeInventoryCOGS(
+              accountsWithBalances.filter(a => a.account_type === 'cogs'),
+              inventoryCOGSTotal
+            );
+
+            accountsWithBalances = [
+              ...accountsWithBalances.filter(a => a.account_type !== 'cogs'),
+              ...mergedCogs,
+            ];
+          }
+        }
+      }
 
       return {
         revenue: accountsWithBalances.filter(a => a.account_type === 'revenue'),

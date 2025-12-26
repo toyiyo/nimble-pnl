@@ -141,6 +141,217 @@ export async function exposeSupabaseHelpers(page: Page) {
       return (legacy || []).map(l => l.amount);
     };
 
+    (window as any).__seedIncomeStatement = async (opts: {
+      restaurantId: string;
+      saleDate?: string;
+    }) => {
+      const saleDate =
+        opts.saleDate ||
+        new Date().toISOString().slice(0, 10);
+
+      const { restaurantId } = opts;
+
+      // Upsert needed accounts
+      const accounts = [
+        {
+          account_code: '1000',
+          account_name: 'Cash',
+          account_type: 'asset',
+          account_subtype: 'cash',
+          normal_balance: 'debit',
+        },
+        {
+          account_code: '4000',
+          account_name: 'Food Sales',
+          account_type: 'revenue',
+          account_subtype: 'food_sales',
+          normal_balance: 'credit',
+        },
+        {
+          account_code: '5000',
+          account_name: 'Food COGS',
+          account_type: 'cogs',
+          account_subtype: 'cost_of_goods_sold',
+          normal_balance: 'debit',
+        },
+        {
+          account_code: '6000',
+          account_name: 'Operating Expenses',
+          account_type: 'expense',
+          account_subtype: 'operating_expenses',
+          normal_balance: 'debit',
+        },
+      ].map(acc => ({
+        id: crypto.randomUUID(),
+        restaurant_id: restaurantId,
+        is_system_account: false,
+        is_active: true,
+        ...acc,
+      }));
+
+      // Use upsert to avoid duplicates on re-run
+      const { data: insertedAccounts, error: accountError } = await supabase
+        .from('chart_of_accounts')
+        .upsert(accounts, { onConflict: 'restaurant_id,account_code' })
+        .select();
+
+      if (accountError) {
+        throw new Error(`Account upsert failed: ${accountError.message}`);
+      }
+
+      const getId = (code: string) =>
+        (insertedAccounts || []).find((a: any) => a.account_code === code)?.id;
+
+      const cashId = getId('1000');
+      const revenueId = getId('4000');
+      const cogsId = getId('5000');
+      const expenseId = getId('6000');
+
+      // Seed POS revenue + pass-through
+      const { error: salesError } = await supabase.from('unified_sales').insert([
+        {
+          restaurant_id: restaurantId,
+          pos_system: 'test',
+          external_order_id: 'order-1',
+          item_name: 'POS Food Sale',
+          quantity: 1,
+          total_price: 1200,
+          sale_date: saleDate,
+          item_type: 'sale',
+          is_categorized: true,
+          category_id: revenueId,
+        },
+        {
+          restaurant_id: restaurantId,
+          pos_system: 'test',
+          external_order_id: 'order-2',
+          item_name: 'Uncategorized Sale',
+          quantity: 1,
+          total_price: 300,
+          sale_date: saleDate,
+          item_type: 'sale',
+          is_categorized: false,
+        },
+        {
+          restaurant_id: restaurantId,
+          pos_system: 'test',
+          external_order_id: 'order-3',
+          item_name: 'Sales Tax',
+          quantity: 1,
+          total_price: 50,
+          sale_date: saleDate,
+          adjustment_type: 'tax',
+          is_categorized: true,
+          category_id: null,
+        },
+        {
+          restaurant_id: restaurantId,
+          pos_system: 'test',
+          external_order_id: 'order-4',
+          item_name: 'Tips',
+          quantity: 1,
+          total_price: 20,
+          sale_date: saleDate,
+          adjustment_type: 'tip',
+          is_categorized: true,
+          category_id: null,
+        },
+        {
+          restaurant_id: restaurantId,
+          pos_system: 'test',
+          external_order_id: 'order-5',
+          item_name: 'Discounts',
+          quantity: 1,
+          total_price: -100,
+          sale_date: saleDate,
+          adjustment_type: 'discount',
+          is_categorized: true,
+          category_id: null,
+        },
+      ]);
+
+      if (salesError) {
+        throw new Error(`Sales seed failed: ${salesError.message}`);
+      }
+
+      // Helper to insert a balanced journal entry with lines
+      const insertJE = async ({
+        entryNumber,
+        description,
+        debitAccountId,
+        debitAmount,
+        creditAccountId,
+        creditAmount,
+      }: {
+        entryNumber: string;
+        description: string;
+        debitAccountId: string;
+        debitAmount: number;
+        creditAccountId: string;
+        creditAmount: number;
+      }) => {
+        const { data: je, error: jeError } = await supabase
+          .from('journal_entries')
+          .insert({
+            restaurant_id: restaurantId,
+            entry_number: entryNumber,
+            entry_date: saleDate,
+            description,
+            total_debit: debitAmount,
+            total_credit: creditAmount,
+            created_by: null,
+          })
+          .select()
+          .single();
+
+        if (jeError) throw new Error(`JE insert failed: ${jeError.message}`);
+
+        const { error: lineError } = await supabase.from('journal_entry_lines').insert([
+          {
+            journal_entry_id: je.id,
+            account_id: debitAccountId,
+            debit_amount: debitAmount,
+            credit_amount: 0,
+          },
+          {
+            journal_entry_id: je.id,
+            account_id: creditAccountId,
+            debit_amount: 0,
+            credit_amount: creditAmount,
+          },
+        ]);
+
+        if (lineError) throw new Error(`JE lines failed: ${lineError.message}`);
+      };
+
+      await insertJE({
+        entryNumber: 'JE-REV',
+        description: 'Seed revenue',
+        debitAccountId: cashId,
+        debitAmount: 1500,
+        creditAccountId: revenueId,
+        creditAmount: 1500,
+      });
+
+      await insertJE({
+        entryNumber: 'JE-COGS',
+        description: 'Seed COGS',
+        debitAccountId: cogsId,
+        debitAmount: 500,
+        creditAccountId: cashId,
+        creditAmount: 500,
+      });
+
+      await insertJE({
+        entryNumber: 'JE-EXP',
+        description: 'Seed expenses',
+        debitAccountId: expenseId,
+        debitAmount: 400,
+        creditAccountId: cashId,
+        creditAmount: 400,
+      });
+    };
+
     (window as any).__supabaseHelpersReady = true;
   };
 

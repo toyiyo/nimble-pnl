@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ExportDropdown } from './shared/ExportDropdown';
 import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
+import { calculateDailySalaryAllocation, calculateDailyContractorAllocation } from '@/utils/compensationCalculations';
 
 interface IncomeStatementProps {
   restaurantId: string;
@@ -201,8 +202,41 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
           console.warn('Failed to fetch salary/contractor allocations for IS:', allocErr);
         }
 
-        const payrollFallback =
+        let payrollFallback =
           Math.abs(Number(hourlyAgg?.sum) || 0) + Math.abs(Number(allocationAgg?.sum) || 0);
+
+        // If still zero, derive daily allocations from salary/contractor employees
+        if (payrollFallback === 0) {
+          const { data: employees, error: empErr } = await supabase
+            .from('employees')
+            .select('compensation_type, salary_amount, pay_period_type, contractor_payment_amount, contractor_payment_interval, allocate_daily')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true);
+
+          if (empErr) {
+            console.warn('Failed to fetch employees for payroll fallback:', empErr);
+          } else if (employees?.length) {
+            const msPerDay = 24 * 60 * 60 * 1000;
+            const days = Math.floor((dateTo.getTime() - dateFrom.getTime()) / msPerDay) + 1;
+            employees.forEach(emp => {
+              if (emp.allocate_daily === false) return;
+              if (emp.compensation_type === 'salary' && emp.salary_amount && emp.pay_period_type) {
+                const daily = calculateDailySalaryAllocation(
+                  emp.salary_amount, // cents per pay period
+                  emp.pay_period_type as any
+                );
+                payrollFallback += (daily / 100) * days; // convert cents to dollars
+              }
+              if (emp.compensation_type === 'contractor' && emp.contractor_payment_amount && emp.contractor_payment_interval) {
+                const daily = calculateDailyContractorAllocation(
+                  emp.contractor_payment_amount, // cents
+                  emp.contractor_payment_interval as any
+                );
+                payrollFallback += (daily / 100) * days; // cents to dollars
+              }
+            });
+          }
+        }
 
         if (payrollFallback > 0) {
           accountsWithBalances = [

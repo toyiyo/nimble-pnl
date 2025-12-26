@@ -352,6 +352,126 @@ export async function exposeSupabaseHelpers(page: Page) {
       });
     };
 
+    (window as any).__seedBalanceSheet = async (opts: { restaurantId: string; asOfDate?: string }) => {
+      const asOfDate =
+        opts.asOfDate ||
+        new Date().toISOString().slice(0, 10);
+      const { restaurantId } = opts;
+
+      const accounts = [
+        { account_code: '1000', account_name: 'Cash', account_type: 'asset', account_subtype: 'cash', normal_balance: 'debit' },
+        { account_code: '1200', account_name: 'Inventory', account_type: 'asset', account_subtype: 'inventory', normal_balance: 'debit' },
+        // Use existing enum values for liability subtypes
+        { account_code: '2000', account_name: 'Sales Tax Payable', account_type: 'liability', account_subtype: 'other_current_liabilities', normal_balance: 'credit' },
+        { account_code: '2100', account_name: 'Tips Payable', account_type: 'liability', account_subtype: 'other_current_liabilities', normal_balance: 'credit' },
+        { account_code: '2200', account_name: 'Payroll Liabilities', account_type: 'liability', account_subtype: 'other_current_liabilities', normal_balance: 'credit' },
+        { account_code: '3000', account_name: 'Opening Equity', account_type: 'equity', account_subtype: 'owners_equity', normal_balance: 'credit' },
+        { account_code: '4000', account_name: 'Food Sales', account_type: 'revenue', account_subtype: 'food_sales', normal_balance: 'credit' },
+        { account_code: '5000', account_name: 'COGS', account_type: 'cogs', account_subtype: 'cost_of_goods_sold', normal_balance: 'debit' },
+        { account_code: '6000', account_name: 'Operating Expenses', account_type: 'expense', account_subtype: 'operating_expenses', normal_balance: 'debit' },
+        { account_code: '6100', account_name: 'Payroll Expense', account_type: 'expense', account_subtype: 'operating_expenses', normal_balance: 'debit' },
+      ].map(acc => ({
+        id: crypto.randomUUID(),
+        restaurant_id: restaurantId,
+        is_system_account: false,
+        is_active: true,
+        ...acc,
+      }));
+
+      const { data: insertedAccounts, error: accountError } = await supabase
+        .from('chart_of_accounts')
+        .upsert(accounts, { onConflict: 'restaurant_id,account_code' })
+        .select();
+
+      if (accountError) {
+        throw new Error(`Account upsert failed: ${accountError.message}`);
+      }
+
+      const getId = (code: string) =>
+        (insertedAccounts || []).find((a: any) => a.account_code === code)?.id;
+
+      const cashId = getId('1000');
+      const inventoryId = getId('1200');
+      const taxId = getId('2000');
+      const tipsId = getId('2100');
+      const payrollLiabId = getId('2200');
+      const equityId = getId('3000');
+      const revenueId = getId('4000');
+      const cogsId = getId('5000');
+      const opExpId = getId('6000');
+      const payrollExpId = getId('6100');
+
+      const insertJE = async (entryNumber: string, description: string, lines: any[]) => {
+        const { data: je, error: jeError } = await supabase
+          .from('journal_entries')
+          .insert({
+            restaurant_id: restaurantId,
+            entry_number: entryNumber,
+            entry_date: asOfDate,
+            description,
+            total_debit: lines.reduce((s, l) => s + (l.debit_amount || 0), 0),
+            total_credit: lines.reduce((s, l) => s + (l.credit_amount || 0), 0),
+            created_by: null,
+          })
+          .select()
+          .single();
+
+        if (jeError) throw new Error(`JE insert failed: ${jeError.message}`);
+
+        const { error: lineError } = await supabase.from('journal_entry_lines').insert(
+          lines.map(l => ({
+            journal_entry_id: je.id,
+            ...l,
+          }))
+        );
+
+        if (lineError) throw new Error(`JE lines failed: ${lineError.message}`);
+      };
+
+      // Opening equity and assets
+      await insertJE('JE-OPEN', 'Opening balances', [
+        { account_id: cashId, debit_amount: 5000, credit_amount: 0 },
+        { account_id: inventoryId, debit_amount: 2000, credit_amount: 0 },
+        { account_id: equityId, debit_amount: 0, credit_amount: 7000 },
+      ]);
+
+      // Sales
+      await insertJE('JE-SALES', 'Record sales', [
+        { account_id: cashId, debit_amount: 3000, credit_amount: 0 },
+        { account_id: revenueId, debit_amount: 0, credit_amount: 3000 },
+      ]);
+
+      // COGS / inventory usage
+      await insertJE('JE-COGS', 'COGS and inventory reduction', [
+        { account_id: cogsId, debit_amount: 1200, credit_amount: 0 },
+        { account_id: inventoryId, debit_amount: 0, credit_amount: 1200 },
+      ]);
+
+      // Operating expense
+      await insertJE('JE-OPEX', 'Operating expenses', [
+        { account_id: opExpId, debit_amount: 700, credit_amount: 0 },
+        { account_id: cashId, debit_amount: 0, credit_amount: 700 },
+      ]);
+
+      // Tips collected (liability)
+      await insertJE('JE-TIPS', 'Tips collected', [
+        { account_id: cashId, debit_amount: 300, credit_amount: 0 },
+        { account_id: tipsId, debit_amount: 0, credit_amount: 300 },
+      ]);
+
+      // Sales tax collected (liability)
+      await insertJE('JE-TAX', 'Sales tax collected', [
+        { account_id: cashId, debit_amount: 200, credit_amount: 0 },
+        { account_id: taxId, debit_amount: 0, credit_amount: 200 },
+      ]);
+
+      // Payroll accrual
+      await insertJE('JE-PAYROLL', 'Accrue payroll', [
+        { account_id: payrollExpId, debit_amount: 400, credit_amount: 0 },
+        { account_id: payrollLiabId, debit_amount: 0, credit_amount: 400 },
+      ]);
+    };
+
     (window as any).__supabaseHelpersReady = true;
   };
 

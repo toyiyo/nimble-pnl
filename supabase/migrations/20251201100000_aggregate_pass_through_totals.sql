@@ -105,7 +105,9 @@ BEGIN
     AND NOT EXISTS (
       SELECT 1 FROM unified_sales child
       WHERE child.parent_sale_id = us.id
-    );
+    )
+  GROUP BY 1,2,3,4,5
+  HAVING COUNT(*) > 0;
 END;
 $function$;
 

@@ -9,14 +9,18 @@ SELECT
   '2024-01-31'::date AS date_to
 \gset
 
+-- Ensure clean slate for all data
+DELETE FROM unified_sales;
+
 -- Seed a restaurant
 INSERT INTO restaurants (id, name) VALUES (:'restaurant_id', 'P&L Test Restaurant');
 -- Seed a second restaurant to satisfy FK for out-of-scope data
-INSERT INTO restaurants (id, name) VALUES ('00000000-0000-0000-0000-000000009999', 'Other Resto');
+INSERT INTO restaurants (id, name) VALUES ('99999999-9999-9999-9999-999999999999', 'Other Resto');
 
 -- Cleanup prior data for deterministic results
-DELETE FROM unified_sales WHERE restaurant_id IN (:'restaurant_id', '00000000-0000-0000-0000-000000009999');
-DELETE FROM daily_sales WHERE restaurant_id IN (:'restaurant_id', '00000000-0000-0000-0000-000000009999');
+DELETE FROM unified_sales WHERE restaurant_id IN (:'restaurant_id', '99999999-9999-9999-9999-999999999999');
+DELETE FROM daily_sales WHERE restaurant_id IN (:'restaurant_id', '99999999-9999-9999-9999-999999999999');
+DELETE FROM chart_of_accounts WHERE restaurant_id IN (:'restaurant_id', '99999999-9999-9999-9999-999999999999');
 
 -- Seed chart of accounts
 INSERT INTO chart_of_accounts (id, restaurant_id, account_code, account_name, account_type, account_subtype, normal_balance)
@@ -53,10 +57,7 @@ INSERT INTO unified_sales (
     1, -5, -5, :'date_from', 'sale', true, NULL, 'discount', NULL),
   -- Out-of-range data that should be ignored
   ('00000000-0000-0000-0000-000000000209', :'restaurant_id', 'test', 'ord-8', 'item-8', 'Old Sale',
-    1, 999, 999, (:'date_from'::date - INTERVAL '60 days'), 'sale', true, '00000000-0000-0000-0000-000000000401', NULL, NULL),
-  -- No additional rows for other restaurants; keep dataset scoped to restaurant_id
-  ('00000000-0000-0000-0000-000000000210', :'restaurant_id', 'test', 'ord-9', 'item-9', 'Scoped Resto Sale (ignored)',
-    0, 0, 0, :'date_from', 'sale', true, '00000000-0000-0000-0000-000000000401', NULL, NULL);
+    1, 999, 999, (:'date_from'::date - INTERVAL '60 days'), 'sale', true, '00000000-0000-0000-0000-000000000401', NULL, NULL);
 
 -- get_revenue_by_account should sum categorized (100 + 50 + 30) and uncategorized (40) separately
 SELECT results_eq(
@@ -109,7 +110,7 @@ SELECT results_eq(
 SELECT is_empty(
   format(
     $fmt$
-      SELECT 1 FROM get_revenue_by_account('00000000-0000-0000-0000-000000009999', %L::date, %L::date)
+      SELECT 1 FROM get_revenue_by_account('99999999-9999-9999-9999-999999999999', %L::date, %L::date)
     $fmt$,
     :'date_from', :'date_to'
   ),
@@ -117,13 +118,14 @@ SELECT is_empty(
 );
 
 -- Cleanup any preexisting data for other restaurant to avoid interference
-DELETE FROM unified_sales WHERE restaurant_id = '00000000-0000-0000-0000-000000009999';
-DELETE FROM daily_sales WHERE restaurant_id = '00000000-0000-0000-0000-000000009999';
+DELETE FROM unified_sales WHERE restaurant_id = '99999999-9999-9999-9999-999999999999';
+DELETE FROM daily_sales WHERE restaurant_id = '99999999-9999-9999-9999-999999999999';
+DELETE FROM chart_of_accounts WHERE restaurant_id = '99999999-9999-9999-9999-999999999999';
 
 SELECT is_empty(
   format(
     $fmt$
-      SELECT 1 FROM get_pass_through_totals('00000000-0000-0000-0000-000000009999', %L::date, %L::date)
+      SELECT 1 FROM get_pass_through_totals('99999999-9999-9999-9999-999999999999', %L::date, %L::date)
     $fmt$,
     :'date_from', :'date_to'
   ),

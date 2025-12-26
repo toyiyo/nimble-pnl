@@ -12,6 +12,16 @@ interface BalanceSheetProps {
   asOfDate: Date;
 }
 
+interface JournalEntryLine {
+  account_id: string;
+  debit_amount: number | null;
+  credit_amount: number | null;
+  journal_entry: {
+    entry_date: string;
+    restaurant_id: string;
+  };
+}
+
 export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
   const { toast } = useToast();
 
@@ -46,6 +56,16 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
 
       if (accountsError) throw accountsError;
 
+      type JournalEntryLine = {
+        account_id: string;
+        debit_amount: number | null;
+        credit_amount: number | null;
+        journal_entry: {
+          entry_date: string;
+          restaurant_id: string;
+        };
+      };
+
       // Pull journal lines once up to asOf
       const { data: journalLines, error: journalError } = await supabase
         .from('journal_entry_lines')
@@ -61,7 +81,7 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
       if (journalError) throw journalError;
 
       const accountBalances = new Map<string, { debits: number; credits: number }>();
-      journalLines?.forEach((line: any) => {
+      journalLines?.forEach((line: JournalEntryLine) => {
         const current = accountBalances.get(line.account_id) || { debits: 0, credits: 0 };
         accountBalances.set(line.account_id, {
           debits: current.debits + (line.debit_amount || 0),
@@ -108,7 +128,9 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
           .maybeSingle();
 
         if (usageError) {
-          console.warn('Failed to fetch inventory usage for BS:', usageError);
+          if (import.meta.env.DEV) {
+            console.warn('Failed to fetch inventory usage for BS:', usageError);
+          }
         } else {
           inventoryUsageTotal = Math.abs(Number(usageAgg?.sum) || 0);
         }
@@ -129,15 +151,81 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
         ];
       }
 
+      // Payroll expense/liability fallback (hourly punches + salary/contractor allocations) when no payroll JEs exist
+      const payrollExpenseJE = accountsWithBalances
+        .filter(a =>
+          a.account_type === 'expense' &&
+          ((a as any).account_subtype === 'payroll' ||
+            (a.account_name || '').toLowerCase().includes('payroll'))
+        )
+        .reduce((sum, acc) => sum + acc.current_balance, 0);
+
+      let payrollFallbackTotal = 0;
+      if (payrollExpenseJE === 0) {
+        const { data: hourlyAgg, error: hourlyErr } = await supabase
+          .from('daily_labor_costs')
+          .select('sum:sum(total_labor_cost)')
+          .eq('restaurant_id', restaurantId)
+          .lte('date', asOfStr)
+          .maybeSingle();
+
+        if (hourlyErr) {
+          console.warn('Failed to fetch hourly labor costs for BS:', hourlyErr);
+        }
+
+        const { data: allocationAgg, error: allocErr } = await supabase
+          .from('daily_labor_allocations')
+          .select('sum:sum(allocated_cost)')
+          .eq('restaurant_id', restaurantId)
+          .lte('date', asOfStr)
+          .maybeSingle();
+
+        if (allocErr) {
+          console.warn('Failed to fetch salary/contractor allocations for BS:', allocErr);
+        }
+
+        payrollFallbackTotal =
+          Math.abs(Number(hourlyAgg?.sum) || 0) + Math.abs(Number(allocationAgg?.sum) || 0);
+
+        if (payrollFallbackTotal > 0) {
+          accountsWithBalances = [
+            ...accountsWithBalances,
+            {
+              id: 'payroll-expense-fallback',
+              account_code: 'PAYROLL-EXP',
+              account_name: 'Payroll Expense (unposted)',
+              account_type: 'expense',
+              normal_balance: 'debit',
+              current_balance: payrollFallbackTotal,
+              is_payroll_fallback: true,
+            },
+            {
+              id: 'payroll-liability-fallback',
+              account_code: 'PAYROLL-LIAB',
+              account_name: 'Payroll Accrual (unposted)',
+              account_type: 'liability',
+              normal_balance: 'credit',
+              current_balance: payrollFallbackTotal,
+              is_payroll_fallback: true,
+            },
+          ];
+        }
+      }
+
       // Net income roll-up into equity (accrual)
       const totalRevenue = accountsWithBalances
         .filter(a => a.account_type === 'revenue')
         .reduce((sum, acc) => sum + acc.current_balance, 0);
-      const totalCOGS = totalJournalCOGS > 0 ? totalJournalCOGS : totalJournalCOGS - inventoryUsageTotal;
+
+      // Treat COGS as a positive expense: sum journaled COGS (may be negative credits) and inventory usage,
+      // then take the absolute to get a positive expense figure.
+      const totalCOGS = Math.abs(totalJournalCOGS + inventoryUsageTotal);
+
       const totalExpenses = accountsWithBalances
         .filter(a => a.account_type === 'expense')
         .reduce((sum, acc) => sum + acc.current_balance, 0);
-      const netIncome = totalRevenue - Math.abs(totalCOGS) - totalExpenses;
+
+      const netIncome = totalRevenue - totalCOGS - totalExpenses;
 
       const equityWithNet = [
         ...accountsWithBalances.filter(a => a.account_type === 'equity'),
@@ -159,6 +247,9 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
       };
     },
     enabled: !!restaurantId,
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   const formatCurrency = (amount: number) => {

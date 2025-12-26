@@ -212,6 +212,39 @@ export function useRevenueBreakdown(
           !c.account_name.toLowerCase().includes('tip')
         );
 
+        // If no categorized liabilities were found for pass-through amounts,
+        // synthesize display categories from adjustment totals to surface names in the UI.
+        const ensureCategory = (
+          list: RevenueCategory[],
+          adjustmentType: string,
+          amountCents: number,
+          fallback: { code: string; name: string; subtype: string }
+        ) => {
+          if (list.length === 0 && amountCents > 0) {
+            list.push({
+              account_id: `synthetic-${adjustmentType}`,
+              account_code: fallback.code,
+              account_name: fallback.name,
+              account_type: 'liability',
+              account_subtype: fallback.subtype,
+              total_amount: fromC(amountCents),
+              transaction_count: passThroughMap.get(adjustmentType)?.transaction_count || 0,
+            });
+          }
+        };
+
+        ensureCategory(taxCategories, 'tax', toC(passThroughMap.get('tax')?.total_amount || 0), {
+          code: '2100',
+          name: 'Sales Tax Payable',
+          subtype: 'sales_tax',
+        });
+
+        ensureCategory(tipCategories, 'tip', toC(passThroughMap.get('tip')?.total_amount || 0), {
+          code: '2150',
+          name: 'Tips Payable',
+          subtype: 'tips',
+        });
+
         // Calculate totals
         categorizedRevenueC = revenueCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
         const totalDiscountsC = discountCategories.reduce((sum, c) => sum + Math.abs(toC(c.total_amount || 0)), 0);

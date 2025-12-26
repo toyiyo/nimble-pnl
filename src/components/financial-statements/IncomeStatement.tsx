@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ExportDropdown } from './shared/ExportDropdown';
 import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
+import { calculateDailySalaryAllocation, calculateDailyContractorAllocation } from '@/utils/compensationCalculations';
 
 interface IncomeStatementProps {
   restaurantId: string;
@@ -16,6 +17,29 @@ interface IncomeStatementProps {
 
 export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatementProps) {
   const { toast } = useToast();
+
+  // Merge inventory usage (source of truth for COGS) into COGS accounts when no journaled COGS exist
+  const mergeInventoryCOGS = (
+    cogsAccounts: any[],
+    inventoryUsageTotal: number
+  ) => {
+    const existingCOGSTotal = cogsAccounts.reduce((sum, acc) => sum + (acc.current_balance || 0), 0);
+    if (existingCOGSTotal > 0 || inventoryUsageTotal <= 0) return cogsAccounts;
+
+    return [
+      ...cogsAccounts,
+      {
+        id: 'inventory-usage',
+        account_code: 'COGS-INV',
+        account_name: 'Inventory Usage (unposted)',
+        account_type: 'cogs',
+        account_subtype: 'cost_of_goods_sold',
+        normal_balance: 'debit',
+        current_balance: inventoryUsageTotal,
+        is_inventory_usage: true,
+      },
+    ];
+  };
 
   // Fetch revenue breakdown from categorized POS sales
   const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
@@ -85,7 +109,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       // Map accounts with their calculated balances
       // Revenue accounts: credits increase, debits decrease (normal balance = credit)
       // Expense/COGS accounts: debits increase, credits decrease (normal balance = debit)
-      const accountsWithBalances = accounts?.map(account => {
+      let accountsWithBalances = accounts?.map(account => {
         const balance = accountBalances.get(account.id) || { debits: 0, credits: 0 };
         let amount = 0;
         
@@ -102,6 +126,134 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
           current_balance: amount,
         };
       }) || [];
+
+      // If no journaled COGS, pull inventory usage as accrual COGS and append a synthetic entry
+      const totalJournalCOGS = accountsWithBalances
+        .filter(a => a.account_type === 'cogs')
+        .reduce((sum, acc) => sum + acc.current_balance, 0);
+
+      if (totalJournalCOGS === 0) {
+        const { data: inventoryUsage, error: inventoryError } = await supabase
+          .from('inventory_transactions')
+          .select('total_cost')
+          .eq('restaurant_id', restaurantId)
+          .eq('transaction_type', 'usage')
+          .gte('transaction_date', dateFrom.toISOString().split('T')[0])
+          .lte('transaction_date', dateTo.toISOString().split('T')[0])
+          .limit(10000);
+
+        if (inventoryError) {
+          console.warn('Failed to fetch inventory usage for COGS:', inventoryError);
+        } else {
+          const inventoryCOGSTotal = inventoryUsage?.reduce(
+            (sum, tx) => sum + Math.abs(Number(tx.total_cost) || 0),
+            0
+          ) || 0;
+
+          if (inventoryCOGSTotal > 0) {
+            const mergedCogs = mergeInventoryCOGS(
+              accountsWithBalances.filter(a => a.account_type === 'cogs'),
+              inventoryCOGSTotal
+            );
+
+            accountsWithBalances = [
+              ...accountsWithBalances.filter(a => a.account_type !== 'cogs'),
+              ...mergedCogs,
+            ];
+          }
+        }
+      }
+
+      // Payroll expense fallback: if no payroll expense JE exists, include hourly punches + salary/contractor allocations
+      const payrollExpenseJE = accountsWithBalances
+        .filter(acc =>
+          acc.account_type === 'expense' &&
+          (
+            (acc as any).account_subtype === 'payroll' ||
+            (acc.account_name || '').toLowerCase().includes('payroll')
+          )
+        )
+        .reduce((sum, acc) => sum + acc.current_balance, 0);
+
+      if (payrollExpenseJE === 0) {
+        const fromStr = dateFrom.toISOString().split('T')[0];
+        const toStr = dateTo.toISOString().split('T')[0];
+
+        const { data: hourlyAgg, error: hourlyErr } = await supabase
+          .from('daily_labor_costs')
+          .select('sum:sum(total_labor_cost)')
+          .eq('restaurant_id', restaurantId)
+          .gte('date', fromStr)
+          .lte('date', toStr)
+          .maybeSingle();
+
+        const { data: allocationAgg, error: allocErr } = await supabase
+          .from('daily_labor_allocations')
+          .select('sum:sum(allocated_cost)')
+          .eq('restaurant_id', restaurantId)
+          .gte('date', fromStr)
+          .lte('date', toStr)
+          .maybeSingle();
+
+        if (hourlyErr) {
+          console.warn('Failed to fetch hourly labor costs for IS:', hourlyErr);
+        }
+        if (allocErr) {
+          console.warn('Failed to fetch salary/contractor allocations for IS:', allocErr);
+        }
+
+        let payrollFallback =
+          Math.abs(Number(hourlyAgg?.sum) || 0) + Math.abs(Number(allocationAgg?.sum) || 0);
+
+        // If still zero, derive daily allocations from salary/contractor employees
+        if (payrollFallback === 0) {
+          const { data: employees, error: empErr } = await supabase
+            .from('employees')
+            .select('compensation_type, salary_amount, pay_period_type, contractor_payment_amount, contractor_payment_interval, allocate_daily')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true);
+
+          if (empErr) {
+            console.warn('Failed to fetch employees for payroll fallback:', empErr);
+          } else if (employees?.length) {
+            const msPerDay = 24 * 60 * 60 * 1000;
+            const days = Math.floor((dateTo.getTime() - dateFrom.getTime()) / msPerDay) + 1;
+            employees.forEach(emp => {
+              if (emp.allocate_daily === false) return;
+              if (emp.compensation_type === 'salary' && emp.salary_amount && emp.pay_period_type) {
+                const daily = calculateDailySalaryAllocation(
+                  emp.salary_amount, // cents per pay period
+                  emp.pay_period_type as any
+                );
+                payrollFallback += (daily / 100) * days; // convert cents to dollars
+              }
+              if (emp.compensation_type === 'contractor' && emp.contractor_payment_amount && emp.contractor_payment_interval) {
+                const daily = calculateDailyContractorAllocation(
+                  emp.contractor_payment_amount, // cents
+                  emp.contractor_payment_interval as any
+                );
+                payrollFallback += (daily / 100) * days; // cents to dollars
+              }
+            });
+          }
+        }
+
+        if (payrollFallback > 0) {
+          accountsWithBalances = [
+            ...accountsWithBalances,
+            {
+              id: 'payroll-expense-fallback',
+              account_code: 'PAYROLL-EXP',
+              account_name: 'Payroll Expense (unposted)',
+              account_type: 'expense',
+              account_subtype: 'operating_expenses',
+              normal_balance: 'debit',
+              current_balance: payrollFallback,
+              is_payroll_fallback: true,
+            },
+          ];
+        }
+      }
 
       return {
         revenue: accountsWithBalances.filter(a => a.account_type === 'revenue'),

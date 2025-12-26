@@ -12,6 +12,16 @@ interface BalanceSheetProps {
   asOfDate: Date;
 }
 
+interface JournalEntryLine {
+  account_id: string;
+  debit_amount: number | null;
+  credit_amount: number | null;
+  journal_entry: {
+    entry_date: string;
+    restaurant_id: string;
+  };
+}
+
 export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
   const { toast } = useToast();
 
@@ -33,44 +43,213 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
   const { data: balanceData, isLoading } = useQuery({
     queryKey: ['balance-sheet', restaurantId, asOfDate],
     queryFn: async () => {
-      // Fetch all chart of accounts for balance sheet categories
+      const asOfStr = format(asOfDate, 'yyyy-MM-dd');
+
+      // Fetch all chart of accounts needed for BS + P&L linkage
       const { data: accounts, error: accountsError } = await supabase
         .from('chart_of_accounts')
         .select('id, account_code, account_name, account_type, normal_balance')
         .eq('restaurant_id', restaurantId)
-        .in('account_type', ['asset', 'liability', 'equity'])
+        .in('account_type', ['asset', 'liability', 'equity', 'revenue', 'expense', 'cogs'])
         .eq('is_active', true)
         .order('account_code');
 
       if (accountsError) throw accountsError;
 
-      // Compute balance for each account from journal entries
-      const accountsWithBalances = await Promise.all(
-        (accounts || []).map(async (account) => {
-          const { data: balance, error: balanceError } = await supabase.rpc(
-            'compute_account_balance',
-            {
-              p_account_id: account.id,
-              p_as_of_date: format(asOfDate, 'yyyy-MM-dd'),
-            }
-          );
+      type JournalEntryLine = {
+        account_id: string;
+        debit_amount: number | null;
+        credit_amount: number | null;
+        journal_entry: {
+          entry_date: string;
+          restaurant_id: string;
+        };
+      };
 
-          if (balanceError) {
-            console.error('Error computing balance:', balanceError);
-            return { ...account, current_balance: 0 };
+      // Pull journal lines once up to asOf
+      const { data: journalLines, error: journalError } = await supabase
+        .from('journal_entry_lines')
+        .select(`
+          account_id,
+          debit_amount,
+          credit_amount,
+          journal_entry:journal_entries!inner(entry_date, restaurant_id)
+        `)
+        .lte('journal_entry.entry_date', asOfStr)
+        .eq('journal_entry.restaurant_id', restaurantId);
+
+      if (journalError) throw journalError;
+
+      const accountBalances = new Map<string, { debits: number; credits: number }>();
+      journalLines?.forEach((line: JournalEntryLine) => {
+        const current = accountBalances.get(line.account_id) || { debits: 0, credits: 0 };
+        accountBalances.set(line.account_id, {
+          debits: current.debits + (line.debit_amount || 0),
+          credits: current.credits + (line.credit_amount || 0),
+        });
+      });
+
+      let accountsWithBalances =
+        accounts?.map(account => {
+          const balance = accountBalances.get(account.id) || { debits: 0, credits: 0 };
+          let amount = 0;
+
+          if (account.account_type === 'asset') {
+            amount = balance.debits - balance.credits;
+          } else if (['liability', 'equity', 'revenue'].includes(account.account_type)) {
+            amount = balance.credits - balance.debits;
+          } else {
+            // expense and cogs
+            amount = balance.debits - balance.credits;
           }
 
-          return { ...account, current_balance: balance || 0 };
-        })
-      );
+          return {
+            ...account,
+            current_balance: amount,
+          };
+        }) || [];
+
+      // Inventory usage fallback for accrual: if no COGS journaled, reduce assets by usage
+      const totalJournalCOGS = accountsWithBalances
+        .filter(a => a.account_type === 'cogs')
+        .reduce((sum, acc) => sum + acc.current_balance, 0);
+
+      let inventoryUsageTotal = 0;
+      if (totalJournalCOGS === 0) {
+        // Aggregate in-database to avoid Supabase row limits
+        const { data: usageAgg, error: usageError } = await supabase
+          .from('inventory_transactions')
+          .select('sum:sum(total_cost)')
+          .eq('restaurant_id', restaurantId)
+          .eq('transaction_type', 'usage')
+          .or(
+            `transaction_date.lte.${asOfStr},and(transaction_date.is.null,created_at.lte.${asOfStr}T23:59:59.999Z)`
+          )
+          .maybeSingle();
+
+        if (usageError) {
+          if (import.meta.env.DEV) {
+            console.warn('Failed to fetch inventory usage for BS:', usageError);
+          }
+        } else {
+          inventoryUsageTotal = Math.abs(Number(usageAgg?.sum) || 0);
+        }
+      }
+
+      if (inventoryUsageTotal > 0) {
+        accountsWithBalances = [
+          ...accountsWithBalances,
+          {
+            id: 'inventory-usage-adjustment',
+            account_code: 'INV-ADJ',
+            account_name: 'Inventory Usage Adjustment',
+            account_type: 'asset',
+            normal_balance: 'debit',
+            current_balance: -inventoryUsageTotal,
+            is_inventory_usage: true,
+          },
+        ];
+      }
+
+      // Payroll expense/liability fallback (hourly punches + salary/contractor allocations) when no payroll JEs exist
+      const payrollExpenseJE = accountsWithBalances
+        .filter(a =>
+          a.account_type === 'expense' &&
+          ((a as any).account_subtype === 'payroll' ||
+            (a.account_name || '').toLowerCase().includes('payroll'))
+        )
+        .reduce((sum, acc) => sum + acc.current_balance, 0);
+
+      let payrollFallbackTotal = 0;
+      if (payrollExpenseJE === 0) {
+        const { data: hourlyAgg, error: hourlyErr } = await supabase
+          .from('daily_labor_costs')
+          .select('sum:sum(total_labor_cost)')
+          .eq('restaurant_id', restaurantId)
+          .lte('date', asOfStr)
+          .maybeSingle();
+
+        if (hourlyErr) {
+          console.warn('Failed to fetch hourly labor costs for BS:', hourlyErr);
+        }
+
+        const { data: allocationAgg, error: allocErr } = await supabase
+          .from('daily_labor_allocations')
+          .select('sum:sum(allocated_cost)')
+          .eq('restaurant_id', restaurantId)
+          .lte('date', asOfStr)
+          .maybeSingle();
+
+        if (allocErr) {
+          console.warn('Failed to fetch salary/contractor allocations for BS:', allocErr);
+        }
+
+        payrollFallbackTotal =
+          Math.abs(Number(hourlyAgg?.sum) || 0) + Math.abs(Number(allocationAgg?.sum) || 0);
+
+        if (payrollFallbackTotal > 0) {
+          accountsWithBalances = [
+            ...accountsWithBalances,
+            {
+              id: 'payroll-expense-fallback',
+              account_code: 'PAYROLL-EXP',
+              account_name: 'Payroll Expense (unposted)',
+              account_type: 'expense',
+              normal_balance: 'debit',
+              current_balance: payrollFallbackTotal,
+              is_payroll_fallback: true,
+            },
+            {
+              id: 'payroll-liability-fallback',
+              account_code: 'PAYROLL-LIAB',
+              account_name: 'Payroll Accrual (unposted)',
+              account_type: 'liability',
+              normal_balance: 'credit',
+              current_balance: payrollFallbackTotal,
+              is_payroll_fallback: true,
+            },
+          ];
+        }
+      }
+
+      // Net income roll-up into equity (accrual)
+      const totalRevenue = accountsWithBalances
+        .filter(a => a.account_type === 'revenue')
+        .reduce((sum, acc) => sum + acc.current_balance, 0);
+
+      // Treat COGS as a positive expense: sum journaled COGS (may be negative credits) and inventory usage,
+      // then take the absolute to get a positive expense figure.
+      const totalCOGS = Math.abs(totalJournalCOGS + inventoryUsageTotal);
+
+      const totalExpenses = accountsWithBalances
+        .filter(a => a.account_type === 'expense')
+        .reduce((sum, acc) => sum + acc.current_balance, 0);
+
+      const netIncome = totalRevenue - totalCOGS - totalExpenses;
+
+      const equityWithNet = [
+        ...accountsWithBalances.filter(a => a.account_type === 'equity'),
+        {
+          id: 'net-income',
+          account_code: 'NI',
+          account_name: 'Current Period Net Income',
+          account_type: 'equity',
+          normal_balance: 'credit',
+          current_balance: netIncome,
+          is_net_income: true,
+        },
+      ];
 
       return {
         assets: accountsWithBalances.filter(a => a.account_type === 'asset'),
         liabilities: accountsWithBalances.filter(a => a.account_type === 'liability'),
-        equity: accountsWithBalances.filter(a => a.account_type === 'equity'),
+        equity: equityWithNet,
       };
     },
     enabled: !!restaurantId,
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   const formatCurrency = (amount: number) => {
@@ -85,8 +264,8 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
   // - Liabilities (credit normal) show absolute value 
   // - Equity (credit normal) show absolute value
   const totalAssets = balanceData?.assets.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
-  const totalLiabilities = balanceData?.liabilities.reduce((sum, acc) => sum + Math.abs(acc.current_balance), 0) || 0;
-  const totalEquity = balanceData?.equity.reduce((sum, acc) => sum + Math.abs(acc.current_balance), 0) || 0;
+  const totalLiabilities = balanceData?.liabilities.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
+  const totalEquity = balanceData?.equity.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
 
   const handleExportCSV = () => {
@@ -99,11 +278,11 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
       ['', 'Total Assets', totalAssets],
       [''],
       ['LIABILITIES'],
-      ...balanceData!.liabilities.map(acc => [acc.account_code, acc.account_name, acc.current_balance]),
+      ...balanceData!.liabilities.map(acc => [acc.account_code, acc.account_name, Math.abs(acc.current_balance)]),
       ['', 'Total Liabilities', totalLiabilities],
       [''],
       ['EQUITY'],
-      ...balanceData!.equity.map(acc => [acc.account_code, acc.account_name, acc.current_balance]),
+      ...balanceData!.equity.map(acc => [acc.account_code, acc.account_name, Math.abs(acc.current_balance)]),
       ['', 'Total Equity', totalEquity],
       [''],
       ['', 'Total Liabilities & Equity', totalLiabilitiesAndEquity],

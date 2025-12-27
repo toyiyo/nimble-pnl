@@ -45,29 +45,6 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     ];
   };
 
-  // Merge inventory usage (source of truth for COGS) into COGS accounts when no journaled COGS exist
-  const mergeInventoryCOGS = (
-    cogsAccounts: any[],
-    inventoryUsageTotal: number
-  ) => {
-    const existingCOGSTotal = cogsAccounts.reduce((sum, acc) => sum + (acc.current_balance || 0), 0);
-    if (existingCOGSTotal > 0 || inventoryUsageTotal <= 0) return cogsAccounts;
-
-    return [
-      ...cogsAccounts,
-      {
-        id: 'inventory-usage',
-        account_code: 'COGS-INV',
-        account_name: 'Inventory Usage (unposted)',
-        account_type: 'cogs',
-        account_subtype: 'cost_of_goods_sold',
-        normal_balance: 'debit',
-        current_balance: inventoryUsageTotal,
-        is_inventory_usage: true,
-      },
-    ];
-  };
-
   // Fetch revenue breakdown from categorized POS sales
   const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
     restaurantId,

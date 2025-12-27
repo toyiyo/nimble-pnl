@@ -60,6 +60,16 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
 
       if (accountsError) throw accountsError;
 
+      type JournalEntryLine = {
+        account_id: string;
+        debit_amount: number | null;
+        credit_amount: number | null;
+        journal_entry: {
+          entry_date: string;
+          restaurant_id: string;
+        };
+      };
+
       // Pull journal lines once up to asOf
       const { data: journalLines, error: journalError } = await supabase
         .from('journal_entry_lines')

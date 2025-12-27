@@ -248,11 +248,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
               id: 'payroll-expense-fallback',
               account_code: 'PAYROLL-EXP',
               account_name: 'Payroll Expense (unposted)',
-              account_type: 'expense',
-              account_subtype: 'operating_expenses',
+              account_type: 'expense' as const,
+              account_subtype: 'operating_expenses' as const,
               normal_balance: 'debit',
               current_balance: payrollFallback,
-              is_payroll_fallback: true,
             },
           ];
         }
@@ -261,7 +260,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       // If GL-only, strip any unposted synthetic rows just in case
       if (glOnly) {
         accountsWithBalances = accountsWithBalances.filter(
-          acc => !acc.is_inventory_usage && !acc.is_payroll_fallback
+          acc => !acc.id.includes('fallback') && !acc.id.includes('usage')
         );
       }
 

@@ -216,7 +216,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   };
 
   const createEmployeeWithHistory = async (
-    employeePayload: Record<string, unknown>,
+    employeePayload: Omit<Employee, 'id' | 'created_at' | 'updated_at'>,
     historyPayload: CompensationHistoryPayload | null,
     historyEffectiveDate: string
   ) => {

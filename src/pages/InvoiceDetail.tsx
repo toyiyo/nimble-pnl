@@ -217,42 +217,7 @@ export default function InvoiceDetail() {
                     {invoice.customers.email}
                   </div>
                 )}
-                {invoice.customers?.phone && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Phone className="h-4 w-4" />
-                    {invoice.customers.phone}
-                  </div>
-                )}
               </div>
-
-              {(invoice.customers?.billing_address_line1 ||
-                invoice.customers?.billing_address_city) && (
-                <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                  <MapPin className="h-4 w-4 mt-0.5" />
-                  <div>
-                    {invoice.customers.billing_address_line1 && (
-                      <div>{invoice.customers.billing_address_line1}</div>
-                    )}
-                    {invoice.customers.billing_address_line2 && (
-                      <div>{invoice.customers.billing_address_line2}</div>
-                    )}
-                    {(invoice.customers.billing_address_city ||
-                      invoice.customers.billing_address_state ||
-                      invoice.customers.billing_address_postal_code) && (
-                      <div>
-                        {[
-                          invoice.customers.billing_address_city,
-                          invoice.customers.billing_address_state,
-                          invoice.customers.billing_address_postal_code
-                        ].filter(Boolean).join(', ')}
-                      </div>
-                    )}
-                    {invoice.customers.billing_address_country && (
-                      <div>{invoice.customers.billing_address_country}</div>
-                    )}
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
 

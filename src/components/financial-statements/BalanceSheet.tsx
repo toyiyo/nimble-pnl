@@ -6,6 +6,9 @@ import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { ExportDropdown } from './shared/ExportDropdown';
 import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
+import { useState } from 'react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 interface BalanceSheetProps {
   restaurantId: string;
@@ -24,6 +27,7 @@ interface JournalEntryLine {
 
 export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
   const { toast } = useToast();
+  const [glOnly, setGlOnly] = useState(false);
 
   // Fetch restaurant name for exports
   const { data: restaurant } = useQuery({
@@ -41,7 +45,7 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
   });
 
   const { data: balanceData, isLoading } = useQuery({
-    queryKey: ['balance-sheet', restaurantId, asOfDate],
+    queryKey: ['balance-sheet', restaurantId, asOfDate, glOnly],
     queryFn: async () => {
       const asOfStr = format(asOfDate, 'yyyy-MM-dd');
 
@@ -115,7 +119,7 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
         .reduce((sum, acc) => sum + acc.current_balance, 0);
 
       let inventoryUsageTotal = 0;
-      if (totalJournalCOGS === 0) {
+      if (!glOnly && totalJournalCOGS === 0) {
         // Aggregate in-database to avoid Supabase row limits
         const { data: usageAgg, error: usageError } = await supabase
           .from('inventory_transactions')
@@ -142,7 +146,7 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
           {
             id: 'inventory-usage-adjustment',
             account_code: 'INV-ADJ',
-            account_name: 'Inventory Usage Adjustment',
+            account_name: 'Inventory Usage Adjustment (unposted)',
             account_type: 'asset',
             normal_balance: 'debit',
             current_balance: -inventoryUsageTotal,
@@ -161,7 +165,7 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
         .reduce((sum, acc) => sum + acc.current_balance, 0);
 
       let payrollFallbackTotal = 0;
-      if (payrollExpenseJE === 0) {
+      if (!glOnly && payrollExpenseJE === 0) {
         const { data: hourlyAgg, error: hourlyErr } = await supabase
           .from('daily_labor_costs')
           .select('sum:sum(total_labor_cost)')
@@ -213,6 +217,12 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
       }
 
       // Net income roll-up into equity (accrual)
+      if (glOnly) {
+        accountsWithBalances = accountsWithBalances.filter(
+          acc => !acc.is_inventory_usage && !acc.is_payroll_fallback
+        );
+      }
+
       const totalRevenue = accountsWithBalances
         .filter(a => a.account_type === 'revenue')
         .reduce((sum, acc) => sum + acc.current_balance, 0);
@@ -380,7 +390,13 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
             <CardTitle>Balance Sheet</CardTitle>
             <CardDescription>As of {format(asOfDate, 'MMM dd, yyyy')}</CardDescription>
           </div>
-          <ExportDropdown onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} />
+          <div className="flex items-center gap-4">
+            <div className="flex items-center space-x-2">
+              <Switch id="bs-gl-only" checked={glOnly} onCheckedChange={setGlOnly} />
+              <Label htmlFor="bs-gl-only">GL-only (no unposted accruals)</Label>
+            </div>
+            <ExportDropdown onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} />
+          </div>
         </div>
       </CardHeader>
       <CardContent>

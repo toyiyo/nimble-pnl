@@ -78,7 +78,7 @@ run_psql_file() {
 }
 
 echo "========================================"
-echo "  Nimble PnL SQL Function Test Suite"
+echo "  EasyShiftHQ SQL Function Test Suite"
 echo "========================================"
 echo ""
 echo "Database: $DB_NAME"

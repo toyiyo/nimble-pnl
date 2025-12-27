@@ -8,6 +8,9 @@ import { ExportDropdown } from './shared/ExportDropdown';
 import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import { calculateDailySalaryAllocation, calculateDailyContractorAllocation } from '@/utils/compensationCalculations';
+import { useState } from 'react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 interface IncomeStatementProps {
   restaurantId: string;
@@ -17,6 +20,7 @@ interface IncomeStatementProps {
 
 export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatementProps) {
   const { toast } = useToast();
+  const [glOnly, setGlOnly] = useState(false);
 
   // Merge inventory usage (source of truth for COGS) into COGS accounts when no journaled COGS exist
   const mergeInventoryCOGS = (
@@ -64,12 +68,12 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   });
 
   const { data: incomeData, isLoading } = useQuery({
-    queryKey: ['income-statement', restaurantId, dateFrom, dateTo],
+    queryKey: ['income-statement', restaurantId, dateFrom, dateTo, glOnly],
     queryFn: async () => {
       // Fetch all chart of accounts for this restaurant
       const { data: accounts, error: accountsError } = await supabase
         .from('chart_of_accounts')
-        .select('id, account_code, account_name, account_type, normal_balance')
+        .select('id, account_code, account_name, account_type, account_subtype, normal_balance')
         .eq('restaurant_id', restaurantId)
         .in('account_type', ['revenue', 'expense', 'cogs'])
         .eq('is_active', true)
@@ -132,23 +136,22 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         .filter(a => a.account_type === 'cogs')
         .reduce((sum, acc) => sum + acc.current_balance, 0);
 
-      if (totalJournalCOGS === 0) {
-        const { data: inventoryUsage, error: inventoryError } = await supabase
+      if (!glOnly && totalJournalCOGS === 0) {
+        const { data: inventoryAgg, error: inventoryError } = await supabase
           .from('inventory_transactions')
-          .select('total_cost')
+          .select('sum:sum(total_cost)')
           .eq('restaurant_id', restaurantId)
           .eq('transaction_type', 'usage')
           .gte('transaction_date', dateFrom.toISOString().split('T')[0])
           .lte('transaction_date', dateTo.toISOString().split('T')[0])
-          .limit(10000);
+          .maybeSingle();
 
         if (inventoryError) {
-          console.warn('Failed to fetch inventory usage for COGS:', inventoryError);
+          if (import.meta.env.DEV) {
+            console.warn('Failed to fetch inventory usage for COGS:', inventoryError);
+          }
         } else {
-          const inventoryCOGSTotal = inventoryUsage?.reduce(
-            (sum, tx) => sum + Math.abs(Number(tx.total_cost) || 0),
-            0
-          ) || 0;
+          const inventoryCOGSTotal = Math.abs(Number(inventoryAgg?.sum) || 0);
 
           if (inventoryCOGSTotal > 0) {
             const mergedCogs = mergeInventoryCOGS(
@@ -169,13 +172,13 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         .filter(acc =>
           acc.account_type === 'expense' &&
           (
-            (acc as any).account_subtype === 'payroll' ||
+            acc.account_subtype === 'payroll' ||
             (acc.account_name || '').toLowerCase().includes('payroll')
           )
         )
         .reduce((sum, acc) => sum + acc.current_balance, 0);
 
-      if (payrollExpenseJE === 0) {
+      if (!glOnly && payrollExpenseJE === 0) {
         const fromStr = dateFrom.toISOString().split('T')[0];
         const toStr = dateTo.toISOString().split('T')[0];
 
@@ -253,6 +256,13 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
             },
           ];
         }
+      }
+
+      // If GL-only, strip any unposted synthetic rows just in case
+      if (glOnly) {
+        accountsWithBalances = accountsWithBalances.filter(
+          acc => !acc.is_inventory_usage && !acc.is_payroll_fallback
+        );
       }
 
       return {
@@ -536,7 +546,13 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
               For the period {format(dateFrom, 'MMM dd, yyyy')} - {format(dateTo, 'MMM dd, yyyy')}
             </CardDescription>
           </div>
-          <ExportDropdown onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} />
+          <div className="flex items-center gap-4">
+            <div className="flex items-center space-x-2">
+              <Switch id="gl-only" checked={glOnly} onCheckedChange={setGlOnly} />
+              <Label htmlFor="gl-only">GL-only (no unposted accruals)</Label>
+            </div>
+            <ExportDropdown onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} />
+          </div>
         </div>
       </CardHeader>
       <CardContent>

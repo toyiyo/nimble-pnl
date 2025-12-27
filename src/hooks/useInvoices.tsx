@@ -49,6 +49,13 @@ export interface Invoice {
   customers?: {
     name: string;
     email: string | null;
+    phone: string | null;
+    billing_address_line1: string | null;
+    billing_address_line2: string | null;
+    billing_address_city: string | null;
+    billing_address_state: string | null;
+    billing_address_postal_code: string | null;
+    billing_address_country: string | null;
   };
   invoice_line_items?: InvoiceLineItem[];
 }
@@ -123,7 +130,14 @@ export const useInvoices = (restaurantId: string | null) => {
           *,
           customers (
             name,
-            email
+            email,
+            phone,
+            billing_address_line1,
+            billing_address_line2,
+            billing_address_city,
+            billing_address_state,
+            billing_address_postal_code,
+            billing_address_country
           ),
           invoice_line_items (*)
         `)

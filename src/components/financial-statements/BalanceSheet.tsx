@@ -147,10 +147,9 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
             id: 'inventory-usage-adjustment',
             account_code: 'INV-ADJ',
             account_name: 'Inventory Usage Adjustment (unposted)',
-            account_type: 'asset',
+            account_type: 'asset' as const,
             normal_balance: 'debit',
             current_balance: -inventoryUsageTotal,
-            is_inventory_usage: true,
           },
         ];
       }
@@ -198,28 +197,27 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
               id: 'payroll-expense-fallback',
               account_code: 'PAYROLL-EXP',
               account_name: 'Payroll Expense (unposted)',
-              account_type: 'expense',
+              account_type: 'expense' as const,
               normal_balance: 'debit',
               current_balance: payrollFallbackTotal,
-              is_payroll_fallback: true,
             },
             {
               id: 'payroll-liability-fallback',
               account_code: 'PAYROLL-LIAB',
               account_name: 'Payroll Accrual (unposted)',
-              account_type: 'liability',
+              account_type: 'liability' as const,
               normal_balance: 'credit',
               current_balance: payrollFallbackTotal,
-              is_payroll_fallback: true,
             },
           ];
         }
       }
 
       // Net income roll-up into equity (accrual)
+      // Filter out synthetic fallback rows when GL-only mode is enabled
       if (glOnly) {
         accountsWithBalances = accountsWithBalances.filter(
-          acc => !acc.is_inventory_usage && !acc.is_payroll_fallback
+          acc => !acc.id.includes('fallback') && !acc.id.includes('adjustment')
         );
       }
 

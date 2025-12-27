@@ -48,25 +48,21 @@ export function StripeEmbeddedConnect({
   const renderComponent = () => {
     if (!connectInstance) return null;
 
-    const commonProps = {
-      onExit: onCompleted,
-    };
-
     switch (component) {
       case "account_onboarding":
-        return <ConnectAccountOnboarding {...commonProps} />;
+        return <ConnectAccountOnboarding onExit={onCompleted ? () => onCompleted() : undefined} />;
       case "account_management":
-        return <ConnectAccountManagement {...commonProps} />;
+        return <ConnectAccountManagement />;
       case "payments":
-        return <ConnectPayments {...commonProps} />;
+        return <ConnectPayments />;
       case "payouts":
-        return <ConnectPayouts {...commonProps} />;
+        return <ConnectPayouts />;
       case "balances":
-        return <ConnectBalances {...commonProps} />;
+        return <ConnectBalances />;
       case "tax_registrations":
-        return <ConnectTaxRegistrations {...commonProps} />;
+        return <ConnectTaxRegistrations />;
       case "tax_settings":
-        return <ConnectTaxSettings {...commonProps} />;
+        return <ConnectTaxSettings />;
       default:
         return (
           <div className="p-4 text-center text-muted-foreground">

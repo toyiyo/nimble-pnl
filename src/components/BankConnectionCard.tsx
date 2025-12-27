@@ -178,11 +178,11 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={handleRefreshBalance} disabled={isRefreshing} className="flex items-center gap-2">
+              <DropdownMenuItem onClick={() => handleRefreshBalance()} disabled={isRefreshing} className="flex items-center gap-2">
                 {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Refresh balance
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleSyncTransactions} disabled={isSyncing} className="flex items-center gap-2">
+              <DropdownMenuItem onClick={() => handleSyncTransactions()} disabled={isSyncing} className="flex items-center gap-2">
                 {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
                 Sync transactions
               </DropdownMenuItem>

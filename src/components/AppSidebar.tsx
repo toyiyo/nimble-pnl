@@ -191,8 +191,8 @@ export function AppSidebar() {
                         tooltip={item.label}
                         className={`flex items-center justify-center !px-0 ${
                           isActive
-                            ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-600 shadow-md shadow-emerald-500/20 transition-all duration-200'
-                            : 'hover:bg-accent/50 transition-all duration-200'
+                            ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all duration-200'
+                            : 'hover:bg-sidebar-accent transition-all duration-200'
                         }`}
                       >
                         <Icon className="h-5 w-5" />
@@ -235,8 +235,8 @@ export function AppSidebar() {
                                   isActive={isActive}
                                   className={
                                     isActive
-                                      ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-600 shadow-md shadow-emerald-500/20 transition-all duration-200'
-                                      : 'hover:bg-accent/50 hover:translate-x-0.5 transition-all duration-200'
+                                      ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all duration-200'
+                                      : 'hover:bg-sidebar-accent hover:translate-x-0.5 transition-all duration-200'
                                   }
                                 >
                                   <Icon className="h-4 w-4" />

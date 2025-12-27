@@ -68,7 +68,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   });
 
   const { data: incomeData, isLoading } = useQuery({
-    queryKey: ['income-statement', restaurantId, dateFrom, dateTo],
+    queryKey: ['income-statement', restaurantId, dateFrom, dateTo, glOnly],
     queryFn: async () => {
       // Fetch all chart of accounts for this restaurant
       const { data: accounts, error: accountsError } = await supabase
@@ -256,6 +256,13 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
             },
           ];
         }
+      }
+
+      // If GL-only, strip any unposted synthetic rows just in case
+      if (glOnly) {
+        accountsWithBalances = accountsWithBalances.filter(
+          acc => !acc.is_inventory_usage && !acc.is_payroll_fallback
+        );
       }
 
       return {

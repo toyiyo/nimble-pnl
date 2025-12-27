@@ -45,7 +45,7 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
   });
 
   const { data: balanceData, isLoading } = useQuery({
-    queryKey: ['balance-sheet', restaurantId, asOfDate],
+    queryKey: ['balance-sheet', restaurantId, asOfDate, glOnly],
     queryFn: async () => {
       const asOfStr = format(asOfDate, 'yyyy-MM-dd');
 
@@ -217,6 +217,12 @@ export function BalanceSheet({ restaurantId, asOfDate }: BalanceSheetProps) {
       }
 
       // Net income roll-up into equity (accrual)
+      if (glOnly) {
+        accountsWithBalances = accountsWithBalances.filter(
+          acc => !acc.is_inventory_usage && !acc.is_payroll_fallback
+        );
+      }
+
       const totalRevenue = accountsWithBalances
         .filter(a => a.account_type === 'revenue')
         .reduce((sum, acc) => sum + acc.current_balance, 0);

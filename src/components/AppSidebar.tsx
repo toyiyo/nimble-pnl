@@ -256,11 +256,11 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className="border-t p-3 mt-auto">
+      <SidebarFooter className="border-t border-sidebar-border p-3 mt-auto">
         {!collapsed ? (
           <div className="space-y-2 animate-fade-in">
-            <div className="px-2 py-1.5 rounded-md bg-muted/30 border border-border/50">
-              <div className="text-xs text-muted-foreground truncate">
+            <div className="px-2 py-1.5 rounded-md bg-sidebar-accent border border-sidebar-border">
+              <div className="text-xs text-sidebar-foreground truncate">
                 {user?.email}
               </div>
             </div>

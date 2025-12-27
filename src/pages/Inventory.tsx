@@ -859,7 +859,6 @@ export const Inventory: React.FC = () => {
               variant="outline" 
               size="sm"
               onClick={() => navigate('/receipt-import')}
-              className="p-2 md:px-3 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-300"
               aria-label="Upload receipt for inventory"
             >
               <Package className="h-4 w-4 md:mr-2" />
@@ -868,7 +867,6 @@ export const Inventory: React.FC = () => {
             <Button 
               onClick={handleCreateManually} 
               size="sm"
-              className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/30 transition-all duration-300 hover:scale-[1.02]"
               aria-label="Add new product manually"
             >
               <Plus className="h-4 w-4 md:mr-2" />

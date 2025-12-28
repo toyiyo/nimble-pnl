@@ -137,7 +137,7 @@ export const Inventory: React.FC = () => {
   // Memoize filtered and sorted products for performance
   const filteredProducts = useMemo(() => {
     let filtered = products;
-    
+
     // Text search
     if (searchTerm) {
       filtered = filtered.filter(product =>

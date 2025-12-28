@@ -68,6 +68,8 @@ const navigationGroups = [
     label: 'Inventory',
     items: [
       { path: '/recipes', label: 'Recipes', icon: ChefHat },
+      { path: '/prep-recipes', label: 'Prep Recipes', icon: ChefHat },
+      { path: '/batches', label: 'Batches', icon: ClipboardList },
       { path: '/inventory', label: 'Inventory', icon: Package },
       { path: '/inventory-audit', label: 'Audit', icon: ClipboardCheck },
       { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingBag },

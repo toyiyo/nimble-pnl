@@ -2,8 +2,14 @@
 // Single source of truth for measurement units across the application
 
 export const MEASUREMENT_UNITS = [
-  'oz', 'fl oz', 'ml', 'cup', 'tbsp', 'tsp', 'lb', 'kg', 'g', 
-  'bottle', 'can', 'bag', 'box', 'piece', 'serving'
+  // Weight
+  'g', 'kg', 'oz', 'lb',
+  // Volume
+  'ml', 'L', 'fl oz', 'cup', 'tbsp', 'tsp', 'gal', 'qt', 'pint',
+  // Count / containers
+  'each', 'unit', 'piece', 'serving', 'bottle', 'can', 'bag', 'box', 'case', 'package', 'jar', 'container', 'dozen',
+  // Length (used for some packaging)
+  'inch', 'cm', 'mm', 'ft', 'meter',
 ] as const;
 
 export type IngredientUnit = typeof MEASUREMENT_UNITS[number];

@@ -378,7 +378,12 @@ export const useProductionRuns = (restaurantId: string | null) => {
 
         const updates: any = {};
         if (ingredientCostTotal > 0 && (!currentProduct?.cost_per_unit || currentProduct.cost_per_unit === 0)) {
-          updates.cost_per_unit = ingredientCostTotal;
+          // Apply variance adjustment to cost_per_unit
+          // Positive variance (over-yield) = lower cost per unit
+          // Negative variance (under-yield) = higher cost per unit
+          const varianceAdjustment = variance ? (1 - (variance / 100)) : 1;
+          const adjustedCostPerUnit = (ingredientCostTotal / Math.max(actualYield, 1)) * varianceAdjustment;
+          updates.cost_per_unit = Math.max(0, adjustedCostPerUnit); // Ensure non-negative
         }
         if (supplierInfo) {
           if (!currentProduct?.supplier_id) updates.supplier_id = supplierInfo.supplierId;

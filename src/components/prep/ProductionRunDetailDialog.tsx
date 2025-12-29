@@ -40,11 +40,6 @@ const STATUS_BADGES: Record<ProductionRunStatus, { label: string; variant: 'defa
 };
 
 export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, saving }: ProductionRunDetailDialogProps) {
-  // Guard clause: don't render if no run data - must be before any hooks
-  if (!run) {
-    return null;
-  }
-
   const [actualYield, setActualYield] = useState<number | ''>('');
   const [actualUnit, setActualUnit] = useState<IngredientUnit>('unit');
   const [status, setStatus] = useState<ProductionRunStatus>('planned');
@@ -106,7 +101,10 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
     };
   }, [run?.status, run?.cost_per_unit, run?.actual_total_cost, run?.target_yield, actualYield, ingredientActuals]);
 
-  if (!run) return null;
+  // Early return for null run - after all hooks have been called
+  if (!run) {
+    return null;
+  }
 
   const handleSave = async (finalStatus?: ProductionRunStatus) => {
     await onSave({

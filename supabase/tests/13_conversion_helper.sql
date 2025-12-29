@@ -9,7 +9,7 @@ VALUES ('30000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000
 ON CONFLICT DO NOTHING;
 
 SELECT is(
-  public.calculate_inventory_impact_for_product('30000000-0000-0000-0000-000000000001', 2, 'kg'),
+  public.calculate_inventory_impact_for_product('30000000-0000-0000-0000-000000000001', 2, 'kg', '00000000-0000-0000-0000-000000000001'),
   2::numeric,
   'KG to KG stays 1:1'
 );
@@ -20,7 +20,7 @@ VALUES ('30000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000
 ON CONFLICT DO NOTHING;
 
 SELECT is(
-  round(public.calculate_inventory_impact_for_product('30000000-0000-0000-0000-000000000002', 1, 'fl oz'), 4),
+  round(public.calculate_inventory_impact_for_product('30000000-0000-0000-0000-000000000002', 1, 'fl oz', '00000000-0000-0000-0000-000000000001'), 4),
   round((29.5735 / 750)::numeric, 4),
   'fl oz converts to fraction of 750ml bottle'
 );
@@ -31,7 +31,7 @@ VALUES ('30000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-0000000
 ON CONFLICT DO NOTHING;
 
 SELECT is(
-  round(public.calculate_inventory_impact_for_product('30000000-0000-0000-0000-000000000003', 4, 'oz'), 4),
+  round(public.calculate_inventory_impact_for_product('30000000-0000-0000-0000-000000000003', 4, 'oz', '00000000-0000-0000-0000-000000000001'), 4),
   round((4 * 28.3495 / 1000)::numeric, 4),
   'Weight oz converts to kg bag fraction'
 );
@@ -42,7 +42,7 @@ VALUES ('30000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-0000000
 ON CONFLICT DO NOTHING;
 
 SELECT is(
-  public.calculate_inventory_impact_for_product('30000000-0000-0000-0000-000000000004', 1, 'cup'),
+  public.calculate_inventory_impact_for_product('30000000-0000-0000-0000-000000000004', 1, 'cup', '00000000-0000-0000-0000-000000000001'),
   round((185 / 10000.0)::numeric, 4),
   'Cup of rice uses density conversion'
 );
@@ -53,7 +53,7 @@ VALUES ('30000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-0000000
 ON CONFLICT DO NOTHING;
 
 SELECT is(
-  public.calculate_inventory_impact_for_product('30000000-0000-0000-0000-000000000005', 3, 'unit'),
+  public.calculate_inventory_impact_for_product('30000000-0000-0000-0000-000000000005', 3, 'unit', '00000000-0000-0000-0000-000000000001'),
   3::numeric,
   'Unknown stays raw quantity'
 );

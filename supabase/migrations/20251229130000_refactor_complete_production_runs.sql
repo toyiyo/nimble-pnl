@@ -2,7 +2,8 @@
 CREATE OR REPLACE FUNCTION public.calculate_inventory_impact_for_product(
   p_product_id UUID,
   p_recipe_quantity NUMERIC,
-  p_recipe_unit TEXT
+  p_recipe_unit TEXT,
+  p_restaurant_id UUID
 ) RETURNS NUMERIC
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -22,7 +23,7 @@ BEGIN
   SELECT uom_purchase, size_value, size_unit, name
   INTO v_product
   FROM products
-  WHERE id = p_product_id;
+  WHERE id = p_product_id AND restaurant_id = p_restaurant_id;
 
   IF NOT FOUND THEN
     RETURN p_recipe_quantity;
@@ -39,11 +40,10 @@ BEGIN
   -- Container units with size conversions
   IF v_purchase_unit_lower IN ('bottle','jar','can','bag','box','case','package','container') THEN
     IF v_product.size_value IS NOT NULL AND v_product.size_unit IS NOT NULL THEN
-      -- Volume context (treat oz as fluid ounces when size_unit is volume)
-      IF v_size_unit_lower IN ('gal','l','ml','qt','pint','cup','fl oz') AND v_recipe_unit_lower IN ('fl oz','oz','ml','l','cup','tbsp','tsp','gal','qt','pint') THEN
+      -- Volume context (only use fl oz for fluid ounces)
+      IF v_size_unit_lower IN ('gal','l','ml','qt','pint','cup','fl oz') AND v_recipe_unit_lower IN ('fl oz','ml','l','cup','tbsp','tsp','gal','qt','pint') THEN
         v_recipe_in_ml := CASE v_recipe_unit_lower
           WHEN 'fl oz' THEN p_recipe_quantity * 29.5735
-          WHEN 'oz' THEN p_recipe_quantity * 29.5735
           WHEN 'ml' THEN p_recipe_quantity
           WHEN 'l' THEN p_recipe_quantity * 1000
           WHEN 'cup' THEN p_recipe_quantity * 236.588
@@ -104,12 +104,11 @@ BEGIN
   END IF;
 
   -- Standard volume-to-volume (non-container) conversion
-  IF v_purchase_unit_lower IN ('fl oz','oz','ml','l','gal','qt','pint','cup','tbsp','tsp')
-    AND v_recipe_unit_lower IN ('fl oz','oz','ml','l','gal','qt','pint','cup','tbsp','tsp') THEN
+  IF v_purchase_unit_lower IN ('fl oz','ml','l','gal','qt','pint','cup','tbsp','tsp')
+    AND v_recipe_unit_lower IN ('fl oz','ml','l','gal','qt','pint','cup','tbsp','tsp') THEN
 
     v_recipe_in_ml := CASE v_recipe_unit_lower
       WHEN 'fl oz' THEN p_recipe_quantity * 29.5735
-      WHEN 'oz' THEN p_recipe_quantity * 29.5735
       WHEN 'ml' THEN p_recipe_quantity
       WHEN 'l' THEN p_recipe_quantity * 1000
       WHEN 'gal' THEN p_recipe_quantity * 3785.41
@@ -125,7 +124,6 @@ BEGIN
       WHEN 'ml' THEN 1
       WHEN 'l' THEN 1000
       WHEN 'fl oz' THEN 29.5735
-      WHEN 'oz' THEN 29.5735
       WHEN 'gal' THEN 3785.41
       WHEN 'qt' THEN 946.353
       WHEN 'pint' THEN 473.176
@@ -251,7 +249,8 @@ BEGIN
     v_inventory_impact := public.calculate_inventory_impact_for_product(
       v_ing.product_id,
       v_actual,
-      v_unit::text
+      v_unit::text,
+      v_run.restaurant_id
     );
 
     UPDATE products
@@ -353,4 +352,4 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.calculate_inventory_impact_for_product(UUID, NUMERIC, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.calculate_inventory_impact_for_product(UUID, NUMERIC, TEXT, UUID) TO authenticated;

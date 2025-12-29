@@ -43,20 +43,21 @@ vi.mock('@/hooks/usePrepRecipes', () => ({
     prepRecipes: [],
     loading: false,
     error: null,
+    fetchPrepRecipes: vi.fn(),
     createPrepRecipe: vi.fn(),
     updatePrepRecipe: vi.fn(),
     deletePrepRecipe: vi.fn(),
+    recipeStats: {},
   })),
 }));
 
 vi.mock('@/hooks/useProductionRuns', () => ({
   useProductionRuns: vi.fn(() => ({
-    productionRuns: [],
+    runs: [],
     loading: false,
     error: null,
     createProductionRun: vi.fn(),
     updateProductionRun: vi.fn(),
-    completeProductionRun: vi.fn(),
     saveRunActuals: vi.fn(),
   })),
 }));
@@ -65,8 +66,13 @@ vi.mock('@/hooks/useProducts', () => ({
   useProducts: vi.fn(() => ({
     products: [],
     loading: false,
-    error: null,
+    createProduct: vi.fn(),
     updateProduct: vi.fn(),
+    updateProductWithQuantity: vi.fn(),
+    deleteProduct: vi.fn(),
+    findProductByGtin: vi.fn(),
+    findProductBySku: vi.fn(),
+    refetchProducts: vi.fn(),
   })),
 }));
 

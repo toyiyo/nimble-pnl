@@ -25,7 +25,7 @@ export default function PrepRecipes() {
     canCreateRestaurant,
   } = useRestaurantContext();
 
-  const { prepRecipes, loading, createPrepRecipe, updatePrepRecipe, recipeStats } = usePrepRecipes(
+  const { prepRecipes, loading, error, createPrepRecipe, updatePrepRecipe, recipeStats } = usePrepRecipes(
     selectedRestaurant?.restaurant_id || null
   );
   const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
@@ -105,6 +105,20 @@ export default function PrepRecipes() {
             createRestaurant={createRestaurant}
           />
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <Card className="w-full max-w-md bg-gradient-to-br from-destructive/5 via-destructive/10 to-transparent border-destructive/20">
+          <CardContent className="p-6 text-center space-y-2">
+            <ChefHat className="h-8 w-8 text-destructive mx-auto" />
+            <p className="text-lg font-semibold">Failed to Load Prep Recipes</p>
+            <p className="text-muted-foreground text-sm">{error}</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }

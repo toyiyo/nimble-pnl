@@ -39,8 +39,8 @@ BEGIN
   -- Container units with size conversions
   IF v_purchase_unit_lower IN ('bottle','jar','can','bag','box','case','package','container') THEN
     IF v_product.size_value IS NOT NULL AND v_product.size_unit IS NOT NULL THEN
-      -- Volume context (treat oz as fl oz here)
-      IF v_size_unit_lower IN ('gal','l','ml','qt','pint','cup') AND v_recipe_unit_lower IN ('fl oz','oz','ml','l','cup','tbsp','tsp','gal','qt','pint') THEN
+      -- Volume context (treat oz as fluid ounces when size_unit is volume)
+      IF v_size_unit_lower IN ('gal','l','ml','qt','pint','cup','fl oz') AND v_recipe_unit_lower IN ('fl oz','oz','ml','l','cup','tbsp','tsp','gal','qt','pint') THEN
         v_recipe_in_ml := CASE v_recipe_unit_lower
           WHEN 'fl oz' THEN p_recipe_quantity * 29.5735
           WHEN 'oz' THEN p_recipe_quantity * 29.5735
@@ -62,6 +62,7 @@ BEGIN
           WHEN 'qt' THEN v_product.size_value * 946.353
           WHEN 'pint' THEN v_product.size_value * 473.176
           WHEN 'cup' THEN v_product.size_value * 236.588
+          WHEN 'fl oz' THEN v_product.size_value * 29.5735
           ELSE v_product.size_value
         END;
 
@@ -82,7 +83,7 @@ BEGIN
               WHEN LOWER(v_product.name) LIKE '%flour%' THEN p_recipe_quantity * 120
               WHEN LOWER(v_product.name) LIKE '%sugar%' THEN p_recipe_quantity * 200
               WHEN LOWER(v_product.name) LIKE '%butter%' THEN p_recipe_quantity * 227
-              ELSE p_recipe_quantity
+              ELSE NULL
             END
           ELSE p_recipe_quantity
         END;
@@ -95,10 +96,72 @@ BEGIN
           ELSE v_product.size_value
         END;
 
-        IF v_size_in_g > 0 THEN
+        IF v_size_in_g > 0 AND v_recipe_in_g IS NOT NULL THEN
           RETURN v_recipe_in_g / v_size_in_g;
         END IF;
       END IF;
+    END IF;
+  END IF;
+
+  -- Standard volume-to-volume (non-container) conversion
+  IF v_purchase_unit_lower IN ('fl oz','oz','ml','l','gal','qt','pint','cup','tbsp','tsp')
+    AND v_recipe_unit_lower IN ('fl oz','oz','ml','l','gal','qt','pint','cup','tbsp','tsp') THEN
+
+    v_recipe_in_ml := CASE v_recipe_unit_lower
+      WHEN 'fl oz' THEN p_recipe_quantity * 29.5735
+      WHEN 'oz' THEN p_recipe_quantity * 29.5735
+      WHEN 'ml' THEN p_recipe_quantity
+      WHEN 'l' THEN p_recipe_quantity * 1000
+      WHEN 'gal' THEN p_recipe_quantity * 3785.41
+      WHEN 'qt' THEN p_recipe_quantity * 946.353
+      WHEN 'pint' THEN p_recipe_quantity * 473.176
+      WHEN 'cup' THEN p_recipe_quantity * 236.588
+      WHEN 'tbsp' THEN p_recipe_quantity * 14.7868
+      WHEN 'tsp' THEN p_recipe_quantity * 4.92892
+      ELSE p_recipe_quantity
+    END;
+
+    v_size_in_ml := CASE v_purchase_unit_lower
+      WHEN 'ml' THEN 1
+      WHEN 'l' THEN 1000
+      WHEN 'fl oz' THEN 29.5735
+      WHEN 'oz' THEN 29.5735
+      WHEN 'gal' THEN 3785.41
+      WHEN 'qt' THEN 946.353
+      WHEN 'pint' THEN 473.176
+      WHEN 'cup' THEN 236.588
+      WHEN 'tbsp' THEN 14.7868
+      WHEN 'tsp' THEN 4.92892
+      ELSE 1
+    END;
+
+    IF v_size_in_ml > 0 THEN
+      RETURN v_recipe_in_ml / v_size_in_ml;
+    END IF;
+  END IF;
+
+  -- Standard weight-to-weight (non-container) conversion
+  IF v_purchase_unit_lower IN ('g','kg','lb','oz')
+    AND v_recipe_unit_lower IN ('g','kg','lb','oz') THEN
+
+    v_recipe_in_g := CASE v_recipe_unit_lower
+      WHEN 'kg' THEN p_recipe_quantity * 1000
+      WHEN 'g' THEN p_recipe_quantity
+      WHEN 'lb' THEN p_recipe_quantity * 453.592
+      WHEN 'oz' THEN p_recipe_quantity * 28.3495
+      ELSE p_recipe_quantity
+    END;
+
+    v_size_in_g := CASE v_purchase_unit_lower
+      WHEN 'kg' THEN 1000
+      WHEN 'g' THEN 1
+      WHEN 'lb' THEN 453.592
+      WHEN 'oz' THEN 28.3495
+      ELSE 1
+    END;
+
+    IF v_size_in_g > 0 THEN
+      RETURN v_recipe_in_g / v_size_in_g;
     END IF;
   END IF;
 

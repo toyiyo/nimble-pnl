@@ -13,13 +13,7 @@ export function getUnitCategory(unit: string): MeasurementCategory {
   const lengthUnits = ['inch', 'cm', 'mm', 'ft', 'meter'];
   
   const normalizedUnit = unit.toLowerCase().trim();
-  
-  // Handle special cases first with exact matches
-  if (normalizedUnit === 'oz') {
-    // Default to volume for ambiguous "oz"
-    return 'volume';
-  }
-  
+
   // Check each category
   if (volumeUnits.some(u => normalizedUnit.includes(u))) return 'volume';
   if (weightUnits.some(u => normalizedUnit.includes(u))) return 'weight';
@@ -34,9 +28,9 @@ export function normalizeUnitName(unit: string): string {
   const mapping: Record<string, string> = {
     // Volume
     'ounce': 'oz',
-    'fluid ounce': 'oz',
-    'fl oz': 'oz',
-    'fluid oz': 'oz',
+    'fluid ounce': 'fl oz',
+    'fl oz': 'fl oz',
+    'fluid oz': 'fl oz',
     'milliliter': 'ml',
     'millilitre': 'ml',
     'cups': 'cup',
@@ -81,7 +75,7 @@ export function suggestRecipeUnits(purchaseUnit: string): string[] {
   
   switch (category) {
     case 'volume':
-      return ['oz', 'ml', 'cup', 'tbsp', 'tsp'];
+      return ['fl oz', 'ml', 'cup', 'tbsp', 'tsp'];
     case 'weight':
       return ['lb', 'oz', 'g'];
     case 'count':

@@ -34,13 +34,12 @@ import { Upload, Calculator, Package } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 import { CreateProductData, Product } from '@/hooks/useProducts';
-import { useUnitConversion } from '@/hooks/useUnitConversion';
-import { normalizeUnitName, suggestRecipeUnits } from '@/lib/unitConversion';
+import { normalizeUnitName } from '@/lib/unitConversion';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { supabase } from '@/integrations/supabase/client';
 import { SizePackagingSection } from '@/components/SizePackagingSection';
-import { useRestaurants } from '@/hooks/useRestaurants';
+import { convertUnits } from '@/lib/enhancedUnitConversion';
 
 const productSchema = z.object({
   sku: z.string().min(1, 'SKU is required'),
@@ -148,8 +147,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | undefined>();
   const [isNewSupplier, setIsNewSupplier] = useState(false);
   const { suppliers, createSupplier } = useSuppliers();
-  const [suggestedConversionFactor, setSuggestedConversionFactor] = useState<number | null>(null);
-  const { suggestConversionFactor } = useUnitConversion(restaurantId);
+  const [conversionSuggestion, setConversionSuggestion] = useState<{ factor: number; from: string; to: string } | null>(null);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -258,22 +256,28 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
   // Watch for unit changes and suggest conversion factor
   const watchedPurchaseUnit = form.watch('uom_purchase');
   const watchedRecipeUnit = form.watch('uom_recipe');
+  const watchedName = form.watch('name');
 
   useEffect(() => {
-    if (watchedPurchaseUnit && watchedRecipeUnit) {
-      const normalizedPurchase = normalizeUnitName(watchedPurchaseUnit);
-      const normalizedRecipe = normalizeUnitName(watchedRecipeUnit);
-      const suggested = suggestConversionFactor(normalizedPurchase, normalizedRecipe);
-      
-      if (suggested !== 1) {
-        setSuggestedConversionFactor(suggested);
-      } else {
-        setSuggestedConversionFactor(null);
-      }
-    } else {
-      setSuggestedConversionFactor(null);
+    if (!watchedPurchaseUnit || !watchedRecipeUnit) {
+      setConversionSuggestion(null);
+      return;
     }
-  }, [watchedPurchaseUnit, watchedRecipeUnit, suggestConversionFactor]);
+
+    const normalizedPurchase = normalizeUnitName(watchedPurchaseUnit);
+    const normalizedRecipe = normalizeUnitName(watchedRecipeUnit);
+    const conversion = convertUnits(1, normalizedPurchase, normalizedRecipe, watchedName);
+
+    if (conversion && conversion.value !== 1) {
+      setConversionSuggestion({
+        factor: conversion.value,
+        from: normalizedPurchase,
+        to: normalizedRecipe,
+      });
+    } else {
+      setConversionSuggestion(null);
+    }
+  }, [watchedPurchaseUnit, watchedRecipeUnit, watchedName]);
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -558,16 +562,21 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                             <SelectValue placeholder="Select unit" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent>
-                          {RECIPE_UNITS.map(unit => (
-                            <SelectItem key={unit} value={unit}>{unit}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
+                    <SelectContent>
+                      {RECIPE_UNITS.map(unit => (
+                        <SelectItem key={unit} value={unit}>{unit}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {conversionSuggestion && (
+                    <FormDescription>
+                      Suggested: 1 {conversionSuggestion.from} ≈ {conversionSuggestion.factor.toFixed(2)} {conversionSuggestion.to}
+                    </FormDescription>
                   )}
-                />
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
               </div>
             </div>

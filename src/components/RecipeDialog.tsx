@@ -34,7 +34,6 @@ import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
 import { useRecipes, Recipe, CreateRecipeData } from '@/hooks/useRecipes';
 import { useProducts } from '@/hooks/useProducts';
 import { usePOSItems } from '@/hooks/usePOSItems';
-import { useUnitConversion } from '@/hooks/useUnitConversion';
 import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
 import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelector';
 import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
@@ -70,7 +69,6 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
   const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
   const { products } = useProducts(restaurantId);
   const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
-  const { suggestConversionFactor } = useUnitConversion(restaurantId);
   const navigate = useNavigate();
   
   const [loading, setLoading] = useState(false);

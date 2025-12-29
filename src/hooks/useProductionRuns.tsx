@@ -73,6 +73,8 @@ export interface CompleteRunPayload {
   }>;
 }
 
+type SupplierInfo = { supplierId: string; supplierName: string };
+
 export const useProductionRuns = (restaurantId: string | null) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -252,6 +254,261 @@ export const useProductionRuns = (restaurantId: string | null) => {
     return { supplierId: supplier.id as string, supplierName: supplier.name as string };
   }, [getRestaurantName]);
 
+  const buildIngredientJson = useCallback((payload: CompleteRunPayload) => {
+    return payload.ingredients
+      ? payload.ingredients.map(ing => ({
+          id: ing.id,
+          product_id: ing.product_id,
+          expected_quantity: ing.expected_quantity,
+          actual_quantity: ing.actual_quantity,
+          unit: ing.unit,
+        }))
+      : [];
+  }, []);
+
+  const computeRunMetrics = useCallback((run: ProductionRun | undefined, payload: CompleteRunPayload) => {
+    const targetYield = run?.target_yield ?? 0;
+    const actualYield = payload.actual_yield ?? run?.actual_yield ?? run?.target_yield ?? 0;
+    const variance = targetYield ? ((actualYield - targetYield) / targetYield) * 100 : null;
+    const statusToSet: ProductionRunStatus = payload.status || 'completed';
+
+    return { actualYield, variance, statusToSet };
+  }, []);
+
+  const calculateIngredientCostTotal = useCallback((run: ProductionRun | undefined, payload: CompleteRunPayload) => {
+    if (!run?.ingredients || run.ingredients.length === 0) return 0;
+
+    const payloadLookup = new Map(
+      (payload.ingredients || []).map(ing => [ing.product_id, ing])
+    );
+
+    return run.ingredients.reduce((sum, ing) => {
+      const payloadIng = payloadLookup.get(ing.product_id);
+      const rawQty = payloadIng?.actual_quantity ?? payloadIng?.expected_quantity ?? ing.actual_quantity ?? ing.expected_quantity ?? 0;
+      const actualQty = Number(rawQty) || 0;
+      const costPerUnit = ing.product?.cost_per_unit || 0;
+      return sum + costPerUnit * actualQty;
+    }, 0);
+  }, []);
+
+  const determineOutputUnit = useCallback((run: ProductionRun | undefined, payload: CompleteRunPayload) => {
+    return payload.actual_yield_unit
+      || run?.actual_yield_unit
+      || run?.target_yield_unit
+      || run?.prep_recipe?.default_yield_unit
+      || 'unit';
+  }, []);
+
+  const ensureSupplierIfNeeded = useCallback(async (run: ProductionRun | undefined, ingredientCostTotal: number, outputProductId: string | null) => {
+    if ((ingredientCostTotal > 0 || !outputProductId) && run?.restaurant_id) {
+      return ensureRestaurantSupplier(run.restaurant_id);
+    }
+    return null;
+  }, [ensureRestaurantSupplier]);
+
+  const findExistingOutputProduct = useCallback(async (run: ProductionRun | undefined) => {
+    if (!run?.restaurant_id || !run?.prep_recipe) return null;
+
+    const { data: existingProducts, error: existingError } = await supabase
+      .from('products')
+      .select('id')
+      .eq('restaurant_id', run.restaurant_id)
+      .ilike('name', run.prep_recipe.name)
+      .limit(1);
+
+    if (existingError) throw existingError;
+    return existingProducts && existingProducts.length > 0 ? existingProducts[0].id : null;
+  }, []);
+
+  const linkPrepRecipeToProduct = useCallback(async (prepRecipeId: string | undefined, outputProductId: string | null) => {
+    if (!prepRecipeId || !outputProductId) return;
+    await supabase
+      .from('prep_recipes')
+      .update({ output_product_id: outputProductId })
+      .eq('id', prepRecipeId);
+  }, []);
+
+  const createOutputProductForRun = useCallback(async (params: {
+    run: ProductionRun | undefined;
+    payload: CompleteRunPayload;
+    ingredientCostTotal: number;
+    supplierInfo?: SupplierInfo | null;
+  }) => {
+    const { run, payload, ingredientCostTotal, supplierInfo } = params;
+    if (!run?.restaurant_id || !run?.prep_recipe) return null;
+
+    const unit = determineOutputUnit(run, payload);
+    const slug = run.prep_recipe.name
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'PREP';
+    const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+
+    const { data: newProduct, error: productError } = await supabase
+      .from('products')
+      .insert({
+        restaurant_id: run.restaurant_id,
+        name: run.prep_recipe.name,
+        sku,
+        uom_purchase: unit,
+        size_value: 1,
+        size_unit: unit,
+        package_qty: 1,
+        current_stock: 0,
+        par_level_min: 0,
+        par_level_max: 0,
+        reorder_point: 0,
+        cost_per_unit: ingredientCostTotal,
+        supplier_id: supplierInfo?.supplierId || null,
+        supplier_name: supplierInfo?.supplierName || null,
+        description: 'Auto-created prep output',
+      })
+      .select()
+      .single();
+
+    if (productError) throw productError;
+    return newProduct?.id || null;
+  }, [determineOutputUnit]);
+
+  const updateExistingOutputProduct = useCallback(async (params: {
+    outputProductId: string | null;
+    ingredientCostTotal: number;
+    supplierInfo?: SupplierInfo | null;
+    variance: number | null;
+    actualYield: number;
+  }) => {
+    const { outputProductId, ingredientCostTotal, supplierInfo, variance, actualYield } = params;
+    if (!outputProductId) return;
+
+    const { data: currentProduct, error: currentError } = await supabase
+      .from('products')
+      .select('cost_per_unit, supplier_id, supplier_name')
+      .eq('id', outputProductId)
+      .single();
+
+    if (currentError) throw currentError;
+
+    const updates: Record<string, any> = {};
+    if (ingredientCostTotal > 0) {
+      const varianceAdjustment = variance ? (1 - (variance / 100)) : 1;
+      const adjustedCostPerUnit = (ingredientCostTotal / Math.max(actualYield, 1)) * varianceAdjustment;
+      updates.cost_per_unit = Math.max(0, adjustedCostPerUnit);
+    }
+    if (supplierInfo) {
+      if (!currentProduct?.supplier_id) updates.supplier_id = supplierInfo.supplierId;
+      if (!currentProduct?.supplier_name) updates.supplier_name = supplierInfo.supplierName;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      updates.updated_at = new Date().toISOString();
+      await supabase
+        .from('products')
+        .update(updates)
+        .eq('id', outputProductId);
+    }
+  }, []);
+
+  const syncOutputProductForRun = useCallback(async (params: {
+    run: ProductionRun | undefined;
+    payload: CompleteRunPayload;
+    ingredientCostTotal: number;
+    variance: number | null;
+    actualYield: number;
+  }) => {
+    const { run, payload, ingredientCostTotal, variance, actualYield } = params;
+    let outputProductId = run?.prep_recipe?.output_product_id || null;
+    const supplierInfo = await ensureSupplierIfNeeded(run, ingredientCostTotal, outputProductId);
+
+    if (!run?.prep_recipe) {
+      return outputProductId;
+    }
+
+    if (!outputProductId) {
+      const existingId = await findExistingOutputProduct(run);
+      if (existingId) {
+        await linkPrepRecipeToProduct(run.prep_recipe.id, existingId);
+        return existingId;
+      }
+
+      outputProductId = await createOutputProductForRun({
+        run,
+        payload,
+        ingredientCostTotal,
+        supplierInfo,
+      });
+      await linkPrepRecipeToProduct(run.prep_recipe.id, outputProductId);
+      return outputProductId;
+    }
+
+    await updateExistingOutputProduct({
+      outputProductId,
+      ingredientCostTotal,
+      supplierInfo,
+      variance,
+      actualYield,
+    });
+
+    return outputProductId;
+  }, [ensureSupplierIfNeeded, findExistingOutputProduct, linkPrepRecipeToProduct, createOutputProductForRun, updateExistingOutputProduct]);
+
+  const persistCompletedRun = useCallback(async (
+    run: ProductionRun | undefined,
+    payload: CompleteRunPayload,
+    actualYield: number,
+    ingredientJson: ReturnType<typeof buildIngredientJson>
+  ) => {
+    const { error } = await supabase.rpc('complete_production_run', {
+      p_run_id: payload.runId,
+      p_actual_yield: actualYield,
+      p_actual_yield_unit: payload.actual_yield_unit || run?.actual_yield_unit || run?.target_yield_unit,
+      p_ingredients: ingredientJson
+    });
+
+    if (error) throw error;
+  }, [buildIngredientJson]);
+
+  const persistInProgressRun = useCallback(async (
+    run: ProductionRun | undefined,
+    payload: CompleteRunPayload,
+    actualYield: number,
+    variance: number | null,
+    statusToSet: ProductionRunStatus,
+    ingredientJson: ReturnType<typeof buildIngredientJson>
+  ) => {
+    const { error } = await supabase
+      .from('production_runs')
+      .update({
+        actual_yield: actualYield,
+        actual_yield_unit: payload.actual_yield_unit || run?.actual_yield_unit || run?.target_yield_unit,
+        variance_percent: variance,
+        status: statusToSet,
+        completed_at: statusToSet === 'completed' ? new Date().toISOString() : run?.completed_at,
+      })
+      .eq('id', payload.runId);
+
+    if (error) throw error;
+
+    if (ingredientJson.length > 0) {
+      const ingredientRows = ingredientJson.map((ing) => ({
+        id: ing.id,
+        production_run_id: payload.runId,
+        product_id: ing.product_id,
+        expected_quantity: ing.expected_quantity,
+        actual_quantity: ing.actual_quantity,
+        unit: ing.unit,
+        variance_percent: ing.expected_quantity
+          ? (((ing.actual_quantity || 0) - ing.expected_quantity) / ing.expected_quantity) * 100
+          : null,
+      }));
+
+      const { error: ingredientError } = await supabase
+        .from('production_run_ingredients')
+        .upsert(ingredientRows);
+
+      if (ingredientError) throw ingredientError;
+    }
+  }, []);
+
   const updateRunStatus = useCallback(async (runId: string, status: ProductionRunStatus) => {
     try {
       const { error } = await supabase
@@ -280,174 +537,28 @@ export const useProductionRuns = (restaurantId: string | null) => {
   const saveRunActuals = useCallback(async (payload: CompleteRunPayload) => {
     try {
       const run = runs.find(r => r.id === payload.runId);
-      const targetYield = run?.target_yield ?? 0;
-      const actualYield = payload.actual_yield ?? run?.actual_yield ?? run?.target_yield ?? 0;
-      const variance = targetYield ? ((actualYield - targetYield) / targetYield) * 100 : null;
-      const statusToSet: ProductionRunStatus = payload.status || 'completed';
-      const ingredientJson = payload.ingredients ? payload.ingredients.map(ing => ({
-        id: ing.id,
-        product_id: ing.product_id,
-        expected_quantity: ing.expected_quantity,
-        actual_quantity: ing.actual_quantity,
-        unit: ing.unit
-      })) : [];
+      if (!run) throw new Error('Production run not found');
 
-      // Calculate ingredient total cost to price the output item
-      let ingredientCostTotal = 0;
-      if (run?.ingredients && run.ingredients.length > 0) {
-        const payloadLookup = new Map(
-          (payload.ingredients || []).map(ing => [ing.product_id, ing])
-        );
-        ingredientCostTotal = run.ingredients.reduce((sum, ing) => {
-          const payloadIng = payloadLookup.get(ing.product_id);
-          const rawQty = payloadIng?.actual_quantity ?? payloadIng?.expected_quantity ?? ing.actual_quantity ?? ing.expected_quantity ?? 0;
-          const actualQty = Number(rawQty) || 0;
-          const costPerUnit = ing.product?.cost_per_unit || 0;
-          return sum + costPerUnit * actualQty;
-        }, 0);
-      }
+      const ingredientJson = buildIngredientJson(payload);
+      const { actualYield, variance, statusToSet } = computeRunMetrics(run, payload);
+      const ingredientCostTotal = calculateIngredientCostTotal(run, payload);
 
-      // Ensure the prep recipe has an output product so completion can add inventory.
-      let outputProductId = run?.prep_recipe?.output_product_id || null;
-      let supplierInfo: { supplierId: string; supplierName: string } | null = null;
-
-      if ((ingredientCostTotal > 0 || !outputProductId) && run?.restaurant_id) {
-        supplierInfo = await ensureRestaurantSupplier(run.restaurant_id);
-      }
-
-      if (!outputProductId && run?.prep_recipe) {
-        const unit = payload.actual_yield_unit || run.actual_yield_unit || run.target_yield_unit || run.prep_recipe.default_yield_unit || 'unit';
-
-        const { data: existingProducts, error: existingError } = await supabase
-          .from('products')
-          .select('id')
-          .eq('restaurant_id', run.restaurant_id)
-          .ilike('name', run.prep_recipe.name)
-          .limit(1);
-
-        if (existingError) throw existingError;
-
-        if (existingProducts && existingProducts.length > 0) {
-          outputProductId = existingProducts[0].id;
-        } else {
-          const slug = run.prep_recipe.name
-            .toUpperCase()
-            .replace(/[^A-Z0-9]+/g, '-')
-            .replace(/^-+|-+$/g, '') || 'PREP';
-          const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
-
-          const { data: newProduct, error: productError } = await supabase
-            .from('products')
-            .insert({
-              restaurant_id: run.restaurant_id,
-              name: run.prep_recipe.name,
-              sku,
-              uom_purchase: unit,
-              size_value: 1,
-              size_unit: unit,
-              package_qty: 1,
-              current_stock: 0,
-              par_level_min: 0,
-              par_level_max: 0,
-              reorder_point: 0,
-              cost_per_unit: ingredientCostTotal,
-              supplier_id: supplierInfo?.supplierId || null,
-              supplier_name: supplierInfo?.supplierName || null,
-              description: 'Auto-created prep output',
-            })
-            .select()
-            .single();
-
-          if (productError) throw productError;
-          outputProductId = newProduct?.id || null;
-        }
-        if (outputProductId) {
-          await supabase
-            .from('prep_recipes')
-            .update({ output_product_id: outputProductId })
-            .eq('id', run.prep_recipe.id);
-        }
-      } else if (outputProductId && (ingredientCostTotal > 0 || supplierInfo)) {
-        const { data: currentProduct, error: currentError } = await supabase
-          .from('products')
-          .select('cost_per_unit, supplier_id, supplier_name')
-          .eq('id', outputProductId)
-          .single();
-
-        if (currentError) throw currentError;
-
-        const updates: any = {};
-        if (ingredientCostTotal > 0) {
-          // Always update cost_per_unit when completing a batch with ingredient costs
-          // Apply variance adjustment to cost_per_unit
-          // Positive variance (over-yield) = lower cost per unit
-          // Negative variance (under-yield) = higher cost per unit
-          const varianceAdjustment = variance ? (1 - (variance / 100)) : 1;
-          const adjustedCostPerUnit = (ingredientCostTotal / Math.max(actualYield, 1)) * varianceAdjustment;
-          updates.cost_per_unit = Math.max(0, adjustedCostPerUnit); // Ensure non-negative
-        }
-        if (supplierInfo) {
-          if (!currentProduct?.supplier_id) updates.supplier_id = supplierInfo.supplierId;
-          if (!currentProduct?.supplier_name) updates.supplier_name = supplierInfo.supplierName;
-        }
-
-        if (Object.keys(updates).length > 0) {
-          updates.updated_at = new Date().toISOString();
-          await supabase
-            .from('products')
-            .update(updates)
-            .eq('id', outputProductId);
-        }
-      }
+      await syncOutputProductForRun({
+        run,
+        payload,
+        ingredientCostTotal,
+        variance,
+        actualYield,
+      });
 
       if (statusToSet === 'completed') {
-        const { error } = await supabase.rpc('complete_production_run', {
-          p_run_id: payload.runId,
-          p_actual_yield: actualYield,
-          p_actual_yield_unit: payload.actual_yield_unit || run?.actual_yield_unit || run?.target_yield_unit,
-          p_ingredients: ingredientJson
-        });
-
-        if (error) throw error;
-
+        await persistCompletedRun(run, payload, actualYield, ingredientJson);
         toast({
           title: 'Batch completed',
           description: 'Inventory updated and costs locked',
         });
       } else {
-        const { error } = await supabase
-          .from('production_runs')
-          .update({
-            actual_yield: actualYield,
-            actual_yield_unit: payload.actual_yield_unit || run?.actual_yield_unit || run?.target_yield_unit,
-            variance_percent: variance,
-            status: statusToSet,
-            completed_at: statusToSet === 'completed' ? new Date().toISOString() : run?.completed_at,
-          })
-          .eq('id', payload.runId);
-
-        if (error) throw error;
-
-        if (ingredientJson.length > 0) {
-          const ingredientRows = ingredientJson.map((ing) => ({
-            id: ing.id,
-            production_run_id: payload.runId,
-            product_id: ing.product_id,
-            expected_quantity: ing.expected_quantity,
-            actual_quantity: ing.actual_quantity,
-            unit: ing.unit,
-            variance_percent: ing.expected_quantity
-              ? (((ing.actual_quantity || 0) - ing.expected_quantity) / ing.expected_quantity) * 100
-              : null,
-          }));
-
-          const { error: ingredientError } = await supabase
-            .from('production_run_ingredients')
-            .upsert(ingredientRows);
-
-          if (ingredientError) throw ingredientError;
-        }
-
+        await persistInProgressRun(run, payload, actualYield, variance, statusToSet, ingredientJson);
         toast({
           title: 'Batch updated',
           description: 'Actuals saved',
@@ -465,7 +576,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
       });
       return false;
     }
-  }, [runs, toast, fetchRuns, ensureRestaurantSupplier]);
+  }, [runs, toast, fetchRuns, buildIngredientJson, computeRunMetrics, calculateIngredientCostTotal, syncOutputProductForRun, persistCompletedRun, persistInProgressRun]);
 
   useEffect(() => {
     fetchRuns();

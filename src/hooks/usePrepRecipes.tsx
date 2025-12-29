@@ -65,11 +65,21 @@ export interface UpdatePrepRecipeInput extends Partial<CreatePrepRecipeInput> {
   id: string;
 }
 
+type IngredientPayload = Array<{
+  prep_recipe_id: string;
+  product_id: string;
+  quantity: number;
+  unit: IngredientUnit;
+  notes?: string;
+  sort_order?: number;
+}>;
+
 export const usePrepRecipes = (restaurantId: string | null) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [prepRecipes, setPrepRecipes] = useState<PrepRecipe[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchPrepRecipes = useCallback(async () => {
     if (!restaurantId || !user) {
@@ -79,6 +89,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
     try {
       setLoading(true);
+      setError(null); // Clear error on retry
       const { data, error } = await supabase
         .from('prep_recipes')
         .select(`
@@ -113,9 +124,11 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       setPrepRecipes(normalized);
     } catch (err: any) {
       console.error('Error fetching prep recipes:', err);
+      const errorMessage = err.message || 'Failed to load prep recipes';
+      setError(errorMessage);
       toast({
         title: 'Could not load prep recipes',
-        description: err.message,
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -161,117 +174,135 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     return { supplierId: supplier.id as string, supplierName: supplier.name as string };
   }, [getRestaurantName]);
 
+  const buildIngredientPayload = useCallback((input: CreatePrepRecipeInput): IngredientPayload => {
+    return (input.ingredients || []).filter(ing => ing.product_id).map((ing, index) => ({
+      prep_recipe_id: '',
+      product_id: ing.product_id,
+      quantity: ing.quantity,
+      unit: ing.unit,
+      notes: ing.notes,
+      sort_order: ing.sort_order ?? index,
+    }));
+  }, []);
+
+  const calculateIngredientCostTotal = useCallback(async (ingredientPayload: IngredientPayload) => {
+    const ingredientProductIds = ingredientPayload.map(ing => ing.product_id).filter(Boolean);
+    if (ingredientProductIds.length === 0) return 0;
+
+    const { data: ingredientProducts, error: productError } = await supabase
+      .from('products')
+      .select('id, cost_per_unit')
+      .in('id', ingredientProductIds);
+
+    if (productError) throw productError;
+
+    const costMap = new Map((ingredientProducts || []).map(p => [p.id, p.cost_per_unit || 0]));
+    return ingredientPayload.reduce((sum, ing) => {
+      const costPerUnit = costMap.get(ing.product_id) || 0;
+      return sum + costPerUnit * (ing.quantity || 0);
+    }, 0);
+  }, []);
+
+  const ensureSupplierIfNeeded = useCallback(async (restaurant_id: string, ingredientCostTotal: number, outputProductId?: string | null) => {
+    if (ingredientCostTotal > 0 || !outputProductId) {
+      return ensureRestaurantSupplier(restaurant_id);
+    }
+    return null;
+  }, [ensureRestaurantSupplier]);
+
+  const findExistingOutputProduct = useCallback(async (restaurantId: string, name: string) => {
+    const { data: existingProducts, error: existingError } = await supabase
+      .from('products')
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .ilike('name', name)
+      .limit(1);
+
+    if (existingError) throw existingError;
+    return existingProducts && existingProducts.length > 0 ? existingProducts[0].id : null;
+  }, []);
+
+  const createOutputProduct = useCallback(async (input: CreatePrepRecipeInput, ingredientCostTotal: number, supplierInfo?: { supplierId: string; supplierName: string } | null) => {
+    const slug = input.name
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'PREP';
+    const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+
+    const { data: newProduct, error: productError } = await supabase
+      .from('products')
+      .insert({
+        restaurant_id: input.restaurant_id,
+        name: input.name,
+        sku,
+        uom_purchase: input.default_yield_unit || 'unit',
+        size_value: 1,
+        size_unit: input.default_yield_unit || null,
+        package_qty: 1,
+        current_stock: 0,
+        par_level_min: 0,
+        par_level_max: 0,
+        reorder_point: 0,
+        cost_per_unit: ingredientCostTotal,
+        supplier_id: supplierInfo?.supplierId || null,
+        supplier_name: supplierInfo?.supplierName || null,
+        description: 'Auto-created prep output',
+      })
+      .select()
+      .single();
+
+    if (productError) throw productError;
+    return newProduct?.id || null;
+  }, []);
+
+  const updateExistingOutputProduct = useCallback(async (outputProductId: string, ingredientCostTotal: number, supplierInfo?: { supplierId: string; supplierName: string } | null) => {
+    const { data: currentProduct, error: currentError } = await supabase
+      .from('products')
+      .select('cost_per_unit, supplier_id, supplier_name')
+      .eq('id', outputProductId)
+      .single();
+
+    if (currentError) throw currentError;
+
+    const updates: Record<string, any> = {};
+    if (ingredientCostTotal > 0 && (!currentProduct?.cost_per_unit || currentProduct.cost_per_unit === 0)) {
+      updates.cost_per_unit = ingredientCostTotal;
+    }
+    if (supplierInfo) {
+      if (!currentProduct?.supplier_id) updates.supplier_id = supplierInfo.supplierId;
+      if (!currentProduct?.supplier_name) updates.supplier_name = supplierInfo.supplierName;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      updates.updated_at = new Date().toISOString();
+      await supabase
+        .from('products')
+        .update(updates)
+        .eq('id', outputProductId);
+    }
+  }, []);
+
+  const resolveOutputProduct = useCallback(async (input: CreatePrepRecipeInput, ingredientCostTotal: number) => {
+    const outputProductId = input.output_product_id || null;
+    const supplierInfo = await ensureSupplierIfNeeded(input.restaurant_id, ingredientCostTotal, outputProductId);
+
+    if (!outputProductId) {
+      const existingId = await findExistingOutputProduct(input.restaurant_id, input.name);
+      if (existingId) return existingId;
+      return createOutputProduct(input, ingredientCostTotal, supplierInfo);
+    }
+
+    await updateExistingOutputProduct(outputProductId, ingredientCostTotal, supplierInfo);
+    return outputProductId;
+  }, [ensureSupplierIfNeeded, findExistingOutputProduct, createOutputProduct, updateExistingOutputProduct]);
+
   const createPrepRecipe = useCallback(async (input: CreatePrepRecipeInput) => {
     if (!user) return null;
 
     try {
-      const ingredientPayload = (input.ingredients || []).filter(ing => ing.product_id).map((ing, index) => ({
-        prep_recipe_id: '',
-        product_id: ing.product_id,
-        quantity: ing.quantity,
-        unit: ing.unit,
-        notes: ing.notes,
-        sort_order: ing.sort_order ?? index,
-      }));
-
-      // Calculate ingredient total cost to price the output item
-      const ingredientProductIds = ingredientPayload.map(ing => ing.product_id).filter(Boolean);
-      let ingredientCostTotal = 0;
-      if (ingredientProductIds.length > 0) {
-        const { data: ingredientProducts, error: productError } = await supabase
-          .from('products')
-          .select('id, cost_per_unit')
-          .in('id', ingredientProductIds);
-
-        if (productError) throw productError;
-
-        const costMap = new Map((ingredientProducts || []).map(p => [p.id, p.cost_per_unit || 0]));
-        ingredientCostTotal = ingredientPayload.reduce((sum, ing) => {
-          const costPerUnit = costMap.get(ing.product_id) || 0;
-          return sum + costPerUnit * (ing.quantity || 0);
-        }, 0);
-      }
-
-      // Ensure we have an output product so completed batches can add inventory.
-      let outputProductId = input.output_product_id || null;
-      let supplierInfo: { supplierId: string; supplierName: string } | null = null;
-
-      if (ingredientCostTotal > 0 || !outputProductId) {
-        supplierInfo = await ensureRestaurantSupplier(input.restaurant_id);
-      }
-
-      if (!outputProductId) {
-        // Try to reuse an existing product with the same name first
-        const { data: existingProducts, error: existingError } = await supabase
-          .from('products')
-          .select('id')
-          .eq('restaurant_id', input.restaurant_id)
-          .ilike('name', input.name)
-          .limit(1);
-
-        if (existingError) throw existingError;
-
-        if (existingProducts && existingProducts.length > 0) {
-          outputProductId = existingProducts[0].id;
-        } else {
-          // Create a lightweight inventory item for the prep output
-          const slug = input.name
-            .toUpperCase()
-            .replace(/[^A-Z0-9]+/g, '-')
-            .replace(/^-+|-+$/g, '') || 'PREP';
-          const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
-
-          const { data: newProduct, error: productError } = await supabase
-            .from('products')
-            .insert({
-              restaurant_id: input.restaurant_id,
-              name: input.name,
-              sku,
-              uom_purchase: input.default_yield_unit || 'unit',
-              size_value: 1,
-              size_unit: input.default_yield_unit || null,
-              package_qty: 1,
-              current_stock: 0,
-              par_level_min: 0,
-              par_level_max: 0,
-              reorder_point: 0,
-              cost_per_unit: ingredientCostTotal,
-              supplier_id: supplierInfo?.supplierId || null,
-              supplier_name: supplierInfo?.supplierName || null,
-              description: 'Auto-created prep output',
-            })
-            .select()
-            .single();
-
-          if (productError) throw productError;
-          outputProductId = newProduct?.id || null;
-        }
-      } else if (ingredientCostTotal > 0 || supplierInfo) {
-        const { data: currentProduct, error: currentError } = await supabase
-          .from('products')
-          .select('cost_per_unit, supplier_id, supplier_name')
-          .eq('id', outputProductId)
-          .single();
-
-        if (currentError) throw currentError;
-
-        const updates: any = {};
-        if (ingredientCostTotal > 0 && (!currentProduct?.cost_per_unit || currentProduct.cost_per_unit === 0)) {
-          updates.cost_per_unit = ingredientCostTotal;
-        }
-        if (supplierInfo) {
-          if (!currentProduct?.supplier_id) updates.supplier_id = supplierInfo.supplierId;
-          if (!currentProduct?.supplier_name) updates.supplier_name = supplierInfo.supplierName;
-        }
-
-        if (Object.keys(updates).length > 0) {
-          updates.updated_at = new Date().toISOString();
-          await supabase
-            .from('products')
-            .update(updates)
-            .eq('id', outputProductId);
-        }
-      }
+      const ingredientPayload = buildIngredientPayload(input);
+      const ingredientCostTotal = await calculateIngredientCostTotal(ingredientPayload);
+      const outputProductId = await resolveOutputProduct(input, ingredientCostTotal);
 
       const { data: recipe, error } = await supabase
         .from('prep_recipes')
@@ -319,7 +350,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       });
       return null;
     }
-  }, [user, toast, fetchPrepRecipes, ensureRestaurantSupplier]);
+  }, [user, toast, fetchPrepRecipes, buildIngredientPayload, calculateIngredientCostTotal, resolveOutputProduct]);
 
   const updatePrepRecipe = useCallback(async (input: UpdatePrepRecipeInput) => {
     if (!user) return false;
@@ -430,6 +461,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
   return {
     prepRecipes,
     loading,
+    error,
     fetchPrepRecipes,
     createPrepRecipe,
     updatePrepRecipe,

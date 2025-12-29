@@ -377,7 +377,8 @@ export const useProductionRuns = (restaurantId: string | null) => {
         if (currentError) throw currentError;
 
         const updates: any = {};
-        if (ingredientCostTotal > 0 && (!currentProduct?.cost_per_unit || currentProduct.cost_per_unit === 0)) {
+        if (ingredientCostTotal > 0) {
+          // Always update cost_per_unit when completing a batch with ingredient costs
           // Apply variance adjustment to cost_per_unit
           // Positive variance (over-yield) = lower cost per unit
           // Negative variance (under-yield) = higher cost per unit

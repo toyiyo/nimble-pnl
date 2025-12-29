@@ -10,7 +10,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createClient } from '@supabase/supabase-js';
 
@@ -57,6 +57,7 @@ vi.mock('@/hooks/useProductionRuns', () => ({
     createProductionRun: vi.fn(),
     updateProductionRun: vi.fn(),
     completeProductionRun: vi.fn(),
+    saveRunActuals: vi.fn(),
   })),
 }));
 

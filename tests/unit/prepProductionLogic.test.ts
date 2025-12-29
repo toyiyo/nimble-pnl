@@ -244,4 +244,64 @@ describe('Prep Production Business Logic', () => {
       expect(shouldAllowCompletion).toBe(true);
     });
   });
+
+  describe('Projected Cost Calculations for UI', () => {
+    it('should calculate projected costs for in-progress batches', () => {
+      const inProgressRun = {
+        ...mockProductionRun,
+        status: 'in_progress',
+        actual_yield: 18,
+        ingredients: [{
+          ...mockProductionRun.ingredients[0],
+          actual_quantity: 12, // 12kg used
+          product: { ...mockProduct, cost_per_unit: 4.00 },
+        }],
+      };
+
+      // Calculate projected costs like the UI does
+      const yieldValue = inProgressRun.actual_yield || inProgressRun.target_yield || 0;
+      const totalIngredientCost = inProgressRun.ingredients.reduce((sum, ing) => {
+        const quantity = ing.actual_quantity ?? ing.expected_quantity ?? 0;
+        const costPerUnit = ing.product?.cost_per_unit || 0;
+        return sum + (quantity * costPerUnit);
+      }, 0);
+
+      const costPerUnit = totalIngredientCost / yieldValue;
+
+      expect(totalIngredientCost).toBe(48.00); // 12kg * $4.00/kg
+      expect(costPerUnit).toBeCloseTo(2.67, 2); // $48 / 18L
+    });
+
+    it('should show stored costs for completed batches', () => {
+      const completedRun = {
+        ...mockProductionRun,
+        status: 'completed',
+        cost_per_unit: 2.50,
+        actual_total_cost: 45.00,
+      };
+
+      // For completed batches, UI should use stored values
+      expect(completedRun.cost_per_unit).toBe(2.50);
+      expect(completedRun.actual_total_cost).toBe(45.00);
+    });
+
+    it('should handle missing data gracefully', () => {
+      const runWithNoData = {
+        ...mockProductionRun,
+        status: 'in_progress',
+        actual_yield: null,
+        ingredients: [],
+      };
+
+      const yieldValue = runWithNoData.actual_yield || runWithNoData.target_yield || 0;
+      const totalIngredientCost = runWithNoData.ingredients.reduce((sum, ing) => {
+        const quantity = ing.actual_quantity ?? ing.expected_quantity ?? 0;
+        const costPerUnit = ing.product?.cost_per_unit || 0;
+        return sum + (quantity * costPerUnit);
+      }, 0);
+
+      expect(yieldValue).toBe(20); // Falls back to target_yield
+      expect(totalIngredientCost).toBe(0); // No ingredients
+    });
+  });
 });

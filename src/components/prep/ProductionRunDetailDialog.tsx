@@ -40,6 +40,11 @@ const STATUS_BADGES: Record<ProductionRunStatus, { label: string; variant: 'defa
 };
 
 export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, saving }: ProductionRunDetailDialogProps) {
+  // Guard clause: don't render if no run data - must be before any hooks
+  if (!run) {
+    return null;
+  }
+
   const [actualYield, setActualYield] = useState<number | ''>('');
   const [actualUnit, setActualUnit] = useState<IngredientUnit>('unit');
   const [status, setStatus] = useState<ProductionRunStatus>('planned');
@@ -65,6 +70,41 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
     }, 0);
     return varianceSum / withExpected.length;
   }, [ingredientActuals]);
+
+  const projectedCosts = useMemo(() => {
+    // Handle null run
+    if (!run) {
+      return { costPerUnit: null, totalCost: null };
+    }
+
+    // For completed batches, use the stored values
+    if (run.status === 'completed') {
+      return {
+        costPerUnit: run.cost_per_unit,
+        totalCost: run.actual_total_cost,
+      };
+    }
+
+    // For in-progress batches, calculate projected costs
+    const yieldValue = actualYield ? Number(actualYield) : (run.target_yield || 0);
+    if (!yieldValue || !ingredientActuals.length) {
+      return { costPerUnit: null, totalCost: null };
+    }
+
+    // Calculate total ingredient cost based on actual quantities (or expected if no actuals)
+    const totalIngredientCost = ingredientActuals.reduce((sum, ing) => {
+      const quantity = ing.actual_quantity ?? ing.expected_quantity ?? 0;
+      const costPerUnit = ing.product?.cost_per_unit || 0;
+      return sum + (quantity * costPerUnit);
+    }, 0);
+
+    const costPerUnit = totalIngredientCost / yieldValue;
+
+    return {
+      costPerUnit: totalIngredientCost > 0 ? costPerUnit : null,
+      totalCost: totalIngredientCost > 0 ? totalIngredientCost : null,
+    };
+  }, [run?.status, run?.cost_per_unit, run?.actual_total_cost, run?.target_yield, actualYield, ingredientActuals]);
 
   if (!run) return null;
 
@@ -218,17 +258,17 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
                   <span>Cost per unit</span>
                 </div>
                 <span className="font-semibold">
-                  {run.cost_per_unit != null ? `$${run.cost_per_unit.toFixed(2)}` : '—'}
+                  {projectedCosts.costPerUnit != null ? `$${projectedCosts.costPerUnit.toFixed(2)}` : '—'}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span>Total batch cost</span>
                 <span className="font-medium text-foreground">
-                  {run.actual_total_cost != null ? `$${run.actual_total_cost.toFixed(2)}` : '—'}
+                  {projectedCosts.totalCost != null ? `$${projectedCosts.totalCost.toFixed(2)}` : '—'}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Costs lock when you complete the batch.
+                {run.status === 'completed' ? 'Costs locked when batch was completed.' : 'Projected costs based on current actuals. Costs lock when you complete the batch.'}
               </p>
             </div>
 

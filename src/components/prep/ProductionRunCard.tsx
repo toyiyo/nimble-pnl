@@ -22,10 +22,20 @@ export function ProductionRunCard({ run, onClick }: ProductionRunCardProps) {
     ? ((run.actual_yield ?? run.target_yield) - run.target_yield) / run.target_yield * 100
     : null;
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') && onClick) {
+      if (e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+      }
+      onClick();
+    }
+  };
+
   return (
     <Card
       className="hover:shadow-md transition-all duration-200 cursor-pointer border-border/70"
       onClick={onClick}
+      onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
     >

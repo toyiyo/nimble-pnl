@@ -11,11 +11,20 @@ SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000000
 -- Disable RLS for testing
 ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
 ALTER TABLE products DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_restaurants DISABLE ROW LEVEL SECURITY;
 
--- Setup: Create test restaurant
+-- Setup: Create test restaurant and user access
 INSERT INTO restaurants (id, name) VALUES
   ('33333333-3333-3333-3333-333333333333', 'Test Restaurant Conversions')
 ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO auth.users (id, email) VALUES
+  ('00000000-0000-0000-0000-000000000000', 'test@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
+  ('00000000-0000-0000-0000-000000000000', '33333333-3333-3333-3333-333333333333', 'owner')
+ON CONFLICT (user_id, restaurant_id) DO NOTHING;
 
 -- ============================================================
 -- TEST CATEGORY 1: VOLUME CONVERSIONS (fl oz, cup, tbsp, tsp, qt, gal)

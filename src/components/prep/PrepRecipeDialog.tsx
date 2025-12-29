@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Plus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
 
 export interface PrepRecipeFormValues {
   name: string;
@@ -58,6 +59,7 @@ export function PrepRecipeDialog({
 }: PrepRecipeDialogProps) {
   const [formValues, setFormValues] = useState<PrepRecipeFormValues>(defaultForm);
   const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (editingRecipe) {
@@ -87,7 +89,7 @@ export function PrepRecipeDialog({
     [formValues.ingredients]
   );
 
-  const handleIngredientChange = (index: number, field: keyof PrepRecipeFormValues['ingredients'][number], value: any) => {
+  const handleIngredientChange = (index: number, field: keyof PrepRecipeFormValues['ingredients'][number], value: string | number | IngredientUnit) => {
     const updated = [...formValues.ingredients];
     updated[index] = { ...updated[index], [field]: value };
     setFormValues({ ...formValues, ingredients: updated });
@@ -115,13 +117,24 @@ export function PrepRecipeDialog({
 
   const handleSubmit = async () => {
     setSaving(true);
-    await onSubmit({
-      ...formValues,
-      output_product_id: formValues.output_product_id || undefined,
-      ingredients: formValues.ingredients.filter((ing) => ing.product_id),
-    });
-    setSaving(false);
-    onOpenChange(false);
+    try {
+      await onSubmit({
+        ...formValues,
+        output_product_id: formValues.output_product_id || undefined,
+        ingredients: formValues.ingredients.filter((ing) => ing.product_id),
+      });
+      onOpenChange(false);
+    } catch (err: unknown) {
+      console.error('Error saving prep recipe:', err);
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+      toast({
+        title: 'Failed to save recipe',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

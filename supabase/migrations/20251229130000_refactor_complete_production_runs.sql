@@ -19,7 +19,21 @@ DECLARE
   v_size_in_ml NUMERIC;
   v_recipe_in_g NUMERIC;
   v_size_in_g NUMERIC;
+  v_user_id UUID := auth.uid();
 BEGIN
+  -- Validate user authentication
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  -- Validate user has access to the restaurant
+  IF NOT EXISTS (
+    SELECT 1 FROM user_restaurants ur
+    WHERE ur.restaurant_id = p_restaurant_id AND ur.user_id = v_user_id
+  ) THEN
+    RAISE EXCEPTION 'Not authorized for this restaurant';
+  END IF;
+
   SELECT uom_purchase, size_value, size_unit, name
   INTO v_product
   FROM products

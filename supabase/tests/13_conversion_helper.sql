@@ -3,6 +3,28 @@ BEGIN;
 
 SELECT plan(5);
 
+-- Setup authenticated user context for tests
+SET LOCAL role TO postgres;
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000001"}';
+
+-- Disable RLS for testing
+ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
+ALTER TABLE products DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_restaurants DISABLE ROW LEVEL SECURITY;
+
+-- Setup: Create test restaurant and user access
+INSERT INTO restaurants (id, name) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'Test Restaurant Helper')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO auth.users (id, email) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'test@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
+  ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'owner')
+ON CONFLICT (user_id, restaurant_id) DO NOTHING;
+
 -- Direct match kg -> kg
 INSERT INTO products (id, restaurant_id, sku, name, uom_purchase, size_value, size_unit, cost_per_unit)
 VALUES ('30000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'KG1', 'Flour KG', 'kg', 1, 'kg', 1.00)

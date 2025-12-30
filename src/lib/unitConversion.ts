@@ -6,7 +6,7 @@ export type MeasurementCategory = 'volume' | 'weight' | 'count' | 'length' | 'un
 // Helper to determine the category of a unit
 export function getUnitCategory(unit: string): MeasurementCategory {
   // Extended volume units (includes variations like 'l' for 'L', 'gallon', 'quart', 'pint', 'floz')
-  const volumeUnits = [...VOLUME_UNITS, 'l', 'gallon', 'quart', 'pint', 'floz'];
+  const volumeUnits = [...VOLUME_UNITS, 'l', 'gallon', 'quart', 'pint', 'floz', 'tablespoon', 'teaspoon', 'fluid ounce'];
   // Extended weight units (includes 'mg' variation)
   const weightUnits = [...WEIGHT_UNITS, 'mg'];
   const countUnits = COUNT_UNITS;
@@ -14,11 +14,11 @@ export function getUnitCategory(unit: string): MeasurementCategory {
   
   const normalizedUnit = unit.toLowerCase().trim();
 
-  // Check each category
-  if (volumeUnits.some(u => normalizedUnit.includes(u))) return 'volume';
-  if (weightUnits.some(u => normalizedUnit.includes(u))) return 'weight';
-  if (countUnits.some(u => normalizedUnit.includes(u))) return 'count';
-  if (lengthUnits.some(u => normalizedUnit.includes(u))) return 'length';
+  // Check for exact matches (including common variations)
+  if (volumeUnits.includes(normalizedUnit)) return 'volume';
+  if (weightUnits.includes(normalizedUnit)) return 'weight';
+  if (countUnits.includes(normalizedUnit)) return 'count';
+  if (lengthUnits.includes(normalizedUnit)) return 'length';
   
   return 'unknown';
 }
@@ -66,7 +66,7 @@ export function normalizeUnitName(unit: string): string {
   };
   
   const normalizedUnit = unit.toLowerCase().trim();
-  return mapping[normalizedUnit] || normalizedUnit;
+  return mapping[normalizedUnit] || unit;
 }
 
 // Suggest appropriate recipe units based on purchase unit

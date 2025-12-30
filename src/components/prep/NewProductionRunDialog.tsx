@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 interface NewProductionRunDialogProps {
   open: boolean;
@@ -24,11 +25,10 @@ export function NewProductionRunDialog({ open, onOpenChange, prepRecipes, onCrea
   const [scheduledFor, setScheduledFor] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [saving, setSaving] = useState(false);
-
-  const selectedRecipe = useMemo(
-    () => prepRecipes.find((recipe) => recipe.id === selectedRecipeId) || prepRecipes[0],
-    [prepRecipes, selectedRecipeId]
-  );
+const selectedRecipe = useMemo(
+  () => prepRecipes.find((recipe) => recipe.id === selectedRecipeId) || (prepRecipes.length > 0 ? prepRecipes[0] : null),
+  [prepRecipes, selectedRecipeId]
+);
 
   useEffect(() => {
     if (selectedRecipe) {
@@ -49,15 +49,26 @@ export function NewProductionRunDialog({ open, onOpenChange, prepRecipes, onCrea
   const handleCreate = async () => {
     if (!selectedRecipe) return;
     setSaving(true);
-    await onCreate({
-      prep_recipe: selectedRecipe,
-      target_yield: targetYield,
-      target_yield_unit: targetUnit,
-      scheduled_for: scheduledFor || undefined,
-      notes,
-    });
-    setSaving(false);
-    onOpenChange(false);
+    try {
+      await onCreate({
+        prep_recipe: selectedRecipe,
+        target_yield: targetYield,
+        target_yield_unit: targetUnit,
+        scheduled_for: scheduledFor || undefined,
+        notes,
+      });
+    } catch (error) {
+      console.error('Failed to create production run:', error);
+      toast({
+        title: 'Failed to create batch',
+        description: 'An error occurred while creating the production run. Please try again.',
+        variant: 'destructive',
+      });
+      throw error; // Re-throw to allow parent components to handle if needed
+    } finally {
+      setSaving(false);
+      onOpenChange(false);
+    }
   };
 
   return (

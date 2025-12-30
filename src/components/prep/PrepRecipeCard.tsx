@@ -72,8 +72,8 @@ export function PrepRecipeCard({ recipe, costPerBatch = 0, costPerUnit = 0, onEd
             {stockDisplay !== null && (
               <div className="text-right text-sm text-muted-foreground">
                 <div className="flex items-center gap-1 justify-end">
-                  <Package className="h-4 w-4 text-emerald-600" />
-                  <span className={cn('font-medium text-emerald-700')}>
+                  <Package className="h-4 w-4 text-success" />
+                  <span className={cn('font-medium text-success-foreground')}>
                     {stockDisplay} {stockUnit}
                   </span>
                 </div>

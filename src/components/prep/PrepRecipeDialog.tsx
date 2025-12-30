@@ -85,10 +85,7 @@ export function PrepRecipeDialog({
     }
   }, [editingRecipe, open]);
 
-  const ingredientRows = useMemo(
-    () => [...formValues.ingredients].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
-    [formValues.ingredients]
-  );
+  const ingredientRows = formValues.ingredients;
 
   const productLookup = useMemo(() => {
     const map = new Map<string, Product>();

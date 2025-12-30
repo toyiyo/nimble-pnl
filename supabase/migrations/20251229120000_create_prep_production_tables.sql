@@ -129,6 +129,12 @@ CREATE POLICY "Update prep recipes for restaurant"
     WHERE ur.restaurant_id = prep_recipes.restaurant_id
       AND ur.user_id = auth.uid()
       AND ur.role IN ('owner','manager','chef')
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.user_restaurants ur
+    WHERE ur.restaurant_id = prep_recipes.restaurant_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner','manager','chef')
   ));
 
 CREATE POLICY "Delete prep recipes for restaurant"
@@ -153,9 +159,41 @@ CREATE POLICY "View prep recipe ingredients"
       AND ur.user_id = auth.uid()
   ));
 
-CREATE POLICY "Manage prep recipe ingredients"
+CREATE POLICY "Create prep recipe ingredients"
   ON public.prep_recipe_ingredients
-  FOR ALL
+  FOR INSERT
+  WITH CHECK (EXISTS (
+    SELECT 1
+    FROM public.prep_recipes pr
+    JOIN public.user_restaurants ur ON ur.restaurant_id = pr.restaurant_id
+    WHERE pr.id = prep_recipe_ingredients.prep_recipe_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner','manager','chef')
+  ));
+
+CREATE POLICY "Update prep recipe ingredients"
+  ON public.prep_recipe_ingredients
+  FOR UPDATE
+  USING (EXISTS (
+    SELECT 1
+    FROM public.prep_recipes pr
+    JOIN public.user_restaurants ur ON ur.restaurant_id = pr.restaurant_id
+    WHERE pr.id = prep_recipe_ingredients.prep_recipe_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner','manager','chef')
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1
+    FROM public.prep_recipes pr
+    JOIN public.user_restaurants ur ON ur.restaurant_id = pr.restaurant_id
+    WHERE pr.id = prep_recipe_ingredients.prep_recipe_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner','manager','chef')
+  ));
+
+CREATE POLICY "Delete prep recipe ingredients"
+  ON public.prep_recipe_ingredients
+  FOR DELETE
   USING (EXISTS (
     SELECT 1
     FROM public.prep_recipes pr
@@ -193,6 +231,12 @@ CREATE POLICY "Update production runs for restaurant"
     WHERE ur.restaurant_id = production_runs.restaurant_id
       AND ur.user_id = auth.uid()
       AND ur.role IN ('owner','manager','chef','staff')
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.user_restaurants ur
+    WHERE ur.restaurant_id = production_runs.restaurant_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner','manager','chef','staff')
   ));
 
 CREATE POLICY "Delete production runs for restaurant"
@@ -217,9 +261,41 @@ CREATE POLICY "View production run ingredients"
       AND ur.user_id = auth.uid()
   ));
 
-CREATE POLICY "Manage production run ingredients"
+CREATE POLICY "Create production run ingredients"
   ON public.production_run_ingredients
-  FOR ALL
+  FOR INSERT
+  WITH CHECK (EXISTS (
+    SELECT 1
+    FROM public.production_runs pr
+    JOIN public.user_restaurants ur ON ur.restaurant_id = pr.restaurant_id
+    WHERE pr.id = production_run_ingredients.production_run_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner','manager','chef','staff')
+  ));
+
+CREATE POLICY "Update production run ingredients"
+  ON public.production_run_ingredients
+  FOR UPDATE
+  USING (EXISTS (
+    SELECT 1
+    FROM public.production_runs pr
+    JOIN public.user_restaurants ur ON ur.restaurant_id = pr.restaurant_id
+    WHERE pr.id = production_run_ingredients.production_run_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner','manager','chef','staff')
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1
+    FROM public.production_runs pr
+    JOIN public.user_restaurants ur ON ur.restaurant_id = pr.restaurant_id
+    WHERE pr.id = production_run_ingredients.production_run_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner','manager','chef','staff')
+  ));
+
+CREATE POLICY "Delete production run ingredients"
+  ON public.production_run_ingredients
+  FOR DELETE
   USING (EXISTS (
     SELECT 1
     FROM public.production_runs pr

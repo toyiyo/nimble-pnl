@@ -399,10 +399,12 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       if (error) throw error;
 
       if (ingredients) {
-        await supabase
+        const { error: deleteError } = await supabase
           .from('prep_recipe_ingredients')
           .delete()
           .eq('prep_recipe_id', id);
+
+        if (deleteError) throw deleteError;
 
         const validIngredients = ingredients.filter(ing => ing.product_id);
         if (validIngredients.length > 0) {
@@ -476,7 +478,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
         const unitCost = ing.product?.cost_per_unit || 0;
         return sum + unitCost * (ing.quantity || 0);
       }, 0);
-      const costPerUnit = recipe.default_yield ? costPerBatch / recipe.default_yield : 0;
+      const costPerUnit = recipe.default_yield > 0 ? costPerBatch / recipe.default_yield : 0;
       acc[recipe.id] = {
         ingredientCount: recipe.ingredients?.length || 0,
         costPerBatch,

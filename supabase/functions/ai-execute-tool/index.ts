@@ -1218,7 +1218,7 @@ async function executeGetInventoryTransactions(
       name: t.product?.name,
       sku: t.product?.sku,
       category: t.product?.category,
-      unit: t.product?.individual_unit,
+      unit: t.product?.uom_recipe,
     },
     quantity: t.quantity,
     unit_cost: t.unit_cost,

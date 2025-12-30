@@ -537,7 +537,9 @@ export const useProductionRuns = (restaurantId: string | null) => {
   const saveRunActuals = useCallback(async (payload: CompleteRunPayload) => {
     try {
       const run = runs.find(r => r.id === payload.runId);
-      if (!run) throw new Error('Production run not found');
+      if (!run) {
+        throw new Error('Production run not found in local state');
+      }
 
       const ingredientJson = buildIngredientJson(payload);
       const { actualYield, variance, statusToSet } = computeRunMetrics(run, payload);

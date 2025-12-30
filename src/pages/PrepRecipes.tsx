@@ -51,18 +51,24 @@ export default function PrepRecipes() {
   const handleSaveRecipe = async (values: PrepRecipeFormValues) => {
     if (!selectedRestaurant) return;
 
-    if (editingRecipe) {
-      await updatePrepRecipe({
-        id: editingRecipe.id,
-        restaurant_id: selectedRestaurant.restaurant_id,
-        ...values,
-      });
-      setEditingRecipe(null);
-    } else {
-      await createPrepRecipe({
-        restaurant_id: selectedRestaurant.restaurant_id,
-        ...values,
-      });
+    try {
+      if (editingRecipe) {
+        await updatePrepRecipe({
+          id: editingRecipe.id,
+          restaurant_id: selectedRestaurant.restaurant_id,
+          ...values,
+        });
+        setEditingRecipe(null);
+      } else {
+        await createPrepRecipe({
+          restaurant_id: selectedRestaurant.restaurant_id,
+          ...values,
+        });
+      }
+      setDialogOpen(false);
+    } catch (error) {
+      // Consider showing a toast notification to the user
+      console.error('Failed to save recipe:', error);
     }
   };
 
@@ -165,7 +171,7 @@ export default function PrepRecipes() {
           />
         ))}
 
-        {!loading && filteredRecipes.length === 0 && (
+        {!loading && filteredRecipes.length === 0 && prepRecipes.length === 0 && (
           <Card className="border-dashed border-2">
             <CardContent className="p-6 text-center space-y-2">
               <p className="font-semibold">No prep recipes yet</p>
@@ -176,6 +182,17 @@ export default function PrepRecipes() {
                 <Plus className="h-4 w-4 mr-2" />
                 New prep recipe
               </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {!loading && filteredRecipes.length === 0 && prepRecipes.length > 0 && (
+          <Card className="border-dashed border-2">
+            <CardContent className="p-6 text-center space-y-2">
+              <p className="font-semibold">No matching recipes</p>
+              <p className="text-sm text-muted-foreground">
+                Try adjusting your search term.
+              </p>
             </CardContent>
           </Card>
         )}

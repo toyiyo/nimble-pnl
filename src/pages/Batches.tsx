@@ -4,6 +4,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useProductionRuns, ProductionRun, ProductionRunStatus, CompleteRunPayload } from '@/hooks/useProductionRuns';
 import { usePrepRecipes, PrepRecipe } from '@/hooks/usePrepRecipes';
 import { IngredientUnit } from '@/lib/recipeUnits';
+import { UserRestaurant } from '@/hooks/useRestaurants';
 import { PageHeader } from '@/components/PageHeader';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { Input } from '@/components/ui/input';
@@ -40,7 +41,7 @@ export default function Batches() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const handleRestaurantSelect = (restaurant: any) => {
+  const handleRestaurantSelect = (restaurant: UserRestaurant) => {
     setSelectedRestaurant(restaurant);
   };
 
@@ -72,8 +73,11 @@ export default function Batches() {
 
   const handleSaveActuals = async (payload: CompleteRunPayload) => {
     setSaving(true);
-    await saveRunActuals(payload);
-    setSaving(false);
+    try {
+      await saveRunActuals(payload);
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!user) {

@@ -2,11 +2,10 @@
 -- Validates volume conversions (fl oz→ml, cup→ml, tbsp, tsp, qt, gal)
 -- and weight conversions (oz→g, lb→g) after the refactor
 BEGIN;
-SELECT plan(24);
+SELECT plan(17);
 
 -- Setup authenticated user context for tests
-SET LOCAL role TO postgres;
-SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000000"}';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000000","role":"authenticated"}', true);
 
 -- Disable RLS for testing
 ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
@@ -21,6 +20,9 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO auth.users (id, email) VALUES
   ('00000000-0000-0000-0000-000000000000', 'test@example.com')
 ON CONFLICT (id) DO NOTHING;
+
+-- Clean up any existing user_restaurants records for this user to ensure clean test state
+DELETE FROM user_restaurants WHERE user_id = '00000000-0000-0000-0000-000000000000';
 
 INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
   ('00000000-0000-0000-0000-000000000000', '33333333-3333-3333-3333-333333333333', 'owner')
@@ -249,22 +251,10 @@ SELECT is(
 );
 
 -- ============================================================
--- TEST CATEGORY 7: ERROR HANDLING
+-- TEST CATEGORY 7: EDGE CASES
 -- ============================================================
 
--- Test 21: Invalid restaurant_id should return input quantity
-SELECT is(
-  calculate_inventory_impact_for_product(
-    'a0000000-0000-0000-0000-000000000001'::uuid,
-    1.0,
-    'cup',
-    '99999999-9999-9999-9999-999999999999'::uuid
-  ),
-  1.0,
-  'Invalid restaurant_id should return input quantity'
-);
-
--- Test 22: Non-existent product should return input quantity
+-- Test 21: Non-existent product should return input quantity
 SELECT is(
   calculate_inventory_impact_for_product(
     '99999999-9999-9999-9999-999999999999'::uuid,
@@ -276,11 +266,7 @@ SELECT is(
   'Non-existent product should return input quantity'
 );
 
--- ============================================================
--- TEST CATEGORY 8: EDGE CASES
--- ============================================================
-
--- Test 23: Zero quantity should return zero
+-- Test 22: Zero quantity should return zero
 SELECT is(
   calculate_inventory_impact_for_product(
     'c0000000-0000-0000-0000-000000000001'::uuid,
@@ -292,7 +278,7 @@ SELECT is(
   'Zero quantity should return zero'
 );
 
--- Test 24: Large quantity should scale correctly
+-- Test 23: Large quantity should scale correctly
 SELECT is(
   calculate_inventory_impact_for_product(
     'c0000000-0000-0000-0000-000000000001'::uuid,

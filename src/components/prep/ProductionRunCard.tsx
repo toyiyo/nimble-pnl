@@ -19,7 +19,9 @@ const statusTone: Record<ProductionRunStatus, string> = {
 
 export function ProductionRunCard({ run, onClick }: ProductionRunCardProps) {
   const variance = run.target_yield
-    ? ((run.actual_yield ?? run.target_yield) - run.target_yield) / run.target_yield * 100
+    ? run.target_yield !== 0
+      ? ((run.actual_yield ?? run.target_yield) - run.target_yield) / run.target_yield * 100
+      : null
     : null;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

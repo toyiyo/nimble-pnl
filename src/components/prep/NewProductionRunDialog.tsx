@@ -105,7 +105,7 @@ export function NewProductionRunDialog({ open, onOpenChange, prepRecipes, onCrea
                 min="0"
                 step="0.01"
                 value={targetYield}
-                onChange={(e) => setTargetYield(parseFloat(e.target.value) || 0)}
+                onChange={(e) => setTargetYield(Number.parseFloat(e.target.value) || 0)}
               />
             </div>
             <div className="space-y-1">
@@ -134,7 +134,7 @@ export function NewProductionRunDialog({ open, onOpenChange, prepRecipes, onCrea
               <div>
                 <p className="font-medium">Ingredient plan</p>
                 <p className="text-xs text-muted-foreground">
-                  Auto-scaled from recipe (factor {selectedRecipe && selectedRecipe.default_yield ? (targetYield / selectedRecipe.default_yield).toFixed(2) : '1.00'})
+                  Auto-scaled from recipe (factor {selectedRecipe?.default_yield ? (targetYield / selectedRecipe.default_yield).toFixed(2) : '1.00'})
                 </p>
               </div>
               <Badge variant="outline">

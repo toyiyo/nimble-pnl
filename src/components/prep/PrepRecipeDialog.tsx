@@ -214,7 +214,7 @@ export function PrepRecipeDialog({
                       step="0.01"
                       value={formValues.default_yield}
                       onChange={(e) =>
-                        setFormValues({ ...formValues, default_yield: parseFloat(e.target.value) || 0 })
+                        setFormValues({ ...formValues, default_yield: Number.parseFloat(e.target.value) || 0 })
                       }
                     />
                   </div>
@@ -248,7 +248,7 @@ export function PrepRecipeDialog({
                       onChange={(e) =>
                         setFormValues({
                           ...formValues,
-                          prep_time_minutes: e.target.value ? parseInt(e.target.value, 10) : null,
+                          prep_time_minutes: e.target.value ? Number.parseInt(e.target.value, 10) : null,
                         })
                       }
                       placeholder="45"
@@ -272,7 +272,7 @@ export function PrepRecipeDialog({
                 <ScrollArea className="max-h-[55vh] pr-2">
                   <div className="space-y-3 pb-1">
                     {ingredientRows.map((ingredient, index) => (
-                      <div key={index} className="rounded-lg border bg-card p-3 shadow-sm space-y-3">
+                      <div key={ingredient.id || `temp-${index}`} className="rounded-lg border bg-card p-3 shadow-sm space-y-3">
                         <div className="grid grid-cols-12 gap-2 items-center">
                           <div className="col-span-12 sm:col-span-5 space-y-1">
                             <Label>Product</Label>
@@ -300,7 +300,7 @@ export function PrepRecipeDialog({
                               min="0"
                               step="0.01"
                               value={ingredient.quantity}
-                              onChange={(e) => handleIngredientChange(index, 'quantity', parseFloat(e.target.value) || 0)}
+                              onChange={(e) => handleIngredientChange(index, 'quantity', Number.parseFloat(e.target.value) || 0)}
                             />
                           </div>
 

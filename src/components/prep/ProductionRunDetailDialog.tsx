@@ -109,7 +109,7 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
   const handleSave = async (finalStatus?: ProductionRunStatus) => {
     await onSave({
       runId: run.id,
-      actual_yield: actualYield ? Number(actualYield) : 0,
+      actual_yield: actualYield !== '' ? Number(actualYield) : undefined,
       actual_yield_unit: actualUnit,
       status: finalStatus || status,
       ingredients: ingredientActuals.map((ing) => ({
@@ -210,7 +210,7 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
                       <div key={ing.id || idx} className="p-3 rounded-lg bg-card border">
                         <div className="flex items-center justify-between mb-2">
                           <div className="font-medium">{ing.product?.name || 'Ingredient'}</div>
-                          <Badge variant="outline" className={variance > 5 ? 'text-amber-700 border-amber-200 bg-amber-50' : 'text-emerald-700 border-emerald-200 bg-emerald-50'}>
+                          <Badge variant="outline" className={Math.abs(variance) > 5 ? 'text-amber-700 border-amber-200 bg-amber-50' : 'text-emerald-700 border-emerald-200 bg-emerald-50'}>
                             {variance > 0 ? '+' : ''}
                             {variance.toFixed(1)}%
                           </Badge>

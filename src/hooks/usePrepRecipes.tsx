@@ -339,8 +339,40 @@ export const usePrepRecipes = (restaurantId: string | null) => {
         description: `${input.name} saved as a production blueprint`,
       });
 
+      // Fetch the complete recipe with populated relations
+      const { data: completeRecipe, error: fetchError } = await supabase
+        .from('prep_recipes')
+        .select(`
+          *,
+          output_product:products(id, name, current_stock, uom_purchase, cost_per_unit),
+          ingredients:prep_recipe_ingredients(
+            id,
+            prep_recipe_id,
+            product_id,
+            quantity,
+            unit,
+            notes,
+            sort_order,
+            product:products(id, name, cost_per_unit, current_stock, uom_purchase, category)
+          )
+        `)
+        .eq('id', recipe.id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Normalize units from the database into the UI-safe union type
+      const normalizedRecipe = {
+        ...completeRecipe,
+        default_yield_unit: toIngredientUnit(completeRecipe.default_yield_unit),
+        ingredients: (completeRecipe.ingredients || []).map((ing: any) => ({
+          ...ing,
+          unit: toIngredientUnit(ing.unit),
+        })),
+      } as PrepRecipe;
+
       await fetchPrepRecipes();
-      return recipe as PrepRecipe;
+      return normalizedRecipe;
     } catch (err: any) {
       console.error('Error creating prep recipe:', err);
       toast({

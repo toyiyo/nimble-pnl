@@ -25,21 +25,22 @@ export function ProductionRunCard({ run, onClick }: ProductionRunCardProps) {
     : null;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') && onClick) {
-      if (e.key === ' ' || e.key === 'Spacebar') {
-        e.preventDefault();
-      }
+    if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
       onClick();
     }
   };
 
   return (
     <Card
-      className="hover:shadow-md transition-all duration-200 cursor-pointer border-border/70"
+      className={cn(
+        "border-border/70",
+        onClick && "hover:shadow-md transition-all duration-200 cursor-pointer"
+      )}
       onClick={onClick}
       onKeyDown={handleKeyDown}
-      role="button"
-      tabIndex={0}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
     >
       <CardContent className="p-4 md:p-5">
         <div className="flex items-start justify-between gap-3">

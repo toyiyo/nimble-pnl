@@ -291,8 +291,9 @@ export function PrepRecipeDialog({
                           </div>
 
                           <div className="col-span-6 sm:col-span-3 space-y-1">
-                            <Label>Quantity</Label>
+                            <Label htmlFor={`ingredient-quantity-${ingredient.id || index}`}>Quantity</Label>
                             <Input
+                              id={`ingredient-quantity-${ingredient.id || index}`}
                               type="number"
                               min="0"
                               step="0.01"

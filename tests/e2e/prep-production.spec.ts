@@ -97,8 +97,8 @@ test.describe('Prep Production E2E Flow', () => {
     await page.getByRole('spinbutton', { name: 'Default yield' }).fill('10');
     await page.getByRole('combobox', { name: 'Yield unit' }).click();
     await page.getByRole('option', { name: 'L', exact: true }).click();
-    await page.getByRole('spinbutton').nth(2).click();
-    await page.getByRole('spinbutton').nth(2).fill('10');
+    await page.getByRole('spinbutton', { name: 'Quantity' }).nth(0).click();
+    await page.getByRole('spinbutton', { name: 'Quantity' }).nth(0).fill('10');
     await page.getByRole('button', { name: 'Create recipe' }).click();
 
     // Validate Step 2: Recipe was created correctly

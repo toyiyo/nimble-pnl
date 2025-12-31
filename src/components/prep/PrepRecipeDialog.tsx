@@ -93,7 +93,11 @@ export function PrepRecipeDialog({
     return map;
   }, [products]);
 
-  const handleIngredientChange = (index: number, field: keyof PrepRecipeFormValues['ingredients'][number], value: string | number | IngredientUnit) => {
+  const handleIngredientChange = <K extends keyof PrepRecipeFormValues['ingredients'][number]>(
+    index: number,
+    field: K,
+    value: PrepRecipeFormValues['ingredients'][number][K],
+  ) => {
     const updated = [...formValues.ingredients];
     updated[index] = { ...updated[index], [field]: value };
     setFormValues({ ...formValues, ingredients: updated });

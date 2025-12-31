@@ -19,9 +19,7 @@ const statusTone: Record<ProductionRunStatus, string> = {
 
 export function ProductionRunCard({ run, onClick }: ProductionRunCardProps) {
   const variance = run.target_yield
-    ? run.target_yield !== 0
-      ? ((run.actual_yield ?? run.target_yield) - run.target_yield) / run.target_yield * 100
-      : null
+    ? ((run.actual_yield ?? run.target_yield) - run.target_yield) / run.target_yield * 100
     : null;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -30,6 +28,13 @@ export function ProductionRunCard({ run, onClick }: ProductionRunCardProps) {
       onClick();
     }
   };
+
+  let timingLabel = 'Not started';
+  if (run.completed_at) {
+    timingLabel = `Completed ${new Date(run.completed_at).toLocaleString()}`;
+  } else if (run.started_at) {
+    timingLabel = `Started ${new Date(run.started_at).toLocaleString()}`;
+  }
 
   return (
     <Card
@@ -78,11 +83,7 @@ export function ProductionRunCard({ run, onClick }: ProductionRunCardProps) {
             <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Clock3 className="h-4 w-4" />
-                {run.completed_at
-                  ? `Completed ${new Date(run.completed_at).toLocaleString()}`
-                  : run.started_at
-                    ? `Started ${new Date(run.started_at).toLocaleString()}`
-                    : 'Not started'}
+                {timingLabel}
               </div>
               <div className="flex items-center gap-1">
                 <CalendarClock className="h-4 w-4" />

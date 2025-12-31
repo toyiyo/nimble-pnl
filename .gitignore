@@ -40,4 +40,6 @@ dev-tools/refresh-queue.sh
 dev-tools/review_queue.json
 dev-tools/send-to-codex.sh
 dev-tools/README.md
+dev-tools/.last_task_id
 dev-tools/.env.local.example
+dev-tools/mark-last-task.sh

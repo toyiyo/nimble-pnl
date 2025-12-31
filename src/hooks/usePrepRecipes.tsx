@@ -399,17 +399,9 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       if (error) throw error;
 
       if (ingredients) {
-        const { error: deleteError } = await supabase
-          .from('prep_recipe_ingredients')
-          .delete()
-          .eq('prep_recipe_id', id);
-
-        if (deleteError) throw deleteError;
-
-        const validIngredients = ingredients.filter(ing => ing.product_id);
-        if (validIngredients.length > 0) {
-          const rows = validIngredients.map((ing, index) => ({
-            prep_recipe_id: id,
+        const ingredientPayload = ingredients
+          .filter(ing => ing.product_id)
+          .map((ing, index) => ({
             product_id: ing.product_id,
             quantity: ing.quantity,
             unit: ing.unit,
@@ -417,12 +409,12 @@ export const usePrepRecipes = (restaurantId: string | null) => {
             sort_order: ing.sort_order ?? index,
           }));
 
-          const { error: ingredientError } = await supabase
-            .from('prep_recipe_ingredients')
-            .insert(rows);
+        const { error: ingredientError } = await supabase.rpc('update_prep_recipe_ingredients', {
+          p_prep_recipe_id: id,
+          p_ingredients: ingredientPayload,
+        });
 
-          if (ingredientError) throw ingredientError;
-        }
+        if (ingredientError) throw ingredientError;
       }
 
       toast({

@@ -6968,6 +6968,10 @@ export type Database = {
         }
         Returns: number
       }
+      update_prep_recipe_ingredients: {
+        Args: { p_ingredients?: Json; p_prep_recipe_id: string }
+        Returns: undefined
+      }
       upsert_product_supplier: {
         Args: {
           p_product_id: string

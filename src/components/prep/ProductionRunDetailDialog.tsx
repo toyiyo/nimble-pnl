@@ -228,6 +228,7 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
                               min="0"
                               step="0.01"
                               value={actual}
+                              aria-label={`Actual quantity for ${ing.product?.name || 'ingredient'}`}
                               onChange={(e) => {
                                 const updated = [...ingredientActuals];
                                 updated[idx] = { ...ing, actual_quantity: parseFloat(e.target.value) || 0 };

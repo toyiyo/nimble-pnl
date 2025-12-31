@@ -157,7 +157,7 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
                     aria-describedby="actual-yield-hint"
                   />
                   <Select value={actualUnit} onValueChange={(value) => setActualUnit(value as IngredientUnit)}>
-                    <SelectTrigger className="w-28">
+                    <SelectTrigger className="w-28" aria-label="Yield unit">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

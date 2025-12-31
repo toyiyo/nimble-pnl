@@ -153,7 +153,7 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
                     min="0"
                     step="0.01"
                     value={actualYield}
-                    onChange={(e) => setActualYield(e.target.value ? parseFloat(e.target.value) : '')}
+                    onChange={(e) => setActualYield(e.target.value ? Number.parseFloat(e.target.value) : '')}
                     aria-describedby="actual-yield-hint"
                   />
                   <Select value={actualUnit} onValueChange={(value) => setActualUnit(value as IngredientUnit)}>
@@ -231,7 +231,7 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
                               aria-label={`Actual quantity for ${ing.product?.name || 'ingredient'}`}
                               onChange={(e) => {
                                 const updated = [...ingredientActuals];
-                                updated[idx] = { ...ing, actual_quantity: parseFloat(e.target.value) || 0 };
+                                updated[idx] = { ...ing, actual_quantity: Number.parseFloat(e.target.value) || 0 };
                                 setIngredientActuals(updated);
                               }}
                             />

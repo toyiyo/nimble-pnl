@@ -2,7 +2,7 @@
 -- Tests the calculate_inventory_impact_for_product function and complete_production_run updates
 BEGIN;
 
-SELECT plan(11);
+SELECT plan(13);
 
 -- Setup authenticated user context for tests
 SET LOCAL role TO postgres;
@@ -152,6 +152,34 @@ SELECT is(
   (SELECT status FROM production_runs WHERE id = '00000000-0000-0000-0000-000000000031'),
   'completed',
   'Production run marked completed'
+);
+
+-- Test 7: Output conversion applies purchase unit (ml -> bottle)
+INSERT INTO products (id, restaurant_id, sku, name, uom_purchase, size_value, size_unit, cost_per_unit, current_stock)
+VALUES
+  ('00000000-0000-0000-0000-000000000014', '00000000-0000-0000-0000-000000000001', 'SOUP-BOTTLE', 'Soup Bottled', 'bottle', 750, 'ml', 0, 0)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO prep_recipes (id, restaurant_id, name, default_yield, default_yield_unit, output_product_id)
+VALUES ('00000000-0000-0000-0000-000000000022', '00000000-0000-0000-0000-000000000001', 'Soup Bottled', 1500, 'ml', '00000000-0000-0000-0000-000000000014')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO production_runs (id, restaurant_id, prep_recipe_id, status, target_yield, target_yield_unit, created_by)
+VALUES ('00000000-0000-0000-0000-000000000033', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000022', 'in_progress', 1500, 'ml', NULL)
+ON CONFLICT DO NOTHING;
+
+SELECT complete_production_run('00000000-0000-0000-0000-000000000033', 1500, 'ml', '[]'::jsonb);
+
+SELECT is(
+  (SELECT current_stock::numeric FROM products WHERE id = '00000000-0000-0000-0000-000000000014'),
+  2::numeric,
+  'Output stock uses converted purchase units'
+);
+
+SELECT is(
+  (SELECT quantity::numeric FROM inventory_transactions WHERE reference_id = '00000000-0000-0000-0000-000000000033' AND product_id = '00000000-0000-0000-0000-000000000014' AND transaction_type = 'transfer'),
+  2::numeric,
+  'Output transaction quantity uses converted units'
 );
 
 SELECT * FROM finish();

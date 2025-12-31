@@ -208,6 +208,7 @@ DECLARE
   v_reference TEXT;
   v_total_cost_snapshot NUMERIC := 0;
   v_inventory_impact NUMERIC;
+  v_output_inventory_impact NUMERIC;
 BEGIN
   IF v_user IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
@@ -316,8 +317,17 @@ BEGIN
   p_actual_yield_unit := COALESCE(p_actual_yield_unit, v_run.actual_yield_unit, v_run.target_yield_unit, 'unit');
 
   IF v_recipe.output_product_id IS NOT NULL AND p_actual_yield IS NOT NULL THEN
+    v_output_inventory_impact := public.calculate_inventory_impact_for_product(
+      v_recipe.output_product_id,
+      p_actual_yield,
+      p_actual_yield_unit::text,
+      v_run.restaurant_id
+    );
+
+    v_output_inventory_impact := COALESCE(v_output_inventory_impact, p_actual_yield, 0);
+
     UPDATE products
-    SET current_stock = COALESCE(current_stock, 0) + p_actual_yield,
+    SET current_stock = COALESCE(current_stock, 0) + v_output_inventory_impact,
         updated_at = now()
     WHERE id = v_recipe.output_product_id;
 
@@ -334,8 +344,8 @@ BEGIN
     ) VALUES (
       v_run.restaurant_id,
       v_recipe.output_product_id,
-      p_actual_yield,
-      CASE WHEN p_actual_yield > 0 THEN v_total_cost_snapshot / p_actual_yield ELSE 0 END,
+      v_output_inventory_impact,
+      CASE WHEN v_output_inventory_impact > 0 THEN v_total_cost_snapshot / v_output_inventory_impact ELSE 0 END,
       v_total_cost_snapshot,
       'transfer',
       'Production output ' || v_reference,

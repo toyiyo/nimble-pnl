@@ -82,7 +82,7 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
 
     // For in-progress batches, calculate projected costs
     const yieldValue = actualYield ? Number(actualYield) : (run.target_yield || 0);
-    if (!yieldValue || !ingredientActuals.length) {
+    if (yieldValue === 0 || ingredientActuals.length === 0) {
       return { costPerUnit: null, totalCost: null };
     }
 

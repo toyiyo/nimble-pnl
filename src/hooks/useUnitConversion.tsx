@@ -5,13 +5,13 @@ import { convertUnits } from '@/lib/enhancedUnitConversion';
 // Standard conversion factors for common units
 const STANDARD_CONVERSIONS: Record<string, Record<string, number>> = {
   // Volume conversions
-  'cup': { 'oz': 8, 'ml': 236.588, 'tbsp': 16, 'tsp': 48 },
-  'oz': { 'cup': 0.125, 'ml': 29.5735, 'tbsp': 2, 'tsp': 6 },
-  'tbsp': { 'cup': 0.0625, 'oz': 0.5, 'tsp': 3, 'ml': 14.7868 },
-  'tsp': { 'cup': 0.020833, 'oz': 0.166667, 'tbsp': 0.333333, 'ml': 4.92892 },
-  'ml': { 'cup': 0.004227, 'oz': 0.033814, 'tbsp': 0.067628, 'tsp': 0.202884 },
-  'gallon': { 'oz': 128, 'cup': 16, 'ml': 3785.41, 'quart': 4 },
-  'quart': { 'oz': 32, 'cup': 4, 'ml': 946.353, 'gallon': 0.25 },
+  'cup': { 'fl oz': 8, 'ml': 236.588, 'tbsp': 16, 'tsp': 48 },
+  'fl oz': { 'cup': 0.125, 'ml': 29.5735, 'tbsp': 2, 'tsp': 6 },
+  'tbsp': { 'cup': 0.0625, 'fl oz': 0.5, 'tsp': 3, 'ml': 14.7868 },
+  'tsp': { 'cup': 0.020833, 'fl oz': 0.166667, 'tbsp': 0.333333, 'ml': 4.92892 },
+  'ml': { 'cup': 0.004227, 'fl oz': 0.033814, 'tbsp': 0.067628, 'tsp': 0.202884 },
+  'gallon': { 'fl oz': 128, 'cup': 16, 'ml': 3785.41, 'quart': 4 },
+  'quart': { 'fl oz': 32, 'cup': 4, 'ml': 946.353, 'gallon': 0.25 },
   
   // Weight conversions  
   'lb': { 'oz': 16, 'g': 453.592, 'kg': 0.453592 },

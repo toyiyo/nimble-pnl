@@ -2909,8 +2909,6 @@ export type Database = {
           gtin: string | null
           id: string
           image_url: string | null
-          individual_unit: string | null
-          individual_unit_size: number | null
           items_per_package: number | null
           name: string
           package_qty: number | null
@@ -2945,8 +2943,6 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
-          individual_unit?: string | null
-          individual_unit_size?: number | null
           items_per_package?: number | null
           name: string
           package_qty?: number | null
@@ -2981,8 +2977,6 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
-          individual_unit?: string | null
-          individual_unit_size?: number | null
           items_per_package?: number | null
           name?: string
           package_qty?: number | null
@@ -6973,6 +6967,10 @@ export type Database = {
           p_week_start: string
         }
         Returns: number
+      }
+      update_prep_recipe_ingredients: {
+        Args: { p_ingredients?: Json; p_prep_recipe_id: string }
+        Returns: undefined
       }
       upsert_product_supplier: {
         Args: {

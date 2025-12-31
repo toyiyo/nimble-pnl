@@ -43,6 +43,8 @@ import EmployeePortal from "./pages/EmployeePortal";
 import EmployeeTimecard from "./pages/EmployeeTimecard";
 import EmployeePay from "./pages/EmployeePay";
 import EmployeeSchedule from "./pages/EmployeeSchedule";
+import PrepRecipes from "./pages/PrepRecipes";
+import Batches from "./pages/Batches";
 import TimePunchesManager from "./pages/TimePunchesManager";
 import Payroll from "./pages/Payroll";
 import Expenses from "./pages/Expenses";
@@ -154,13 +156,15 @@ const App = () => (
             <Route path="/settings" element={<ProtectedRoute allowStaff={true}><RestaurantSettings /></ProtectedRoute>} />
             <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
             <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
-            <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
-            <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
-            <Route path="/pos-sales" element={<ProtectedRoute><POSSales /></ProtectedRoute>} />
-            <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-            <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
-            <Route path="/inventory-audit" element={<ProtectedRoute><InventoryAudit /></ProtectedRoute>} />
-            <Route path="/receipt-import" element={<ProtectedRoute><ReceiptImport /></ProtectedRoute>} />
+          <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
+          <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
+          <Route path="/prep-recipes" element={<ProtectedRoute><PrepRecipes /></ProtectedRoute>} />
+          <Route path="/batches" element={<ProtectedRoute><Batches /></ProtectedRoute>} />
+          <Route path="/pos-sales" element={<ProtectedRoute><POSSales /></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+          <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
+          <Route path="/inventory-audit" element={<ProtectedRoute><InventoryAudit /></ProtectedRoute>} />
+          <Route path="/receipt-import" element={<ProtectedRoute><ReceiptImport /></ProtectedRoute>} />
             <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
             <Route path="/purchase-orders/:id" element={<ProtectedRoute><PurchaseOrderEditor /></ProtectedRoute>} />
           <Route path="/scheduling" element={<ProtectedRoute><Scheduling /></ProtectedRoute>} />

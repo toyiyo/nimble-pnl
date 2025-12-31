@@ -145,14 +145,16 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
           <div className="lg:col-span-2 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Actual yield</Label>
+                <Label htmlFor="actual-yield">Actual yield</Label>
                 <div className="flex items-center gap-2">
                   <Input
+                    id="actual-yield"
                     type="number"
                     min="0"
                     step="0.01"
                     value={actualYield}
                     onChange={(e) => setActualYield(e.target.value ? parseFloat(e.target.value) : '')}
+                    aria-describedby="actual-yield-hint"
                   />
                   <Select value={actualUnit} onValueChange={(value) => setActualUnit(value as IngredientUnit)}>
                     <SelectTrigger className="w-28">
@@ -167,7 +169,7 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
                     </SelectContent>
                   </Select>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p id="actual-yield-hint" className="text-xs text-muted-foreground">
                   Target: {run.target_yield} {run.target_yield_unit}
                 </p>
               </div>

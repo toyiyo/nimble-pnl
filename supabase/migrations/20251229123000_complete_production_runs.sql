@@ -105,11 +105,10 @@ BEGIN
     -- Container units with size information
     ELSIF v_purchase_unit_lower IN ('bottle','jar','can','bag','box','case','package','container') THEN
       IF v_ing.size_value IS NOT NULL AND v_ing.size_unit IS NOT NULL THEN
-        -- Volume context (treat oz as fl oz when size_unit is volume)
-        IF v_size_unit_lower IN ('gal','l','ml','qt','pint','cup') AND v_recipe_unit_lower IN ('fl oz','oz','ml','l','cup','tbsp','tsp','gal','qt','pint') THEN
+        -- Volume context (use explicit volume units only)
+        IF v_size_unit_lower IN ('gal','l','ml','qt','pint','cup') AND v_recipe_unit_lower IN ('fl oz','ml','l','cup','tbsp','tsp','gal','qt','pint') THEN
           v_recipe_in_ml := CASE v_recipe_unit_lower
             WHEN 'fl oz' THEN v_actual * 29.5735
-            WHEN 'oz' THEN v_actual * 29.5735
             WHEN 'ml' THEN v_actual
             WHEN 'l' THEN v_actual * 1000
             WHEN 'cup' THEN v_actual * 236.588

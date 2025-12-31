@@ -2,7 +2,7 @@
 -- Validates volume conversions (fl oz→ml, cup→ml, tbsp, tsp, qt, gal)
 -- and weight conversions (oz→g, lb→g) after the refactor
 BEGIN;
-SELECT plan(17);
+SELECT plan(19);
 
 -- Setup authenticated user context for tests
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000000","role":"authenticated"}', true);
@@ -153,6 +153,18 @@ SELECT is(
   'fl oz to bottle container should calculate correct impact'
 );
 
+-- Additional check: oz should not be treated as volume in bottle container
+SELECT is(
+  calculate_inventory_impact_for_product(
+    'c0000000-0000-0000-0000-000000000001'::uuid,
+    1.0,
+    'oz',
+    '33333333-3333-3333-3333-333333333333'::uuid
+  ),
+  1.0,
+  'oz should not convert as fluid ounces in volume container context'
+);
+
 -- ============================================================
 -- TEST CATEGORY 4: CONTAINER UNIT CONVERSIONS WITH WEIGHT
 -- ============================================================
@@ -172,6 +184,22 @@ SELECT is(
   ),
   4.0 * 28.3495 / 500,  -- 4 oz = 113.398 g, 113.398 / 500 = 0.2268 boxes
   'oz to box container should calculate correct impact'
+);
+
+-- Test 13: standard weight conversion still accepts oz
+INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock) VALUES
+  ('c0000000-0000-0000-0000-000000000003', '33333333-3333-3333-3333-333333333333', 'Cocoa Powder', 'COCOA-100G', 'g', 20)
+ON CONFLICT (id) DO UPDATE SET current_stock = 20;
+
+SELECT is(
+  round(calculate_inventory_impact_for_product(
+    'c0000000-0000-0000-0000-000000000003'::uuid,
+    1.0,
+    'oz',
+    '33333333-3333-3333-3333-333333333333'::uuid
+  ), 4),
+  round(28.3495::numeric, 4),
+  'Weight conversions use 28.3495 g per ounce when purchase unit is grams'
 );
 
 -- ============================================================

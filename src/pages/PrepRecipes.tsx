@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePrepRecipes, PrepRecipe } from '@/hooks/usePrepRecipes';
+import { UserRestaurant } from '@/hooks/useRestaurants';
 import { useProducts } from '@/hooks/useProducts';
 import { PageHeader } from '@/components/PageHeader';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
@@ -44,7 +45,7 @@ export default function PrepRecipes() {
     );
   }, [prepRecipes, searchTerm]);
 
-  const handleRestaurantSelect = (restaurant: any) => {
+  const handleRestaurantSelect = (restaurant: UserRestaurant) => {
     setSelectedRestaurant(restaurant);
   };
 

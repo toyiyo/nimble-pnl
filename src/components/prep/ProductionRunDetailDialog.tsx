@@ -175,9 +175,9 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
               </div>
 
               <div className="space-y-1">
-                <Label>Status</Label>
+                <Label htmlFor="status-select">Status</Label>
                 <Select value={status} onValueChange={(value) => setStatus(value as ProductionRunStatus)}>
-                  <SelectTrigger>
+                  <SelectTrigger id="status-select">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

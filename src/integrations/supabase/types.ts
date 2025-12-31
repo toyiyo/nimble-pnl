@@ -2789,6 +2789,114 @@ export type Database = {
           },
         ]
       }
+      prep_recipe_ingredients: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          prep_recipe_id: string
+          product_id: string
+          quantity: number
+          sort_order: number | null
+          unit: Database["public"]["Enums"]["measurement_unit"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          prep_recipe_id: string
+          product_id: string
+          quantity: number
+          sort_order?: number | null
+          unit: Database["public"]["Enums"]["measurement_unit"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          prep_recipe_id?: string
+          product_id?: string
+          quantity?: number
+          sort_order?: number | null
+          unit?: Database["public"]["Enums"]["measurement_unit"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prep_recipe_ingredients_prep_recipe_id_fkey"
+            columns: ["prep_recipe_id"]
+            isOneToOne: false
+            referencedRelation: "prep_recipes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prep_recipe_ingredients_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prep_recipes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          default_yield: number
+          default_yield_unit: Database["public"]["Enums"]["measurement_unit"]
+          description: string | null
+          id: string
+          name: string
+          output_product_id: string | null
+          prep_time_minutes: number | null
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          default_yield?: number
+          default_yield_unit?: Database["public"]["Enums"]["measurement_unit"]
+          description?: string | null
+          id?: string
+          name: string
+          output_product_id?: string | null
+          prep_time_minutes?: number | null
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          default_yield?: number
+          default_yield_unit?: Database["public"]["Enums"]["measurement_unit"]
+          description?: string | null
+          id?: string
+          name?: string
+          output_product_id?: string | null
+          prep_time_minutes?: number | null
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prep_recipes_output_product_id_fkey"
+            columns: ["output_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prep_recipes_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_abbreviations: {
         Row: {
           abbreviation: string
@@ -2895,6 +3003,159 @@ export type Database = {
           },
         ]
       }
+      production_run_ingredients: {
+        Row: {
+          actual_quantity: number | null
+          created_at: string
+          expected_quantity: number | null
+          id: string
+          product_id: string
+          production_run_id: string
+          total_cost_snapshot: number | null
+          unit: Database["public"]["Enums"]["measurement_unit"] | null
+          unit_cost_snapshot: number | null
+          updated_at: string
+          variance_percent: number | null
+        }
+        Insert: {
+          actual_quantity?: number | null
+          created_at?: string
+          expected_quantity?: number | null
+          id?: string
+          product_id: string
+          production_run_id: string
+          total_cost_snapshot?: number | null
+          unit?: Database["public"]["Enums"]["measurement_unit"] | null
+          unit_cost_snapshot?: number | null
+          updated_at?: string
+          variance_percent?: number | null
+        }
+        Update: {
+          actual_quantity?: number | null
+          created_at?: string
+          expected_quantity?: number | null
+          id?: string
+          product_id?: string
+          production_run_id?: string
+          total_cost_snapshot?: number | null
+          unit?: Database["public"]["Enums"]["measurement_unit"] | null
+          unit_cost_snapshot?: number | null
+          updated_at?: string
+          variance_percent?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_run_ingredients_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_run_ingredients_production_run_id_fkey"
+            columns: ["production_run_id"]
+            isOneToOne: false
+            referencedRelation: "production_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      production_runs: {
+        Row: {
+          actual_total_cost: number | null
+          actual_yield: number | null
+          actual_yield_unit:
+            | Database["public"]["Enums"]["measurement_unit"]
+            | null
+          completed_at: string | null
+          cost_per_unit: number | null
+          created_at: string
+          created_by: string | null
+          expected_total_cost: number | null
+          id: string
+          notes: string | null
+          prep_recipe_id: string
+          prepared_by: string | null
+          restaurant_id: string
+          scheduled_for: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["production_run_status"]
+          target_yield: number | null
+          target_yield_unit:
+            | Database["public"]["Enums"]["measurement_unit"]
+            | null
+          updated_at: string
+          variance_percent: number | null
+        }
+        Insert: {
+          actual_total_cost?: number | null
+          actual_yield?: number | null
+          actual_yield_unit?:
+            | Database["public"]["Enums"]["measurement_unit"]
+            | null
+          completed_at?: string | null
+          cost_per_unit?: number | null
+          created_at?: string
+          created_by?: string | null
+          expected_total_cost?: number | null
+          id?: string
+          notes?: string | null
+          prep_recipe_id: string
+          prepared_by?: string | null
+          restaurant_id: string
+          scheduled_for?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["production_run_status"]
+          target_yield?: number | null
+          target_yield_unit?:
+            | Database["public"]["Enums"]["measurement_unit"]
+            | null
+          updated_at?: string
+          variance_percent?: number | null
+        }
+        Update: {
+          actual_total_cost?: number | null
+          actual_yield?: number | null
+          actual_yield_unit?:
+            | Database["public"]["Enums"]["measurement_unit"]
+            | null
+          completed_at?: string | null
+          cost_per_unit?: number | null
+          created_at?: string
+          created_by?: string | null
+          expected_total_cost?: number | null
+          id?: string
+          notes?: string | null
+          prep_recipe_id?: string
+          prepared_by?: string | null
+          restaurant_id?: string
+          scheduled_for?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["production_run_status"]
+          target_yield?: number | null
+          target_yield_unit?:
+            | Database["public"]["Enums"]["measurement_unit"]
+            | null
+          updated_at?: string
+          variance_percent?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_runs_prep_recipe_id_fkey"
+            columns: ["prep_recipe_id"]
+            isOneToOne: false
+            referencedRelation: "prep_recipes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_runs_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           barcode_data: Json | null
@@ -2909,6 +3170,8 @@ export type Database = {
           gtin: string | null
           id: string
           image_url: string | null
+          individual_unit: string | null
+          individual_unit_size: number | null
           items_per_package: number | null
           name: string
           package_qty: number | null
@@ -2943,6 +3206,8 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
+          individual_unit?: string | null
+          individual_unit_size?: number | null
           items_per_package?: number | null
           name: string
           package_qty?: number | null
@@ -2977,6 +3242,8 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
+          individual_unit?: string | null
+          individual_unit_size?: number | null
           items_per_package?: number | null
           name?: string
           package_qty?: number | null
@@ -6492,6 +6759,15 @@ export type Database = {
         Returns: string
       }
       calculate_gs1_check_digit: { Args: { base13: string }; Returns: string }
+      calculate_inventory_impact_for_product: {
+        Args: {
+          p_product_id: string
+          p_recipe_quantity: number
+          p_recipe_unit: string
+          p_restaurant_id: string
+        }
+        Returns: number
+      }
       calculate_square_daily_pnl: {
         Args: { p_restaurant_id: string; p_service_date: string }
         Returns: string
@@ -6583,6 +6859,46 @@ export type Database = {
       cleanup_expired_invitations: { Args: never; Returns: undefined }
       cleanup_old_audit_logs: { Args: never; Returns: undefined }
       cleanup_rate_limit_logs: { Args: never; Returns: undefined }
+      complete_production_run: {
+        Args: {
+          p_actual_yield: number
+          p_actual_yield_unit: Database["public"]["Enums"]["measurement_unit"]
+          p_ingredients?: Json
+          p_run_id: string
+        }
+        Returns: {
+          actual_total_cost: number | null
+          actual_yield: number | null
+          actual_yield_unit:
+            | Database["public"]["Enums"]["measurement_unit"]
+            | null
+          completed_at: string | null
+          cost_per_unit: number | null
+          created_at: string
+          created_by: string | null
+          expected_total_cost: number | null
+          id: string
+          notes: string | null
+          prep_recipe_id: string
+          prepared_by: string | null
+          restaurant_id: string
+          scheduled_for: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["production_run_status"]
+          target_yield: number | null
+          target_yield_unit:
+            | Database["public"]["Enums"]["measurement_unit"]
+            | null
+          updated_at: string
+          variance_percent: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "production_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       compute_account_balance: {
         Args: { p_account_id: string; p_as_of_date?: string }
         Returns: number
@@ -7093,6 +7409,12 @@ export type Database = {
         | "ft"
         | "meter"
         | "fl oz"
+      production_run_status:
+        | "planned"
+        | "in_progress"
+        | "completed"
+        | "cancelled"
+        | "draft"
       transaction_review_status:
         | "for_review"
         | "categorized"
@@ -7315,6 +7637,13 @@ export const Constants = {
         "ft",
         "meter",
         "fl oz",
+      ],
+      production_run_status: [
+        "planned",
+        "in_progress",
+        "completed",
+        "cancelled",
+        "draft",
       ],
       transaction_review_status: [
         "for_review",

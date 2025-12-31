@@ -59,6 +59,7 @@ describe('Unit Category Detection', () => {
       expect(getUnitCategory('container')).toBe('count');
       expect(getUnitCategory('package')).toBe('count');
       expect(getUnitCategory('dozen')).toBe('count');
+      expect(getUnitCategory('unit')).toBe('count');
       expect(getUnitCategory('jar')).toBe('count');
     });
 
@@ -170,6 +171,11 @@ describe('Recipe Unit Suggestions', () => {
       expect(suggestions).toEqual(['each', 'piece', 'serving']);
     });
 
+    it('suggests count units for generic package shorthand', () => {
+      const suggestions = suggestRecipeUnits('unit');
+      expect(suggestions).toEqual(['each', 'piece', 'serving']);
+    });
+
     it('suggests appropriate units for length purchases', () => {
       const suggestions = suggestRecipeUnits('inch');
       expect(suggestions).toEqual(['inch', 'cm']);
@@ -184,6 +190,11 @@ describe('Recipe Unit Suggestions', () => {
       expect(suggestRecipeUnits('ML')).toEqual(['fl oz', 'ml', 'cup', 'tbsp', 'tsp']);
       expect(suggestRecipeUnits('LB')).toEqual(['lb', 'oz', 'g']);
       expect(suggestRecipeUnits('BOTTLE')).toEqual(['each', 'piece', 'serving']);
+    });
+
+    it('trims whitespace before determining suggestions', () => {
+      expect(suggestRecipeUnits('  LB  ')).toEqual(['lb', 'oz', 'g']);
+      expect(suggestRecipeUnits('  FT  ')).toEqual(['inch', 'cm']);
     });
   });
 });

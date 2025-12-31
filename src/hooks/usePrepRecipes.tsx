@@ -74,6 +74,12 @@ type IngredientPayload = Array<{
   sort_order?: number;
 }>;
 
+type RawPrepRecipeIngredient = Omit<PrepRecipeIngredient, 'unit'> & { unit: string };
+type RawPrepRecipe = Omit<PrepRecipe, 'default_yield_unit' | 'ingredients'> & {
+  default_yield_unit: string;
+  ingredients?: RawPrepRecipeIngredient[];
+};
+
 export const usePrepRecipes = (restaurantId: string | null) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -112,19 +118,19 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       if (error) throw error;
 
       // Normalize units from the database into the UI-safe union type
-      const normalized = (data || []).map((recipe: any) => ({
+      const normalized = (data || []).map((recipe: RawPrepRecipe) => ({
         ...recipe,
         default_yield_unit: toIngredientUnit(recipe.default_yield_unit),
-        ingredients: (recipe.ingredients || []).map((ing: any) => ({
+        ingredients: (recipe.ingredients || []).map((ing: RawPrepRecipeIngredient) => ({
           ...ing,
           unit: toIngredientUnit(ing.unit),
         })),
       })) as PrepRecipe[];
 
       setPrepRecipes(normalized);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching prep recipes:', err);
-      const errorMessage = err.message || 'Failed to load prep recipes';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load prep recipes';
       setError(errorMessage);
       toast({
         title: 'Could not load prep recipes',
@@ -136,7 +142,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     }
   }, [restaurantId, user, toast]);
 
-  const getRestaurantName = useCallback(async (restaurantId: string) => {
+  const getRestaurantName = useCallback(async (restaurantId: string): Promise<string> => {
     const { data, error } = await supabase
       .from('restaurants')
       .select('name')
@@ -144,7 +150,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       .single();
 
     if (error) throw error;
-    return data?.name as string;
+    return data?.name ?? '';
   }, []);
 
   const ensureRestaurantSupplier = useCallback(async (restaurantId: string) => {
@@ -158,7 +164,8 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
     if (existingError) throw existingError;
     if (existing && existing.length > 0) {
-      return { supplierId: existing[0].id as string, supplierName: existing[0].name as string };
+      const [first] = existing;
+      return { supplierId: first.id ?? '', supplierName: first.name ?? '' };
     }
 
     const { data: supplier, error: supplierError } = await supabase
@@ -171,7 +178,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       .single();
 
     if (supplierError) throw supplierError;
-    return { supplierId: supplier.id as string, supplierName: supplier.name as string };
+    return { supplierId: supplier.id ?? '', supplierName: supplier.name ?? '' };
   }, [getRestaurantName]);
 
   const buildIngredientPayload = useCallback((input: CreatePrepRecipeInput): IngredientPayload => {
@@ -230,8 +237,8 @@ export const usePrepRecipes = (restaurantId: string | null) => {
   const createOutputProduct = useCallback(async (input: CreatePrepRecipeInput, ingredientCostTotal: number, supplierInfo?: { supplierId: string; supplierName: string } | null) => {
     const slug = input.name
       .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'PREP';
+      .replaceAll(/[^A-Z0-9]+/g, '-')
+      .replaceAll(/(^-+|-+$)/g, '') || 'PREP';
     const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
 
     const { data: newProduct, error: productError } = await supabase
@@ -274,7 +281,12 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
     if (currentError) throw currentError;
 
-    const updates: Record<string, any> = {};
+    const updates: Partial<{
+      cost_per_unit: number;
+      supplier_id: string;
+      supplier_name: string;
+      updated_at: string;
+    }> = {};
     if (ingredientCostTotal > 0 && (!currentProduct?.cost_per_unit || currentProduct.cost_per_unit === 0)) {
       updates.cost_per_unit = ingredientCostTotal;
     }
@@ -374,10 +386,14 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       if (fetchError) throw fetchError;
 
       // Normalize units from the database into the UI-safe union type
+      if (!completeRecipe) {
+        throw new Error('Prep recipe fetch returned no data');
+      }
+
       const normalizedRecipe = {
         ...completeRecipe,
         default_yield_unit: toIngredientUnit(completeRecipe.default_yield_unit),
-        ingredients: (completeRecipe.ingredients || []).map((ing: any) => ({
+        ingredients: (completeRecipe.ingredients || []).map((ing: RawPrepRecipeIngredient) => ({
           ...ing,
           unit: toIngredientUnit(ing.unit),
         })),
@@ -385,11 +401,12 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
       await fetchPrepRecipes();
       return normalizedRecipe;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error creating prep recipe:', err);
+      const description = err instanceof Error ? err.message : 'An unexpected error occurred';
       toast({
         title: 'Could not create prep recipe',
-        description: err.message,
+        description,
         variant: 'destructive',
       });
       return null;
@@ -442,11 +459,12 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
       await fetchPrepRecipes();
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating prep recipe:', err);
+      const description = err instanceof Error ? err.message : 'An unexpected error occurred';
       toast({
         title: 'Could not update prep recipe',
-        description: err.message,
+        description,
         variant: 'destructive',
       });
       return false;
@@ -477,11 +495,12 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
       setPrepRecipes(prev => prev.filter(r => r.id !== id));
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error deleting prep recipe:', err);
+      const description = err instanceof Error ? err.message : 'An unexpected error occurred';
       toast({
         title: 'Could not delete prep recipe',
-        description: err.message,
+        description,
         variant: 'destructive',
       });
       return false;

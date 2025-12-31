@@ -216,7 +216,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
     }
   }, [user, toast, fetchRuns]);
 
-  const getRestaurantName = useCallback(async (restaurantId: string) => {
+  const getRestaurantName = useCallback(async (restaurantId: string): Promise<string> => {
     const { data, error } = await supabase
       .from('restaurants')
       .select('name')
@@ -224,7 +224,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
       .single();
 
     if (error) throw error;
-    return data?.name as string;
+    return data?.name ?? '';
   }, []);
 
   const ensureRestaurantSupplier = useCallback(async (restaurantId: string) => {
@@ -238,7 +238,8 @@ export const useProductionRuns = (restaurantId: string | null) => {
 
     if (existingError) throw existingError;
     if (existing && existing.length > 0) {
-      return { supplierId: existing[0].id as string, supplierName: existing[0].name as string };
+      const [first] = existing;
+      return { supplierId: first.id ?? '', supplierName: first.name ?? '' };
     }
 
     const { data: supplier, error: supplierError } = await supabase
@@ -251,7 +252,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
       .single();
 
     if (supplierError) throw supplierError;
-    return { supplierId: supplier.id as string, supplierName: supplier.name as string };
+    return { supplierId: supplier.id ?? '', supplierName: supplier.name ?? '' };
   }, [getRestaurantName]);
 
   const buildIngredientJson = useCallback((payload: CompleteRunPayload) => {
@@ -340,8 +341,8 @@ export const useProductionRuns = (restaurantId: string | null) => {
     const unit = determineOutputUnit(run, payload);
     const slug = run.prep_recipe.name
       .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'PREP';
+      .replaceAll(/[^A-Z0-9]+/g, '-')
+      .replaceAll(/(^-+|-+$)/g, '') || 'PREP';
     const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
 
     const { data: newProduct, error: productError } = await supabase

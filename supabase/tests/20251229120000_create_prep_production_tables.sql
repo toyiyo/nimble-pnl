@@ -108,6 +108,19 @@ SELECT results_eq(
   'Outsider cannot SELECT prep_recipes from other restaurant'
 );
 
+-- Re-enable RLS for write-policy enforcement
+SET LOCAL row_security = on;
+SET LOCAL role TO postgres;
+ALTER TABLE public.prep_recipes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.prep_recipe_ingredients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.production_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.production_run_ingredients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.prep_recipes FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.prep_recipe_ingredients FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.production_runs FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.production_run_ingredients FORCE ROW LEVEL SECURITY;
+SET LOCAL role TO authenticated;
+
 -- Test INSERT policies (owner/manager/chef can insert, staff cannot)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 SELECT lives_ok(
@@ -128,10 +141,10 @@ SELECT lives_ok(
 );
 
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
-SELECT results_eq(
-  'SELECT COUNT(*) FROM prep_recipes',
-  ARRAY[(SELECT COUNT(*) FROM prep_recipes)::bigint],
-  'Staff cannot INSERT prep_recipes (row count unchanged)'
+SELECT throws_like(
+  $$INSERT INTO prep_recipes (id, restaurant_id, name, default_yield, default_yield_unit) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000101', 'Staff Recipe', 5, 'kg')$$,
+  '%row-level security%',
+  'Staff cannot INSERT prep_recipes (blocked by RLS)'
 );
 
 -- Test UPDATE policies (owner/manager/chef can update, staff cannot)
@@ -204,6 +217,8 @@ SELECT results_eq(
 -- ============================================================================
 
 -- Recreate recipe and ingredients for testing
+SET LOCAL role TO postgres;
+SET LOCAL row_security = off;
 INSERT INTO prep_recipes (id, restaurant_id, name, default_yield, default_yield_unit, output_product_id) VALUES
   ('00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000101', 'Test Recipe', 10, 'kg', '00000000-0000-0000-0000-000000000201')
 ON CONFLICT DO NOTHING;
@@ -211,6 +226,8 @@ ON CONFLICT DO NOTHING;
 INSERT INTO prep_recipe_ingredients (id, prep_recipe_id, product_id, quantity, unit) VALUES
   ('00000000-0000-0000-0000-000000000401', '00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000202', 5, 'L')
 ON CONFLICT DO NOTHING;
+SET LOCAL row_security = on;
+SET LOCAL role TO authenticated;
 
 -- Test SELECT policies (all roles can view)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
@@ -273,11 +290,10 @@ INSERT INTO prep_recipe_ingredients (id, prep_recipe_id, product_id, quantity, u
 ON CONFLICT DO NOTHING;
 
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
--- Note: RLS not working in test environment, so we skip the INSERT and just verify count
-SELECT results_eq(
-  'SELECT COUNT(*) FROM prep_recipe_ingredients',
-  ARRAY[2::bigint],
-  'Staff INSERT prep_recipe_ingredients succeeds in test environment (RLS bypassed)'
+SELECT throws_like(
+  $$INSERT INTO prep_recipe_ingredients (id, prep_recipe_id, product_id, quantity, unit) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000202', 2, 'L')$$,
+  '%row-level security%',
+  'Staff cannot INSERT prep_recipe_ingredients (blocked by RLS)'
 );
 
 -- ============================================================================

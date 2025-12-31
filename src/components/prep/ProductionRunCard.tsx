@@ -5,8 +5,8 @@ import { CalendarClock, ChevronRight, Clock3, User2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ProductionRunCardProps {
-  run: ProductionRun;
-  onClick?: () => void;
+  readonly run: ProductionRun;
+  readonly onClick?: () => void;
 }
 
 const statusTone: Record<ProductionRunStatus, string> = {
@@ -57,7 +57,7 @@ export function ProductionRunCard({ run, onClick }: ProductionRunCardProps) {
               <Badge variant="outline" className="rounded-full text-xs">
                 Target {run.target_yield} {run.target_yield_unit}
               </Badge>
-              {run.actual_yield && (
+              {run.actual_yield !== undefined && run.actual_yield !== null && (
                 <Badge variant="secondary" className="rounded-full text-xs">
                   Actual {run.actual_yield} {run.actual_yield_unit || run.target_yield_unit}
                 </Badge>

@@ -12,7 +12,7 @@ interface PrepRecipeCardProps {
   onEdit?: () => void;
 }
 
-export function PrepRecipeCard({ recipe, costPerBatch = 0, costPerUnit = 0, onEdit }: PrepRecipeCardProps) {
+export function PrepRecipeCard({ recipe, costPerBatch = 0, costPerUnit = 0, onEdit }: Readonly<PrepRecipeCardProps>) {
   const ingredientCount = recipe.ingredients?.length || 0;
   const stockDisplay = recipe.output_product?.current_stock ?? null;
   const stockUnit = recipe.output_product?.uom_purchase || recipe.default_yield_unit;

@@ -185,14 +185,19 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     }));
   }, []);
 
-  const calculateIngredientCostTotal = useCallback(async (ingredientPayload: IngredientPayload) => {
+  const calculateIngredientCostTotal = useCallback(async (restaurant_id: string, ingredientPayload: IngredientPayload) => {
+    if (!restaurant_id) {
+      throw new Error('Restaurant is required to calculate ingredient costs');
+    }
+
     const ingredientProductIds = ingredientPayload.map(ing => ing.product_id).filter(Boolean);
     if (ingredientProductIds.length === 0) return 0;
 
     const { data: ingredientProducts, error: productError } = await supabase
       .from('products')
       .select('id, cost_per_unit')
-      .in('id', ingredientProductIds);
+      .in('id', ingredientProductIds)
+      .eq('restaurant_id', restaurant_id);
 
     if (productError) throw productError;
 
@@ -255,11 +260,16 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     return newProduct?.id || null;
   }, []);
 
-  const updateExistingOutputProduct = useCallback(async (outputProductId: string, ingredientCostTotal: number, supplierInfo?: { supplierId: string; supplierName: string } | null) => {
+  const updateExistingOutputProduct = useCallback(async (outputProductId: string, restaurantId: string, ingredientCostTotal: number, supplierInfo?: { supplierId: string; supplierName: string } | null) => {
+    if (!restaurantId) {
+      throw new Error('Restaurant is required to update output product');
+    }
+
     const { data: currentProduct, error: currentError } = await supabase
       .from('products')
       .select('cost_per_unit, supplier_id, supplier_name')
       .eq('id', outputProductId)
+      .eq('restaurant_id', restaurantId)
       .single();
 
     if (currentError) throw currentError;
@@ -278,7 +288,8 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       await supabase
         .from('products')
         .update(updates)
-        .eq('id', outputProductId);
+        .eq('id', outputProductId)
+        .eq('restaurant_id', restaurantId);
     }
   }, []);
 
@@ -292,7 +303,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       return createOutputProduct(input, ingredientCostTotal, supplierInfo);
     }
 
-    await updateExistingOutputProduct(outputProductId, ingredientCostTotal, supplierInfo);
+    await updateExistingOutputProduct(outputProductId, input.restaurant_id, ingredientCostTotal, supplierInfo);
     return outputProductId;
   }, [ensureSupplierIfNeeded, findExistingOutputProduct, createOutputProduct, updateExistingOutputProduct]);
 
@@ -301,7 +312,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
     try {
       const ingredientPayload = buildIngredientPayload(input);
-      const ingredientCostTotal = await calculateIngredientCostTotal(ingredientPayload);
+      const ingredientCostTotal = await calculateIngredientCostTotal(input.restaurant_id, ingredientPayload);
       const outputProductId = await resolveOutputProduct(input, ingredientCostTotal);
 
       const { data: recipe, error } = await supabase
@@ -357,6 +368,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
           )
         `)
         .eq('id', recipe.id)
+        .eq('restaurant_id', input.restaurant_id)
         .single();
 
       if (fetchError) throw fetchError;
@@ -390,11 +402,17 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     try {
       const { id, ingredients, ...updates } = input;
       const outputProductId = updates.output_product_id || null;
+      const targetRestaurantId = input.restaurant_id || restaurantId;
+
+      if (!targetRestaurantId) {
+        throw new Error('Restaurant is required to update prep recipe');
+      }
 
       const { error } = await supabase
         .from('prep_recipes')
         .update({ ...updates, output_product_id: outputProductId })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('restaurant_id', targetRestaurantId);
 
       if (error) throw error;
 
@@ -433,16 +451,22 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       });
       return false;
     }
-  }, [user, toast, fetchPrepRecipes]);
+  }, [user, toast, fetchPrepRecipes, restaurantId]);
 
-  const deletePrepRecipe = useCallback(async (id: string) => {
+  const deletePrepRecipe = useCallback(async (id: string, restaurantIdParam?: string) => {
     if (!user) return false;
+
+    const targetRestaurantId = restaurantIdParam || restaurantId;
+    if (!targetRestaurantId) {
+      throw new Error('Restaurant is required to delete prep recipe');
+    }
 
     try {
       const { error } = await supabase
         .from('prep_recipes')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('restaurant_id', targetRestaurantId);
 
       if (error) throw error;
 
@@ -462,7 +486,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       });
       return false;
     }
-  }, [user, toast]);
+  }, [user, toast, restaurantId]);
 
   const recipeStats = useMemo(() => {
     return prepRecipes.reduce<Record<string, { ingredientCount: number; costPerBatch: number; costPerUnit: number }>>((acc, recipe) => {

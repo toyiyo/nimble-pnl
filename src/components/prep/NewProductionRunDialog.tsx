@@ -12,10 +12,10 @@ import { format } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
 
 interface NewProductionRunDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  prepRecipes: PrepRecipe[];
-  onCreate: (params: { prep_recipe: PrepRecipe; target_yield: number; target_yield_unit: IngredientUnit; scheduled_for?: string; notes?: string }) => Promise<void>;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly prepRecipes: PrepRecipe[];
+  readonly onCreate: (params: { prep_recipe: PrepRecipe; target_yield: number; target_yield_unit: IngredientUnit; scheduled_for?: string; notes?: string }) => Promise<void>;
 }
 
 export function NewProductionRunDialog({ open, onOpenChange, prepRecipes, onCreate }: NewProductionRunDialogProps) {

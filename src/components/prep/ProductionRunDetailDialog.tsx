@@ -12,10 +12,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { CalendarClock, CheckCircle2, DollarSign, Loader2, Package, UtensilsCrossed } from 'lucide-react';
 
 interface ProductionRunDetailDialogProps {
-  run: ProductionRun | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSave: (payload: {
+  readonly run: ProductionRun | null;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onSave: (payload: {
     runId: string;
     actual_yield?: number;
     actual_yield_unit?: IngredientUnit;
@@ -28,7 +28,7 @@ interface ProductionRunDetailDialogProps {
       unit?: IngredientUnit | null;
     }>;
   }) => Promise<void>;
-  saving?: boolean;
+  readonly saving?: boolean;
 }
 
 const STATUS_BADGES: Record<ProductionRunStatus, { label: string; variant: 'default' | 'outline'; tone: string }> = {
@@ -48,7 +48,7 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
   useEffect(() => {
     if (run) {
       setActualYield(run.actual_yield ?? run.target_yield ?? '');
-      setActualUnit((run.actual_yield_unit || run.target_yield_unit || 'unit') as IngredientUnit);
+      setActualUnit(run.actual_yield_unit ?? run.target_yield_unit ?? 'unit');
       setStatus(run.status);
       setIngredientActuals(run.ingredients || []);
     }

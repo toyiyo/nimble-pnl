@@ -32,11 +32,11 @@ export interface PrepRecipeFormValues {
 }
 
 interface PrepRecipeDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSubmit: (values: PrepRecipeFormValues) => Promise<void>;
-  products: Product[];
-  editingRecipe?: PrepRecipe | null;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onSubmit: (values: PrepRecipeFormValues) => Promise<void>;
+  readonly products: Product[];
+  readonly editingRecipe?: PrepRecipe | null;
 }
 
 const defaultForm: PrepRecipeFormValues = {

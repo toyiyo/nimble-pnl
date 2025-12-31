@@ -79,7 +79,7 @@ export async function fetchInventoryTransactions(
       location,
       lot_number,
       expiry_date,
-      product:products(id, name, sku, category),
+      product:products(id, name, sku, category, uom_recipe),
       supplier:suppliers(id, name)
     `)
     .eq('restaurant_id', restaurantId)

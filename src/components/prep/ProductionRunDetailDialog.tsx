@@ -259,13 +259,13 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
                   <span>Cost per unit</span>
                 </div>
                 <span className="font-semibold">
-                  {projectedCosts.costPerUnit != null ? `$${projectedCosts.costPerUnit.toFixed(2)}` : '—'}
+                  {projectedCosts.costPerUnit == null ? '—' : `$${projectedCosts.costPerUnit.toFixed(2)}`}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span>Total batch cost</span>
                 <span className="font-medium text-foreground">
-                  {projectedCosts.totalCost != null ? `$${projectedCosts.totalCost.toFixed(2)}` : '—'}
+                  {projectedCosts.totalCost == null ? '—' : `$${projectedCosts.totalCost.toFixed(2)}`}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">

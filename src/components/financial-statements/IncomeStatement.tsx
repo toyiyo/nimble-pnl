@@ -22,6 +22,12 @@ interface IncomeStatementProps {
 export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatementProps) {
   const { toast } = useToast();
   const [glOnly, setGlOnly] = useState(false);
+  const [accrualMode, setAccrualMode] = useState<'actual' | 'projected'>('actual');
+  
+  // Check if dateTo is in the future (for showing indicator)
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  const periodIncludesFuture = dateTo > today;
 
   // Merge inventory usage (source of truth for COGS) into COGS accounts when no journaled COGS exist
   const mergeInventoryCOGS = (
@@ -69,7 +75,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   });
 
   const { data: incomeData, isLoading } = useQuery({
-    queryKey: ['income-statement', restaurantId, dateFrom, dateTo, glOnly],
+    queryKey: ['income-statement', restaurantId, dateFrom, dateTo, glOnly, accrualMode],
     queryFn: async () => {
       // Fetch all chart of accounts for this restaurant
       const { data: accounts, error: accountsError } = await supabase
@@ -221,6 +227,11 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
           if (empErr) {
             console.warn('Failed to fetch employees for payroll fallback:', empErr);
           } else if (employees?.length) {
+            // Determine effective end date based on accrual mode
+            const now = new Date();
+            now.setHours(23, 59, 59, 999);
+            const effectiveEndDate = accrualMode === 'actual' && dateTo > now ? now : dateTo;
+            
             employees.forEach(emp => {
               if (emp.allocate_daily === false) return;
               
@@ -229,12 +240,12 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
               
               if (emp.compensation_type === 'salary' && emp.salary_amount && emp.pay_period_type) {
                 // calculateSalaryForPeriod respects hire_date and termination_date
-                const periodCostCents = calculateSalaryForPeriod(employee, dateFrom, dateTo);
+                const periodCostCents = calculateSalaryForPeriod(employee, dateFrom, effectiveEndDate);
                 payrollFallback += periodCostCents / 100; // cents to dollars
               }
               if (emp.compensation_type === 'contractor' && emp.contractor_payment_amount && emp.contractor_payment_interval) {
                 // calculateContractorPayForPeriod respects hire_date and termination_date
-                const periodCostCents = calculateContractorPayForPeriod(employee, dateFrom, dateTo);
+                const periodCostCents = calculateContractorPayForPeriod(employee, dateFrom, effectiveEndDate);
                 payrollFallback += periodCostCents / 100; // cents to dollars
               }
             });
@@ -543,12 +554,29 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
             <CardTitle>Income Statement</CardTitle>
             <CardDescription>
               For the period {format(dateFrom, 'MMM dd, yyyy')} - {format(dateTo, 'MMM dd, yyyy')}
+              {accrualMode === 'actual' && periodIncludesFuture && !glOnly && (
+                <span className="ml-2 text-xs text-amber-600">
+                  * Payroll through {format(today, 'MMM d, yyyy')}
+                </span>
+              )}
             </CardDescription>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center space-x-2">
-              <Switch id="gl-only" checked={glOnly} onCheckedChange={setGlOnly} />
-              <Label htmlFor="gl-only">GL-only (no unposted accruals)</Label>
+              <Switch 
+                id="accrual-mode" 
+                checked={accrualMode === 'projected'} 
+                onCheckedChange={(checked) => setAccrualMode(checked ? 'projected' : 'actual')}
+                disabled={glOnly}
+                aria-label="Toggle between actual and projected payroll"
+              />
+              <Label htmlFor="accrual-mode" className={glOnly ? 'text-muted-foreground' : ''}>
+                {accrualMode === 'projected' ? 'Projected payroll' : 'Actual payroll (to date)'}
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Switch id="gl-only" checked={glOnly} onCheckedChange={setGlOnly} aria-label="Toggle GL-only mode" />
+              <Label htmlFor="gl-only">GL-only</Label>
             </div>
             <ExportDropdown onExportCSV={handleExportCSV} onExportPDF={handleExportPDF} />
           </div>

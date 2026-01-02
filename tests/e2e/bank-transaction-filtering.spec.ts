@@ -14,6 +14,12 @@ type WindowWithRestaurantHelper = Window & {
   __getRestaurantId?: RestaurantIdGetter;
 };
 
+type RawTransactionData = {
+  account: string;
+  description: string;
+  amount: number;
+};
+
 const getRestaurantId = (page: Page) =>
   page.evaluate<string | null>(async () => {
     const helperWindow = window as WindowWithRestaurantHelper;
@@ -144,7 +150,7 @@ test.describe('Bank Transaction Filtering', () => {
             account: `fa_checking_${timestamp}_${random}`,
             description: 'Checking - Grocery Store',
             amount: -15050,
-          },
+          } as RawTransactionData,
         },
         {
           restaurant_id: rid,
@@ -158,7 +164,7 @@ test.describe('Bank Transaction Filtering', () => {
             account: `fa_checking_${timestamp}_${random}`,
             description: 'Checking - Restaurant Supply',
             amount: -50000,
-          },
+          } as RawTransactionData,
         },
         // Savings account transactions
         {
@@ -173,7 +179,7 @@ test.describe('Bank Transaction Filtering', () => {
             account: `fa_savings_${timestamp}_${random}`,
             description: 'Savings - Interest Payment',
             amount: 2500,
-          },
+          } as RawTransactionData,
         },
         {
           restaurant_id: rid,
@@ -187,7 +193,7 @@ test.describe('Bank Transaction Filtering', () => {
             account: `fa_savings_${timestamp}_${random}`,
             description: 'Savings - Transfer In',
             amount: 100000,
-          },
+          } as RawTransactionData,
         },
       ];
 
@@ -358,7 +364,7 @@ test.describe('Bank Transaction Filtering', () => {
             account: `fa_query_test_${timestamp}_${random}`,
             description: 'Query Test Transaction',
             amount: -10000,
-          },
+          } as RawTransactionData,
         });
 
       if (txError) throw new Error(`Failed to create transaction: ${txError.message}`);

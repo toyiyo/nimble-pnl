@@ -191,7 +191,7 @@ describe('Offline Queue Management', () => {
       action: string;
       pin: string;
       timestamp: string;
-      context: any;
+      context: Record<string, unknown>;
     }
     
     const queue: QueuedPunch[] = [];

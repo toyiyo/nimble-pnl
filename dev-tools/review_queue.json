@@ -16393,9 +16393,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bank-transaction-filtering.spec.ts"
       ],
       "id": "9843d8f9109c9c42912913ae578b2b8338068060",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-02T21:22:49.114Z",
-      "updated_at": "2026-01-02T21:22:49.114Z"
+      "updated_at": "2026-01-02T22:05:45.717Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -16410,9 +16413,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bank-transaction-filtering.spec.ts"
       ],
       "id": "6298b25c727015427fd7505d46cd7ec25755e533",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-02T21:22:49.114Z",
-      "updated_at": "2026-01-02T21:22:49.114Z"
+      "updated_at": "2026-01-02T22:05:44.023Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -16427,9 +16433,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/punchFunctionality.test.ts"
       ],
       "id": "8bf5dba71f8b98820c98ddd68c7581d0876c4750",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-02T21:22:49.114Z",
-      "updated_at": "2026-01-02T21:22:49.114Z"
+      "updated_at": "2026-01-02T22:05:41.638Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "tests",
@@ -16443,9 +16452,12 @@
         "npm test -- \"tests/unit/useStripeEmbeddedConnect.test.tsx\""
       ],
       "id": "0f24f427b187d1f83a1b9948bde4b896862530d9",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-02T21:22:49.117Z",
-      "updated_at": "2026-01-02T21:22:49.117Z"
+      "updated_at": "2026-01-02T22:05:39.375Z",
+      "notes": [
+        "tests pass"
+      ]
     }
   ]
 }

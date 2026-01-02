@@ -173,7 +173,7 @@ function buildPrompt(items, targetName = "ASSISTANT") {
 
   lines.push(
     "After coding each item:",
-    "- Add or update tests to cover the new/changed code (unit, e2e, and SQL as appropriate; include simple e2e flows when they expose regressions).",
+    "- Add or update tests to cover the new/changed code (unit, e2e, and SQL as appropriate; include simple e2e flows when they expose regressions) Test coverage must be 85% or higher for any file we touch.",
     "- Run the listed tests (plus any new ones you added) and report results.",
     "- Mark each item individually using the provided commands.",
     "- If the chat thread grows long, use /compact to summarize and free context.",

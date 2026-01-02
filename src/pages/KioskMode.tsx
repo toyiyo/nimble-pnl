@@ -77,6 +77,22 @@ const KioskMode = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Disable zoom for kiosk mode
+  useEffect(() => {
+    const viewport = document.querySelector('meta[name="viewport"]');
+    const originalContent = viewport?.getAttribute('content') || '';
+    
+    if (viewport) {
+      viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+    }
+    
+    return () => {
+      if (viewport) {
+        viewport.setAttribute('content', originalContent);
+      }
+    };
+  }, []);
+
   // Only run flushQueuedPunches on mount, but always use the latest mutateAsync
   const mutateRef = useRef<typeof createPunch.mutateAsync>(createPunch.mutateAsync);
   useEffect(() => {

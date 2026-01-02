@@ -24,7 +24,7 @@ const isSimpleSequence = (pin: string): boolean => {
   let isRepeating = true;
   
   for (let i = 1; i < pin.length; i++) {
-    const diff = parseInt(pin[i]) - parseInt(pin[i - 1]);
+    const diff = Number.parseInt(pin[i]) - Number.parseInt(pin[i - 1]);
     if (diff !== 1) isAscending = false;
     if (diff !== -1) isDescending = false;
     if (pin[i] !== pin[0]) isRepeating = false;
@@ -32,6 +32,11 @@ const isSimpleSequence = (pin: string): boolean => {
   
   return isAscending || isDescending || isRepeating;
 };
+
+const validatePin = (pin: string, minLength: number, allowSimpleSequences: boolean) => ({
+  pinTooShort: pin.length > 0 && pin.length < minLength,
+  pinLooksSimple: pin.length >= 3 && !allowSimpleSequences && isSimpleSequence(pin),
+});
 
 export const PinChangeDialog = ({
   open,
@@ -47,8 +52,7 @@ export const PinChangeDialog = ({
   const [saving, setSaving] = useState(false);
   const [showPins, setShowPins] = useState(false);
 
-  const pinTooShort = newPin.length > 0 && newPin.length < minLength;
-  const pinLooksSimple = newPin.length >= 3 && !allowSimpleSequences && isSimpleSequence(newPin);
+  const { pinTooShort, pinLooksSimple } = validatePin(newPin, minLength, allowSimpleSequences);
   const pinsMatch = newPin.length >= minLength && newPin === confirmPin;
   const canSave = newPin.length >= minLength && pinsMatch && !pinLooksSimple && !saving;
 

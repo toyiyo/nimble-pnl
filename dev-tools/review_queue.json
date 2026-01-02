@@ -16077,12 +16077,15 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Accessibility concern: Disabling zoom affects the entire application.**\n\nSetting `user-scalable=no` and `maximum-scale=1` prevents users with visual impairments from zooming, which violates WCAG 2.1 SC 1.4.4. While this makes sense for a locked-down kiosk, this meta tag applies globally to all pages including non-kiosk views.\n\nConsider applying zoom restrictions only on the kiosk page via JavaScript or a separate HTML entry point for kiosk mode.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn index.html around line 5, the meta viewport currently forces user-scalable=no\nand maximum-scale=1 which prevents zooming for all users; remove those\nattributes from the global HTML and instead apply zoom restrictions only for\nkiosk views by either creating a separate kiosk HTML entry point that includes\nthe restrictive meta tag or dynamically injecting/updating the viewport meta tag\nvia JavaScript when entering kiosk mode (e.g., add the meta with\nuser-scalable=no and maximum-scale=1 on kiosk entry and restore/remove it on\nexit). Ensure the default/global index.html keeps an accessible viewport (no\nuser-scalable or maximum-scale attributes) so users can zoom when needed.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "7b2d67150ce4063b4044520183f04a8061a99bb5",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-02T21:22:49.094Z",
-      "updated_at": "2026-01-02T21:27:00.913Z",
+      "updated_at": "2026-01-02T21:46:54.883Z",
       "tests_to_run": [
         "npm run lint",
         "npm test"
+      ],
+      "notes": [
+        "removed zoom restrictions from index.html, added dynamic viewport manipulation in KioskMode.tsx"
       ]
     },
     {
@@ -16100,9 +16103,12 @@
         "npm run lint"
       ],
       "id": "e7d54184e4846430d0511bf0d42a562e6ef58f22",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-02T21:22:49.097Z",
-      "updated_at": "2026-01-02T21:27:00.913Z"
+      "updated_at": "2026-01-02T21:46:48.216Z",
+      "notes": [
+        "replaced parseInt with Number.parseInt"
+      ]
     },
     {
       "source": "sonarqube",
@@ -16119,9 +16125,12 @@
         "npm run lint"
       ],
       "id": "38bcf42ede34208c1866f6851aee97f55ad4e933",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-02T21:22:49.097Z",
-      "updated_at": "2026-01-02T21:27:00.913Z"
+      "updated_at": "2026-01-02T21:46:45.872Z",
+      "notes": [
+        "reduced cognitive complexity by extracting validatePin helper function"
+      ]
     },
     {
       "source": "sonarqube",
@@ -16138,9 +16147,12 @@
         "npm run lint"
       ],
       "id": "6aaaa33df9686288f472d864e6973aa7c425c846",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-02T21:22:49.097Z",
-      "updated_at": "2026-01-02T21:27:00.913Z"
+      "updated_at": "2026-01-02T21:46:41.282Z",
+      "notes": [
+        "replaced replace() with replaceAll()"
+      ]
     },
     {
       "source": "sonarqube",
@@ -16157,9 +16169,12 @@
         "npm run lint"
       ],
       "id": "cc8d67972aa7dcebf0f4f4d71e608cc6c187427f",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-02T21:22:49.097Z",
-      "updated_at": "2026-01-02T21:27:00.913Z"
+      "updated_at": "2026-01-02T21:46:37.668Z",
+      "notes": [
+        "replaced deprecated onKeyPress with onKeyDown"
+      ]
     },
     {
       "source": "sonarqube",

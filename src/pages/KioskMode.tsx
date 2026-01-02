@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,20 +9,24 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useKioskSession } from '@/hooks/useKioskSession';
-import { verifyPinForRestaurant } from '@/hooks/useKioskPins';
+import { verifyPinForRestaurant, useUpsertEmployeePin } from '@/hooks/useKioskPins';
 import { useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import type { PunchStatus } from '@/types/timeTracking';
 import { collectPunchContext } from '@/utils/punchContext';
 import { addQueuedPunch, flushQueuedPunches, hasQueuedPunches, isLikelyOffline } from '@/utils/offlineQueue';
+import type { QueuedKioskPunch } from '@/utils/offlineQueue';
 import { format } from 'date-fns';
 import { ImageCapture } from '@/components/ImageCapture';
+import { PinChangeDialog } from '@/components/kiosk/PinChangeDialog';
 import { Clock, Lock, LogIn, LogOut, Shield, WifiOff, KeyRound, X, Loader2, CheckCircle } from 'lucide-react';
 
 const ATTEMPT_LIMIT = 5;
 const LOCKOUT_MS = 60_000;
 
 type PunchAction = 'clock_in' | 'clock_out';
+type QueuedPunchPayload = QueuedKioskPunch['payload'] & { photoBlob?: Blob };
 
 const KioskMode = () => {
   const navigate = useNavigate();
@@ -30,11 +34,11 @@ const KioskMode = () => {
   const { session: kioskSession, endSession } = useKioskSession();
   const { user, signIn, signOut } = useAuth();
   const createPunch = useCreateTimePunch();
+  const upsertPin = useUpsertEmployeePin();
 
   const restaurantId = kioskSession?.location_id || selectedRestaurant?.restaurant_id || null;
   const locationName = selectedRestaurant?.restaurant?.name || kioskSession?.location_id || 'Location';
   const minLength = kioskSession?.min_length || 4;
-  // Kiosk service accounts have role = 'kiosk' and cannot exit - only sign out
   const isKioskServiceAccount = selectedRestaurant?.role === 'kiosk';
   const [currentTime, setCurrentTime] = useState(new Date());
   const [pinInput, setPinInput] = useState('');
@@ -47,7 +51,6 @@ const KioskMode = () => {
   const [exitPassword, setExitPassword] = useState('');
   const [exitError, setExitError] = useState<string | null>(null);
   const [exitProcessing, setExitProcessing] = useState(false);
-  // Sign out dialog for kiosk service accounts (requires password)
   const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
   const [signOutPassword, setSignOutPassword] = useState('');
   const [signOutError, setSignOutError] = useState<string | null>(null);
@@ -64,29 +67,53 @@ const KioskMode = () => {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [queuedCount, setQueuedCount] = useState<number>(hasQueuedPunches() ? 1 : 0);
   const [captureFn, setCaptureFn] = useState<(() => Promise<Blob | null>) | null>(null);
+  
+  // PIN change dialog state
+  const [pinChangeDialogOpen, setPinChangeDialogOpen] = useState(false);
+  const [pinChangeEmployee, setPinChangeEmployee] = useState<{ id: string; name: string; pinId: string } | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  // Disable zoom for kiosk mode
+  useEffect(() => {
+    const viewport = document.querySelector('meta[name="viewport"]');
+    const originalContent = viewport?.getAttribute('content') || '';
+    
+    if (viewport) {
+      viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+    }
+    
+    return () => {
+      if (viewport) {
+        viewport.setAttribute('content', originalContent);
+      }
+    };
+  }, []);
+
   // Only run flushQueuedPunches on mount, but always use the latest mutateAsync
-  const mutateRef = useRef(createPunch.mutateAsync);
+  const mutateRef = useRef<typeof createPunch.mutateAsync>(createPunch.mutateAsync);
   useEffect(() => {
     mutateRef.current = createPunch.mutateAsync;
   }, [createPunch.mutateAsync]);
 
-  useEffect(() => {
-    flushQueuedPunches(async (payload: any) => {
+  const sendQueuedPunch = useCallback(
+    async (payload: QueuedPunchPayload) => {
       await mutateRef.current(payload);
-    }).then((result) => setQueuedCount(result.remaining));
+    },
+    []
+  );
+
+  useEffect(() => {
+    flushQueuedPunches(sendQueuedPunch).then((result) => setQueuedCount(result.remaining));
     // Only run on mount
-     
-  }, []);
+  }, [sendQueuedPunch]);
 
   const lockSeconds = useMemo(() => {
     if (!lockUntil) return 0;
-    return Math.max(0, Math.ceil((lockUntil - Date.now()) / 1000));
+    return Math.max(0, Math.ceil((lockUntil - currentTime.getTime()) / 1000));
   }, [lockUntil, currentTime]);
 
   const resetAttempts = () => {
@@ -111,21 +138,32 @@ const KioskMode = () => {
 
   const handleDigit = (digit: string) => {
     if (processing || (lockUntil && lockUntil > Date.now())) return;
+    
+    // Haptic feedback on mobile devices
+    if ('vibrate' in navigator) {
+      navigator.vibrate(50);
+    }
+    
     setPinInput((prev) => (prev + digit).slice(0, 6));
     setErrorMessage(null);
   };
 
   const handleBackspace = () => {
+    // Haptic feedback on mobile devices
+    if ('vibrate' in navigator) {
+      navigator.vibrate(30);
+    }
+    
     setPinInput((prev) => prev.slice(0, -1));
     setErrorMessage(null);
   };
 
-  const fetchPunchStatus = async (employeeId: string) => {
+  const fetchPunchStatus = async (employeeId: string): Promise<PunchStatus | null> => {
     const { data, error } = await supabase.rpc('get_employee_punch_status', {
       p_employee_id: employeeId,
     });
     if (error) throw error;
-    return data && data.length > 0 ? data[0] : null;
+    return data && data.length > 0 ? (data[0] as PunchStatus) : null;
   };
 
   const registerFailure = () => {
@@ -155,7 +193,7 @@ const KioskMode = () => {
   };
 
   // Helper: Validate punch status
-  const validatePunchStatus = (status: any, action: PunchAction): string | null => {
+  const validatePunchStatus = (status: PunchStatus | null, action: PunchAction): string | null => {
     if (action === 'clock_in' && status?.is_clocked_in) {
       return 'You are already clocked in.';
     }
@@ -222,10 +260,23 @@ const KioskMode = () => {
       });
 
       const nowIso = new Date().toISOString();
-      await supabase
-        .from('employee_pins')
-        .update({ last_used_at: nowIso, force_reset: false })
-        .eq('id', pinMatch.id);
+
+      // Check if this is a force_reset PIN - if so, show PIN change dialog BEFORE clearing force_reset
+      if (pinMatch.force_reset) {
+        setPinChangeEmployee({
+          id: pinMatch.employee_id,
+          name: pinMatch.employee?.name || 'Employee',
+          pinId: pinMatch.id,
+        });
+        setPinChangeDialogOpen(true);
+        // Do NOT update force_reset yet - will be done after employee sets new PIN
+      } else {
+        // Normal flow - just update last_used_at
+        await supabase
+          .from('employee_pins')
+          .update({ last_used_at: nowIso })
+          .eq('id', pinMatch.id);
+      }
 
       resetAttempts();
       setPinInput('');
@@ -238,19 +289,39 @@ const KioskMode = () => {
       setStatusMessage(action === 'clock_in' ? 'Clocked in' : 'Clocked out');
       resetCameraState();
       if (queuedCount > 0) {
-        flushQueuedPunches(async (payload: any) => {
-          await createPunch.mutateAsync(payload);
-        }).then((result) => setQueuedCount(result.remaining));
+        flushQueuedPunches(sendQueuedPunch).then((result) => setQueuedCount(result.remaining));
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       const handledOffline = await handleOfflineQueue(action, pinInput, context, pinMatch?.employee_id);
       if (!handledOffline) {
-        setErrorMessage(error?.message || 'Unable to record punch.');
+        const message = error instanceof Error ? error.message : 'Unable to record punch.';
+        setErrorMessage(message);
         resetCameraState();
       }
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleSaveNewPin = async (newPin: string) => {
+    if (!restaurantId || !pinChangeEmployee) {
+      throw new Error('Missing restaurant or employee information');
+    }
+
+    await upsertPin.mutateAsync({
+      restaurant_id: restaurantId,
+      employee_id: pinChangeEmployee.id,
+      pin: newPin,
+      min_length: minLength,
+      force_reset: false,
+    });
+
+    // Close dialog
+    setPinChangeDialogOpen(false);
+    setPinChangeEmployee(null);
+
+    // Show success message
+    setStatusMessage('PIN updated successfully!');
   };
 
   const handleManagerExitPassword = async () => {
@@ -433,13 +504,13 @@ const KioskMode = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2 xs:gap-3">
               {['1','2','3','4','5','6','7','8','9'].map((digit) => (
                 <Button
                   key={digit}
                   size="lg"
                   variant="secondary"
-                  className="h-16 text-2xl bg-white/10 border-white/10 text-white"
+                  className="h-12 xs:h-16 text-xl xs:text-2xl bg-white/10 border-white/10 text-white hover:bg-white/20 transition-colors"
                   onClick={() => handleDigit(digit)}
                   disabled={processing || (lockUntil && lockUntil > Date.now())}
                   aria-label={`Digit ${digit}`}
@@ -450,7 +521,7 @@ const KioskMode = () => {
               <Button
                 size="lg"
                 variant="secondary"
-                className="h-16 bg-white/10 border-white/10 text-white"
+                className="h-12 xs:h-16 text-sm xs:text-base bg-white/10 border-white/10 text-white hover:bg-white/20 transition-colors"
                 onClick={() => setPinInput('')}
                 disabled={processing}
                 aria-label="Clear PIN"
@@ -460,7 +531,7 @@ const KioskMode = () => {
               <Button
                 size="lg"
                 variant="secondary"
-                className="h-16 text-2xl bg-white/10 border-white/10 text-white"
+                className="h-12 xs:h-16 text-xl xs:text-2xl bg-white/10 border-white/10 text-white hover:bg-white/20 transition-colors"
                 onClick={() => handleDigit('0')}
                 disabled={processing || (lockUntil && lockUntil > Date.now())}
                 aria-label="Digit 0"
@@ -470,31 +541,31 @@ const KioskMode = () => {
               <Button
                 size="lg"
                 variant="secondary"
-                className="h-16 bg-white/10 border-white/10 text-white"
+                className="h-12 xs:h-16 bg-white/10 border-white/10 text-white hover:bg-white/20 transition-colors"
                 onClick={handleBackspace}
                 disabled={processing}
                 aria-label="Backspace"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 xs:h-5 w-4 xs:w-5" />
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 xs:gap-3">
               <Button
-                className="h-14 text-lg"
+                className="h-12 xs:h-14 text-base xs:text-lg"
                 onClick={() => startPunchFlow('clock_in')}
                 disabled={processing || (lockUntil && lockUntil > Date.now())}
               >
-                {processing ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <LogIn className="h-5 w-5 mr-2" />}
+                {processing ? <Loader2 className="h-4 xs:h-5 w-4 xs:w-5 mr-2 animate-spin" /> : <LogIn className="h-4 xs:h-5 w-4 xs:w-5 mr-2" />}
                 Clock In
               </Button>
               <Button
-                className="h-14 text-lg"
+                className="h-12 xs:h-14 text-base xs:text-lg"
                 variant="destructive"
                 onClick={() => startPunchFlow('clock_out')}
                 disabled={processing || (lockUntil && lockUntil > Date.now())}
               >
-                {processing ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <LogOut className="h-5 w-5 mr-2" />}
+                {processing ? <Loader2 className="h-4 xs:h-5 w-4 xs:w-5 mr-2 animate-spin" /> : <LogOut className="h-4 xs:h-5 w-4 xs:w-5 mr-2" />}
                 Clock Out
               </Button>
             </div>
@@ -651,6 +722,15 @@ const KioskMode = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* PIN Change Dialog - shown when force_reset is true */}
+      <PinChangeDialog
+        open={pinChangeDialogOpen}
+        employeeName={pinChangeEmployee?.name || 'Employee'}
+        minLength={minLength}
+        onSave={handleSaveNewPin}
+        allowSimpleSequences={false}
+      />
     </div>
   );
 };

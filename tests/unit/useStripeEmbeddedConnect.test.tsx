@@ -244,8 +244,8 @@ describe('useStripeEmbeddedConnect', () => {
   });
 
   it('sets loading state during initialization', async () => {
-    let resolveSupabase: (value: any) => void;
-    const supabasePromise = new Promise((resolve) => {
+    let resolveSupabase: (value: { data: { clientSecret: string } | null; error: { message: string } | null }) => void;
+    const supabasePromise = new Promise<{ data: { clientSecret: string } | null; error: { message: string } | null }>((resolve) => {
       resolveSupabase = resolve;
     });
 
@@ -318,7 +318,7 @@ describe('useStripeEmbeddedConnect', () => {
       error: null,
     });
 
-    mockLoadConnectAndInitialize.mockImplementation(async (options: any) => {
+    mockLoadConnectAndInitialize.mockImplementation(async (options: { fetchClientSecret: () => Promise<string> }) => {
       // Call the fetchClientSecret function
       const secret = await options.fetchClientSecret();
       expect(secret).toBe(mockClientSecret);

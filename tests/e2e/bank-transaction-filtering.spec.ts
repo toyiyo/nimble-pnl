@@ -8,6 +8,25 @@ type TestUser = {
   restaurantName: string;
 };
 
+type RestaurantIdGetter = () => Promise<string | null> | string | null;
+
+type WindowWithRestaurantHelper = Window & {
+  __getRestaurantId?: RestaurantIdGetter;
+};
+
+type RawTransactionData = {
+  account: string;
+  description: string;
+  amount: number;
+};
+
+const getRestaurantId = (page: Page) =>
+  page.evaluate<string | null>(async () => {
+    const helperWindow = window as WindowWithRestaurantHelper;
+    const fn = helperWindow.__getRestaurantId;
+    return fn ? await fn() : null;
+  });
+
 const generateUser = (): TestUser => {
   const ts = Date.now();
   const rand = Math.random().toString(36).slice(2, 6);
@@ -59,10 +78,7 @@ test.describe('Bank Transaction Filtering', () => {
     await exposeSupabaseHelpers(page);
 
     // Get restaurant ID
-    const restaurantId = await page.evaluate(async () => {
-      const fn = (window as any).__getRestaurantId;
-      return fn ? await fn() : null;
-    });
+    const restaurantId = await getRestaurantId(page);
 
     expect(restaurantId).toBeTruthy();
 
@@ -134,7 +150,7 @@ test.describe('Bank Transaction Filtering', () => {
             account: `fa_checking_${timestamp}_${random}`,
             description: 'Checking - Grocery Store',
             amount: -15050,
-          },
+          } as RawTransactionData,
         },
         {
           restaurant_id: rid,
@@ -148,7 +164,7 @@ test.describe('Bank Transaction Filtering', () => {
             account: `fa_checking_${timestamp}_${random}`,
             description: 'Checking - Restaurant Supply',
             amount: -50000,
-          },
+          } as RawTransactionData,
         },
         // Savings account transactions
         {
@@ -163,7 +179,7 @@ test.describe('Bank Transaction Filtering', () => {
             account: `fa_savings_${timestamp}_${random}`,
             description: 'Savings - Interest Payment',
             amount: 2500,
-          },
+          } as RawTransactionData,
         },
         {
           restaurant_id: rid,
@@ -177,7 +193,7 @@ test.describe('Bank Transaction Filtering', () => {
             account: `fa_savings_${timestamp}_${random}`,
             description: 'Savings - Transfer In',
             amount: 100000,
-          },
+          } as RawTransactionData,
         },
       ];
 
@@ -293,10 +309,7 @@ test.describe('Bank Transaction Filtering', () => {
     await signUpAndCreateRestaurant(page, user);
     await exposeSupabaseHelpers(page);
 
-    const restaurantId = await page.evaluate(async () => {
-      const fn = (window as any).__getRestaurantId;
-      return fn ? await fn() : null;
-    });
+    const restaurantId = await getRestaurantId(page);
 
     expect(restaurantId).toBeTruthy();
 
@@ -351,7 +364,7 @@ test.describe('Bank Transaction Filtering', () => {
             account: `fa_query_test_${timestamp}_${random}`,
             description: 'Query Test Transaction',
             amount: -10000,
-          },
+          } as RawTransactionData,
         });
 
       if (txError) throw new Error(`Failed to create transaction: ${txError.message}`);
@@ -414,10 +427,7 @@ test.describe('Bank Transaction Filtering', () => {
     await signUpAndCreateRestaurant(page, user);
     await exposeSupabaseHelpers(page);
 
-    const restaurantId = await page.evaluate(async () => {
-      const fn = (window as any).__getRestaurantId;
-      return fn ? await fn() : null;
-    });
+    const restaurantId = await getRestaurantId(page);
 
     expect(restaurantId).toBeTruthy();
 

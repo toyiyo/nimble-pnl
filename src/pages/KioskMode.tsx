@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useKioskSession } from '@/hooks/useKioskSession';
-import { verifyPinForRestaurant } from '@/hooks/useKioskPins';
+import { verifyPinForRestaurant, useUpsertEmployeePin } from '@/hooks/useKioskPins';
 import { useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,6 +17,7 @@ import { collectPunchContext } from '@/utils/punchContext';
 import { addQueuedPunch, flushQueuedPunches, hasQueuedPunches, isLikelyOffline } from '@/utils/offlineQueue';
 import { format } from 'date-fns';
 import { ImageCapture } from '@/components/ImageCapture';
+import { PinChangeDialog } from '@/components/kiosk/PinChangeDialog';
 import { Clock, Lock, LogIn, LogOut, Shield, WifiOff, KeyRound, X, Loader2, CheckCircle } from 'lucide-react';
 
 const ATTEMPT_LIMIT = 5;
@@ -30,11 +31,11 @@ const KioskMode = () => {
   const { session: kioskSession, endSession } = useKioskSession();
   const { user, signIn, signOut } = useAuth();
   const createPunch = useCreateTimePunch();
+  const upsertPin = useUpsertEmployeePin();
 
   const restaurantId = kioskSession?.location_id || selectedRestaurant?.restaurant_id || null;
   const locationName = selectedRestaurant?.restaurant?.name || kioskSession?.location_id || 'Location';
   const minLength = kioskSession?.min_length || 4;
-  // Kiosk service accounts have role = 'kiosk' and cannot exit - only sign out
   const isKioskServiceAccount = selectedRestaurant?.role === 'kiosk';
   const [currentTime, setCurrentTime] = useState(new Date());
   const [pinInput, setPinInput] = useState('');
@@ -47,7 +48,6 @@ const KioskMode = () => {
   const [exitPassword, setExitPassword] = useState('');
   const [exitError, setExitError] = useState<string | null>(null);
   const [exitProcessing, setExitProcessing] = useState(false);
-  // Sign out dialog for kiosk service accounts (requires password)
   const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
   const [signOutPassword, setSignOutPassword] = useState('');
   const [signOutError, setSignOutError] = useState<string | null>(null);
@@ -64,6 +64,10 @@ const KioskMode = () => {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [queuedCount, setQueuedCount] = useState<number>(hasQueuedPunches() ? 1 : 0);
   const [captureFn, setCaptureFn] = useState<(() => Promise<Blob | null>) | null>(null);
+  
+  // PIN change dialog state
+  const [pinChangeDialogOpen, setPinChangeDialogOpen] = useState(false);
+  const [pinChangeEmployee, setPinChangeEmployee] = useState<{ id: string; name: string; pinId: string } | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -222,10 +226,23 @@ const KioskMode = () => {
       });
 
       const nowIso = new Date().toISOString();
-      await supabase
-        .from('employee_pins')
-        .update({ last_used_at: nowIso, force_reset: false })
-        .eq('id', pinMatch.id);
+
+      // Check if this is a force_reset PIN - if so, show PIN change dialog BEFORE clearing force_reset
+      if (pinMatch.force_reset) {
+        setPinChangeEmployee({
+          id: pinMatch.employee_id,
+          name: pinMatch.employee?.name || 'Employee',
+          pinId: pinMatch.id,
+        });
+        setPinChangeDialogOpen(true);
+        // Do NOT update force_reset yet - will be done after employee sets new PIN
+      } else {
+        // Normal flow - just update last_used_at
+        await supabase
+          .from('employee_pins')
+          .update({ last_used_at: nowIso })
+          .eq('id', pinMatch.id);
+      }
 
       resetAttempts();
       setPinInput('');
@@ -251,6 +268,27 @@ const KioskMode = () => {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleSaveNewPin = async (newPin: string) => {
+    if (!restaurantId || !pinChangeEmployee) {
+      throw new Error('Missing restaurant or employee information');
+    }
+
+    await upsertPin.mutateAsync({
+      restaurant_id: restaurantId,
+      employee_id: pinChangeEmployee.id,
+      pin: newPin,
+      min_length: minLength,
+      force_reset: false,
+    });
+
+    // Close dialog
+    setPinChangeDialogOpen(false);
+    setPinChangeEmployee(null);
+
+    // Show success message
+    setStatusMessage('PIN updated successfully!');
   };
 
   const handleManagerExitPassword = async () => {
@@ -651,6 +689,15 @@ const KioskMode = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* PIN Change Dialog - shown when force_reset is true */}
+      <PinChangeDialog
+        open={pinChangeDialogOpen}
+        employeeName={pinChangeEmployee?.name || 'Employee'}
+        minLength={minLength}
+        onSave={handleSaveNewPin}
+        allowSimpleSequences={false}
+      />
     </div>
   );
 };

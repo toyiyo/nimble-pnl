@@ -115,11 +115,22 @@ const KioskMode = () => {
 
   const handleDigit = (digit: string) => {
     if (processing || (lockUntil && lockUntil > Date.now())) return;
+    
+    // Haptic feedback on mobile devices
+    if ('vibrate' in navigator) {
+      navigator.vibrate(50);
+    }
+    
     setPinInput((prev) => (prev + digit).slice(0, 6));
     setErrorMessage(null);
   };
 
   const handleBackspace = () => {
+    // Haptic feedback on mobile devices
+    if ('vibrate' in navigator) {
+      navigator.vibrate(30);
+    }
+    
     setPinInput((prev) => prev.slice(0, -1));
     setErrorMessage(null);
   };
@@ -471,13 +482,13 @@ const KioskMode = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 landscape:grid-cols-4 gap-2 xs:gap-3">
               {['1','2','3','4','5','6','7','8','9'].map((digit) => (
                 <Button
                   key={digit}
                   size="lg"
                   variant="secondary"
-                  className="h-16 text-2xl bg-white/10 border-white/10 text-white"
+                  className="h-12 xs:h-16 text-xl xs:text-2xl bg-white/10 border-white/10 text-white hover:bg-white/20 transition-colors"
                   onClick={() => handleDigit(digit)}
                   disabled={processing || (lockUntil && lockUntil > Date.now())}
                   aria-label={`Digit ${digit}`}
@@ -488,7 +499,7 @@ const KioskMode = () => {
               <Button
                 size="lg"
                 variant="secondary"
-                className="h-16 bg-white/10 border-white/10 text-white"
+                className="h-12 xs:h-16 text-sm xs:text-base bg-white/10 border-white/10 text-white hover:bg-white/20 transition-colors"
                 onClick={() => setPinInput('')}
                 disabled={processing}
                 aria-label="Clear PIN"
@@ -498,7 +509,7 @@ const KioskMode = () => {
               <Button
                 size="lg"
                 variant="secondary"
-                className="h-16 text-2xl bg-white/10 border-white/10 text-white"
+                className="h-12 xs:h-16 text-xl xs:text-2xl bg-white/10 border-white/10 text-white hover:bg-white/20 transition-colors"
                 onClick={() => handleDigit('0')}
                 disabled={processing || (lockUntil && lockUntil > Date.now())}
                 aria-label="Digit 0"
@@ -508,31 +519,31 @@ const KioskMode = () => {
               <Button
                 size="lg"
                 variant="secondary"
-                className="h-16 bg-white/10 border-white/10 text-white"
+                className="h-12 xs:h-16 bg-white/10 border-white/10 text-white hover:bg-white/20 transition-colors"
                 onClick={handleBackspace}
                 disabled={processing}
                 aria-label="Backspace"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 xs:h-5 w-4 xs:w-5" />
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 xs:gap-3">
               <Button
-                className="h-14 text-lg"
+                className="h-12 xs:h-14 text-base xs:text-lg"
                 onClick={() => startPunchFlow('clock_in')}
                 disabled={processing || (lockUntil && lockUntil > Date.now())}
               >
-                {processing ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <LogIn className="h-5 w-5 mr-2" />}
+                {processing ? <Loader2 className="h-4 xs:h-5 w-4 xs:w-5 mr-2 animate-spin" /> : <LogIn className="h-4 xs:h-5 w-4 xs:w-5 mr-2" />}
                 Clock In
               </Button>
               <Button
-                className="h-14 text-lg"
+                className="h-12 xs:h-14 text-base xs:text-lg"
                 variant="destructive"
                 onClick={() => startPunchFlow('clock_out')}
                 disabled={processing || (lockUntil && lockUntil > Date.now())}
               >
-                {processing ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <LogOut className="h-5 w-5 mr-2" />}
+                {processing ? <Loader2 className="h-4 xs:h-5 w-4 xs:w-5 mr-2 animate-spin" /> : <LogOut className="h-4 xs:h-5 w-4 xs:w-5 mr-2" />}
                 Clock Out
               </Button>
             </div>

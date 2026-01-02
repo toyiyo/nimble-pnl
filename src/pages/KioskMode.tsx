@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,10 @@ import { verifyPinForRestaurant, useUpsertEmployeePin } from '@/hooks/useKioskPi
 import { useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import type { PunchStatus } from '@/types/timeTracking';
 import { collectPunchContext } from '@/utils/punchContext';
 import { addQueuedPunch, flushQueuedPunches, hasQueuedPunches, isLikelyOffline } from '@/utils/offlineQueue';
+import type { QueuedKioskPunch } from '@/utils/offlineQueue';
 import { format } from 'date-fns';
 import { ImageCapture } from '@/components/ImageCapture';
 import { PinChangeDialog } from '@/components/kiosk/PinChangeDialog';
@@ -24,6 +26,7 @@ const ATTEMPT_LIMIT = 5;
 const LOCKOUT_MS = 60_000;
 
 type PunchAction = 'clock_in' | 'clock_out';
+type QueuedPunchPayload = QueuedKioskPunch['payload'] & { photoBlob?: Blob };
 
 const KioskMode = () => {
   const navigate = useNavigate();
@@ -75,22 +78,26 @@ const KioskMode = () => {
   }, []);
 
   // Only run flushQueuedPunches on mount, but always use the latest mutateAsync
-  const mutateRef = useRef(createPunch.mutateAsync);
+  const mutateRef = useRef<typeof createPunch.mutateAsync>(createPunch.mutateAsync);
   useEffect(() => {
     mutateRef.current = createPunch.mutateAsync;
   }, [createPunch.mutateAsync]);
 
-  useEffect(() => {
-    flushQueuedPunches(async (payload: any) => {
+  const sendQueuedPunch = useCallback(
+    async (payload: QueuedPunchPayload) => {
       await mutateRef.current(payload);
-    }).then((result) => setQueuedCount(result.remaining));
+    },
+    []
+  );
+
+  useEffect(() => {
+    flushQueuedPunches(sendQueuedPunch).then((result) => setQueuedCount(result.remaining));
     // Only run on mount
-     
-  }, []);
+  }, [sendQueuedPunch]);
 
   const lockSeconds = useMemo(() => {
     if (!lockUntil) return 0;
-    return Math.max(0, Math.ceil((lockUntil - Date.now()) / 1000));
+    return Math.max(0, Math.ceil((lockUntil - currentTime.getTime()) / 1000));
   }, [lockUntil, currentTime]);
 
   const resetAttempts = () => {
@@ -135,12 +142,12 @@ const KioskMode = () => {
     setErrorMessage(null);
   };
 
-  const fetchPunchStatus = async (employeeId: string) => {
+  const fetchPunchStatus = async (employeeId: string): Promise<PunchStatus | null> => {
     const { data, error } = await supabase.rpc('get_employee_punch_status', {
       p_employee_id: employeeId,
     });
     if (error) throw error;
-    return data && data.length > 0 ? data[0] : null;
+    return data && data.length > 0 ? (data[0] as PunchStatus) : null;
   };
 
   const registerFailure = () => {
@@ -170,7 +177,7 @@ const KioskMode = () => {
   };
 
   // Helper: Validate punch status
-  const validatePunchStatus = (status: any, action: PunchAction): string | null => {
+  const validatePunchStatus = (status: PunchStatus | null, action: PunchAction): string | null => {
     if (action === 'clock_in' && status?.is_clocked_in) {
       return 'You are already clocked in.';
     }
@@ -266,14 +273,13 @@ const KioskMode = () => {
       setStatusMessage(action === 'clock_in' ? 'Clocked in' : 'Clocked out');
       resetCameraState();
       if (queuedCount > 0) {
-        flushQueuedPunches(async (payload: any) => {
-          await createPunch.mutateAsync(payload);
-        }).then((result) => setQueuedCount(result.remaining));
+        flushQueuedPunches(sendQueuedPunch).then((result) => setQueuedCount(result.remaining));
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       const handledOffline = await handleOfflineQueue(action, pinInput, context, pinMatch?.employee_id);
       if (!handledOffline) {
-        setErrorMessage(error?.message || 'Unable to record punch.');
+        const message = error instanceof Error ? error.message : 'Unable to record punch.';
+        setErrorMessage(message);
         resetCameraState();
       }
     } finally {

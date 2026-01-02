@@ -8,6 +8,19 @@ type TestUser = {
   restaurantName: string;
 };
 
+type RestaurantIdGetter = () => Promise<string | null> | string | null;
+
+type WindowWithRestaurantHelper = Window & {
+  __getRestaurantId?: RestaurantIdGetter;
+};
+
+const getRestaurantId = (page: Page) =>
+  page.evaluate<string | null>(async () => {
+    const helperWindow = window as WindowWithRestaurantHelper;
+    const fn = helperWindow.__getRestaurantId;
+    return fn ? await fn() : null;
+  });
+
 const generateUser = (): TestUser => {
   const ts = Date.now();
   const rand = Math.random().toString(36).slice(2, 6);
@@ -59,10 +72,7 @@ test.describe('Bank Transaction Filtering', () => {
     await exposeSupabaseHelpers(page);
 
     // Get restaurant ID
-    const restaurantId = await page.evaluate(async () => {
-      const fn = (window as any).__getRestaurantId;
-      return fn ? await fn() : null;
-    });
+    const restaurantId = await getRestaurantId(page);
 
     expect(restaurantId).toBeTruthy();
 
@@ -293,10 +303,7 @@ test.describe('Bank Transaction Filtering', () => {
     await signUpAndCreateRestaurant(page, user);
     await exposeSupabaseHelpers(page);
 
-    const restaurantId = await page.evaluate(async () => {
-      const fn = (window as any).__getRestaurantId;
-      return fn ? await fn() : null;
-    });
+    const restaurantId = await getRestaurantId(page);
 
     expect(restaurantId).toBeTruthy();
 
@@ -414,10 +421,7 @@ test.describe('Bank Transaction Filtering', () => {
     await signUpAndCreateRestaurant(page, user);
     await exposeSupabaseHelpers(page);
 
-    const restaurantId = await page.evaluate(async () => {
-      const fn = (window as any).__getRestaurantId;
-      return fn ? await fn() : null;
-    });
+    const restaurantId = await getRestaurantId(page);
 
     expect(restaurantId).toBeTruthy();
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type KeyboardEvent } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,13 +70,14 @@ export const PinChangeDialog = ({
 
     try {
       await onSave(newPin);
-    } catch (err: any) {
-      setError(err.message || 'Failed to update PIN. Please try again.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update PIN. Please try again.';
+      setError(message);
       setSaving(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && canSave) {
       handleSave();
     }
@@ -119,11 +120,11 @@ export const PinChangeDialog = ({
               maxLength={6}
               value={newPin}
               onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '');
+                const value = e.target.value.replaceAll(/\D/g, '');
                 setNewPin(value);
                 setError(null);
               }}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyDown}
               placeholder={`Enter ${minLength}-6 digit PIN`}
               className={cn(
                 'text-lg tracking-widest',
@@ -155,11 +156,11 @@ export const PinChangeDialog = ({
               maxLength={6}
               value={confirmPin}
               onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '');
+                const value = e.target.value.replaceAll(/\D/g, '');
                 setConfirmPin(value);
                 setError(null);
               }}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyDown}
               placeholder="Re-enter PIN"
               className={cn(
                 'text-lg tracking-widest',

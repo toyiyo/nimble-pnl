@@ -16064,6 +16064,373 @@
       "notes": [
         "npm run lint -- file fails due to existing repo lint errors outside target file"
       ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "284",
+        "comment_id": 2658415551,
+        "file": "index.html",
+        "line": 5
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Accessibility concern: Disabling zoom affects the entire application.**\n\nSetting `user-scalable=no` and `maximum-scale=1` prevents users with visual impairments from zooming, which violates WCAG 2.1 SC 1.4.4. While this makes sense for a locked-down kiosk, this meta tag applies globally to all pages including non-kiosk views.\n\nConsider applying zoom restrictions only on the kiosk page via JavaScript or a separate HTML entry point for kiosk mode.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn index.html around line 5, the meta viewport currently forces user-scalable=no\nand maximum-scale=1 which prevents zooming for all users; remove those\nattributes from the global HTML and instead apply zoom restrictions only for\nkiosk views by either creating a separate kiosk HTML entry point that includes\nthe restrictive meta tag or dynamically injecting/updating the viewport meta tag\nvia JavaScript when entering kiosk mode (e.g., add the meta with\nuser-scalable=no and maximum-scale=1 on kiosk entry and restore/remove it on\nexit). Ensure the default/global index.html keeps an accessible viewport (no\nuser-scalable or maximum-scale attributes) so users can zoom when needed.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "7b2d67150ce4063b4044520183f04a8061a99bb5",
+      "status": "in_progress",
+      "created_at": "2026-01-02T21:22:49.094Z",
+      "updated_at": "2026-01-02T21:27:00.913Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuAkooc42jSRNhmgDfe",
+        "pr": "284",
+        "file": "src/components/kiosk/PinChangeDialog.tsx",
+        "line": 27
+      },
+      "title": "Prefer `Number.parseInt` over `parseInt`.",
+      "body": "Prefer `Number.parseInt` over `parseInt`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "e7d54184e4846430d0511bf0d42a562e6ef58f22",
+      "status": "in_progress",
+      "created_at": "2026-01-02T21:22:49.097Z",
+      "updated_at": "2026-01-02T21:27:00.913Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuAkooc42jSRNhmgDfg",
+        "pr": "284",
+        "file": "src/components/kiosk/PinChangeDialog.tsx",
+        "line": 43
+      },
+      "title": "Refactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed.",
+      "body": "Refactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "38bcf42ede34208c1866f6851aee97f55ad4e933",
+      "status": "in_progress",
+      "created_at": "2026-01-02T21:22:49.097Z",
+      "updated_at": "2026-01-02T21:27:00.913Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuAkooc42jSRNhmgDfh",
+        "pr": "284",
+        "file": "src/components/kiosk/PinChangeDialog.tsx",
+        "line": 122
+      },
+      "title": "Prefer `String#replaceAll()` over `String#replace()`.",
+      "body": "Prefer `String#replaceAll()` over `String#replace()`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "6aaaa33df9686288f472d864e6973aa7c425c846",
+      "status": "in_progress",
+      "created_at": "2026-01-02T21:22:49.097Z",
+      "updated_at": "2026-01-02T21:27:00.913Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuAkooc42jSRNhmgDfi",
+        "pr": "284",
+        "file": "src/components/kiosk/PinChangeDialog.tsx",
+        "line": 126
+      },
+      "title": "'onKeyPress' is deprecated.",
+      "body": "'onKeyPress' is deprecated.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "cc8d67972aa7dcebf0f4f4d71e608cc6c187427f",
+      "status": "in_progress",
+      "created_at": "2026-01-02T21:22:49.097Z",
+      "updated_at": "2026-01-02T21:27:00.913Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuAkooc42jSRNhmgDfj",
+        "pr": "284",
+        "file": "src/components/kiosk/PinChangeDialog.tsx",
+        "line": 158
+      },
+      "title": "Prefer `String#replaceAll()` over `String#replace()`.",
+      "body": "Prefer `String#replaceAll()` over `String#replace()`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "9f29470b2ba8390cb8f46021b33c94ccbc3d18ce",
+      "status": "fixed",
+      "created_at": "2026-01-02T21:22:49.097Z",
+      "updated_at": "2026-01-02T21:32:19.510Z",
+      "notes": [
+        "npx eslint src/components/kiosk/PinChangeDialog.tsx src/pages/KioskMode.tsx (pass); npm run lint currently fails on existing unrelated repo lint errors"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuAkooc42jSRNhmgDfk",
+        "pr": "284",
+        "file": "src/components/kiosk/PinChangeDialog.tsx",
+        "line": 162
+      },
+      "title": "'onKeyPress' is deprecated.",
+      "body": "'onKeyPress' is deprecated.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "92eb0109c28bebf075d2991390b7805824503d55",
+      "status": "fixed",
+      "created_at": "2026-01-02T21:22:49.097Z",
+      "updated_at": "2026-01-02T21:32:24.808Z",
+      "notes": [
+        "npx eslint src/components/kiosk/PinChangeDialog.tsx src/pages/KioskMode.tsx (pass); npm run lint currently fails on existing unrelated repo lint errors"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/kiosk/PinChangeDialog.tsx",
+        "line": 73
+      },
+      "title": "@typescript-eslint/no-explicit-any in PinChangeDialog.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/kiosk/PinChangeDialog.tsx"
+      ],
+      "id": "a5df16b56c0fcb82a3805c0e11a0b76e242bd6b1",
+      "status": "fixed",
+      "created_at": "2026-01-02T21:22:49.109Z",
+      "updated_at": "2026-01-02T21:32:36.406Z",
+      "notes": [
+        "npx eslint src/components/kiosk/PinChangeDialog.tsx src/pages/KioskMode.tsx (pass); npm run lint currently fails on existing unrelated repo lint errors"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx",
+        "line": 84
+      },
+      "title": "@typescript-eslint/no-explicit-any in KioskMode.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx"
+      ],
+      "id": "43d35e30b5fdba4942090699126e31fe1fe6b559",
+      "status": "fixed",
+      "created_at": "2026-01-02T21:22:49.111Z",
+      "updated_at": "2026-01-02T21:32:41.653Z",
+      "notes": [
+        "npx eslint src/components/kiosk/PinChangeDialog.tsx src/pages/KioskMode.tsx (pass); npm run lint currently fails on existing unrelated repo lint errors"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx",
+        "line": 94
+      },
+      "title": "react-hooks/exhaustive-deps in KioskMode.tsx",
+      "body": "React Hook useMemo has an unnecessary dependency: 'currentTime'. Either exclude it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx"
+      ],
+      "id": "c5439828be96e3c96ab9e1b842ce1bfbe55c1e8f",
+      "status": "fixed",
+      "created_at": "2026-01-02T21:22:49.111Z",
+      "updated_at": "2026-01-02T21:32:45.648Z",
+      "notes": [
+        "npx eslint src/components/kiosk/PinChangeDialog.tsx src/pages/KioskMode.tsx (pass); npm run lint currently fails on existing unrelated repo lint errors"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx",
+        "line": 173
+      },
+      "title": "@typescript-eslint/no-explicit-any in KioskMode.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx"
+      ],
+      "id": "3a5c525d5b6b987872a185e62a47a8c66bea5736",
+      "status": "fixed",
+      "created_at": "2026-01-02T21:22:49.111Z",
+      "updated_at": "2026-01-02T21:39:32.149Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx",
+        "line": 269
+      },
+      "title": "@typescript-eslint/no-explicit-any in KioskMode.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx"
+      ],
+      "id": "a3cd96958892286566a503b327164346b7bc1e58",
+      "status": "fixed",
+      "created_at": "2026-01-02T21:22:49.111Z",
+      "updated_at": "2026-01-02T21:39:36.280Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx",
+        "line": 273
+      },
+      "title": "@typescript-eslint/no-explicit-any in KioskMode.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx"
+      ],
+      "id": "8f739fb3094bf4d9c6a914474f6c28cf4365ac06",
+      "status": "fixed",
+      "created_at": "2026-01-02T21:22:49.111Z",
+      "updated_at": "2026-01-02T21:39:41.879Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tailwind.config.ts",
+        "line": 113
+      },
+      "title": "@typescript-eslint/no-require-imports in tailwind.config.ts",
+      "body": "A `require()` style import is forbidden.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tailwind.config.ts"
+      ],
+      "id": "e1ef421872db408492719d9957937a7a96693aca",
+      "status": "fixed",
+      "created_at": "2026-01-02T21:22:49.114Z",
+      "updated_at": "2026-01-02T21:39:45.448Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bank-transaction-filtering.spec.ts",
+        "line": 63
+      },
+      "title": "@typescript-eslint/no-explicit-any in bank-transaction-filtering.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bank-transaction-filtering.spec.ts"
+      ],
+      "id": "72694c0be1efd5b1f2cc033af0cf9fd0fe6cc9f4",
+      "status": "fixed",
+      "created_at": "2026-01-02T21:22:49.114Z",
+      "updated_at": "2026-01-02T21:39:51.148Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bank-transaction-filtering.spec.ts",
+        "line": 297
+      },
+      "title": "@typescript-eslint/no-explicit-any in bank-transaction-filtering.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bank-transaction-filtering.spec.ts"
+      ],
+      "id": "9843d8f9109c9c42912913ae578b2b8338068060",
+      "status": "open",
+      "created_at": "2026-01-02T21:22:49.114Z",
+      "updated_at": "2026-01-02T21:22:49.114Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bank-transaction-filtering.spec.ts",
+        "line": 418
+      },
+      "title": "@typescript-eslint/no-explicit-any in bank-transaction-filtering.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bank-transaction-filtering.spec.ts"
+      ],
+      "id": "6298b25c727015427fd7505d46cd7ec25755e533",
+      "status": "open",
+      "created_at": "2026-01-02T21:22:49.114Z",
+      "updated_at": "2026-01-02T21:22:49.114Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/punchFunctionality.test.ts",
+        "line": 194
+      },
+      "title": "@typescript-eslint/no-explicit-any in punchFunctionality.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/punchFunctionality.test.ts"
+      ],
+      "id": "8bf5dba71f8b98820c98ddd68c7581d0876c4750",
+      "status": "open",
+      "created_at": "2026-01-02T21:22:49.114Z",
+      "updated_at": "2026-01-02T21:22:49.114Z"
+    },
+    {
+      "source": "tests",
+      "origin_ref": {
+        "file": "tests/unit/useStripeEmbeddedConnect.test.tsx"
+      },
+      "title": "Test failure: useStripeEmbeddedConnect handles missing publishable key",
+      "body": "Test failed.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm test -- \"tests/unit/useStripeEmbeddedConnect.test.tsx\""
+      ],
+      "id": "0f24f427b187d1f83a1b9948bde4b896862530d9",
+      "status": "open",
+      "created_at": "2026-01-02T21:22:49.117Z",
+      "updated_at": "2026-01-02T21:22:49.117Z"
     }
   ]
 }

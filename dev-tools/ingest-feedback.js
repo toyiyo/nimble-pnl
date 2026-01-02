@@ -16,6 +16,10 @@ let prNumber = null;
 const IGNORE_GH_PATTERNS = [
   /\bVercel for GitHub\b/i,
   /^\[vc\]:/i,
+  /Deploy Preview for .* ready!/i, // Netlify deploy preview spam
+  /^\[supa\]:/i, // Supabase “ignored” preview notices
+  /auto-generated comment:\s*(summarize|review in progress) by coderabbit\.ai/i, // Ignore CodeRabbit summaries, keep other feedback
+  /Quality Gate passed/i, // SonarCloud pass notifications
 ];
 
 for (let i = 0; i < args.length; i += 1) {
@@ -261,6 +265,7 @@ function parseTestsJson(filePath) {
   const items = [];
   for (const res of results) {
     const testFile = res.name || res.testFilePath || res.file || "";
+    const resolvedTestFile = testFile ? path.relative(process.cwd(), testFile) : "";
     const assertions = Array.isArray(res.assertionResults)
       ? res.assertionResults
       : Array.isArray(res.tests)
@@ -277,12 +282,12 @@ function parseTestsJson(filePath) {
       const body = messages.join("\n\n") || "Test failed.";
       items.push({
         source: "tests",
-        origin_ref: { file: testFile || undefined },
+        origin_ref: { file: resolvedTestFile || testFile || undefined },
         title: `Test failure: ${title}`.slice(0, 160),
         body,
         severity: "major",
         tests_to_run: [
-          testFile ? `npm test -- ${path.basename(testFile)}` : "npm test",
+          resolvedTestFile ? `npm test -- "${resolvedTestFile}"` : "npm test",
         ],
       });
     }

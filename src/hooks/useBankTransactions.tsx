@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { SplitLine, invalidateSplitQueries } from "./useSplitTransactionHelpers";
@@ -101,7 +102,10 @@ const buildBaseQuery = (restaurantId: string) =>
     `, { count: 'exact' })
     .eq('restaurant_id', restaurantId);
 
-const applyStatusFilter = (query: any, status?: TransactionStatus) => {
+type SupabaseQuery = ReturnType<typeof buildBaseQuery>;
+type SplitBankTransactionArgs = Database['public']['Functions']['split_bank_transaction']['Args'];
+
+const applyStatusFilter = (query: SupabaseQuery, status?: TransactionStatus) => {
   if (status === 'for_review') return query.eq('is_categorized', false).is('excluded_reason', null);
   if (status === 'categorized') return query.eq('is_categorized', true).is('excluded_reason', null);
   if (status === 'excluded') return query.not('excluded_reason', 'is', null);
@@ -109,20 +113,20 @@ const applyStatusFilter = (query: any, status?: TransactionStatus) => {
   return query;
 };
 
-const applySearchFilter = (query: any, normalizedSearch: string) => {
+const applySearchFilter = (query: SupabaseQuery, normalizedSearch: string) => {
   if (!normalizedSearch) return query;
   return query.or(
     `description.ilike.%${normalizedSearch}%,merchant_name.ilike.%${normalizedSearch}%,normalized_payee.ilike.%${normalizedSearch}%`
   );
 };
 
-const applyDateFilters = (query: any, filters: TransactionFilters) => {
+const applyDateFilters = (query: SupabaseQuery, filters: TransactionFilters) => {
   if (filters.dateFrom) query = query.gte('transaction_date', filters.dateFrom);
   if (filters.dateTo) query = query.lte('transaction_date', filters.dateTo);
   return query;
 };
 
-const applyAmountFilters = (query: any, filters: TransactionFilters) => {
+const applyAmountFilters = (query: SupabaseQuery, filters: TransactionFilters) => {
   if (filters.minAmount !== undefined) {
     query = query.or(`amount.lte.-${filters.minAmount},amount.gte.${filters.minAmount}`);
   }
@@ -132,30 +136,46 @@ const applyAmountFilters = (query: any, filters: TransactionFilters) => {
   return query;
 };
 
-const applyMetadataFilters = async (query: any, filters: TransactionFilters) => {
-  if (filters.status) query = query.eq('status', filters.status);
-  if (filters.transactionType === 'debit') query = query.lt('amount', 0);
-  if (filters.transactionType === 'credit') query = query.gt('amount', 0);
-  if (filters.categoryId) query = query.eq('category_id', filters.categoryId);
+const applyMetadataFilters = async (
+  query: SupabaseQuery,
+  filters: TransactionFilters
+): Promise<SupabaseQuery> => {
+  let resultQuery: SupabaseQuery = query;
   
+  if (filters.status) resultQuery = resultQuery.eq('status', filters.status);
+  if (filters.transactionType === 'debit') resultQuery = resultQuery.lt('amount', 0);
+  if (filters.transactionType === 'credit') resultQuery = resultQuery.gt('amount', 0);
+  if (filters.categoryId) resultQuery = resultQuery.eq('category_id', filters.categoryId);
+
   // Resolve bankAccountId to stripe_financial_account_id for filtering
   if (filters.bankAccountId) {
-    const { data: accountBalance } = await supabase
-      .from('bank_account_balances')
-      .select('stripe_financial_account_id')
-      .eq('id', filters.bankAccountId)
-      .single();
-    
-    if (accountBalance?.stripe_financial_account_id) {
-      query = query.eq('raw_data->>account', accountBalance.stripe_financial_account_id);
+    try {
+      // Execute a separate query to fetch the account balance
+      const { data: accountBalance, error } = await supabase
+        .from('bank_account_balances')
+        .select('stripe_financial_account_id')
+        .eq('id', filters.bankAccountId)
+        .single();
+
+      if (error) {
+        console.error('[useBankTransactions] Failed to resolve bank account filter', error.message);
+      } else if (accountBalance?.stripe_financial_account_id) {
+        resultQuery = resultQuery.eq('raw_data->>account', accountBalance.stripe_financial_account_id);
+      }
+    } catch (err) {
+      console.error('[useBankTransactions] Failed to resolve bank account filter', err);
     }
   }
-  
-  if (filters.showUncategorized) query = query.eq('is_categorized', false);
-  return query;
+
+  if (filters.showUncategorized) resultQuery = resultQuery.eq('is_categorized', false);
+  return resultQuery;
 };
 
-const applySorting = (query: any, sortBy: BankTransactionSort, sortDirection: 'asc' | 'desc') => {
+const applySorting = (
+  query: SupabaseQuery,
+  sortBy: BankTransactionSort,
+  sortDirection: 'asc' | 'desc'
+) => {
   const sortColumn = SORT_COLUMN_MAP[sortBy] ?? SORT_COLUMN_MAP.date;
   return query
     .order(sortColumn, { ascending: sortDirection === 'asc', nullsFirst: false })
@@ -465,10 +485,12 @@ export function useSplitTransaction() {
       transactionId: string;
       splits: SplitLine[];
     }) => {
-      const { data, error } = await supabase.rpc('split_bank_transaction' as any, {
+      const splitPayload = {
         p_transaction_id: transactionId,
-        p_splits: splits as any,
-      });
+        p_splits: splits,
+      } satisfies SplitBankTransactionArgs;
+
+      const { data, error } = await supabase.rpc('split_bank_transaction', splitPayload);
 
       if (error) throw error;
       return data;
@@ -549,10 +571,12 @@ export function useUpdateBankTransactionSplit() {
       splits: SplitLine[];
     }) => {
       // Re-split by calling the split function (it handles existing splits)
-      const { data, error } = await supabase.rpc('split_bank_transaction' as any, {
+      const splitPayload = {
         p_transaction_id: transactionId,
-        p_splits: splits as any,
-      });
+        p_splits: splits,
+      } satisfies SplitBankTransactionArgs;
+
+      const { data, error } = await supabase.rpc('split_bank_transaction', splitPayload);
 
       if (error) throw error;
       return data;

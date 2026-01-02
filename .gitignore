@@ -33,4 +33,4 @@ coverage/
 supabase/functions/.env
 stripe
 stripe.tar.gz
-
+dev-tools/.last_task_id

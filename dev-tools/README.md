@@ -34,6 +34,8 @@ Options:
   ```
   You can start from `dev-tools/.env.local.example` and copy to `.env.local`.
 - Noise filtering: GitHub ingest skips known Vercel auto-comments (pattern: `[vc]:` or “Vercel for GitHub”). If another bot shows up, we can add patterns in `dev-tools/ingest-feedback.js` (IGNORE_GH_PATTERNS).
+  - Also ignored: Netlify deploy preview summaries, Supabase “ignored” branch notices, and CodeRabbit auto-generated summary/in-progress comments (actionable CodeRabbit feedback is still ingested).
+  - SonarCloud “Quality Gate passed” status comments are ignored as non-actionable.
 
 ## Dispatch work
 - Next prompt (copy only): `node dev-tools/next-task.js --copy`
@@ -90,7 +92,7 @@ Statuses: `open`, `in_progress`, `fixed`, `blocked`.
 - Install: `brew install gh`
 - Login: `gh auth login` → GitHub.com → HTTPS → browser/PAT (repo scope). Verify with `gh auth status`.
 
-## Tips
+## Additional notes
 - If lint/tests fail, `refresh-queue.sh` will still ingest any JSON output produced.
 - IDs are stable hashes; duplicates are skipped automatically.
-- Keep `review_queue.json` checked into git if you want history; otherwise add to `.gitignore` to keep local-only.***
+- Keep `review_queue.json` checked into git if you want history; otherwise add to `.gitignore` to keep local-only.

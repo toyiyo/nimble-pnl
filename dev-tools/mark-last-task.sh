@@ -37,8 +37,10 @@ if [[ -z "$ID" ]]; then
 fi
 
 ARGS=(--id "$ID" --status "$STATUS")
-for n in "${NOTES[@]}"; do
-  ARGS+=(--note "$n")
-done
+if [[ ${#NOTES[@]} -gt 0 ]]; then
+  for n in "${NOTES[@]}"; do
+    ARGS+=(--note "$n")
+  done
+fi
 
 node "$ROOT_DIR/dev-tools/mark-task.js" "${ARGS[@]}"

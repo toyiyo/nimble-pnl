@@ -15581,6 +15581,489 @@
       "notes": [
         "tests pass"
       ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "283",
+        "comment_id": 2658134982,
+        "file": "dev-tools/.last_task_id",
+        "line": 1
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Move `.last_task_id` to `.gitignore` to prevent runtime state from polluting version control.**\n\nThis file stores a dynamic task ID that changes during workflow execution. Tracking it in Git causes frequent diffs unrelated to code changes, creates merge conflicts, and clutters the repository history with transient state. Runtime artifacts should not be version controlled.\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\nRemove line 1 from dev-tools/.last_task_id and add it back to .gitignore:\n\n**Step 1: Delete the file from tracking**\n```shell\ngit rm --cached dev-tools/.last_task_id\n```\n\n**Step 2: Update .gitignore**\n```diff\n stripe.tar.gz\n+dev-tools/.last_task_id\n```\n\n**Step 3: Create local version for dev use (not tracked)**\nEnsure the script writes to a local `.last_task_id` file that developers have in their .gitignore locally.\n</details>\n\nVerify that `dev-tools/next-task.js` and `dev-tools/mark-last-task.sh` are designed to work with a local (untracked) version of this file.\n\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn dev-tools/.last_task_id around lines 1 to 1: this file contains transient\nruntime state and should not be tracked; remove it from Git tracking (git rm\n--cached dev-tools/.last_task_id), add dev-tools/.last_task_id to .gitignore,\nand commit the change; then verify and, if necessary, update\ndev-tools/next-task.js and dev-tools/mark-last-task.sh so they create or\ntolerate a missing local .last_task_id (e.g., initialize when absent, avoid\nfailing if file missing) to ensure workflows continue to work with an untracked\nlocal copy.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:triton:mongoose -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "77a2269eceef9d36326e88d4235434ed66f2358b",
+      "status": "in_progress",
+      "created_at": "2026-01-02T17:52:14.281Z",
+      "updated_at": "2026-01-02T17:54:32.596Z",
+      "tests_to_run": [
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "283",
+        "comment_id": 2658134983,
+        "file": "dev-tools/ingest-feedback.js",
+        "line": 286
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Test command may fail for nested test files.**\n\nUsing only `path.basename(testFile)` in the test command might not work for test files in subdirectories. The test runner may not be able to locate the file without its relative path.\n\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n         tests_to_run: [\n-          testFile ? `npm test -- ${path.basename(testFile)}` : \"npm test\",\n+          testFile ? `npm test -- \"${testFile}\"` : \"npm test\",\n         ],\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n        tests_to_run: [\n          testFile ? `npm test -- \"${testFile}\"` : \"npm test\",\n        ],\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn dev-tools/ingest-feedback.js around lines 284-286, the test command builds\nusing path.basename(testFile) which loses subdirectory information and causes\nthe test runner to fail locating nested test files; change the command to use\nthe file's relative path instead (e.g., path.relative(process.cwd(), testFile)\nor testFile itself) so the test runner receives the correct path for nested\nfiles, and update the tests_to_run array construction accordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "87a3a49d06b73a646fc052994bf20106da348c72",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.282Z",
+      "updated_at": "2026-01-02T18:00:12.915Z",
+      "tests_to_run": [
+        "npm test:all"
+      ],
+      "notes": [
+        "npm run test:all failed: supabase db not running; unit tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "283",
+        "comment_id": 2658134992,
+        "file": "dev-tools/mark-last-task.sh",
+        "line": 42
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Handle empty `NOTES` array to prevent unbound variable error.**\n\nWith `set -u` enabled, iterating over an empty array `${NOTES[@]}` can cause an \"unbound variable\" error in older Bash versions. Use `${NOTES[@]+\"${NOTES[@]}\"}` or check if the array has elements first.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n ARGS=(--id \"$ID\" --status \"$STATUS\")\n-for n in \"${NOTES[@]}\"; do\n-  ARGS+=(--note \"$n\")\n-done\n+if [[ ${#NOTES[@]} -gt 0 ]]; then\n+  for n in \"${NOTES[@]}\"; do\n+    ARGS+=(--note \"$n\")\n+  done\n+fi\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\nARGS=(--id \"$ID\" --status \"$STATUS\")\nif [[ ${#NOTES[@]} -gt 0 ]]; then\n  for n in \"${NOTES[@]}\"; do\n    ARGS+=(--note \"$n\")\n  done\nfi\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn dev-tools/mark-last-task.sh around lines 39 to 42, iterating over\n\"${NOTES[@]}\" can trigger an \"unbound variable\" error under set -u when NOTES is\nempty; update the loop to only iterate when the array has elements or use the\nsafe expansion form ${NOTES[@]+\"${NOTES[@]}\"} so the loop is skipped for an\nempty array (e.g., check array length >0 before the for or replace the expansion\nwith the guarded form) to prevent the unbound variable error.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "51be2042ea8ff41ebb43a888633349824906b6f1",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.282Z",
+      "updated_at": "2026-01-02T18:00:17.729Z",
+      "tests_to_run": [
+        "npm test:all"
+      ],
+      "notes": [
+        "npm run test:all failed: supabase db not running; unit tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "283",
+        "comment_id": 2658134993,
+        "file": "dev-tools/README.md",
+        "line": 96
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Fix duplicate heading and trailing characters.**\n\nTwo issues in this section:\n1. Line 93 duplicates the heading from line 86 (\"## Tips\"). Consider renaming to \"## Troubleshooting\" or merging content with the earlier Tips section.\n2. Line 96 has trailing `***` characters that appear to be unintentional.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n-## Tips\n+## Additional notes\n - If lint/tests fail, `refresh-queue.sh` will still ingest any JSON output produced.\n - IDs are stable hashes; duplicates are skipped automatically.\n-- Keep `review_queue.json` checked into git if you want history; otherwise add to `.gitignore` to keep local-only.***\n+- Keep `review_queue.json` checked into git if you want history; otherwise add to `.gitignore` to keep local-only.\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n## Additional notes\n- If lint/tests fail, `refresh-queue.sh` will still ingest any JSON output produced.\n- IDs are stable hashes; duplicates are skipped automatically.\n- Keep `review_queue.json` checked into git if you want history; otherwise add to `.gitignore` to keep local-only.\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🧰 Tools</summary>\n\n<details>\n<summary>🪛 markdownlint-cli2 (0.18.1)</summary>\n\n93-93: Multiple headings with the same content\n\n(MD024, no-duplicate-heading)\n\n</details>\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn dev-tools/README.md around lines 93 to 96, the section repeats the \"## Tips\"\nheading and includes stray trailing \"***\" characters; rename the duplicate\nheading to \"## Troubleshooting\" (or merge the content into the original Tips\nsection) and remove the trailing \"***\" from the end of the line so the sentence\nreads cleanly without extraneous characters.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "7fb9f0cd1b4dcba575fb2c642d235d6583970bfe",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.282Z",
+      "updated_at": "2026-01-02T18:00:22.901Z",
+      "tests_to_run": [
+        "npm test:all"
+      ],
+      "notes": [
+        "npm run test:all failed: supabase db not running; unit tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "283",
+        "comment_id": 2658134998,
+        "file": "src/hooks/useBankTransactions.tsx",
+        "line": 156
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# Find references to bank_account_balances and connected_banks\nrg -n \"bank_account_balances|connected_banks\" --type=ts --type=sql -C 2 | head -100\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 9353\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for schema definitions or migrations\nfd -e \"sql\" -e \"ts\" | grep -E \"(schema|migration|database)\" | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1580\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the supabase directory structure for schema files\nfind . -type f -name \"*.sql\" | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1340\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look at useBankTransactions.tsx to see context and function calls\nrg -n \"applyMetadataFilters|restaurantId|bankAccountId\" \"src/hooks/useBankTransactions.tsx\" -B2 -A2 | head -80\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1924\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the full signature and usage of fetchTransactionsPage and applyMetadataFilters\nsed -n '120,200p' \"src/hooks/useBankTransactions.tsx\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3357\n\n---\n\n\n\n</details>\n\n**Add error handling and explicit restaurant_id filtering for the bank account balance lookup.**\n\nThe `applyMetadataFilters` function has two issues:\n\n1. **Silent failure without logging**: If the `bank_account_balances` query fails, the error is silently swallowed and the filter is skipped. Users won't know the filter didn't apply.\n\n2. **Missing explicit restaurant_id filtering**: Per coding guidelines, queries should filter by `restaurant_id` in code for data isolation, not rely solely on RLS. The `bank_account_balances` lookup doesn't include this explicit filter.\n\nThe fix needs to pass `restaurantId` from the calling context and add error handling. Note: the proposed syntax using `.eq('connected_banks.restaurant_id', ...)` won't work in the Supabase JS client—instead, filter directly on `bank_account_balances` by passing the `restaurantId` through the function signature.\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n-const applyMetadataFilters = async (query: any, filters: TransactionFilters) => {\n+const applyMetadataFilters = async (query: any, filters: TransactionFilters, restaurantId: string) => {\n   if (filters.status) query = query.eq('status', filters.status);\n   if (filters.transactionType === 'debit') query = query.lt('amount', 0);\n   if (filters.transactionType === 'credit') query = query.gt('amount', 0);\n   if (filters.categoryId) query = query.eq('category_id', filters.categoryId);\n   \n   // Resolve bankAccountId to stripe_financial_account_id for filtering\n   if (filters.bankAccountId) {\n-    const { data: accountBalance } = await supabase\n+    const { data: accountBalance, error } = await supabase\n       .from('bank_account_balances')\n       .select('stripe_financial_account_id')\n       .eq('id', filters.bankAccountId)\n+      .eq('connected_bank_id', \n+        supabase.from('connected_banks').select('id').eq('restaurant_id', restaurantId)\n+      )\n+      .single();\n     \n+    if (error) {\n+      console.error('Failed to resolve bank account filter:', error.message);\n+    }\n+\n     if (accountBalance?.stripe_financial_account_id) {\n       query = query.eq('raw_data->>account', accountBalance.stripe_financial_account_id);\n     }\n   }\n```\n\nUpdate the call site:\n```diff\n-    query = await applyMetadataFilters(query, parsedFilters);\n+    query = await applyMetadataFilters(query, parsedFilters, selectedRestaurant.restaurant_id);\n```\n</details>\n\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn src/hooks/useBankTransactions.tsx around lines 135 to 156, the\nbank_account_balances lookup swallows errors and doesn't filter by\nrestaurant_id; update applyMetadataFilters to accept a restaurantId parameter\nfrom the caller, add an explicit .eq('restaurant_id', restaurantId) to the\nsupabase query, wrap the lookup in try/catch and log the error (or rethrow) so\nfailures are visible, and only apply the account filter to the main query when\nthe lookup returns a valid stripe_financial_account_id.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "6204cfe13bc2292166d519d22909860e8f6693f9",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.282Z",
+      "updated_at": "2026-01-02T18:00:27.765Z",
+      "tests_to_run": [
+        "npm test:all"
+      ],
+      "notes": [
+        "npm run test:all failed: supabase db not running; unit tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "283",
+        "comment_id": 2658140350,
+        "file": "tests/unit/useBankTransactions.test.ts",
+        "line": 144
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**Comprehensive verification of account-level filtering.**\n\nThe assertions correctly verify both the bank account balance lookup and the main transaction query using the derived `stripe_financial_account_id`. Line 137 confirms the implementation queries `raw_data->>account` with the resolved account ID, which addresses the historical limitation where bank_transactions lacked a dedicated `bank_account_id` column (based on learnings).\n\n\n\n\nHowever, the test should cover error scenarios to ensure robust handling:\n\n<details>\n<summary>🔍 Recommended: Add error scenario tests</summary>\n\nConsider adding these test cases:\n\n```typescript\nit('handles missing bank account balance gracefully', async () => {\n  const accountBalanceBuilder: any = {\n    select: vi.fn().mockReturnThis(),\n    eq: vi.fn().mockReturnThis(),\n    single: vi.fn().mockResolvedValue({ \n      data: null, \n      error: { code: 'PGRST116', message: 'No rows found' } \n    }),\n  };\n  \n  // Test that query proceeds without the account filter\n  // or shows appropriate error to user\n});\n\nit('handles null stripe_financial_account_id in balance record', async () => {\n  const accountBalanceBuilder: any = {\n    select: vi.fn().mockReturnThis(),\n    eq: vi.fn().mockReturnThis(),\n    single: vi.fn().mockResolvedValue({ \n      data: { stripe_financial_account_id: null }, \n      error: null \n    }),\n  };\n  \n  // Test fallback behavior when account ID is null\n});\n\nit('handles balance lookup query error', async () => {\n  const accountBalanceBuilder: any = {\n    select: vi.fn().mockReturnThis(),\n    eq: vi.fn().mockReturnThis(),\n    single: vi.fn().mockResolvedValue({ \n      data: null, \n      error: { code: '500', message: 'Database error' } \n    }),\n  };\n  \n  // Test error handling and user feedback\n});\n```\n\n</details>\n\nBased on coding guidelines: Write unit tests for all new utility functions, custom hooks, and business logic.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn tests/unit/useBankTransactions.test.ts around lines 121 to 144, add unit\ntests that cover the missing/error bank account lookup scenarios: (1) a test\nwhere accountBalanceBuilder.single resolves to { data: null, error: { code:\n'PGRST116', message: 'No rows found' } } and assert the transaction query\nproceeds without applying the raw_data->>account filter (i.e.,\ntransactionBuilder.eq should not be called with that key); (2) a test where\naccountBalanceBuilder.single resolves to { data: { stripe_financial_account_id:\nnull }, error: null } and assert the same fallback behavior (no account filter\napplied); and (3) a test where accountBalanceBuilder.single resolves to { data:\nnull, error: { code: '500', message: 'Database error' } } and assert the hook\nsurfaces or returns the error (or that appropriate error handling path is\ntaken). For each test, stub accountBalanceBuilder methods to return this single\nresult and verify either absence of the account filter on transactionBuilder or\nthat the hook returns/propagates the error as expected.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "1a47f78747696800db2884191005e6db34f57760",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.282Z",
+      "updated_at": "2026-01-02T17:57:58.304Z",
+      "tests_to_run": [
+        "npm test:all"
+      ],
+      "notes": [
+        "Added 3 error scenario tests for bank account lookup: missing balance, null stripe_financial_account_id, and database error. All tests pass."
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/banking/BankTransactionRow.tsx",
+        "line": 53
+      },
+      "title": "@typescript-eslint/no-explicit-any in BankTransactionRow.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/banking/BankTransactionRow.tsx"
+      ],
+      "id": "66580c360ef0b3be675488d528ed16f153ab9989",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.295Z",
+      "updated_at": "2026-01-02T18:09:10.034Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/financial-statements/IncomeStatement.tsx",
+        "line": 34
+      },
+      "title": "@typescript-eslint/no-explicit-any in IncomeStatement.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/financial-statements/IncomeStatement.tsx"
+      ],
+      "id": "e80ce84c3bbd3eaa299d907efe366e2cff5c2a21",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.295Z",
+      "updated_at": "2026-01-02T18:09:28.413Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/financial-statements/IncomeStatement.tsx",
+        "line": 112
+      },
+      "title": "@typescript-eslint/no-explicit-any in IncomeStatement.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/financial-statements/IncomeStatement.tsx"
+      ],
+      "id": "85a26aae48a0580ddfa42afec271a456425cc04c",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.295Z",
+      "updated_at": "2026-01-02T18:09:28.455Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx",
+        "line": 104
+      },
+      "title": "@typescript-eslint/no-explicit-any in useBankTransactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx"
+      ],
+      "id": "49fe46d7c6b08a88c3ae6525b099cab50cc1f3ac",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.295Z",
+      "updated_at": "2026-01-02T18:09:36.852Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx",
+        "line": 112
+      },
+      "title": "@typescript-eslint/no-explicit-any in useBankTransactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx"
+      ],
+      "id": "b719eaf6772cf086a1a50696d15e9f46b49b6696",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.295Z",
+      "updated_at": "2026-01-02T18:09:36.894Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx",
+        "line": 119
+      },
+      "title": "@typescript-eslint/no-explicit-any in useBankTransactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx"
+      ],
+      "id": "eed6404183f7291a78bc0c77b8bd2af650fa7d02",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.295Z",
+      "updated_at": "2026-01-02T18:10:18.581Z",
+      "notes": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx fails due to existing repo lint errors; npx eslint src/hooks/useBankTransactions.tsx passes"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx",
+        "line": 125
+      },
+      "title": "@typescript-eslint/no-explicit-any in useBankTransactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx"
+      ],
+      "id": "8a8c2ecf15b27f3ce031cb1eafb85da9b2a7e8eb",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.295Z",
+      "updated_at": "2026-01-02T18:10:24.302Z",
+      "notes": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx fails due to existing repo lint errors; npx eslint src/hooks/useBankTransactions.tsx passes"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx",
+        "line": 135
+      },
+      "title": "@typescript-eslint/no-explicit-any in useBankTransactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx"
+      ],
+      "id": "1bce4a230e410ef17704e1d8e313e061c4c184f3",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.295Z",
+      "updated_at": "2026-01-02T18:10:29.898Z",
+      "notes": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx fails due to existing repo lint errors; npx eslint src/hooks/useBankTransactions.tsx passes"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx",
+        "line": 158
+      },
+      "title": "@typescript-eslint/no-explicit-any in useBankTransactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx"
+      ],
+      "id": "77ec2827f1497dd1eac32c7e2654128943be0413",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.295Z",
+      "updated_at": "2026-01-02T18:10:34.909Z",
+      "notes": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx fails due to existing repo lint errors; npx eslint src/hooks/useBankTransactions.tsx passes"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx",
+        "line": 468
+      },
+      "title": "@typescript-eslint/no-explicit-any in useBankTransactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx"
+      ],
+      "id": "27edfafec92db827195ed548a1eae4e1e60e8d7f",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.295Z",
+      "updated_at": "2026-01-02T18:10:39.248Z",
+      "notes": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx fails due to existing repo lint errors; npx eslint src/hooks/useBankTransactions.tsx passes"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx",
+        "line": 470
+      },
+      "title": "@typescript-eslint/no-explicit-any in useBankTransactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx"
+      ],
+      "id": "d261fd6b48f15b06cdad97467056edaad9a0becc",
+      "status": "in_progress",
+      "created_at": "2026-01-02T17:52:14.295Z",
+      "updated_at": "2026-01-02T18:09:56.512Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx",
+        "line": 552
+      },
+      "title": "@typescript-eslint/no-explicit-any in useBankTransactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx"
+      ],
+      "id": "bfe68dc81670afd694e75d7a6087abeed049f2c9",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.296Z",
+      "updated_at": "2026-01-02T18:15:26.999Z",
+      "notes": [
+        "tests pass - no errors found"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx",
+        "line": 554
+      },
+      "title": "@typescript-eslint/no-explicit-any in useBankTransactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useBankTransactions.tsx"
+      ],
+      "id": "d1146c043c1278c18d7c918777a48ad3b3fd922a",
+      "status": "in_progress",
+      "created_at": "2026-01-02T17:52:14.296Z",
+      "updated_at": "2026-01-02T18:09:56.512Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useProductionRuns.tsx",
+        "line": 392
+      },
+      "title": "@typescript-eslint/no-explicit-any in useProductionRuns.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useProductionRuns.tsx"
+      ],
+      "id": "67a04cef40d5049a995b9a7d2a1ae94be6f8ab07",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.296Z",
+      "updated_at": "2026-01-02T18:15:03.831Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useProductionRuns.tsx",
+        "line": 469
+      },
+      "title": "react-hooks/exhaustive-deps in useProductionRuns.tsx",
+      "body": "React Hook useCallback has an unnecessary dependency: 'buildIngredientJson'. Either exclude it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useProductionRuns.tsx"
+      ],
+      "id": "41ab6956f27b764ad2e4900c056cb8a98085ddda",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.296Z",
+      "updated_at": "2026-01-02T18:15:01.411Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useProductionRuns.tsx",
+        "line": 527
+      },
+      "title": "@typescript-eslint/no-explicit-any in useProductionRuns.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useProductionRuns.tsx"
+      ],
+      "id": "8148b36e9dbe944387033ae893aaf291ab4d038e",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.296Z",
+      "updated_at": "2026-01-02T18:20:15.048Z",
+      "notes": [
+        "npm run lint -- file fails due to existing repo lint errors outside target file"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useProductionRuns.tsx",
+        "line": 573
+      },
+      "title": "@typescript-eslint/no-explicit-any in useProductionRuns.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useProductionRuns.tsx"
+      ],
+      "id": "9bf1110b8ef84b8ec4c8f99942406d2d16642dd9",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.296Z",
+      "updated_at": "2026-01-02T18:20:19.371Z",
+      "notes": [
+        "npm run lint -- file fails due to existing repo lint errors outside target file"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useBankTransactions.test.ts",
+        "line": 84
+      },
+      "title": "@typescript-eslint/no-explicit-any in useBankTransactions.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useBankTransactions.test.ts"
+      ],
+      "id": "515ad374f3120bdb22e0846fcb934059a4d1c7b4",
+      "status": "fixed",
+      "created_at": "2026-01-02T17:52:14.300Z",
+      "updated_at": "2026-01-02T18:20:24.939Z",
+      "notes": [
+        "npm run lint -- file fails due to existing repo lint errors outside target file"
+      ]
     }
   ]
 }

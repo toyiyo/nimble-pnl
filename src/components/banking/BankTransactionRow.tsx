@@ -50,7 +50,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
 
   // Find the correct account by matching stripe_financial_account_id with raw_data.account
   const transactionAccount = useMemo(() => {
-    const stripeAccountId = (transaction as any).raw_data?.account;
+    const stripeAccountId = (transaction as BankTransaction & { raw_data?: { account?: string } }).raw_data?.account;
     return transaction.connected_bank?.bank_account_balances?.find(
       bal => bal.stripe_financial_account_id === stripeAccountId
     );

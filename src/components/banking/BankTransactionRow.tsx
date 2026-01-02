@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from "@/hooks/useBankTransactions";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,14 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
   const suggestedCategory = accounts?.find(a => a.id === transaction.suggested_category_id);
   const currentCategory = accounts?.find(a => a.id === transaction.category_id);
   const hasSuggestion = !transaction.is_categorized && suggestedCategory;
+
+  // Find the correct account by matching stripe_financial_account_id with raw_data.account
+  const transactionAccount = useMemo(() => {
+    const stripeAccountId = (transaction as BankTransaction & { raw_data?: { account?: string } }).raw_data?.account;
+    return transaction.connected_bank?.bank_account_balances?.find(
+      bal => bal.stripe_financial_account_id === stripeAccountId
+    );
+  }, [transaction]);
 
   const handleQuickAccept = () => {
     if (transaction.suggested_category_id) {
@@ -109,7 +117,10 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
 
   return (
     <>
-      <TableRow className={`${hasSuggestion ? 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/40 border-l-4 border-l-amber-500 dark:border-l-amber-600' : 'hover:bg-muted/50'}`}>
+      <TableRow 
+        data-testid="bank-transaction-row"
+        className={`${hasSuggestion ? 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/40 border-l-4 border-l-amber-500 dark:border-l-amber-600' : 'hover:bg-muted/50'}`}
+      >
         <TableCell className="font-medium">
           {formatTransactionDate(transaction.transaction_date, 'MMM dd, yyyy')}
         </TableCell>
@@ -137,7 +148,7 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
         <TableCell className="hidden lg:table-cell">
           <BankAccountInfo
             institutionName={transaction.connected_bank?.institution_name}
-            accountMask={transaction.connected_bank?.bank_account_balances?.[0]?.account_mask}
+            accountMask={transactionAccount?.account_mask}
             showIcon={false}
             layout="stacked"
           />

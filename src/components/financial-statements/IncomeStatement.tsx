@@ -12,6 +12,7 @@ import type { Employee } from '@/types/scheduling';
 import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import type { ChartAccount } from '@/hooks/useChartOfAccounts';
 
 interface IncomeStatementProps {
   restaurantId: string;
@@ -31,7 +32,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
 
   // Merge inventory usage (source of truth for COGS) into COGS accounts when no journaled COGS exist
   const mergeInventoryCOGS = (
-    cogsAccounts: any[],
+    cogsAccounts: ChartAccount[],
     inventoryUsageTotal: number
   ) => {
     const existingCOGSTotal = cogsAccounts.reduce((sum, acc) => sum + (acc.current_balance || 0), 0);
@@ -109,7 +110,13 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       // Calculate balances by account
       const accountBalances = new Map<string, { debits: number; credits: number }>();
       
-      journalLines?.forEach((line: any) => {
+      interface JournalLineResult {
+        account_id: string;
+        debit_amount: number | null;
+        credit_amount: number | null;
+      }
+
+      journalLines?.forEach((line: JournalLineResult) => {
         const current = accountBalances.get(line.account_id) || { debits: 0, credits: 0 };
         accountBalances.set(line.account_id, {
           debits: current.debits + (line.debit_amount || 0),

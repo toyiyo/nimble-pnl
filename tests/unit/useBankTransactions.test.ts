@@ -40,8 +40,45 @@ const createWrapper = () => {
   };
 };
 
-const createQueryBuilder = (pageData: any[], count?: number) => {
-  const builder: any = {
+type TransactionRow = {
+  id: string;
+  transaction_date: string;
+  amount: number;
+};
+
+type QueryRangeResult = {
+  data: TransactionRow[];
+  count: number;
+  error: null;
+};
+
+type QueryBuilder = {
+  select: ReturnType<typeof vi.fn>;
+  eq: ReturnType<typeof vi.fn>;
+  not: ReturnType<typeof vi.fn>;
+  is: ReturnType<typeof vi.fn>;
+  or: ReturnType<typeof vi.fn>;
+  gte: ReturnType<typeof vi.fn>;
+  lte: ReturnType<typeof vi.fn>;
+  lt: ReturnType<typeof vi.fn>;
+  gt: ReturnType<typeof vi.fn>;
+  order: ReturnType<typeof vi.fn>;
+  range: ReturnType<typeof vi.fn>;
+};
+
+type AccountBalanceResult = {
+  data: { stripe_financial_account_id: string | null } | null;
+  error: { code: string; message: string } | null;
+};
+
+type AccountBalanceQuery = {
+  select: ReturnType<typeof vi.fn>;
+  eq: ReturnType<typeof vi.fn>;
+  single: ReturnType<typeof vi.fn>;
+};
+
+const createQueryBuilder = (pageData: TransactionRow[], count?: number): QueryBuilder => {
+  const builder: QueryBuilder = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     not: vi.fn().mockReturnThis(),
@@ -56,6 +93,12 @@ const createQueryBuilder = (pageData: any[], count?: number) => {
   };
   return builder;
 };
+
+const createAccountBalanceBuilder = (result: AccountBalanceResult): AccountBalanceQuery => ({
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn().mockReturnThis(),
+  single: vi.fn().mockResolvedValue(result),
+});
 
 describe('useBankTransactions (paginated)', () => {
   beforeEach(() => {
@@ -80,11 +123,21 @@ describe('useBankTransactions (paginated)', () => {
       { id: 'txn-2', transaction_date: '2024-01-11', amount: -80 },
     ];
 
-    const builders = [
-      createQueryBuilder(pageData, 2),
-    ];
-    const queue = [...builders];
-    mockSupabase.from.mockImplementation(() => queue.shift());
+    // Mock the bank_account_balances lookup query
+    const accountBalanceBuilder = createAccountBalanceBuilder({
+      data: { stripe_financial_account_id: 'fca_stripe_123' },
+      error: null,
+    });
+
+    const transactionBuilder = createQueryBuilder(pageData, 2);
+
+    // Mock different table queries
+    mockSupabase.from.mockImplementation((tableName: string) => {
+      if (tableName === 'bank_account_balances') {
+        return accountBalanceBuilder;
+      }
+      return transactionBuilder;
+    });
 
     const { result } = renderHook(
       () =>
@@ -104,25 +157,187 @@ describe('useBankTransactions (paginated)', () => {
     expect(result.current.totalCount).toBe(2);
     expect(result.current.hasMore).toBe(false);
 
-    const builder = builders[0];
-    expect(builder.range).toHaveBeenCalledWith(0, 1);
-    expect(builder.eq).toHaveBeenCalledWith('restaurant_id', 'rest-123');
-    expect(builder.eq).toHaveBeenCalledWith('is_categorized', false);
-    expect(builder.is).toHaveBeenCalledWith('excluded_reason', null);
-    expect(builder.or).toHaveBeenCalledWith(
+    // Verify the main query
+    expect(transactionBuilder.range).toHaveBeenCalledWith(0, 1);
+    expect(transactionBuilder.eq).toHaveBeenCalledWith('restaurant_id', 'rest-123');
+    expect(transactionBuilder.eq).toHaveBeenCalledWith('is_categorized', false);
+    expect(transactionBuilder.is).toHaveBeenCalledWith('excluded_reason', null);
+    expect(transactionBuilder.or).toHaveBeenCalledWith(
       expect.stringContaining('description.ilike.%coffee%')
     );
-    expect(builder.gte).toHaveBeenCalledWith('transaction_date', '2024-01-01');
-    expect(builder.lte).toHaveBeenCalledWith('transaction_date', '2024-01-31');
-    expect(builder.or).toHaveBeenCalledWith('amount.lte.-50,amount.gte.50');
-    expect(builder.gte).toHaveBeenCalledWith('amount', -300);
-    expect(builder.lte).toHaveBeenCalledWith('amount', 300);
-    expect(builder.eq).toHaveBeenCalledWith('status', 'posted');
-    expect(builder.lt).toHaveBeenCalledWith('amount', 0);
-    expect(builder.eq).toHaveBeenCalledWith('category_id', 'cat-1');
-    expect(builder.eq).toHaveBeenCalledWith('connected_bank_id', 'bank-1');
-    expect(builder.order).toHaveBeenCalledWith('transaction_date', { ascending: false, nullsFirst: false });
-    expect(builder.order).toHaveBeenCalledWith('id', { ascending: false });
+    expect(transactionBuilder.gte).toHaveBeenCalledWith('transaction_date', '2024-01-01');
+    expect(transactionBuilder.lte).toHaveBeenCalledWith('transaction_date', '2024-01-31');
+    expect(transactionBuilder.or).toHaveBeenCalledWith('amount.lte.-50,amount.gte.50');
+    expect(transactionBuilder.gte).toHaveBeenCalledWith('amount', -300);
+    expect(transactionBuilder.lte).toHaveBeenCalledWith('amount', 300);
+    expect(transactionBuilder.eq).toHaveBeenCalledWith('status', 'posted');
+    expect(transactionBuilder.lt).toHaveBeenCalledWith('amount', 0);
+    expect(transactionBuilder.eq).toHaveBeenCalledWith('category_id', 'cat-1');
+    expect(transactionBuilder.eq).toHaveBeenCalledWith('raw_data->>account', 'fca_stripe_123');
+    expect(transactionBuilder.order).toHaveBeenCalledWith('transaction_date', { ascending: false, nullsFirst: false });
+    expect(transactionBuilder.order).toHaveBeenCalledWith('id', { ascending: false });
+    
+    // Verify the bank account balance lookup was called correctly
+    expect(accountBalanceBuilder.select).toHaveBeenCalledWith('stripe_financial_account_id');
+    expect(accountBalanceBuilder.eq).toHaveBeenCalledWith('id', 'bank-1');
+    expect(accountBalanceBuilder.single).toHaveBeenCalled();
+  });
+
+  it('handles missing bank account balance gracefully', async () => {
+    const filters: TransactionFilters = {
+      bankAccountId: 'bank-nonexistent',
+    };
+
+    const pageData = [
+      { id: 'txn-1', transaction_date: '2024-01-10', amount: -120 },
+      { id: 'txn-2', transaction_date: '2024-01-11', amount: -80 },
+    ];
+
+    // Mock the bank_account_balances lookup query with no rows found
+    const accountBalanceBuilder = createAccountBalanceBuilder({
+      data: null,
+      error: { code: 'PGRST116', message: 'No rows found' },
+    });
+
+    const transactionBuilder = createQueryBuilder(pageData, 2);
+
+    // Track calls to eq to verify account filter is NOT applied
+    const eqCalls: Array<[string, unknown]> = [];
+    transactionBuilder.eq = vi.fn((...args: [string, unknown]) => {
+      eqCalls.push(args);
+      return transactionBuilder;
+    });
+
+    mockSupabase.from.mockImplementation((tableName: string) => {
+      if (tableName === 'bank_account_balances') {
+        return accountBalanceBuilder;
+      }
+      return transactionBuilder;
+    });
+
+    const { result } = renderHook(
+      () =>
+        useBankTransactions('for_review', {
+          filters,
+        }),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Query should proceed without the account filter
+    expect(result.current.transactions).toHaveLength(2);
+    
+    // Verify the account filter was NOT applied (raw_data->>account should not be in eqCalls)
+    const accountFilterApplied = eqCalls.some(
+      ([key]) => key === 'raw_data->>account'
+    );
+    expect(accountFilterApplied).toBe(false);
+    
+    // Verify balance lookup was attempted
+    expect(accountBalanceBuilder.single).toHaveBeenCalled();
+  });
+
+  it('handles null stripe_financial_account_id in balance record', async () => {
+    const filters: TransactionFilters = {
+      bankAccountId: 'bank-2',
+    };
+
+    const pageData = [
+      { id: 'txn-1', transaction_date: '2024-01-10', amount: -120 },
+      { id: 'txn-2', transaction_date: '2024-01-11', amount: -80 },
+    ];
+
+    // Mock the bank_account_balances lookup with null stripe_financial_account_id
+    const accountBalanceBuilder = createAccountBalanceBuilder({
+      data: { stripe_financial_account_id: null },
+      error: null,
+    });
+
+    const transactionBuilder = createQueryBuilder(pageData, 2);
+
+    // Track calls to eq to verify account filter is NOT applied
+    const eqCalls: Array<[string, unknown]> = [];
+    transactionBuilder.eq = vi.fn((...args: [string, unknown]) => {
+      eqCalls.push(args);
+      return transactionBuilder;
+    });
+
+    mockSupabase.from.mockImplementation((tableName: string) => {
+      if (tableName === 'bank_account_balances') {
+        return accountBalanceBuilder;
+      }
+      return transactionBuilder;
+    });
+
+    const { result } = renderHook(
+      () =>
+        useBankTransactions('for_review', {
+          filters,
+        }),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Query should proceed without the account filter
+    expect(result.current.transactions).toHaveLength(2);
+    
+    // Verify the account filter was NOT applied
+    const accountFilterApplied = eqCalls.some(
+      ([key]) => key === 'raw_data->>account'
+    );
+    expect(accountFilterApplied).toBe(false);
+    
+    // Verify balance lookup was attempted
+    expect(accountBalanceBuilder.single).toHaveBeenCalled();
+  });
+
+  it('handles balance lookup query error', async () => {
+    const filters: TransactionFilters = {
+      bankAccountId: 'bank-3',
+    };
+
+    // Mock the bank_account_balances lookup with database error
+    const accountBalanceBuilder = createAccountBalanceBuilder({
+      data: null,
+      error: { code: '500', message: 'Database error' },
+    });
+
+    const transactionBuilder = createQueryBuilder([], 0);
+
+    // Track calls to eq
+    const eqCalls: Array<[string, unknown]> = [];
+    transactionBuilder.eq = vi.fn((...args: [string, unknown]) => {
+      eqCalls.push(args);
+      return transactionBuilder;
+    });
+
+    mockSupabase.from.mockImplementation((tableName: string) => {
+      if (tableName === 'bank_account_balances') {
+        return accountBalanceBuilder;
+      }
+      return transactionBuilder;
+    });
+
+    const { result } = renderHook(
+      () =>
+        useBankTransactions('for_review', {
+          filters,
+        }),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Query should proceed without applying the account filter
+    const accountFilterApplied = eqCalls.some(
+      ([key]) => key === 'raw_data->>account'
+    );
+    expect(accountFilterApplied).toBe(false);
+    
+    // Verify balance lookup was attempted
+    expect(accountBalanceBuilder.single).toHaveBeenCalled();
   });
 
   it('loads additional pages when requested', async () => {

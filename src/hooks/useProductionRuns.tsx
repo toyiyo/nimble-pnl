@@ -75,6 +75,12 @@ export interface CompleteRunPayload {
 
 type SupplierInfo = { supplierId: string; supplierName: string };
 
+const getErrorMessage = (err: unknown) => {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  return 'An error occurred';
+};
+
 export const useProductionRuns = (restaurantId: string | null) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -122,32 +128,41 @@ export const useProductionRuns = (restaurantId: string | null) => {
 
       if (error) throw error;
 
-      const normalized = (data || []).map((run: any) => ({
-        ...run,
-        target_yield_unit: run.target_yield_unit ? toIngredientUnit(run.target_yield_unit) : null,
-        actual_yield_unit: run.actual_yield_unit ? toIngredientUnit(run.actual_yield_unit) : null,
-        ingredients: (run.ingredients || []).map((ing: any) => ({
-          ...ing,
-          unit: ing.unit ? toIngredientUnit(ing.unit) : null,
-        })),
-        prep_recipe: run.prep_recipe
-          ? {
-              ...run.prep_recipe,
-              default_yield_unit: toIngredientUnit(run.prep_recipe.default_yield_unit),
-              ingredients: (run.prep_recipe.ingredients || []).map((ing: any) => ({
-                ...ing,
-                unit: toIngredientUnit(ing.unit),
-              })) as PrepRecipeIngredient[],
-            }
-          : undefined,
-      })) as ProductionRun[];
+      const normalized = (data || []).map((run: unknown) => {
+        const r = run as Record<string, unknown>;
+        return {
+          ...r,
+          target_yield_unit: r.target_yield_unit ? toIngredientUnit(r.target_yield_unit as string) : null,
+          actual_yield_unit: r.actual_yield_unit ? toIngredientUnit(r.actual_yield_unit as string) : null,
+          ingredients: ((r.ingredients as unknown[]) || []).map((ing: unknown) => {
+            const i = ing as Record<string, unknown>;
+            return {
+              ...i,
+              unit: i.unit ? toIngredientUnit(i.unit as string) : null,
+            };
+          }),
+          prep_recipe: r.prep_recipe
+            ? {
+                ...(r.prep_recipe as Record<string, unknown>),
+                default_yield_unit: toIngredientUnit((r.prep_recipe as Record<string, unknown>).default_yield_unit as string),
+                ingredients: (((r.prep_recipe as Record<string, unknown>).ingredients as unknown[]) || []).map((ing: unknown) => {
+                  const i = ing as Record<string, unknown>;
+                  return {
+                    ...i,
+                    unit: toIngredientUnit(i.unit as string),
+                  };
+                }) as PrepRecipeIngredient[],
+              }
+            : undefined,
+        };
+      }) as ProductionRun[];
 
       setRuns(normalized);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching production runs:', err);
       toast({
         title: 'Could not load batches',
-        description: err.message,
+        description: getErrorMessage(err),
         variant: 'destructive',
       });
     } finally {
@@ -205,11 +220,11 @@ export const useProductionRuns = (restaurantId: string | null) => {
 
       await fetchRuns();
       return run as ProductionRun;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error creating production run:', err);
       toast({
         title: 'Could not create batch',
-        description: err.message,
+        description: getErrorMessage(err),
         variant: 'destructive',
       });
       return null;
@@ -389,7 +404,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
 
     if (currentError) throw currentError;
 
-    const updates: Record<string, any> = {};
+    const updates: Record<string, number | string | null> = {};
     if (ingredientCostTotal > 0) {
       const varianceAdjustment = variance ? (1 - (variance / 100)) : 1;
       const adjustedCostPerUnit = (ingredientCostTotal / Math.max(actualYield, 1)) * varianceAdjustment;
@@ -466,7 +481,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
     });
 
     if (error) throw error;
-  }, [buildIngredientJson]);
+  }, []);
 
   const persistInProgressRun = useCallback(async (
     run: ProductionRun | undefined,
@@ -524,11 +539,11 @@ export const useProductionRuns = (restaurantId: string | null) => {
       if (error) throw error;
       await fetchRuns();
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating run status:', err);
       toast({
         title: 'Could not update batch',
-        description: err.message,
+        description: getErrorMessage(err),
         variant: 'destructive',
       });
       return false;
@@ -570,11 +585,11 @@ export const useProductionRuns = (restaurantId: string | null) => {
 
       await fetchRuns();
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving run actuals:', err);
       toast({
         title: 'Could not save batch actuals',
-        description: err.message,
+        description: getErrorMessage(err),
         variant: 'destructive',
       });
       return false;

@@ -237,8 +237,8 @@ export const usePrepRecipes = (restaurantId: string | null) => {
   const createOutputProduct = useCallback(async (input: CreatePrepRecipeInput, ingredientCostTotal: number, supplierInfo?: { supplierId: string; supplierName: string } | null) => {
     const slug = input.name
       .toUpperCase()
-      .replaceAll(/[^A-Z0-9]+/g, '-')
-      .replaceAll(/(^-+|-+$)/g, '') || 'PREP';
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/(^-+|-+$)/g, '') || 'PREP';
     const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
 
     const { data: newProduct, error: productError } = await supabase

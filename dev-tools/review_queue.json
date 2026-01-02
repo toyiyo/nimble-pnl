@@ -233,9 +233,9 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**useProducts mock includes non-existent `error` field.**\n\nThe mock returns `error: null` (line 303), but per the hook docstring, `useProducts` returns `{ products, loading, createProduct, updateProduct, ... }` without an `error` field. Tests should reflect actual hook contracts.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n       mockUseProducts.mockReturnValue({\n         products: [mockProduct],\n         loading: false,\n-        error: null,\n         updateProduct: vi.fn(),\n+        createProduct: vi.fn(),\n+        updateProductWithQuantity: vi.fn(),\n+        deleteProduct: vi.fn(),\n+        findProductByGtin: vi.fn(),\n+        findProductBySku: vi.fn(),\n+        refetchProducts: vi.fn(),\n       });\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn tests/unit/prepProductionHooks.test.tsx around lines 297 to 315, the mocked\nreturn value for useProducts incorrectly includes a non-existent error field;\nupdate the mock so it matches the hook's actual contract by removing the error\nproperty and ensuring the returned shape includes only products, loading, and\nthe action callbacks (createProduct, updateProduct) with stub functions; adjust\nthe mockReturnValue call accordingly so the test reflects the real hook\nsignature.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "1f5c971dfcacaa4672a3d4a992e2ebd010bd92f9",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2025-12-30T23:21:14.456Z",
-      "updated_at": "2025-12-30T23:21:14.456Z",
+      "updated_at": "2026-01-02T19:16:31.041Z",
       "tests_to_run": []
     },
     {

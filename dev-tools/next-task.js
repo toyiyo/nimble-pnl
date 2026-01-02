@@ -22,6 +22,7 @@ function parseArgs() {
     id: null,
     statuses: null,
     count: 1,
+    target: process.env.TARGET_NAME || "ASSISTANT",
   };
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -47,8 +48,8 @@ function parseArgs() {
         console.error("--count must be a positive integer.");
         process.exit(1);
       }
-      opts.count = count;
-    } else {
+      opts.count = count;    } else if (arg === "--target" && args[i + 1]) {
+      opts.target = args[++i].toUpperCase();    } else {
       console.error(`Unknown argument: ${arg}`);
       process.exit(1);
     }
@@ -135,9 +136,9 @@ function describeOrigin(originRef = {}) {
   return parts.length ? parts.join(", ") : "unspecified";
 }
 
-function buildPrompt(items) {
+function buildPrompt(items, targetName = "ASSISTANT") {
   const lines = [
-    "=== SEND TO CODEX ===",
+    `=== SEND TO ${targetName} ===`,
     `Batch count: ${items.length}`,
     "Task: Implement fixes for the queued items below. Keep changes minimal, aligned with context, and avoid unrelated edits.",
     "",
@@ -229,7 +230,7 @@ function main() {
     // Non-fatal if we cannot write.
   }
 
-  const prompt = buildPrompt(items);
+  const prompt = buildPrompt(items, filters.target);
   process.stdout.write(prompt);
 
   if (filters.copy) {

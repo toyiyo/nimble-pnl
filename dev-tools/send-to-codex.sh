@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 prompt="$(
   cd "$ROOT_DIR"
-  node dev-tools/next-task.js --copy "$@"
+  TARGET_NAME=CODEX node dev-tools/next-task.js --copy "$@"
 )"
 
 if command -v codex >/dev/null 2>&1; then

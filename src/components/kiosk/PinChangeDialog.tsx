@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { KeyRound, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isSimpleSequence } from '@/utils/kiosk';
 
 interface PinChangeDialogProps {
   open: boolean;
@@ -15,23 +16,6 @@ interface PinChangeDialogProps {
   onClose?: () => void;
   allowSimpleSequences?: boolean;
 }
-
-const isSimpleSequence = (pin: string): boolean => {
-  if (pin.length < 3) return false;
-  
-  let isAscending = true;
-  let isDescending = true;
-  let isRepeating = true;
-  
-  for (let i = 1; i < pin.length; i++) {
-    const diff = Number.parseInt(pin[i]) - Number.parseInt(pin[i - 1]);
-    if (diff !== 1) isAscending = false;
-    if (diff !== -1) isDescending = false;
-    if (pin[i] !== pin[0]) isRepeating = false;
-  }
-  
-  return isAscending || isDescending || isRepeating;
-};
 
 const validatePin = (pin: string, minLength: number, allowSimpleSequences: boolean) => ({
   pinTooShort: pin.length > 0 && pin.length < minLength,

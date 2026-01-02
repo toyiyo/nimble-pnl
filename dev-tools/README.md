@@ -43,7 +43,7 @@ Options:
 - Send to GitHub Copilot CLI (plus copy): `dev-tools/send-to-copilot.sh`
 - Loop through items:
   ```bash
-  while dev-tools/send-to-codex.sh; do
+  while dev-tools/send-to-codex.sh --since 2026-01-02T21:22:49.094Z --status open --count 5; do          
     read -r -p "Press enter after fixing + marking the item (or 'q' to stop): " ans
     [[ $ans == q ]] && break
   done

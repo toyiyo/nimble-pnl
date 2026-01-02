@@ -61,6 +61,7 @@ Use filters with `next-task.js` and `send-to-codex.sh`:
 - `--count 5` to dispatch a batch of items in one prompt (open items are prioritized, then in-progress, preserving queue order within a status).
 - `--id <sha>` to fetch a specific item.
   - Allowed statuses: open, in_progress, fixed, blocked. Invalid statuses will exit with an error.
+- Prompts now explicitly ask Codex/Copilot to add or update tests for new/changed code (unit, e2e, SQL as appropriate) and to run any new tests in addition to the listed commands.
 
 Examples:
 ```bash

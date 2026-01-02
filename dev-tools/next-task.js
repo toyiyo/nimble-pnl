@@ -172,7 +172,8 @@ function buildPrompt(items) {
 
   lines.push(
     "After coding each item:",
-    "- Run the listed tests for that item and report results.",
+    "- Add or update tests to cover the new/changed code (unit, e2e, and SQL as appropriate; include simple e2e flows when they expose regressions).",
+    "- Run the listed tests (plus any new ones you added) and report results.",
     "- Mark each item individually using the provided commands.",
     "- If the chat thread grows long, use /compact to summarize and free context.",
     "======================",

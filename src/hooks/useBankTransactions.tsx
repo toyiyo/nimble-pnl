@@ -136,39 +136,23 @@ const applyAmountFilters = (query: SupabaseQuery, filters: TransactionFilters) =
   return query;
 };
 
-const applyMetadataFilters = async (
+const applyMetadataFilters = (
   query: SupabaseQuery,
-  filters: TransactionFilters
-): Promise<SupabaseQuery> => {
-  let resultQuery: SupabaseQuery = query;
-  
-  if (filters.status) resultQuery = resultQuery.eq('status', filters.status);
-  if (filters.transactionType === 'debit') resultQuery = resultQuery.lt('amount', 0);
-  if (filters.transactionType === 'credit') resultQuery = resultQuery.gt('amount', 0);
-  if (filters.categoryId) resultQuery = resultQuery.eq('category_id', filters.categoryId);
+  filters: TransactionFilters,
+  stripeAccountId?: string | null
+): SupabaseQuery => {
+  if (filters.status) query = query.eq('status', filters.status);
+  if (filters.transactionType === 'debit') query = query.lt('amount', 0);
+  if (filters.transactionType === 'credit') query = query.gt('amount', 0);
+  if (filters.categoryId) query = query.eq('category_id', filters.categoryId);
 
-  // Resolve bankAccountId to stripe_financial_account_id for filtering
-  if (filters.bankAccountId) {
-    try {
-      // Execute a separate query to fetch the account balance
-      const { data: accountBalance, error } = await supabase
-        .from('bank_account_balances')
-        .select('stripe_financial_account_id')
-        .eq('id', filters.bankAccountId)
-        .single();
-
-      if (error) {
-        console.error('[useBankTransactions] Failed to resolve bank account filter', error.message);
-      } else if (accountBalance?.stripe_financial_account_id) {
-        resultQuery = resultQuery.eq('raw_data->>account', accountBalance.stripe_financial_account_id);
-      }
-    } catch (err) {
-      console.error('[useBankTransactions] Failed to resolve bank account filter', err);
-    }
+  // Apply bank account filter if we have the stripe account ID
+  if (stripeAccountId) {
+    query = query.eq('raw_data->>account', stripeAccountId);
   }
 
-  if (filters.showUncategorized) resultQuery = resultQuery.eq('is_categorized', false);
-  return resultQuery;
+  if (filters.showUncategorized) query = query.eq('is_categorized', false);
+  return query;
 };
 
 const applySorting = (
@@ -204,12 +188,32 @@ export function useBankTransactions(
     const from = Number(pageParam) || 0;
     const to = from + pageSize - 1;
 
+    // Resolve bank account filter before building query
+    let stripeAccountId: string | null = null;
+    if (parsedFilters.bankAccountId) {
+      try {
+        const { data: accountBalance, error } = await supabase
+          .from('bank_account_balances')
+          .select('stripe_financial_account_id')
+          .eq('id', parsedFilters.bankAccountId)
+          .single();
+
+        if (error) {
+          console.error('[useBankTransactions] Failed to resolve bank account filter', error.message);
+        } else {
+          stripeAccountId = accountBalance?.stripe_financial_account_id || null;
+        }
+      } catch (err) {
+        console.error('[useBankTransactions] Failed to resolve bank account filter', err);
+      }
+    }
+
     let query = buildBaseQuery(selectedRestaurant.restaurant_id);
     query = applyStatusFilter(query, status);
     query = applySearchFilter(query, normalizedSearch);
     query = applyDateFilters(query, parsedFilters);
     query = applyAmountFilters(query, parsedFilters);
-    query = await applyMetadataFilters(query, parsedFilters);
+    query = applyMetadataFilters(query, parsedFilters, stripeAccountId);
     query = applySorting(query, sortBy, sortDirection);
 
     const { data, count, error } = await query.range(from, to);

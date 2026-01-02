@@ -117,7 +117,10 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
 
   return (
     <>
-      <TableRow className={`${hasSuggestion ? 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/40 border-l-4 border-l-amber-500 dark:border-l-amber-600' : 'hover:bg-muted/50'}`}>
+      <TableRow 
+        data-testid="bank-transaction-row"
+        className={`${hasSuggestion ? 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/40 border-l-4 border-l-amber-500 dark:border-l-amber-600' : 'hover:bg-muted/50'}`}
+      >
         <TableCell className="font-medium">
           {formatTransactionDate(transaction.transaction_date, 'MMM dd, yyyy')}
         </TableCell>

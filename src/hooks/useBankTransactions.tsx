@@ -54,6 +54,7 @@ export interface BankTransaction {
       id: string;
       account_mask: string | null;
       account_name: string;
+      stripe_financial_account_id: string | null;
     }>;
   };
   chart_account?: {
@@ -87,7 +88,7 @@ const buildBaseQuery = (restaurantId: string) =>
       connected_bank:connected_banks(
         id,
         institution_name,
-        bank_account_balances(id, account_mask, account_name, is_active)
+        bank_account_balances(id, account_mask, account_name, stripe_financial_account_id, is_active)
       ),
       chart_account:chart_of_accounts!category_id(
         id,
@@ -131,12 +132,25 @@ const applyAmountFilters = (query: any, filters: TransactionFilters) => {
   return query;
 };
 
-const applyMetadataFilters = (query: any, filters: TransactionFilters) => {
+const applyMetadataFilters = async (query: any, filters: TransactionFilters) => {
   if (filters.status) query = query.eq('status', filters.status);
   if (filters.transactionType === 'debit') query = query.lt('amount', 0);
   if (filters.transactionType === 'credit') query = query.gt('amount', 0);
   if (filters.categoryId) query = query.eq('category_id', filters.categoryId);
-  if (filters.bankAccountId) query = query.eq('connected_bank_id', filters.bankAccountId);
+  
+  // Resolve bankAccountId to stripe_financial_account_id for filtering
+  if (filters.bankAccountId) {
+    const { data: accountBalance } = await supabase
+      .from('bank_account_balances')
+      .select('stripe_financial_account_id')
+      .eq('id', filters.bankAccountId)
+      .single();
+    
+    if (accountBalance?.stripe_financial_account_id) {
+      query = query.eq('raw_data->>account', accountBalance.stripe_financial_account_id);
+    }
+  }
+  
   if (filters.showUncategorized) query = query.eq('is_categorized', false);
   return query;
 };
@@ -175,7 +189,7 @@ export function useBankTransactions(
     query = applySearchFilter(query, normalizedSearch);
     query = applyDateFilters(query, parsedFilters);
     query = applyAmountFilters(query, parsedFilters);
-    query = applyMetadataFilters(query, parsedFilters);
+    query = await applyMetadataFilters(query, parsedFilters);
     query = applySorting(query, sortBy, sortDirection);
 
     const { data, count, error } = await query.range(from, to);

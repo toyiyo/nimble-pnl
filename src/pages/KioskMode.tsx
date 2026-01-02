@@ -482,7 +482,7 @@ const KioskMode = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 landscape:grid-cols-4 gap-2 xs:gap-3">
+            <div className="grid grid-cols-3 gap-2 xs:gap-3">
               {['1','2','3','4','5','6','7','8','9'].map((digit) => (
                 <Button
                   key={digit}

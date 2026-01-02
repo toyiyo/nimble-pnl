@@ -80,11 +80,25 @@ describe('useBankTransactions (paginated)', () => {
       { id: 'txn-2', transaction_date: '2024-01-11', amount: -80 },
     ];
 
-    const builders = [
-      createQueryBuilder(pageData, 2),
-    ];
-    const queue = [...builders];
-    mockSupabase.from.mockImplementation(() => queue.shift());
+    // Mock the bank_account_balances lookup query
+    const accountBalanceBuilder: any = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ 
+        data: { stripe_financial_account_id: 'fca_stripe_123' }, 
+        error: null 
+      }),
+    };
+
+    const transactionBuilder = createQueryBuilder(pageData, 2);
+
+    // Mock different table queries
+    mockSupabase.from.mockImplementation((tableName: string) => {
+      if (tableName === 'bank_account_balances') {
+        return accountBalanceBuilder;
+      }
+      return transactionBuilder;
+    });
 
     const { result } = renderHook(
       () =>
@@ -104,25 +118,30 @@ describe('useBankTransactions (paginated)', () => {
     expect(result.current.totalCount).toBe(2);
     expect(result.current.hasMore).toBe(false);
 
-    const builder = builders[0];
-    expect(builder.range).toHaveBeenCalledWith(0, 1);
-    expect(builder.eq).toHaveBeenCalledWith('restaurant_id', 'rest-123');
-    expect(builder.eq).toHaveBeenCalledWith('is_categorized', false);
-    expect(builder.is).toHaveBeenCalledWith('excluded_reason', null);
-    expect(builder.or).toHaveBeenCalledWith(
+    // Verify the main query
+    expect(transactionBuilder.range).toHaveBeenCalledWith(0, 1);
+    expect(transactionBuilder.eq).toHaveBeenCalledWith('restaurant_id', 'rest-123');
+    expect(transactionBuilder.eq).toHaveBeenCalledWith('is_categorized', false);
+    expect(transactionBuilder.is).toHaveBeenCalledWith('excluded_reason', null);
+    expect(transactionBuilder.or).toHaveBeenCalledWith(
       expect.stringContaining('description.ilike.%coffee%')
     );
-    expect(builder.gte).toHaveBeenCalledWith('transaction_date', '2024-01-01');
-    expect(builder.lte).toHaveBeenCalledWith('transaction_date', '2024-01-31');
-    expect(builder.or).toHaveBeenCalledWith('amount.lte.-50,amount.gte.50');
-    expect(builder.gte).toHaveBeenCalledWith('amount', -300);
-    expect(builder.lte).toHaveBeenCalledWith('amount', 300);
-    expect(builder.eq).toHaveBeenCalledWith('status', 'posted');
-    expect(builder.lt).toHaveBeenCalledWith('amount', 0);
-    expect(builder.eq).toHaveBeenCalledWith('category_id', 'cat-1');
-    expect(builder.eq).toHaveBeenCalledWith('connected_bank_id', 'bank-1');
-    expect(builder.order).toHaveBeenCalledWith('transaction_date', { ascending: false, nullsFirst: false });
-    expect(builder.order).toHaveBeenCalledWith('id', { ascending: false });
+    expect(transactionBuilder.gte).toHaveBeenCalledWith('transaction_date', '2024-01-01');
+    expect(transactionBuilder.lte).toHaveBeenCalledWith('transaction_date', '2024-01-31');
+    expect(transactionBuilder.or).toHaveBeenCalledWith('amount.lte.-50,amount.gte.50');
+    expect(transactionBuilder.gte).toHaveBeenCalledWith('amount', -300);
+    expect(transactionBuilder.lte).toHaveBeenCalledWith('amount', 300);
+    expect(transactionBuilder.eq).toHaveBeenCalledWith('status', 'posted');
+    expect(transactionBuilder.lt).toHaveBeenCalledWith('amount', 0);
+    expect(transactionBuilder.eq).toHaveBeenCalledWith('category_id', 'cat-1');
+    expect(transactionBuilder.eq).toHaveBeenCalledWith('raw_data->>account', 'fca_stripe_123');
+    expect(transactionBuilder.order).toHaveBeenCalledWith('transaction_date', { ascending: false, nullsFirst: false });
+    expect(transactionBuilder.order).toHaveBeenCalledWith('id', { ascending: false });
+    
+    // Verify the bank account balance lookup was called correctly
+    expect(accountBalanceBuilder.select).toHaveBeenCalledWith('stripe_financial_account_id');
+    expect(accountBalanceBuilder.eq).toHaveBeenCalledWith('id', 'bank-1');
+    expect(accountBalanceBuilder.single).toHaveBeenCalled();
   });
 
   it('loads additional pages when requested', async () => {

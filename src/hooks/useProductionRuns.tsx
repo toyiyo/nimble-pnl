@@ -341,8 +341,8 @@ export const useProductionRuns = (restaurantId: string | null) => {
     const unit = determineOutputUnit(run, payload);
     const slug = run.prep_recipe.name
       .toUpperCase()
-      .replaceAll(/[^A-Z0-9]+/g, '-')
-      .replaceAll(/(^-+|-+$)/g, '') || 'PREP';
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/(^-+|-+$)/g, '') || 'PREP';
     const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
 
     const { data: newProduct, error: productError } = await supabase

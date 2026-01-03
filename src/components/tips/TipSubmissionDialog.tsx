@@ -57,7 +57,7 @@ export const TipSubmissionDialog = ({
       return;
     }
     onSubmit(cashCents, creditCents);
-    handleReset();
+    // Reset is handled by parent closing the dialog on success
   };
 
   return (

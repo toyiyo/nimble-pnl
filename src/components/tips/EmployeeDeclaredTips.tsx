@@ -72,12 +72,12 @@ export const EmployeeDeclaredTips = ({ restaurantId, date, onImport }: EmployeeD
   }, {} as Record<string, { employeeId: string; employeeName: string; tips: typeof dateTips; total: number }>);
 
   return (
-    <Card className="border-blue-200 bg-blue-50/50">
+    <Card className="border-primary/20 bg-primary/5">
       <CardHeader>
         <div className="flex items-start justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-blue-600" />
+              <DollarSign className="h-5 w-5 text-primary" aria-hidden="true" />
               Employee-Declared Tips
             </CardTitle>
             <CardDescription>
@@ -85,7 +85,7 @@ export const EmployeeDeclaredTips = ({ restaurantId, date, onImport }: EmployeeD
             </CardDescription>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-bold text-blue-600">
+            <p className="text-2xl font-bold text-primary">
               {formatCurrencyFromCents(totalTipsCents)}
             </p>
             <p className="text-sm text-muted-foreground">
@@ -110,7 +110,7 @@ export const EmployeeDeclaredTips = ({ restaurantId, date, onImport }: EmployeeD
                     {tips.length} {tips.length === 1 ? 'entry' : 'entries'}
                   </Badge>
                 </div>
-                <span className="font-semibold text-blue-600">
+                <span className="font-semibold text-primary">
                   {formatCurrencyFromCents(total)}
                 </span>
               </div>
@@ -148,8 +148,9 @@ export const EmployeeDeclaredTips = ({ restaurantId, date, onImport }: EmployeeD
                         onClick={() => deleteTip(tip.id)}
                         disabled={isDeleting}
                         className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                        aria-label="Delete tip entry"
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-3 w-3" aria-hidden="true" />
                       </Button>
                     </div>
                   </div>

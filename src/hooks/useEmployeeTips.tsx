@@ -166,7 +166,7 @@ export function groupTipsByDate(tips: EmployeeTip[]): Map<string, EmployeeTip[]>
     if (!grouped.has(date)) {
       grouped.set(date, []);
     }
-    grouped.get(date).push(tip);
+    grouped.get(date)!.push(tip);
   });
   
   return grouped;

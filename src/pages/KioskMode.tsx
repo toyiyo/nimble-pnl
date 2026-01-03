@@ -20,6 +20,8 @@ import type { QueuedKioskPunch } from '@/utils/offlineQueue';
 import { format } from 'date-fns';
 import { ImageCapture } from '@/components/ImageCapture';
 import { PinChangeDialog } from '@/components/kiosk/PinChangeDialog';
+import { TipSubmissionDialog } from '@/components/tips/TipSubmissionDialog';
+import { useEmployeeTips } from '@/hooks/useEmployeeTips';
 import { Clock, Lock, LogIn, LogOut, Shield, WifiOff, KeyRound, X, Loader2, CheckCircle } from 'lucide-react';
 
 const ATTEMPT_LIMIT = 5;
@@ -71,6 +73,11 @@ const KioskMode = () => {
   // PIN change dialog state
   const [pinChangeDialogOpen, setPinChangeDialogOpen] = useState(false);
   const [pinChangeEmployee, setPinChangeEmployee] = useState<{ id: string; name: string; pinId: string } | null>(null);
+  
+  // Tip submission dialog state
+  const [tipDialogOpen, setTipDialogOpen] = useState(false);
+  const [tipSubmissionEmployee, setTipSubmissionEmployee] = useState<{ id: string; name: string } | null>(null);
+  const { submitTip, isSubmitting: isSubmittingTip } = useEmployeeTips(restaurantId);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -291,6 +298,15 @@ const KioskMode = () => {
       if (queuedCount > 0) {
         flushQueuedPunches(sendQueuedPunch).then((result) => setQueuedCount(result.remaining));
       }
+      
+      // Show tip submission dialog after clock-out
+      if (action === 'clock_out' && pinMatch.employee) {
+        setTipSubmissionEmployee({
+          id: pinMatch.employee_id,
+          name: pinMatch.employee.name || 'Employee',
+        });
+        setTipDialogOpen(true);
+      }
     } catch (error: unknown) {
       const handledOffline = await handleOfflineQueue(action, pinInput, context, pinMatch?.employee_id);
       if (!handledOffline) {
@@ -322,6 +338,23 @@ const KioskMode = () => {
 
     // Show success message
     setStatusMessage('PIN updated successfully!');
+  };
+
+  const handleTipSubmit = (cashTipsCents: number, creditTipsCents: number) => {
+    if (!restaurantId || !tipSubmissionEmployee) return;
+    
+    const totalTipsCents = cashTipsCents + creditTipsCents;
+    
+    submitTip({
+      restaurant_id: restaurantId,
+      employee_id: tipSubmissionEmployee.id,
+      tip_amount: totalTipsCents,
+      tip_source: creditTipsCents > cashTipsCents ? 'credit' : 'cash',
+      notes: `Cash: $${(cashTipsCents / 100).toFixed(2)}, Credit: $${(creditTipsCents / 100).toFixed(2)}`,
+    });
+    
+    setTipDialogOpen(false);
+    setTipSubmissionEmployee(null);
   };
 
   const handleManagerExitPassword = async () => {
@@ -730,6 +763,15 @@ const KioskMode = () => {
         minLength={minLength}
         onSave={handleSaveNewPin}
         allowSimpleSequences={false}
+      />
+
+      {/* Tip Submission Dialog - shown after clock-out */}
+      <TipSubmissionDialog
+        open={tipDialogOpen}
+        onOpenChange={setTipDialogOpen}
+        onSubmit={handleTipSubmit}
+        isSubmitting={isSubmittingTip}
+        employeeName={tipSubmissionEmployee?.name}
       />
     </div>
   );

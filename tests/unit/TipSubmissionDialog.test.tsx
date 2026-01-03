@@ -29,7 +29,8 @@ describe('TipSubmissionDialog', () => {
       isSubmitting: false,
     };
 
-    // If this compiles without TypeScript errors, the interface is correct
+    // Actually render to catch interface mismatches at compile time
+    render(<TipSubmissionDialog {...validProps} />);
     expect(validProps).toBeDefined();
   });
 

@@ -22,6 +22,7 @@ export default defineConfig({
         'src/hooks/utils/**/*.ts',
         'src/hooks/useRevenueBreakdown.tsx',
         'src/hooks/useEmployeeTips.tsx',
+        'src/hooks/useAutoSaveTipSettings.ts',
         'src/components/tips/TipSubmissionDialog.tsx',
         'supabase/functions/_shared/periodMetrics.ts',
         'supabase/functions/_shared/monthlyMetrics.ts',

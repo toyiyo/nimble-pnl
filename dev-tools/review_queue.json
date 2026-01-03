@@ -16458,6 +16458,246 @@
       "notes": [
         "tests pass"
       ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "285",
+        "comment_id": 2658971981,
+        "file": "src/components/tips/TipSubmissionDialog.tsx",
+        "line": 95
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Add aria-label attributes to inputs for accessibility compliance.**\n\nPer coding guidelines, inputs should have `aria-label` attributes. Also, the placeholder \"0.00\" doesn't contain \"cash\" or \"credit\" keywords that the E2E tests rely on via `input[placeholder*=\"cash\" i]`.\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n              <Input\n                id=\"cash-tips\"\n                type=\"number\"\n                step=\"0.01\"\n                min=\"0\"\n-               placeholder=\"0.00\"\n+               placeholder=\"Enter cash tips\"\n+               aria-label=\"Cash tips amount\"\n                className=\"pl-6\"\n                value={cashTips}\n                onChange={(e) => setCashTips(e.target.value)}\n                disabled={isSubmitting}\n              />\n```\n\n```diff\n              <Input\n                id=\"credit-tips\"\n                type=\"number\"\n                step=\"0.01\"\n                min=\"0\"\n-               placeholder=\"0.00\"\n+               placeholder=\"Enter credit tips\"\n+               aria-label=\"Credit card tips amount\"\n                className=\"pl-6\"\n                value={creditTips}\n                onChange={(e) => setCreditTips(e.target.value)}\n                disabled={isSubmitting}\n              />\n```\n</details>\n\n\nAlso applies to: 105-116\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn src/components/tips/TipSubmissionDialog.tsx around lines 84-95 (and also\napply same changes to lines 105-116), the numeric Input elements are missing\naria-label attributes and their placeholders don't include the keywords used by\nE2E tests; add meaningful aria-labels (e.g., aria-label=\"cash tips\" for the cash\ninput and aria-label=\"credit tips\" for the credit input) to each Input, and\nupdate the placeholder text to include the keyword (for example \"cash 0.00\" /\n\"credit 0.00\") so tests can select by placeholder; keep existing props (id,\ntype, step, min, className, value, onChange, disabled) unchanged.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "1c0bb9196bc32c18bd7aa46aea1996e387d8fa2b",
+      "status": "fixed",
+      "created_at": "2026-01-03T16:48:08.146Z",
+      "updated_at": "2026-01-03T16:54:24.524Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "npm test passed; npm run lint failing due pre-existing repo issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "285",
+        "comment_id": 2658971982,
+        "file": "src/hooks/useEmployeeTips.tsx",
+        "line": 106
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Gate `console.error` statements with environment check.**\n\nPer coding guidelines, console statements should be gated with `import.meta.env.DEV` check to avoid logging in production.\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n    onError: (error) => {\n-     console.error('Error submitting tips:', error);\n+     if (import.meta.env.DEV) {\n+       console.error('Error submitting tips:', error);\n+     }\n      toast({\n```\n\n```diff\n    onError: (error) => {\n-     console.error('Error deleting tip:', error);\n+     if (import.meta.env.DEV) {\n+       console.error('Error deleting tip:', error);\n+     }\n      toast({\n```\n</details>\n\n\nAlso applies to: 119-126\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn src/hooks/useEmployeeTips.tsx around lines 92-99 (and also apply the same\nchange at lines 119-126), the console.error call must be gated so it only logs\nin development; wrap the console.error invocation in a check for\nimport.meta.env.DEV before calling it (i.e., only call console.error when\nimport.meta.env.DEV is truthy) and leave the toast/error handling intact so\nproduction behavior is unchanged.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "cdf8647f88199b0fbd2267c02e20ee77e9b0b22a",
+      "status": "fixed",
+      "created_at": "2026-01-03T16:48:08.147Z",
+      "updated_at": "2026-01-03T16:54:28.541Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "npm test passed; npm run lint failing due pre-existing repo issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "285",
+        "comment_id": 2658971983,
+        "file": "src/pages/KioskMode.tsx",
+        "line": 358
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Consider awaiting submission before closing dialog.**\n\nThe dialog closes immediately after calling `submitTip` without waiting for completion. If the submission fails (network error, validation error), the dialog will already be closed, potentially confusing users.\n\nThe `TipSubmissionDialog` component accepts `isSubmitting` to show loading state, but it's not utilized here because the dialog closes synchronously.\n\n\n<details>\n<summary>🔎 Recommended approach</summary>\n\nKeep the dialog open while submitting and let `useEmployeeTips` toasts handle success/error feedback:\n\n```diff\n-  const handleTipSubmit = (cashTipsCents: number, creditTipsCents: number) => {\n+  const handleTipSubmit = async (cashTipsCents: number, creditTipsCents: number) => {\n     if (!restaurantId || !tipSubmissionEmployee) return;\n     \n     const totalTipsCents = cashTipsCents + creditTipsCents;\n     \n-    submitTip({\n+    try {\n+      await submitTip({\n-      restaurant_id: restaurantId,\n-      employee_id: tipSubmissionEmployee.id,\n-      tip_amount: totalTipsCents,\n-      tip_source: creditTipsCents > cashTipsCents ? 'credit' : 'cash',\n-      notes: `Cash: $${(cashTipsCents / 100).toFixed(2)}, Credit: $${(creditTipsCents / 100).toFixed(2)}`,\n-    });\n+        restaurant_id: restaurantId,\n+        employee_id: tipSubmissionEmployee.id,\n+        tip_amount: totalTipsCents,\n+        tip_source: creditTipsCents > cashTipsCents ? 'credit' : 'cash',\n+        notes: `Cash: $${(cashTipsCents / 100).toFixed(2)}, Credit: $${(creditTipsCents / 100).toFixed(2)}`,\n+      });\n     \n-    setTipDialogOpen(false);\n-    setTipSubmissionEmployee(null);\n+      // Only close on success (hook will show toast)\n+      setTipDialogOpen(false);\n+      setTipSubmissionEmployee(null);\n+    } catch (error) {\n+      // Hook already shows error toast, keep dialog open for retry\n+    }\n   };\n```\n\nThis ensures the dialog remains open during submission, showing the loading state, and only closes on success.\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn src/pages/KioskMode.tsx around lines 343 to 358, the tip dialog is closed\nimmediately after calling submitTip which prevents showing the\nsubmission/loading state and can hide failures; change the flow to await the\nsubmitTip call (or use the hook's isSubmitting promise/returned status) before\nclosing the dialog and clearing tipSubmissionEmployee, show the dialog's\nisSubmitting while the request is in-flight, and only close/reset state on\nsuccessful completion while leaving the dialog open and surfacing errors if\nsubmission fails.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "a4f4417d0f6539f64d1dd213972c1871aeabd9d2",
+      "status": "fixed",
+      "created_at": "2026-01-03T16:48:08.147Z",
+      "updated_at": "2026-01-03T16:54:34.680Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "npm test passed; npm run lint failing due pre-existing repo issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "285",
+        "comment_id": 2658971984,
+        "file": "tests/unit/TipSubmissionDialog.test.tsx",
+        "line": 33
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Fix prop name mismatch in test interface.**\n\nThe test uses `isLoading: false` but according to the component interface in `src/components/tips/TipSubmissionDialog.tsx`, the correct prop name is `isSubmitting`. This mismatch isn't caught because the test doesn't actually render the component.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n     const validProps = {\n       open: true,\n       onOpenChange: vi.fn(),\n       onSubmit: vi.fn(),\n       employeeName: 'Test Employee',\n-      isLoading: false,\n+      isSubmitting: false,\n     };\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  it('has correct TypeScript interface', () => {\n    // Verify the component accepts the expected props\n    const validProps = {\n      open: true,\n      onOpenChange: vi.fn(),\n      onSubmit: vi.fn(),\n      employeeName: 'Test Employee',\n      isSubmitting: false,\n    };\n\n    // If this compiles without TypeScript errors, the interface is correct\n    expect(validProps).toBeDefined();\n  });\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn tests/unit/TipSubmissionDialog.test.tsx around lines 21 to 33, the test props\nobject uses the wrong prop name `isLoading`; update the props to use\n`isSubmitting: false` to match the component's TypeScript interface and ensure\nthe test validates the actual prop names (optionally render the\nTipSubmissionDialog with these props to catch interface mismatches at compile\ntime).\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "ed4d9793ef8dfd08b6fc52d5b9097e3b86e71d40",
+      "status": "fixed",
+      "created_at": "2026-01-03T16:48:08.147Z",
+      "updated_at": "2026-01-03T16:54:41.321Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "npm test passed; npm run lint failing due pre-existing repo issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "285",
+        "comment_id": 2658977875,
+        "file": "src/pages/Tips.tsx",
+        "line": 541
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Critical bug: Missing argument and unit mismatch in `onImport` callback.**\n\nTwo issues here:\n1. `handleContinueToReview()` is called without the required `amountCents` argument (see line 198-201 signature)\n2. `setTipAmount(totalCents / 100)` converts to dollars, but `tipAmount` is used as cents throughout the component (e.g., line 171: `totalTipsCents = tipAmount || 0`)\n\nThis will cause incorrect tip calculations when importing employee-declared tips.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n              onImport={(totalCents) => {\n-               setTipAmount(totalCents / 100); // Convert cents to dollars for state\n-               handleContinueToReview();\n+               setTipAmount(totalCents); // Keep in cents to match tipAmount usage\n+               handleContinueToReview(totalCents);\n              }}\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn src/pages/Tips.tsx around lines 538-541, the onImport handler both drops the\nrequired amountCents argument to handleContinueToReview and converts totalCents\nto dollars while the component expects tipAmount in cents; fix by keeping\ntipAmount in cents (use setTipAmount(totalCents) instead of dividing by 100) and\ncall handleContinueToReview(totalCents) so the function receives the expected\ncents value (or alternatively convert consistently inside handleContinueToReview\nif you prefer centralizing conversion).\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "516e5729184ac0b1643c112ccca292a2fa0e4cb0",
+      "status": "fixed",
+      "created_at": "2026-01-03T16:48:08.147Z",
+      "updated_at": "2026-01-03T16:54:46.215Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "npm test passed; npm run lint failing due pre-existing repo issues"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuEeEsX0Mi-oFZBBiE8",
+        "pr": "285",
+        "file": "src/components/tips/EmployeeDeclaredTips.tsx",
+        "line": 5
+      },
+      "title": "Remove this unused import of 'groupTipsByDate'.",
+      "body": "Remove this unused import of 'groupTipsByDate'.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "11367f05fd12d31c8a7724bf6c05ac6e66e1baf2",
+      "status": "fixed",
+      "created_at": "2026-01-03T16:48:08.149Z",
+      "updated_at": "2026-01-03T17:03:22.994Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuEbSbpCFrDW9xwxozF",
+        "pr": "285",
+        "file": "src/components/tips/TipSubmissionDialog.tsx",
+        "line": 40
+      },
+      "title": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "body": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "33faa9ecb7dd383a34e9843d4717f211e3eee4ff",
+      "status": "fixed",
+      "created_at": "2026-01-03T16:48:08.149Z",
+      "updated_at": "2026-01-03T17:03:21.684Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuEbSbpCFrDW9xwxozG",
+        "pr": "285",
+        "file": "src/components/tips/TipSubmissionDialog.tsx",
+        "line": 41
+      },
+      "title": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "body": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "94046c8fed00e29628a805bfd7556b5610c497fd",
+      "status": "fixed",
+      "created_at": "2026-01-03T16:48:08.149Z",
+      "updated_at": "2026-01-03T17:03:20.187Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuEbSbNCFrDW9xwxozE",
+        "pr": "285",
+        "file": "src/hooks/useEmployeeTips.tsx",
+        "line": 165
+      },
+      "title": "This assertion is unnecessary since it does not change the type of the expression.",
+      "body": "This assertion is unnecessary since it does not change the type of the expression.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "d00eb746ab3af1f7465bea4657e0cc0c1258b960",
+      "status": "fixed",
+      "created_at": "2026-01-03T16:48:08.149Z",
+      "updated_at": "2026-01-03T17:03:18.636Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Tips.tsx",
+        "line": 222
+      },
+      "title": "@typescript-eslint/no-explicit-any in Tips.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Tips.tsx"
+      ],
+      "id": "7e6c752473291b3dbe81b6721fa8781d6993c62d",
+      "status": "fixed",
+      "created_at": "2026-01-03T16:48:08.162Z",
+      "updated_at": "2026-01-03T17:03:16.673Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Tips.tsx",
+        "line": 344
+      },
+      "title": "react-hooks/exhaustive-deps in Tips.tsx",
+      "body": "React Hook useEffect has missing dependencies: 'handleSaveSettings' and 'settings'. Either include them or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Tips.tsx"
+      ],
+      "id": "70c214913e9600a75df3a5b2bfb1764c425d3e50",
+      "status": "in_progress",
+      "created_at": "2026-01-03T16:48:08.162Z",
+      "updated_at": "2026-01-03T17:02:08.358Z"
     }
   ]
 }

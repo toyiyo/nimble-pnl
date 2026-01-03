@@ -1,4 +1,5 @@
 import React from 'react';
+import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { TipSubmissionDialog } from '@/components/tips/TipSubmissionDialog';
 
@@ -25,11 +26,31 @@ describe('TipSubmissionDialog', () => {
       onOpenChange: vi.fn(),
       onSubmit: vi.fn(),
       employeeName: 'Test Employee',
-      isLoading: false,
+      isSubmitting: false,
     };
 
     // If this compiles without TypeScript errors, the interface is correct
     expect(validProps).toBeDefined();
+  });
+
+  it('renders inputs with accessible labels and placeholders', () => {
+    render(
+      <TipSubmissionDialog
+        open
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+        employeeName="Test Employee"
+        isSubmitting={false}
+      />
+    );
+
+    const cashInput = screen.getByLabelText(/cash tips/i);
+    const creditInput = screen.getByLabelText(/credit card tips/i);
+
+    expect(cashInput).toHaveAttribute('aria-label', 'Cash tips amount');
+    expect(cashInput).toHaveAttribute('placeholder', expect.stringMatching(/cash/i));
+    expect(creditInput).toHaveAttribute('aria-label', 'Credit card tips amount');
+    expect(creditInput).toHaveAttribute('placeholder', expect.stringMatching(/credit/i));
   });
 
   it('onSubmit receives values in cents (logic verification)', () => {
@@ -65,4 +86,3 @@ describe('TipSubmissionDialog', () => {
     });
   });
 });
-

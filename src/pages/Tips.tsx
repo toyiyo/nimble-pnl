@@ -14,7 +14,7 @@ import { format } from 'date-fns';
 import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven } from '@/utils/tipPooling';
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence } from '@/hooks/useTipPoolSettings';
-import { useTipSplits } from '@/hooks/useTipSplits';
+import { useTipSplits, type TipSplitWithItems } from '@/hooks/useTipSplits';
 import { usePOSTipsForDate } from '@/hooks/usePOSTips';
 import { TipReviewScreen } from '@/components/tips/TipReviewScreen';
 import { TipEntryDialog } from '@/components/tips/TipEntryDialog';
@@ -219,7 +219,7 @@ export const Tips = () => {
         .single();
       
       if (data) {
-        split = data as any;
+        split = data as TipSplitWithItems;
       }
     }
     
@@ -536,8 +536,8 @@ export const Tips = () => {
               restaurantId={restaurantId}
               date={today}
               onImport={(totalCents) => {
-                setTipAmount(totalCents / 100); // Convert cents to dollars for state
-                handleContinueToReview();
+                setTipAmount(totalCents);
+                handleContinueToReview(totalCents);
               }}
             />
           )}

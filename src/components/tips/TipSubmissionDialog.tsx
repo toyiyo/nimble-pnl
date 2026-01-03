@@ -16,7 +16,7 @@ import { formatCurrencyFromCents } from '@/utils/tipPooling';
 interface TipSubmissionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (cashTips: number, creditTips: number) => void;
+  onSubmit: (cashTips: number, creditTips: number) => void | Promise<void>;
   isSubmitting: boolean;
   employeeName?: string;
 }
@@ -37,8 +37,8 @@ export const TipSubmissionDialog = ({
   const [cashTips, setCashTips] = useState('');
   const [creditTips, setCreditTips] = useState('');
 
-  const cashCents = Math.round((parseFloat(cashTips) || 0) * 100);
-  const creditCents = Math.round((parseFloat(creditTips) || 0) * 100);
+  const cashCents = Math.round((Number.parseFloat(cashTips) || 0) * 100);
+  const creditCents = Math.round((Number.parseFloat(creditTips) || 0) * 100);
   const totalCents = cashCents + creditCents;
 
   const handleReset = () => {
@@ -86,7 +86,8 @@ export const TipSubmissionDialog = ({
                 type="number"
                 step="0.01"
                 min="0"
-                placeholder="0.00"
+                placeholder="Enter cash tips"
+                aria-label="Cash tips amount"
                 className="pl-6"
                 value={cashTips}
                 onChange={(e) => setCashTips(e.target.value)}
@@ -107,7 +108,8 @@ export const TipSubmissionDialog = ({
                 type="number"
                 step="0.01"
                 min="0"
-                placeholder="0.00"
+                placeholder="Enter credit tips"
+                aria-label="Credit card tips amount"
                 className="pl-6"
                 value={creditTips}
                 onChange={(e) => setCreditTips(e.target.value)}

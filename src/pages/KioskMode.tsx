@@ -340,21 +340,25 @@ const KioskMode = () => {
     setStatusMessage('PIN updated successfully!');
   };
 
-  const handleTipSubmit = (cashTipsCents: number, creditTipsCents: number) => {
+  const handleTipSubmit = async (cashTipsCents: number, creditTipsCents: number) => {
     if (!restaurantId || !tipSubmissionEmployee) return;
     
     const totalTipsCents = cashTipsCents + creditTipsCents;
     
-    submitTip({
-      restaurant_id: restaurantId,
-      employee_id: tipSubmissionEmployee.id,
-      tip_amount: totalTipsCents,
-      tip_source: creditTipsCents > cashTipsCents ? 'credit' : 'cash',
-      notes: `Cash: $${(cashTipsCents / 100).toFixed(2)}, Credit: $${(creditTipsCents / 100).toFixed(2)}`,
-    });
-    
-    setTipDialogOpen(false);
-    setTipSubmissionEmployee(null);
+    try {
+      await submitTip({
+        restaurant_id: restaurantId,
+        employee_id: tipSubmissionEmployee.id,
+        tip_amount: totalTipsCents,
+        tip_source: creditTipsCents > cashTipsCents ? 'credit' : 'cash',
+        notes: `Cash: $${(cashTipsCents / 100).toFixed(2)}, Credit: $${(creditTipsCents / 100).toFixed(2)}`,
+      });
+      
+      setTipDialogOpen(false);
+      setTipSubmissionEmployee(null);
+    } catch {
+      // Error toast is handled inside useEmployeeTips
+    }
   };
 
   const handleManagerExitPassword = async () => {

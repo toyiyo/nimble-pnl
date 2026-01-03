@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useEmployeeTips, calculateEmployeeTipTotal, groupTipsByDate } from '@/hooks/useEmployeeTips';
+import { useEmployeeTips, calculateEmployeeTipTotal } from '@/hooks/useEmployeeTips';
 import { formatCurrencyFromCents } from '@/utils/tipPooling';
 import { format } from 'date-fns';
 import { DollarSign, User, Trash2, Info } from 'lucide-react';

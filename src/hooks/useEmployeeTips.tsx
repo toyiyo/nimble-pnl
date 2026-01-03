@@ -67,7 +67,7 @@ export function useEmployeeTips(restaurantId: string | null, employeeId?: string
   });
 
   // Create employee tip submission
-  const { mutate: submitTip, isPending: isSubmitting } = useMutation({
+  const { mutateAsync: submitTip, isPending: isSubmitting } = useMutation({
     mutationFn: async (input: CreateEmployeeTipInput) => {
       const { data: user } = await supabase.auth.getUser();
       
@@ -97,7 +97,9 @@ export function useEmployeeTips(restaurantId: string | null, employeeId?: string
       });
     },
     onError: (error) => {
-      console.error('Error submitting tips:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error submitting tips:', error);
+      }
       toast({
         title: 'Failed to submit tips',
         description: 'Please try again or contact a manager.',
@@ -124,7 +126,9 @@ export function useEmployeeTips(restaurantId: string | null, employeeId?: string
       });
     },
     onError: (error) => {
-      console.error('Error deleting tip:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error deleting tip:', error);
+      }
       toast({
         title: 'Failed to delete tip',
         description: 'Please try again.',
@@ -162,7 +166,7 @@ export function groupTipsByDate(tips: EmployeeTip[]): Map<string, EmployeeTip[]>
     if (!grouped.has(date)) {
       grouped.set(date, []);
     }
-    grouped.get(date)!.push(tip);
+    grouped.get(date).push(tip);
   });
   
   return grouped;

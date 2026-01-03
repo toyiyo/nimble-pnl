@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence } from '@/hooks/useTipPoolSettings';
 import { useTipSplits, type TipSplitWithItems } from '@/hooks/useTipSplits';
 import { usePOSTipsForDate } from '@/hooks/usePOSTips';
+import { useAutoSaveTipSettings } from '@/hooks/useAutoSaveTipSettings';
 import { TipReviewScreen } from '@/components/tips/TipReviewScreen';
 import { TipEntryDialog } from '@/components/tips/TipEntryDialog';
 import { POSTipImporter } from '@/components/tips/POSTipImporter';
@@ -309,7 +310,7 @@ export const Tips = () => {
     });
   };
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = useCallback(() => {
     if (!restaurantId) return;
 
     updateSettings({
@@ -319,29 +320,17 @@ export const Tips = () => {
       role_weights: roleWeights,
       enabled_employee_ids: Array.from(selectedEmployees),
     });
-  };
+  }, [restaurantId, selectedEmployees, shareMethod, splitCadence, tipSource, roleWeights, updateSettings]);
 
-  // Auto-save settings when they change (debounced to prevent infinite loop)
-  useEffect(() => {
-    // Don't auto-save if no settings exist yet (initial setup)
-    if (!settings) return;
-    
-    // Only save if values have actually changed from loaded settings
-    const hasChanges = 
-      tipSource !== settings.tip_source ||
-      shareMethod !== settings.share_method ||
-      splitCadence !== settings.split_cadence ||
-      JSON.stringify(roleWeights) !== JSON.stringify(settings.role_weights) ||
-      JSON.stringify(Array.from(selectedEmployees).sort((a, b) => a.localeCompare(b))) !== JSON.stringify((settings.enabled_employee_ids || []).sort((a, b) => a.localeCompare(b)));
-    
-    if (!hasChanges) return;
-
-    const timeoutId = setTimeout(() => {
-      handleSaveSettings();
-    }, 1000); // 1 second debounce
-
-    return () => clearTimeout(timeoutId);
-  }, [selectedEmployees, roleWeights, shareMethod, splitCadence, tipSource]);
+  useAutoSaveTipSettings({
+    settings,
+    tipSource,
+    shareMethod,
+    splitCadence,
+    roleWeights,
+    selectedEmployees,
+    onSave: handleSaveSettings,
+  });
 
   if (loading || employeesLoading || settingsLoading) {
     return null;

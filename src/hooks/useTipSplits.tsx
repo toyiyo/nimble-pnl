@@ -241,6 +241,42 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
     },
   });
 
+  // Reopen approved split for editing
+  const { mutate: reopenSplit, isPending: isReopening } = useMutation({
+    mutationFn: async (splitId: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Update split status to draft (audit trigger will log)
+      const { error: updateError } = await supabase
+        .from('tip_splits')
+        .update({ 
+          status: 'draft',
+          approved_by: null,
+          approved_at: null 
+        })
+        .eq('id', splitId);
+
+      if (updateError) throw updateError;
+
+      return splitId;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tip-splits', restaurantId] });
+      toast({
+        title: 'Split reopened',
+        description: 'Tip split is now editable. Changes will be logged in audit trail.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error reopening split',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
   return {
     splits,
     isLoading,
@@ -251,5 +287,7 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
     deleteTipSplit,
     deleteTipSplitAsync,
     isDeleting,
+    reopenSplit,
+    isReopening,
   };
 }

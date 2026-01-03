@@ -24,6 +24,7 @@ import { EmployeeDeclaredTips } from '@/components/tips/EmployeeDeclaredTips';
 import { DisputeManager } from '@/components/tips/DisputeManager';
 import { RecentTipSplits } from '@/components/tips/RecentTipSplits';
 import { TipHistoricalEntry } from '@/components/tips/TipHistoricalEntry';
+import { TipDraftsList } from '@/components/tips/TipDraftsList';
 import { calculateWorkedHours } from '@/utils/payrollCalculations';
 import { Info, Settings, RefreshCw, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -518,6 +519,14 @@ export const Tips = () => {
             currentDate={selectedDate} 
             onDateSelected={setSelectedDate} 
           />
+
+          {/* Saved drafts section */}
+          {restaurantId && (
+            <TipDraftsList
+              restaurantId={restaurantId}
+              onResumeDraft={handleResumeDraft}
+            />
+          )}
 
           {/* Employee-declared tips section */}
           {restaurantId && (

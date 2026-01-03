@@ -19,6 +19,7 @@ import { usePOSTipsForDate } from '@/hooks/usePOSTips';
 import { TipReviewScreen } from '@/components/tips/TipReviewScreen';
 import { TipEntryDialog } from '@/components/tips/TipEntryDialog';
 import { POSTipImporter } from '@/components/tips/POSTipImporter';
+import { EmployeeDeclaredTips } from '@/components/tips/EmployeeDeclaredTips';
 import { DisputeManager } from '@/components/tips/DisputeManager';
 import { RecentTipSplits } from '@/components/tips/RecentTipSplits';
 import { TipHistoricalEntry } from '@/components/tips/TipHistoricalEntry';
@@ -528,6 +529,18 @@ export const Tips = () => {
             currentDate={selectedDate} 
             onDateSelected={setSelectedDate} 
           />
+
+          {/* Employee-declared tips section */}
+          {restaurantId && (
+            <EmployeeDeclaredTips
+              restaurantId={restaurantId}
+              date={today}
+              onImport={(totalCents) => {
+                setTipAmount(totalCents / 100); // Convert cents to dollars for state
+                handleContinueToReview();
+              }}
+            />
+          )}
 
           {tipSource === 'pos' && hasPOSTips && posTipData ? (
             <POSTipImporter

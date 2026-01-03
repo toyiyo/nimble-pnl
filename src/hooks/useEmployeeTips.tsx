@@ -16,6 +16,10 @@ export interface EmployeeTip {
   created_at: string;
   updated_at: string;
   created_by?: string;
+  employee?: {
+    name: string;
+    position?: string;
+  };
 }
 
 export interface CreateEmployeeTipInput {
@@ -43,7 +47,10 @@ export function useEmployeeTips(restaurantId: string | null, employeeId?: string
 
       let query = supabase
         .from('employee_tips')
-        .select('*')
+        .select(`
+          *,
+          employee:employees!employee_id(name, position)
+        `)
         .eq('restaurant_id', restaurantId)
         .order('recorded_at', { ascending: false });
 
@@ -127,7 +134,7 @@ export function useEmployeeTips(restaurantId: string | null, employeeId?: string
   });
 
   return {
-    tips,
+    tips: tips || [],
     isLoading,
     error,
     submitTip,

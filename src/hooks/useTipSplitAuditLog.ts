@@ -14,6 +14,7 @@ interface AuditEntry {
 
 interface User {
   email: string;
+  full_name: string;
 }
 
 interface AuditEntryWithUser extends AuditEntry {
@@ -24,7 +25,6 @@ export function useTipSplitAuditLog(splitId: string | null) {
   return useQuery<AuditEntryWithUser[]>({
     queryKey: ['tip-split-audit', splitId],
     queryFn: async () => {
-      // @ts-expect-error - tip_split_audit table not yet in generated types
       const { data, error } = await supabase
         .from('tip_split_audit')
         .select('*')
@@ -36,15 +36,37 @@ export function useTipSplitAuditLog(splitId: string | null) {
       const userIds = [...new Set((data as unknown as AuditEntry[])?.map(e => e.changed_by).filter(Boolean))] as string[];
       
       if (userIds.length > 0) {
-        const { data: users } = await supabase
+        // Try profiles first (preferred), then fall back to auth.users
+        const { data: profiles } = await supabase
           .from('profiles')
-          .select('id, email')
+          .select('id, email, full_name')
           .in('id', userIds);
 
-        return (data as unknown as AuditEntry[])?.map(entry => ({
-          ...entry,
-          user: users?.find(u => u.id === entry.changed_by) as User | undefined,
-        })) || [];
+        const { data: authUsers } = await supabase.rpc('get_users_by_ids', { 
+          user_ids: userIds 
+        });
+
+        return (data as unknown as AuditEntry[])?.map(entry => {
+          // Check profiles first
+          const profileUser = profiles?.find(u => u.id === entry.changed_by);
+          if (profileUser) {
+            return {
+              ...entry,
+              user: { email: profileUser.email, full_name: profileUser.full_name } as User,
+            };
+          }
+          
+          // Fall back to auth.users
+          const authUser = authUsers?.find((u: any) => u.id === entry.changed_by);
+          if (authUser) {
+            return {
+              ...entry,
+              user: { email: authUser.email, full_name: authUser.full_name } as User,
+            };
+          }
+
+          return entry;
+        }) || [];
       }
 
       return (data as unknown as AuditEntry[]) || [];

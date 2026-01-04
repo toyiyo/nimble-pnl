@@ -99,7 +99,7 @@ export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProp
                     </Badge>
                     <span className="text-sm text-muted-foreground flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
-                      {format(new Date(split.split_date), 'MMM d, yyyy')}
+                      {format(new Date(split.split_date + 'T12:00:00'), 'MMM d, yyyy')}
                     </span>
                   </div>
                   <div className="flex items-baseline gap-2">
@@ -122,7 +122,7 @@ export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProp
                     variant="outline"
                     size="sm"
                     onClick={() => onResumeDraft(split.id)}
-                    aria-label={`Resume draft from ${format(new Date(split.split_date), 'MMM d, yyyy')}`}
+                    aria-label={`Resume draft from ${format(new Date(split.split_date + 'T12:00:00'), 'MMM d, yyyy')}`}
                   >
                     <Edit className="h-4 w-4 mr-1" />
                     Resume
@@ -131,7 +131,7 @@ export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProp
                     variant="ghost"
                     size="sm"
                     onClick={() => confirmDelete(split.id)}
-                    aria-label={`Delete draft from ${format(new Date(split.split_date), 'MMM d, yyyy')}`}
+                    aria-label={`Delete draft from ${format(new Date(split.split_date + 'T12:00:00'), 'MMM d, yyyy')}`}
                   >
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>

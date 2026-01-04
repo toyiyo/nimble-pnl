@@ -72,7 +72,7 @@ export const TipSplitAuditLog = ({ splitId }: TipSplitAuditLogProps) => {
               <div className="flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium">
-                    {entry.user?.email || 'System'}
+                    {entry.user?.full_name || entry.user?.email || 'System'}
                   </span>
                   <span className="text-muted-foreground">
                     {format(new Date(entry.changed_at), 'MMM d, h:mm a')}

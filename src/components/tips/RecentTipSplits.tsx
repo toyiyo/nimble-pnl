@@ -102,7 +102,7 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
                     )}
                     <span className="text-sm text-muted-foreground flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
-                      {format(new Date(split.split_date), 'MMM d, yyyy')}
+                      {format(new Date(split.split_date + 'T12:00:00'), 'MMM d, yyyy')}
                     </span>
                   </div>
 

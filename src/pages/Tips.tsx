@@ -51,8 +51,10 @@ export const Tips = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
 
   const today = format(selectedDate, 'yyyy-MM-dd');
-  const todayStart = new Date(today + 'T00:00:00');
-  const todayEnd = new Date(today + 'T23:59:59');
+  // Force UTC interpretation to avoid timezone confusion
+  // Without 'Z', new Date('2026-01-03T00:00:00') is treated as local time
+  const todayStart = new Date(today + 'T00:00:00Z');
+  const todayEnd = new Date(today + 'T23:59:59.999Z');
   
   const { punches } = useTimePunches(restaurantId, undefined, todayStart, todayEnd);
   const { saveTipSplit, isSaving, splits } = useTipSplits(restaurantId, today, today);
@@ -243,7 +245,8 @@ export const Tips = () => {
     // For drafts: populate form for editing
     // For approved: populate form in read-only preview (can view but not re-approve)
     setTipAmount(split.total_amount);
-    setSelectedDate(new Date(split.split_date));
+    // Parse date as local noon to avoid timezone shifting the day
+    setSelectedDate(new Date(split.split_date + 'T12:00:00'));
     setShareMethod(split.share_method || 'hours');
     
     // Populate hours from items

@@ -1,28 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, History } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-
-interface AuditEntry {
-  id: string;
-  tip_split_id: string;
-  action: 'created' | 'approved' | 'reopened' | 'modified' | 'archived' | 'deleted';
-  changed_by: string | null;
-  changed_at: string;
-  changes: Record<string, { old: unknown; new: unknown }> | null;
-  reason: string | null;
-}
-
-interface User {
-  email: string;
-}
-
-interface AuditEntryWithUser extends AuditEntry {
-  user?: User;
-}
+import { useTipSplitAuditLog } from '@/hooks/useTipSplitAuditLog';
 
 interface TipSplitAuditLogProps {
   splitId: string;
@@ -33,35 +14,7 @@ interface TipSplitAuditLogProps {
  * Shows who created, approved, reopened, or modified the split
  */
 export const TipSplitAuditLog = ({ splitId }: TipSplitAuditLogProps) => {
-  const { data: auditLog, isLoading, error } = useQuery<AuditEntryWithUser[]>({
-    queryKey: ['tip-split-audit', splitId],
-    queryFn: async () => {
-      // @ts-expect-error - tip_split_audit table not yet in generated types
-      const { data, error } = await supabase.from('tip_split_audit').select('*').eq('tip_split_id', splitId).order('changed_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Fetch user emails for each entry
-      const userIds = [...new Set((data as unknown as AuditEntry[])?.map(e => e.changed_by).filter(Boolean))] as string[];
-      
-      if (userIds.length > 0) {
-        const { data: users } = await supabase
-          .from('profiles')
-          .select('id, email')
-          .in('id', userIds);
-
-        // Map emails to audit entries
-        return (data as unknown as AuditEntry[])?.map(entry => ({
-          ...entry,
-          user: users?.find(u => u.id === entry.changed_by) as User | undefined,
-        })) || [];
-      }
-
-      return (data as unknown as AuditEntry[]) || [];
-    },
-    enabled: !!splitId,
-    staleTime: 30000,
-  });
+  const { data: auditLog, isLoading, error } = useTipSplitAuditLog(splitId);
 
   if (isLoading) {
     return (

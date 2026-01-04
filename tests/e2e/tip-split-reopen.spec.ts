@@ -1,13 +1,16 @@
 import { test, expect } from '@playwright/test';
 
+const managerEmail = process.env.TEST_MANAGER_EMAIL ?? 'manager@test.com';
+const managerPassword = process.env.TEST_MANAGER_PASSWORD ?? 'password123';
+
 test.describe('Tip Split Reopen Feature', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to login page
     await page.goto('/');
     
     // Login as manager (assuming manager credentials)
-    await page.fill('input[type="email"]', 'manager@test.com');
-    await page.fill('input[type="password"]', 'password123');
+    await page.fill('input[type="email"]', managerEmail);
+    await page.fill('input[type="password"]', managerPassword);
     await page.click('button[type="submit"]');
     
     // Wait for dashboard to load
@@ -105,43 +108,94 @@ test.describe('Tip Split Reopen Feature', () => {
   test('should show reopen action in audit log after reopening', async ({ page }) => {
     // Wait for recent splits
     await page.waitForSelector('text=/Recent Tip Splits/i', { timeout: 10000 });
+
+    const splitId = await page.evaluate(async () => {
+      const { supabase } = await import('/src/integrations/supabase/client');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      const { data: restaurant } = await supabase
+        .from('user_restaurants')
+        .select('restaurant_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .single();
+
+      if (!restaurant?.restaurant_id) return null;
+
+      const { data } = await supabase
+        .from('tip_splits')
+        .select('id')
+        .eq('restaurant_id', restaurant.restaurant_id)
+        .eq('status', 'approved')
+        .order('split_date', { ascending: false })
+        .limit(1)
+        .single();
+
+      return data?.id ?? null;
+    });
+
+    if (!splitId) {
+      return;
+    }
+
+    const auditBefore = await page.evaluate(async (tipSplitId: string) => {
+      const { supabase } = await import('/src/integrations/supabase/client');
+      // @ts-expect-error tip_split_audit table not yet in generated types
+      const { data, error } = await supabase
+        .from('tip_split_audit')
+        .select('id, action')
+        .eq('tip_split_id', tipSplitId);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const entries = (data ?? []) as { action: string }[];
+      return {
+        count: data?.length ?? 0,
+        actions: entries.map(entry => entry.action),
+      };
+    }, splitId);
     
     // Find first approved split
     const approvedSplit = page.locator('div:has-text("Approved")').first();
     
-    if (await approvedSplit.count() > 0) {
-      // Open audit log before reopening
-      const viewButton = approvedSplit.locator('button:has-text("View Details")').first();
-      if (await viewButton.count() > 0) {
-        await viewButton.click();
-        
-        // Check initial entries
-        const auditEntriesBefore = await page.locator('[data-testid="audit-entry"], div:has-text("created"), div:has-text("approved")').count();
-        
-        // Close dialog
-        await page.keyboard.press('Escape');
-        await page.waitForTimeout(500);
-        
-        // Reopen split
-        const reopenButton = approvedSplit.locator('button:has-text("Reopen")');
-        await reopenButton.click();
-        await page.waitForTimeout(1000);
-        
-        // Open audit log again
-        const draftSplit = page.locator('div:has-text("Draft")').first();
-        const viewButton2 = draftSplit.locator('button:has-text("View Details")');
-        
-        // Note: After reopen, status changes to draft, so View Details button won't be there
-        // Approved splits have View Details, drafts have Resume
-        // So we skip this check for now
-      }
+    if (await approvedSplit.count() === 0) {
+      return;
     }
+
+    const reopenButton = approvedSplit.locator('button:has-text("Reopen")');
+    await reopenButton.click();
+    await expect(page.locator('text=/Split reopened/i')).toBeVisible({ timeout: 5000 });
+    await page.waitForTimeout(1000);
+
+    const auditAfter = await page.evaluate(async (tipSplitId: string) => {
+      const { supabase } = await import('/src/integrations/supabase/client');
+      // @ts-expect-error tip_split_audit table not yet in generated types
+      const { data, error } = await supabase
+        .from('tip_split_audit')
+        .select('id, action, changed_at')
+        .eq('tip_split_id', tipSplitId)
+        .order('changed_at', { ascending: false });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const entries = (data ?? []) as { action: string }[];
+      return {
+        count: data?.length ?? 0,
+        actions: entries.map(entry => entry.action),
+      };
+    }, splitId);
+
+    expect(auditAfter.count).toBeGreaterThan(auditBefore.count);
+    expect(auditAfter.actions).toContain('reopened');
   });
 
-  test('should prevent non-managers from reopening splits (RLS)', async ({ page }) => {
-    // This would require logging in as non-manager
-    // Skipping for now - RLS enforced at database level
-    test.skip();
+  test.skip('should prevent non-managers from reopening splits (RLS)', async () => {
+    // TODO: Implement with non-manager login - RLS enforced at database level
   });
 
   test('should display user email in audit entries', async ({ page }) => {

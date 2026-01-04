@@ -3,9 +3,13 @@
 -- Part of Feature #3: Edit/Reopen Approved Splits
 
 -- 1. Create audit table
+-- Note: tip_split_id is nullable with ON DELETE SET NULL to preserve audit history
+-- even after parent split is deleted (critical for audit trail integrity)
+-- split_reference stores the UUID for deleted splits (no FK constraint)
 CREATE TABLE IF NOT EXISTS tip_split_audit (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tip_split_id UUID NOT NULL REFERENCES tip_splits(id) ON DELETE CASCADE,
+  tip_split_id UUID REFERENCES tip_splits(id) ON DELETE SET NULL,
+  split_reference UUID NOT NULL, -- Always stores the split ID, even after deletion
   action TEXT NOT NULL CHECK (action IN ('created', 'approved', 'reopened', 'modified', 'archived', 'deleted')),
   changed_by UUID REFERENCES auth.users(id),
   changed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -53,8 +57,8 @@ RETURNS TRIGGER AS $$
 BEGIN
   -- On INSERT (creation)
   IF TG_OP = 'INSERT' THEN
-    INSERT INTO tip_split_audit (tip_split_id, action, changed_by)
-    VALUES (NEW.id, 'created', NEW.created_by);
+    INSERT INTO tip_split_audit (tip_split_id, split_reference, action, changed_by)
+    VALUES (NEW.id, NEW.id, 'created', NEW.created_by);
     RETURN NEW;
   END IF;
 
@@ -62,8 +66,9 @@ BEGIN
   IF TG_OP = 'UPDATE' THEN
     -- Detect approval
     IF OLD.status = 'draft' AND NEW.status = 'approved' THEN
-      INSERT INTO tip_split_audit (tip_split_id, action, changed_by, changes)
+      INSERT INTO tip_split_audit (tip_split_id, split_reference, action, changed_by, changes)
       VALUES (
+        NEW.id,
         NEW.id, 
         'approved', 
         NEW.approved_by,
@@ -73,8 +78,9 @@ BEGIN
 
     -- Detect reopen (approved → draft)
     IF OLD.status = 'approved' AND NEW.status = 'draft' THEN
-      INSERT INTO tip_split_audit (tip_split_id, action, changed_by, reason)
+      INSERT INTO tip_split_audit (tip_split_id, split_reference, action, changed_by, reason)
       VALUES (
+        NEW.id,
         NEW.id, 
         'reopened', 
         auth.uid(),
@@ -84,8 +90,9 @@ BEGIN
 
     -- Detect amount changes
     IF OLD.total_amount != NEW.total_amount THEN
-      INSERT INTO tip_split_audit (tip_split_id, action, changed_by, changes)
+      INSERT INTO tip_split_audit (tip_split_id, split_reference, action, changed_by, changes)
       VALUES (
+        NEW.id,
         NEW.id, 
         'modified', 
         auth.uid(),
@@ -98,8 +105,8 @@ BEGIN
 
   -- On DELETE
   IF TG_OP = 'DELETE' THEN
-    INSERT INTO tip_split_audit (tip_split_id, action, changed_by)
-    VALUES (OLD.id, 'deleted', auth.uid());
+    INSERT INTO tip_split_audit (tip_split_id, split_reference, action, changed_by)
+    VALUES (NULL, OLD.id, 'deleted', auth.uid());
     RETURN OLD;
   END IF;
 

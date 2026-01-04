@@ -12,6 +12,11 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
+type SupabaseFromReturn = ReturnType<typeof supabase.from>;
+
+const toFromReturn = (value: unknown): SupabaseFromReturn =>
+  value as SupabaseFromReturn;
+
 describe('TipSplitAuditLog', () => {
   let queryClient: QueryClient;
 
@@ -35,9 +40,11 @@ describe('TipSplitAuditLog', () => {
       }),
     });
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: selectMock,
-    } as any);
+    vi.mocked(supabase.from).mockReturnValue(
+      toFromReturn({
+        select: selectMock,
+      })
+    );
 
     render(<TipSplitAuditLog splitId="split-123" />, { wrapper });
 
@@ -86,12 +93,12 @@ describe('TipSplitAuditLog', () => {
 
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'tip_split_audit') {
-        return { select: selectMock1 } as any;
+        return toFromReturn({ select: selectMock1 });
       }
       if (table === 'profiles') {
-        return { select: selectMock2 } as any;
+        return toFromReturn({ select: selectMock2 });
       }
-      return {} as any;
+      return toFromReturn({});
     });
 
     render(<TipSplitAuditLog splitId="split-123" />, { wrapper });
@@ -116,9 +123,11 @@ describe('TipSplitAuditLog', () => {
       }),
     });
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: selectMock,
-    } as any);
+    vi.mocked(supabase.from).mockReturnValue(
+      toFromReturn({
+        select: selectMock,
+      })
+    );
 
     render(<TipSplitAuditLog splitId="split-123" />, { wrapper });
 
@@ -134,9 +143,11 @@ describe('TipSplitAuditLog', () => {
       }),
     });
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: selectMock1,
-    } as any);
+    vi.mocked(supabase.from).mockReturnValue(
+      toFromReturn({
+        select: selectMock1,
+      })
+    );
 
     render(<TipSplitAuditLog splitId="split-123" />, { wrapper });
 
@@ -162,24 +173,24 @@ describe('TipSplitAuditLog', () => {
       { id: 'user-1', email: 'manager@example.com' },
     ];
 
-    const selectMock1 = vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: mockAuditData, error: null }),
+    const selectMock1 = vi.fn<[], { eq: ReturnType<typeof vi.fn> }>().mockReturnValue({
+      eq: vi.fn<[], { order: ReturnType<typeof vi.fn> }>().mockReturnValue({
+        order: vi.fn<[], Promise<{ data: typeof mockAuditData; error: null }>>().mockResolvedValue({ data: mockAuditData, error: null }),
       }),
     });
 
-    const selectMock2 = vi.fn().mockReturnValue({
-      in: vi.fn().mockResolvedValue({ data: mockUsers, error: null }),
+    const selectMock2 = vi.fn<[], { in: ReturnType<typeof vi.fn> }>().mockReturnValue({
+      in: vi.fn<[], Promise<{ data: typeof mockUsers; error: null }>>().mockResolvedValue({ data: mockUsers, error: null }),
     });
 
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'tip_split_audit') {
-        return { select: selectMock1 } as any;
+        return toFromReturn({ select: selectMock1 });
       }
       if (table === 'profiles') {
-        return { select: selectMock2 } as any;
+        return toFromReturn({ select: selectMock2 });
       }
-      return {} as any;
+      return toFromReturn({});
     });
 
     render(<TipSplitAuditLog splitId="split-123" />, { wrapper });
@@ -204,24 +215,24 @@ describe('TipSplitAuditLog', () => {
 
     const mockUsers = [{ id: 'user-1', email: 'manager@example.com' }];
 
-    const selectMock1 = vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: mockAuditData, error: null }),
+    const selectMock1 = vi.fn<[], { eq: ReturnType<typeof vi.fn> }>().mockReturnValue({
+      eq: vi.fn<[], { order: ReturnType<typeof vi.fn> }>().mockReturnValue({
+        order: vi.fn<[], Promise<{ data: typeof mockAuditData; error: null }>>().mockResolvedValue({ data: mockAuditData, error: null }),
       }),
     });
 
-    const selectMock2 = vi.fn().mockReturnValue({
-      in: vi.fn().mockResolvedValue({ data: mockUsers, error: null }),
+    const selectMock2 = vi.fn<[], { in: ReturnType<typeof vi.fn> }>().mockReturnValue({
+      in: vi.fn<[], Promise<{ data: typeof mockUsers; error: null }>>().mockResolvedValue({ data: mockUsers, error: null }),
     });
 
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'tip_split_audit') {
-        return { select: selectMock1 } as any;
+        return toFromReturn({ select: selectMock1 });
       }
       if (table === 'profiles') {
-        return { select: selectMock2 } as any;
+        return toFromReturn({ select: selectMock2 });
       }
-      return {} as any;
+      return toFromReturn({});
     });
 
     render(<TipSplitAuditLog splitId="split-123" />, { wrapper });

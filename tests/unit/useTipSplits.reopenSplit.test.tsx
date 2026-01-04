@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { User } from '@supabase/supabase-js';
 import { useTipSplits } from '@/hooks/useTipSplits';
 import { supabase } from '@/integrations/supabase/client';
 import React from 'react';
@@ -42,7 +43,7 @@ describe('useTipSplits - reopenSplit', () => {
   it('should reopen an approved split to draft status', async () => {
     // Mock authenticated user
     vi.mocked(supabase.auth.getUser).mockResolvedValue({
-      data: { user: { id: 'user-123', email: 'test@example.com' } as any },
+      data: { user: { id: 'user-123', email: 'test@example.com' } as User },
       error: null,
     });
 
@@ -53,7 +54,7 @@ describe('useTipSplits - reopenSplit', () => {
 
     vi.mocked(supabase.from).mockReturnValue({
       update: updateMock,
-    } as any);
+    } as ReturnType<typeof supabase.from>);
 
     const { result } = renderHook(() => useTipSplits('restaurant-123'), { wrapper });
 
@@ -92,7 +93,7 @@ describe('useTipSplits - reopenSplit', () => {
 
   it('should handle database update errors', async () => {
     vi.mocked(supabase.auth.getUser).mockResolvedValue({
-      data: { user: { id: 'user-123' } as any },
+      data: { user: { id: 'user-123' } as User },
       error: null,
     });
 
@@ -104,7 +105,7 @@ describe('useTipSplits - reopenSplit', () => {
 
     vi.mocked(supabase.from).mockReturnValue({
       update: updateMock,
-    } as any);
+    } as ReturnType<typeof supabase.from>);
 
     const { result } = renderHook(() => useTipSplits('restaurant-123'), { wrapper });
 
@@ -119,7 +120,7 @@ describe('useTipSplits - reopenSplit', () => {
     const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
     vi.mocked(supabase.auth.getUser).mockResolvedValue({
-      data: { user: { id: 'user-123' } as any },
+      data: { user: { id: 'user-123' } as User },
       error: null,
     });
 
@@ -129,7 +130,7 @@ describe('useTipSplits - reopenSplit', () => {
 
     vi.mocked(supabase.from).mockReturnValue({
       update: updateMock,
-    } as any);
+    } as ReturnType<typeof supabase.from>);
 
     const { result } = renderHook(() => useTipSplits('restaurant-123'), { wrapper });
 
@@ -144,7 +145,7 @@ describe('useTipSplits - reopenSplit', () => {
 
   it('should set isReopening to true during mutation', async () => {
     vi.mocked(supabase.auth.getUser).mockResolvedValue({
-      data: { user: { id: 'user-123' } as any },
+      data: { user: { id: 'user-123' } as User },
       error: null,
     });
 
@@ -154,7 +155,7 @@ describe('useTipSplits - reopenSplit', () => {
 
     vi.mocked(supabase.from).mockReturnValue({
       update: updateMock,
-    } as any);
+    } as ReturnType<typeof supabase.from>);
 
     const { result } = renderHook(() => useTipSplits('restaurant-123'), { wrapper });
 

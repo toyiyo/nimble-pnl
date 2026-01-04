@@ -16929,6 +16929,551 @@
       "notes": [
         "Tests already exist for all modified code. All 11 tests in employeeTips.test.ts pass. Lint passes."
       ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "286",
+        "comment_id": 2659105452,
+        "file": "docs/FEATURE_3_REOPEN_SPLITS_SUMMARY.md",
+        "line": 7
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Date appears inconsistent with PR creation date.**\n\nThe documentation shows \"January 6, 2025\" but the PR was created on January 3, 2026. Verify and correct the date.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn docs/FEATURE_3_REOPEN_SPLITS_SUMMARY.md around line 7, the Date header says\n\"January 6, 2025\" which conflicts with the PR creation date of January 3, 2026;\nupdate the date to the correct value (e.g., \"January 3, 2026\") or to the\nintended accurate date, ensuring the file's Date line matches the PR metadata\nand commit history.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "89f749ddd3d7a783798c392a6067f8db881b355b",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.118Z",
+      "updated_at": "2026-01-04T17:25:43.706Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "Date corrected from Jan 6, 2025 to Jan 3, 2026"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "286",
+        "comment_id": 2659105453,
+        "file": "src/components/tips/TipSplitAuditLog.tsx",
+        "line": 64
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Move database queries to a custom hook.**\n\nThis component directly queries Supabase within the `useQuery` callback (lines 40 and 48-51), which violates the coding guideline: \"No direct database queries in components - use custom hooks that encapsulate React Query calls.\"\n\nRefactor this into a custom hook (e.g., `useTipSplitAuditLog`) that encapsulates the React Query logic and Supabase calls.\n\n\n\n<details>\n<summary>🔎 Suggested refactor pattern</summary>\n\nCreate a new file `src/hooks/useTipSplitAuditLog.ts`:\n\n```typescript\nimport { useQuery } from '@tanstack/react-query';\nimport { supabase } from '@/integrations/supabase/client';\n\ninterface AuditEntry {\n  id: string;\n  tip_split_id: string;\n  action: 'created' | 'approved' | 'reopened' | 'modified' | 'archived' | 'deleted';\n  changed_by: string | null;\n  changed_at: string;\n  changes: Record<string, { old: unknown; new: unknown }> | null;\n  reason: string | null;\n}\n\ninterface User {\n  email: string;\n}\n\ninterface AuditEntryWithUser extends AuditEntry {\n  user?: User;\n}\n\nexport function useTipSplitAuditLog(splitId: string | null) {\n  return useQuery<AuditEntryWithUser[]>({\n    queryKey: ['tip-split-audit', splitId],\n    queryFn: async () => {\n      // @ts-expect-error - tip_split_audit table not yet in generated types\n      const { data, error } = await supabase\n        .from('tip_split_audit')\n        .select('*')\n        .eq('tip_split_id', splitId)\n        .order('changed_at', { ascending: false });\n\n      if (error) throw error;\n\n      const userIds = [...new Set((data as unknown as AuditEntry[])?.map(e => e.changed_by).filter(Boolean))] as string[];\n      \n      if (userIds.length > 0) {\n        const { data: users } = await supabase\n          .from('profiles')\n          .select('id, email')\n          .in('id', userIds);\n\n        return (data as unknown as AuditEntry[])?.map(entry => ({\n          ...entry,\n          user: users?.find(u => u.id === entry.changed_by) as User | undefined,\n        })) || [];\n      }\n\n      return (data as unknown as AuditEntry[]) || [];\n    },\n    enabled: !!splitId,\n    staleTime: 30000,\n  });\n}\n```\n\nThen update the component to use the hook:\n\n```diff\n-import { useQuery } from '@tanstack/react-query';\n-import { supabase } from '@/integrations/supabase/client';\n+import { useTipSplitAuditLog } from '@/hooks/useTipSplitAuditLog';\n \n-export const TipSplitAuditLog = ({ splitId }: TipSplitAuditLogProps) => {\n-  const { data: auditLog, isLoading, error } = useQuery<AuditEntryWithUser[]>({\n-    queryKey: ['tip-split-audit', splitId],\n-    queryFn: async () => {\n-      // ... query logic\n-    },\n-    enabled: !!splitId,\n-    staleTime: 30000,\n-  });\n+export const TipSplitAuditLog = ({ splitId }: TipSplitAuditLogProps) => {\n+  const { data: auditLog, isLoading, error } = useTipSplitAuditLog(splitId);\n```\n</details>\n\nBased on coding guidelines: \"No direct database queries in components - use custom hooks that encapsulate React Query calls\"\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn src/components/tips/TipSplitAuditLog.tsx around lines 36-64, the component\nperforms direct Supabase queries inside the useQuery callback; extract this\nlogic into a new custom hook (e.g., src/hooks/useTipSplitAuditLog.ts) that\nexports useTipSplitAuditLog(splitId: string | null) and encapsulates the\nuseQuery call, Supabase imports, the TS types/interfaces, the @ts-expect-error\ncomment for the tip_split_audit table, queryKey, enabled and staleTime settings,\nand the two-step fetch (audit rows then profiles) returning\nAuditEntryWithUser[]; then replace the inline useQuery in the component with a\ncall to useTipSplitAuditLog(splitId) and import the hook.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "fefa65280557eb88560dd7fb3e955992f3e52502",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.119Z",
+      "updated_at": "2026-01-04T15:49:08.709Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "286",
+        "comment_id": 2659105456,
+        "file": "supabase/migrations/20260103000000_add_tip_split_audit.sql",
+        "line": 14
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Consider `ON DELETE SET NULL` or separate audit retention policy.**\n\n`ON DELETE CASCADE` on `tip_split_id` means audit entries are deleted when the parent split is deleted. This defeats the audit trail purpose—you lose the history of deleted splits.\n\n\n<details>\n<summary>Suggested alternatives</summary>\n\n**Option 1: Use SET NULL to preserve history**\n```diff\n-  tip_split_id UUID NOT NULL REFERENCES tip_splits(id) ON DELETE CASCADE,\n+  tip_split_id UUID REFERENCES tip_splits(id) ON DELETE SET NULL,\n```\n\n**Option 2: Remove FK constraint for audit independence**\n```diff\n-  tip_split_id UUID NOT NULL REFERENCES tip_splits(id) ON DELETE CASCADE,\n+  tip_split_id UUID NOT NULL, -- No FK; audit persists after split deletion\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn supabase/migrations/20260103000000_add_tip_split_audit.sql around lines 6–14,\nthe tip_split_id FK uses ON DELETE CASCADE which removes audit rows when a\ntip_split is deleted; change the schema so audit entries are preserved: make\ntip_split_id nullable and replace ON DELETE CASCADE with ON DELETE SET NULL (or\nremove the FK entirely if you prefer audit independence) and document/implement\na separate retention policy for purging old audit rows as needed.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "b1c345f3744f545cdf35fb011da9a545aaccf88a",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.119Z",
+      "updated_at": "2026-01-04T15:49:08.709Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "286",
+        "comment_id": 2659105458,
+        "file": "supabase/migrations/20260103000000_add_tip_split_audit.sql",
+        "line": 108
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# Check for test files with the migration date pattern\nfind supabase/tests/ -type f -name \"*20260103000000*\" 2>/dev/null\n\n# Also check for any tip_split_audit related test files\nfind supabase/tests/ -type f -name \"*tip_split*\" 2>/dev/null\n\n# Check the overall test directory structure\nls -la supabase/tests/ 2>/dev/null || echo \"supabase/tests/ directory not found\"\n\n# List all .sql files in the tests directory\nfind supabase/tests/ -type f -name \"*.sql\" 2>/dev/null | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2847\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check a recent migration test to see the pgTAP structure\nhead -50 supabase/tests/20251229130000_refactor_complete_production_runs.sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2339\n\n---\n\n\n\n</details>\n\n**Missing pgTAP tests for migration business logic.**\n\nThis migration contains a trigger function `log_tip_split_change()` with significant business logic—handling INSERT, UPDATE, and DELETE operations with conditional audit trail creation. Per coding guidelines, all SQL migrations with business logic must have corresponding pgTAP tests in `supabase/tests/` using the same naming convention. Create `supabase/tests/20260103000000_add_tip_split_audit.sql` with pgTAP tests covering the trigger's INSERT (creation), UPDATE (approval, reopen, amount changes), and DELETE operations.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn supabase/migrations/20260103000000_add_tip_split_audit.sql around lines\n50-108, the trigger function log_tip_split_change() implements business logic\nfor INSERT/UPDATE/DELETE but there are no pgTAP tests; add a new test file\nsupabase/tests/20260103000000_add_tip_split_audit.sql that uses pgTAP to assert\nthe trigger behaviour: setup clean test data, perform INSERT and assert a\n'created' audit row with correct tip_split_id and changed_by; perform UPDATEs to\ncover approval (draft→approved) and assert 'approved' row with changes jsonb,\nreopen (approved→draft) and assert 'reopened' row with reason and changed_by,\nand amount change and assert 'modified' row with changes jsonb; perform DELETE\nand assert 'deleted' audit row; ensure tests verify action, changed_by, and\nchanges/reason contents, and include teardown/cleanup so tests are idempotent\nand follow project naming/location conventions.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "4ebd70480ca2e0bd5fd005324222a3a34adef2dc",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.119Z",
+      "updated_at": "2026-01-04T17:25:58.626Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "Added 15 pgTAP tests covering INSERT, UPDATE (approve/reopen/modify), and DELETE trigger logic"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "286",
+        "comment_id": 2659105460,
+        "file": "supabase/migrations/20260103000000_add_tip_split_audit.sql",
+        "line": 104
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**DELETE audit entry will be lost due to CASCADE.**\n\nThe trigger creates a 'deleted' audit entry, but since `tip_split_id` has `ON DELETE CASCADE`, this entry is immediately deleted when the parent split is removed. This is the same issue flagged above.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn supabase/migrations/20260103000000_add_tip_split_audit.sql around lines\n99–104, the trigger inserts a 'deleted' audit row referencing OLD.id but that\nrow is immediately removed because tip_split_id has ON DELETE CASCADE; change\nthe migration so audit rows survive deletions by making\ntip_split_audit.tip_split_id nullable and altering its foreign key to ON DELETE\nSET NULL (or alternatively add a separate non-FK column like tip_split_legacy_id\nto store the id and drop the FK), then update the trigger/inserts accordingly so\nthe audit row keeps the OLD.id value even after the parent is deleted.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "6366288959d52ae80fb7fe6d2badd8586a8f5b24",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.119Z",
+      "updated_at": "2026-01-04T15:49:08.709Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "286",
+        "comment_id": 2659105461,
+        "file": "tests/e2e/tip-split-reopen.spec.ts",
+        "line": 11
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Avoid hardcoding credentials in test files.**\n\nHardcoded credentials (`manager@test.com`, `password123`) in test files can be a security concern and make tests brittle. Consider using environment variables or a test configuration file.\n\n\n<details>\n<summary>Suggested approach</summary>\n\n```diff\n-    await page.fill('input[type=\"email\"]', 'manager@test.com');\n-    await page.fill('input[type=\"password\"]', 'password123');\n+    await page.fill('input[type=\"email\"]', process.env.TEST_MANAGER_EMAIL ?? 'manager@test.com');\n+    await page.fill('input[type=\"password\"]', process.env.TEST_MANAGER_PASSWORD ?? 'password123');\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n    // Login as manager (assuming manager credentials)\n    await page.fill('input[type=\"email\"]', process.env.TEST_MANAGER_EMAIL ?? 'manager@test.com');\n    await page.fill('input[type=\"password\"]', process.env.TEST_MANAGER_PASSWORD ?? 'password123');\n    await page.click('button[type=\"submit\"]');\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn tests/e2e/tip-split-reopen.spec.ts around lines 8-11, the test hardcodes\ncredentials (manager@test.com / password123); replace them with\nenvironment-driven or config-driven values (e.g. read from process.env or a\ncentralized test config/fixture) and update the test to use those variables\ninstead of literals; ensure default values are only used for local dev and not\ncommitted secrets, and add/update CI/secret store entries so the real\ncredentials are provided during automated runs.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "0566ea5e92803adcace3c8eba1df00d9f6416f01",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.119Z",
+      "updated_at": "2026-01-04T16:00:34.881Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "npm test passed; lint failing due to existing project issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "286",
+        "comment_id": 2659105463,
+        "file": "tests/e2e/tip-split-reopen.spec.ts",
+        "line": 138
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Test doesn't complete its stated purpose.**\n\nThe test \"should show reopen action in audit log after reopening\" acknowledges that View Details isn't available on drafts but doesn't verify the audit entry. Consider refactoring to check the audit log via API or add a `data-testid` for draft audit viewing.\n\n\n\n\nWould you like me to suggest an alternative approach to verify the audit entry exists after reopening?\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "4a5d14a65085a630e4710f6d62e2ad7bbedc47af",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.119Z",
+      "updated_at": "2026-01-04T16:00:41.456Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "npm test passed; lint failing due to existing project issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "286",
+        "comment_id": 2659105464,
+        "file": "tests/e2e/tip-split-reopen.spec.ts",
+        "line": 145
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Incorrect usage of `test.skip()` inside test body.**\n\nCalling `test.skip()` inside the test body doesn't work as intended—the test has already started executing. Use the annotation form instead.\n\n\n<details>\n<summary>Correct usage</summary>\n\n```diff\n-  test('should prevent non-managers from reopening splits (RLS)', async ({ page }) => {\n-    // This would require logging in as non-manager\n-    // Skipping for now - RLS enforced at database level\n-    test.skip();\n-  });\n+  test.skip('should prevent non-managers from reopening splits (RLS)', async ({ page }) => {\n+    // TODO: Implement with non-manager login - RLS enforced at database level\n+  });\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  test.skip('should prevent non-managers from reopening splits (RLS)', async ({ page }) => {\n    // TODO: Implement with non-manager login - RLS enforced at database level\n  });\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn tests/e2e/tip-split-reopen.spec.ts around lines 141-145, replace the current\nruntime call to test.skip() inside the test body with the annotation/top-level\nskip form: remove the inner test.skip() call and declare the test as skipped at\ndefinition time (e.g., use test.skip('should prevent non-managers from reopening\nsplits (RLS)', async () => { /* optional comments or no-op */ });), so the test\nis marked skipped before execution and the original comment about why it's\nskipped can be preserved inside the new body or as the skip reason.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "ec516a1c1f89d3d4f15062e3e2e682ba6a86a463",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.119Z",
+      "updated_at": "2026-01-04T16:00:46.044Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "npm test passed; lint failing due to existing project issues"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 40
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "c6802090a65c290c88059288aaaef1dd1bf1ee28",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T16:00:52.080Z",
+      "notes": [
+        "npm test passed; lint failing due to existing project issues"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 89
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "285341fabb6a23506052865ee817658e930f8103",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T16:00:58.267Z",
+      "notes": [
+        "npm test passed; lint failing due to existing project issues"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 92
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "645ae78c402d9efded1508cd8320efcf6638ba7e",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T17:32:49.306Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 94
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "a203d42dd84033efb76cc0c09bf70506bfc1afb3",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T17:32:52.525Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 121
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "5f5513bc44d70139e2e0ffb79dff57a47fec6c4b",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T17:32:57.309Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 139
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "e91706db234da4e413f9c63cca5748c1b41d0aad",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T17:33:00.958Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 177
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "069debd1315bb57fd6468f0fb8cf7358c067a606",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T17:33:04.805Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 180
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "a695750222500623465c09ceff5b016ee4973b89",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T17:26:45.840Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 182
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "86076ac86c501a24b36e37ed3fbc8988791b82a3",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T17:26:45.840Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 219
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "7301eb5f2d524ed1ad63bb7a3a90f5c7b420959e",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T17:26:45.840Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 222
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "36826daa9238bbe7c0be58b3651e5c595efb5424",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T17:26:45.840Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx",
+        "line": 224
+      },
+      "title": "@typescript-eslint/no-explicit-any in TipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/TipSplitAuditLog.test.tsx"
+      ],
+      "id": "418a3839e669e370efb7631e7fbd04de0aa80949",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.139Z",
+      "updated_at": "2026-01-04T17:26:45.840Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx",
+        "line": 45
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplits.reopenSplit.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx"
+      ],
+      "id": "b436acdf5a2f39bb09b5faf32e83825476ae9b9b",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.140Z",
+      "updated_at": "2026-01-04T17:37:58.018Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx",
+        "line": 56
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplits.reopenSplit.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx"
+      ],
+      "id": "7428de58ee39722b020ec198b7c3efdee29dd801",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.140Z",
+      "updated_at": "2026-01-04T17:37:58.018Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx",
+        "line": 95
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplits.reopenSplit.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx"
+      ],
+      "id": "940fc3b8fa32827d8dc7a28be0a697eccdd7f2f8",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.140Z",
+      "updated_at": "2026-01-04T17:37:58.018Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx",
+        "line": 107
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplits.reopenSplit.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx"
+      ],
+      "id": "a36a9484d815a09d6122ef03dbda88bfcf0f2f01",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.140Z",
+      "updated_at": "2026-01-04T17:37:58.018Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx",
+        "line": 122
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplits.reopenSplit.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx"
+      ],
+      "id": "e13816e12f9eec4ebadfab8298b017e887e49cb0",
+      "status": "in_progress",
+      "created_at": "2026-01-04T15:48:06.140Z",
+      "updated_at": "2026-01-04T17:37:58.018Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx",
+        "line": 132
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplits.reopenSplit.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx"
+      ],
+      "id": "bc56e4afc885e58acddf44cbd507c8f2ff0d3b27",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.140Z",
+      "updated_at": "2026-01-04T17:45:10.550Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx",
+        "line": 147
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplits.reopenSplit.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx"
+      ],
+      "id": "9695837655cf8a7caf3d08817bdca52a30c20821",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.140Z",
+      "updated_at": "2026-01-04T17:45:07.000Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx",
+        "line": 157
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplits.reopenSplit.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplits.reopenSplit.test.tsx"
+      ],
+      "id": "0844f1000b80a50470219821a570da31154026e8",
+      "status": "fixed",
+      "created_at": "2026-01-04T15:48:06.140Z",
+      "updated_at": "2026-01-04T17:45:04.195Z",
+      "notes": [
+        "tests pass"
+      ]
     }
   ]
 }

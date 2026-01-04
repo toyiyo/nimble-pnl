@@ -9,6 +9,7 @@ import React, { type ReactNode } from 'react';
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: vi.fn(),
+    rpc: vi.fn(),
   },
 }));
 
@@ -53,8 +54,8 @@ describe('useTipSplitAuditLog', () => {
     ];
 
     const mockUsers = [
-      { id: 'user-1', email: 'creator@example.com' },
-      { id: 'user-2', email: 'approver@example.com' },
+      { id: 'user-1', email: 'creator@example.com', full_name: 'Creator User' },
+      { id: 'user-2', email: 'approver@example.com', full_name: 'Approver User' },
     ];
 
     // Mock the tip_split_audit query
@@ -65,6 +66,9 @@ describe('useTipSplitAuditLog', () => {
     // Mock the profiles query
     const mockProfilesSelect = vi.fn().mockReturnThis();
     const mockIn = vi.fn().mockResolvedValue({ data: mockUsers, error: null });
+
+    // Mock the RPC call for auth.users fallback
+    const mockRpc = vi.fn().mockResolvedValue({ data: null, error: null });
 
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'tip_split_audit') {
@@ -83,10 +87,13 @@ describe('useTipSplitAuditLog', () => {
       return {} as any;
     });
 
+    vi.mocked(supabase.rpc).mockImplementation(mockRpc);
+
     mockSelect.mockReturnValue({ eq: mockEq });
     mockEq.mockReturnValue({ order: mockOrder });
     mockProfilesSelect.mockReturnValue({ in: mockIn });
-
+    // Mock RPC for auth.users fallback
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
     const { result } = renderHook(() => useTipSplitAuditLog('split-123'), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -252,6 +259,9 @@ describe('useTipSplitAuditLog', () => {
     mockEq.mockReturnValue({ order: mockOrder });
     mockProfilesSelect.mockReturnValue({ in: mockIn });
 
+    // Mock RPC for auth.users fallback
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
+
     const { result } = renderHook(() => useTipSplitAuditLog('split-123'), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -327,6 +337,9 @@ describe('useTipSplitAuditLog', () => {
     mockSelect.mockReturnValue({ eq: mockEq });
     mockEq.mockReturnValue({ order: mockOrder });
     mockProfilesSelect.mockReturnValue({ in: mockIn });
+
+    // Mock RPC for auth.users fallback
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
 
     const { result } = renderHook(() => useTipSplitAuditLog('split-123'), { wrapper });
 
@@ -410,6 +423,9 @@ describe('useTipSplitAuditLog', () => {
     mockEq.mockReturnValue({ order: mockOrder });
     mockProfilesSelect.mockReturnValue({ in: mockIn });
 
+    // Mock RPC for auth.users fallback
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
+
     const { result } = renderHook(() => useTipSplitAuditLog('split-123'), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -461,6 +477,9 @@ describe('useTipSplitAuditLog', () => {
     mockSelect.mockReturnValue({ eq: mockEq });
     mockEq.mockReturnValue({ order: mockOrder });
     mockProfilesSelect.mockReturnValue({ in: mockIn });
+
+    // Mock RPC for auth.users fallback (also returns null)
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
 
     const { result } = renderHook(() => useTipSplitAuditLog('split-123'), { wrapper });
 
@@ -564,6 +583,9 @@ describe('useTipSplitAuditLog', () => {
     mockSelect.mockReturnValue({ eq: mockEq });
     mockEq.mockReturnValue({ order: mockOrder });
     mockProfilesSelect.mockReturnValue({ in: mockIn });
+
+    // Mock RPC for auth.users fallback
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
 
     const { result } = renderHook(() => useTipSplitAuditLog('split-123'), { wrapper });
 

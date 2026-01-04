@@ -9,6 +9,7 @@ import React from 'react';
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: vi.fn(),
+    rpc: vi.fn(),
   },
 }));
 
@@ -100,6 +101,9 @@ describe('TipSplitAuditLog', () => {
       }
       return toFromReturn({});
     });
+
+    // Mock RPC for auth.users fallback
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
 
     render(<TipSplitAuditLog splitId="split-123" />, { wrapper });
 
@@ -193,6 +197,9 @@ describe('TipSplitAuditLog', () => {
       return toFromReturn({});
     });
 
+    // Mock RPC for auth.users fallback
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
+
     render(<TipSplitAuditLog splitId="split-123" />, { wrapper });
 
     await waitFor(() => {
@@ -234,6 +241,9 @@ describe('TipSplitAuditLog', () => {
       }
       return toFromReturn({});
     });
+
+    // Mock RPC for auth.users fallback
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
 
     render(<TipSplitAuditLog splitId="split-123" />, { wrapper });
 

@@ -818,6 +818,354 @@ await supabase.from('products').delete().eq('id', productId);
 
 ---
 
+## 🧪 Testing Patterns (MUST FOLLOW)
+
+> All test patterns are defined here. Follow these exactly to avoid import errors and test failures.
+
+### E2E Tests (Playwright)
+
+**Location**: `tests/e2e/*.spec.ts`  
+**Runner**: `npm run test:e2e` or `npm run test:e2e -- <file>`  
+**Framework**: Playwright with `@playwright/test`
+
+#### Standard E2E Test Pattern
+```typescript
+import { test, expect, Page } from '@playwright/test';
+import { format } from 'date-fns'; // Use for date formatting
+import { exposeSupabaseHelpers } from '../helpers/e2e-supabase';
+
+// Generate unique test user to avoid conflicts
+const generateTestUser = () => {
+  const ts = Date.now();
+  const random = Math.random().toString(36).slice(2, 6);
+  return {
+    email: `feature-name-${ts}-${random}@test.com`,
+    password: 'TestPassword123!',
+    fullName: `Feature Test User ${ts}`,
+    restaurantName: `Feature Test Restaurant ${ts}`,
+  };
+};
+
+// Standard signup and restaurant creation
+async function signUpAndCreateRestaurant(page: Page, user: ReturnType<typeof generateTestUser>) {
+  await page.goto('/auth');
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await page.reload();
+  await page.waitForURL(/\/auth/);
+
+  const signupTab = page.getByRole('tab', { name: /sign up/i });
+  if (await signupTab.isVisible().catch(() => false)) {
+    await signupTab.click();
+  }
+
+  await expect(page.getByLabel(/full name/i)).toBeVisible({ timeout: 10000 });
+  await page.getByLabel(/email/i).first().fill(user.email);
+  await page.getByLabel(/full name/i).fill(user.fullName);
+  await page.getByLabel(/password/i).first().fill(user.password);
+  await page.getByRole('button', { name: /sign up|create account/i }).click();
+  await page.waitForURL('/', { timeout: 15000 });
+
+  const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
+  await expect(addRestaurantButton).toBeVisible({ timeout: 10000 });
+  await addRestaurantButton.click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel(/restaurant name/i).fill(user.restaurantName);
+  await dialog.getByLabel(/address/i).fill('123 Main St');
+  await dialog.getByLabel(/phone/i).fill('555-123-4567');
+  await dialog.getByRole('button', { name: /create|add|save/i }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 5000 });
+}
+
+// Create employees using Supabase helpers
+async function createEmployees(page: Page, employees: Array<{name: string, email: string, position: string}>) {
+  await exposeSupabaseHelpers(page);
+  
+  return await page.evaluate(async ({ empData }) => {
+    const user = await (window as any).__getAuthUser();
+    if (!user?.id) throw new Error('No user session');
+
+    const restaurantId = await (window as any).__getRestaurantId(user.id);
+    if (!restaurantId) throw new Error('No restaurant');
+
+    const rows = empData.map((emp: any) => ({
+      name: emp.name,
+      email: emp.email,
+      position: emp.position,
+      status: 'active',
+      compensation_type: 'hourly',
+      hourly_rate: 1500,
+      is_active: true,
+      tip_eligible: true,
+    }));
+
+    const inserted = await (window as any).__insertEmployees(rows, restaurantId);
+    return inserted;
+  }, { empData: employees });
+}
+
+test.describe('Feature Name', () => {
+  test('should do something', async ({ page }) => {
+    const user = generateTestUser();
+    await signUpAndCreateRestaurant(page, user);
+    
+    const employees = await createEmployees(page, [
+      { name: 'Test Employee', email: 'test@test.com', position: 'Server' },
+    ]);
+
+    // Test logic here
+    await page.goto('/some-page');
+    await expect(page.getByRole('heading')).toBeVisible();
+  });
+});
+```
+
+#### E2E Best Practices
+- ✅ **ALWAYS** use `generateTestUser()` for unique test data
+- ✅ **ALWAYS** import from `'../helpers/e2e-supabase'` (relative path with `..`)
+- ✅ **ALWAYS** use `page.getByRole()`, `page.getByLabel()` (accessible selectors)
+- ✅ **ALWAYS** clear localStorage/sessionStorage before auth tests
+- ✅ **ALWAYS** use regex patterns for flexible text matching: `/sign up|create account/i`
+- ✅ **ALWAYS** set reasonable timeouts: `{ timeout: 10000 }`
+- ❌ **NEVER** import from `'./helpers'` or `'@/`' in E2E tests (causes module errors)
+- ❌ **NEVER** hardcode test data that could conflict with other tests
+- ❌ **NEVER** use `data-testid` unless absolutely necessary (prefer semantic selectors)
+
+---
+
+### Unit Tests (Vitest)
+
+**Location**: `tests/unit/*.test.ts` or `tests/unit/*.test.tsx`  
+**Runner**: `npm run test` (watch mode) or `npm run test -- --run` (single run)  
+**Framework**: Vitest with `jsdom` environment
+
+#### Standard Unit Test Pattern
+```typescript
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { functionToTest, type TypeToUse } from '@/path/to/module';
+
+describe('Module Name - Feature Description', () => {
+  // Setup before each test
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('functionToTest', () => {
+    it('should handle normal case', () => {
+      const result = functionToTest(input);
+      expect(result).toBe(expectedOutput);
+    });
+
+    it('should handle edge case: empty input', () => {
+      const result = functionToTest([]);
+      expect(result).toEqual(expectedEmptyResult);
+    });
+
+    it('should handle edge case: null values', () => {
+      const result = functionToTest(null);
+      expect(result).toBe(null);
+    });
+
+    it('CRITICAL: should prevent specific bug', () => {
+      // Document critical business logic with CRITICAL prefix
+      const result = functionToTest(criticalInput);
+      expect(result).not.toBe(buggyOutput);
+      expect(result).toBe(correctOutput);
+    });
+  });
+});
+```
+
+#### Testing React Hooks Pattern
+```typescript
+import { renderHook, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useCustomHook } from '@/hooks/useCustomHook';
+
+describe('useCustomHook', () => {
+  const createWrapper = () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    return ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
+    );
+  };
+
+  it('should fetch data correctly', async () => {
+    const { result } = renderHook(() => useCustomHook('test-id'), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.data).toBeDefined();
+  });
+});
+```
+
+#### Unit Test Best Practices
+- ✅ **ALWAYS** use path alias `@/` for src imports
+- ✅ **ALWAYS** test edge cases: empty, null, undefined, zero, negative
+- ✅ **ALWAYS** use descriptive test names: "should [expected behavior] when [condition]"
+- ✅ **ALWAYS** prefix critical business logic tests with "CRITICAL:"
+- ✅ **ALWAYS** mock external dependencies (Supabase, API calls)
+- ✅ **ALWAYS** clear mocks in `beforeEach`
+- ❌ **NEVER** test implementation details - test behavior
+- ❌ **NEVER** write tests that depend on execution order
+- ❌ **NEVER** use `any` type in test data - use proper types
+
+---
+
+### Database Tests (pgTAP)
+
+**Location**: `supabase/tests/*.sql`  
+**Runner**: `cd supabase/tests && ./run_tests.sh`  
+**Framework**: pgTAP (PostgreSQL testing framework)
+
+#### Standard Database Test Pattern
+```sql
+-- File: supabase/tests/05_feature_name.sql
+-- Description: Tests for feature_name function/trigger/migration
+
+BEGIN;
+SELECT plan(10); -- Number of tests in file
+
+-- Setup: Disable RLS and create test data
+SET LOCAL role TO postgres;
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000000"}';
+
+ALTER TABLE table_name DISABLE ROW LEVEL SECURITY;
+
+-- Create test data
+INSERT INTO restaurants (id, name) VALUES
+  ('test-id-1', 'Test Restaurant')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO products (id, restaurant_id, name, current_stock) VALUES
+  ('prod-1', 'test-id-1', 'Test Product', 10)
+ON CONFLICT (id) DO UPDATE SET current_stock = 10;
+
+-- ============================================================
+-- TEST CATEGORY 1: Normal Operations
+-- ============================================================
+
+-- Test 1: Function succeeds with valid input
+SELECT lives_ok(
+  $$SELECT my_function('test-id-1', 'param')$$,
+  'Function should succeed with valid input'
+);
+
+-- Test 2: Function returns expected result
+SELECT is(
+  (SELECT my_function('test-id-1', 'param')),
+  'expected_result',
+  'Function should return expected result'
+);
+
+-- Test 3: Database state updated correctly
+SELECT is(
+  (SELECT current_stock FROM products WHERE id = 'prod-1'),
+  9.0::numeric,
+  'Stock should be decremented: 10 - 1 = 9'
+);
+
+-- ============================================================
+-- TEST CATEGORY 2: Edge Cases
+-- ============================================================
+
+-- Test 4: Function handles null input
+SELECT throws_ok(
+  $$SELECT my_function(NULL, 'param')$$,
+  'Function should reject NULL restaurant_id'
+);
+
+-- Test 5: Function handles zero values
+SELECT is(
+  (SELECT my_function('test-id-1', 0)),
+  0,
+  'Function should handle zero input'
+);
+
+-- ============================================================
+-- Cleanup
+-- ============================================================
+SELECT * FROM finish();
+ROLLBACK;
+```
+
+#### Database Test Best Practices
+- ✅ **ALWAYS** use `BEGIN;` at start and `ROLLBACK;` at end (isolate tests)
+- ✅ **ALWAYS** call `SELECT plan(N);` with exact test count
+- ✅ **ALWAYS** end with `SELECT * FROM finish();`
+- ✅ **ALWAYS** disable RLS for test tables
+- ✅ **ALWAYS** use `ON CONFLICT ... DO UPDATE` for idempotent inserts
+- ✅ **ALWAYS** cast numeric comparisons: `9.0::numeric`
+- ✅ **ALWAYS** group related tests with comment headers
+- ✅ **ALWAYS** test both success and failure cases
+- ✅ Use `lives_ok()` for "should not throw"
+- ✅ Use `throws_ok()` for "should throw error"
+- ✅ Use `is()` for exact equality
+- ✅ Use `ok()` for boolean conditions
+- ❌ **NEVER** leave database in dirty state (always ROLLBACK)
+- ❌ **NEVER** assume data from previous tests exists
+
+#### Running Database Tests
+```bash
+# Run all tests
+cd supabase/tests && ./run_tests.sh
+
+# Run specific test file
+cd supabase/tests && ./run_tests.sh 05_feature_name.sql
+
+# View detailed output
+cd supabase/tests && ./run_tests.sh --verbose
+```
+
+---
+
+### Test Coverage Requirements
+
+| Code Type | Required Coverage | Test Type |
+|-----------|------------------|-----------|
+| Utility functions (`src/lib/`, `src/utils/`) | 85%+ | Unit tests |
+| Custom hooks (`src/hooks/`) | 80%+ | Unit tests |
+| Business logic | 90%+ | Unit + Integration |
+| SQL functions | 100% | Database tests |
+| Critical features (payments, inventory) | 95%+ | All types |
+| UI components | Optional | Visual/snapshot |
+
+### Running All Tests
+```bash
+# TypeScript unit tests (watch mode)
+npm run test
+
+# TypeScript unit tests (single run)
+npm run test -- --run
+
+# Unit tests with coverage
+npm run test:coverage
+
+# E2E tests (all)
+npm run test:e2e
+
+# E2E tests (specific file)
+npm run test:e2e -- tests/e2e/feature.spec.ts
+
+# Database tests (requires Supabase running)
+cd supabase/tests && ./run_tests.sh
+
+# Full CI test suite
+npm run test -- --run && npm run test:e2e && cd supabase/tests && ./run_tests.sh
+```
+
+---
+
 ## 📚 Integration Documentation
 
 For detailed integration patterns and best practices, see:

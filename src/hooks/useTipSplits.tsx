@@ -218,6 +218,15 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
   // Delete a draft split
   const { mutate: deleteTipSplit, mutateAsync: deleteTipSplitAsync, isPending: isDeleting } = useMutation({
     mutationFn: async (splitId: string) => {
+      // First delete tip_split_items to avoid FK constraint issues with audit
+      const { error: itemsError } = await supabase
+        .from('tip_split_items')
+        .delete()
+        .eq('tip_split_id', splitId);
+
+      if (itemsError) throw itemsError;
+
+      // Then delete the split (audit trigger will log with tip_split_id = NULL)
       const { error } = await supabase
         .from('tip_splits')
         .delete()
@@ -241,6 +250,42 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
     },
   });
 
+  // Reopen approved split for editing
+  const { mutate: reopenSplit, isPending: isReopening } = useMutation({
+    mutationFn: async (splitId: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Update split status to draft (audit trigger will log)
+      const { error: updateError } = await supabase
+        .from('tip_splits')
+        .update({ 
+          status: 'draft',
+          approved_by: null,
+          approved_at: null 
+        })
+        .eq('id', splitId);
+
+      if (updateError) throw updateError;
+
+      return splitId;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tip-splits', restaurantId] });
+      toast({
+        title: 'Split reopened',
+        description: 'Tip split is now editable. Changes will be logged in audit trail.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error reopening split',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
   return {
     splits,
     isLoading,
@@ -251,5 +296,7 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
     deleteTipSplit,
     deleteTipSplitAsync,
     isDeleting,
+    reopenSplit,
+    isReopening,
   };
 }

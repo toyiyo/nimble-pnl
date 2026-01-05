@@ -24,6 +24,7 @@ import { EmployeeDeclaredTips } from '@/components/tips/EmployeeDeclaredTips';
 import { DisputeManager } from '@/components/tips/DisputeManager';
 import { RecentTipSplits } from '@/components/tips/RecentTipSplits';
 import { TipHistoricalEntry } from '@/components/tips/TipHistoricalEntry';
+import { TipDraftsList } from '@/components/tips/TipDraftsList';
 import { calculateWorkedHours } from '@/utils/payrollCalculations';
 import { Info, Settings, RefreshCw, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -50,8 +51,10 @@ export const Tips = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
 
   const today = format(selectedDate, 'yyyy-MM-dd');
-  const todayStart = new Date(today + 'T00:00:00');
-  const todayEnd = new Date(today + 'T23:59:59');
+  // Force UTC interpretation to avoid timezone confusion
+  // Without 'Z', new Date('2026-01-03T00:00:00') is treated as local time
+  const todayStart = new Date(today + 'T00:00:00Z');
+  const todayEnd = new Date(today + 'T23:59:59.999Z');
   
   const { punches } = useTimePunches(restaurantId, undefined, todayStart, todayEnd);
   const { saveTipSplit, isSaving, splits } = useTipSplits(restaurantId, today, today);
@@ -63,6 +66,7 @@ export const Tips = () => {
   const [splitCadence, setSplitCadence] = useState<SplitCadence>(settings?.split_cadence || 'daily');
   const [tipAmount, setTipAmount] = useState<number | null>(null);
   const [hoursByEmployee, setHoursByEmployee] = useState<Record<string, string>>({});
+  const [isResumingDraft, setIsResumingDraft] = useState(false);
   const [autoCalculatedHours, setAutoCalculatedHours] = useState<Record<string, boolean>>({}); // Track which hours are auto-calculated
   const [roleWeights, setRoleWeights] = useState<Record<string, number>>(settings?.role_weights || defaultWeights);
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
@@ -122,6 +126,11 @@ export const Tips = () => {
       setSelectedEmployees(new Set(eligibleEmployees.map(e => e.id)));
     }
     
+    // Skip recalculation if resuming a draft - preserve saved hours
+    if (isResumingDraft) {
+      return;
+    }
+    
     // Calculate actual hours from time punches
     const hoursFromPunches: Record<string, string> = {};
     eligibleEmployees.forEach(emp => {
@@ -150,7 +159,7 @@ export const Tips = () => {
     });
     
     setHoursByEmployee(hoursFromPunches);
-  }, [eligibleEmployees, settings, punches]);
+  }, [eligibleEmployees, settings, punches, isResumingDraft]);
 
   // Helper functions for display text
   const getShareMethodLabel = (method: ShareMethod): string => {
@@ -236,7 +245,8 @@ export const Tips = () => {
     // For drafts: populate form for editing
     // For approved: populate form in read-only preview (can view but not re-approve)
     setTipAmount(split.total_amount);
-    setSelectedDate(new Date(split.split_date));
+    // Parse date as local noon to avoid timezone shifting the day
+    setSelectedDate(new Date(split.split_date + 'T12:00:00'));
     setShareMethod(split.share_method || 'hours');
     
     // Populate hours from items
@@ -246,6 +256,9 @@ export const Tips = () => {
         hours[item.employee_id] = item.hours_worked.toString();
       }
     });
+    
+    // Set flag to prevent hours recalculation from overwriting saved hours
+    setIsResumingDraft(true);
     setHoursByEmployee(hours);
     
     setShowReview(true);
@@ -269,6 +282,7 @@ export const Tips = () => {
         });
         setTipAmount(null);
         setShowReview(false);
+        setIsResumingDraft(false);
       },
       onError: (error) => {
         console.error('Error approving tips:', error);
@@ -298,6 +312,7 @@ export const Tips = () => {
           description: 'You can review and approve this later.',
         });
         setShowReview(false);
+        setIsResumingDraft(false);
       },
       onError: (error) => {
         console.error('Error saving draft:', error);
@@ -518,6 +533,14 @@ export const Tips = () => {
             currentDate={selectedDate} 
             onDateSelected={setSelectedDate} 
           />
+
+          {/* Saved drafts section */}
+          {restaurantId && (
+            <TipDraftsList
+              restaurantId={restaurantId}
+              onResumeDraft={handleResumeDraft}
+            />
+          )}
 
           {/* Employee-declared tips section */}
           {restaurantId && (

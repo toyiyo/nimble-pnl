@@ -10,6 +10,11 @@ import {
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import type { Employee } from '@/types/scheduling';
+import {
+  computeTipTotalsWithFiltering,
+  type TipSplitItem as TipSplitItemForAggregation,
+  type EmployeeTip as EmployeeTipForAggregation,
+} from '@/utils/tipAggregation';
 
 interface EmployeeTip {
   employee_id: string;
@@ -148,11 +153,11 @@ export const usePayroll = (
 
       const splitIds = (approvedSplits || []).map(s => s.id);
       
-      // Then fetch the tip split items for those splits
+      // Then fetch the tip split items for those splits, including split_date from tip_splits
       const { data: tips, error: tipsError } = splitIds.length > 0
         ? await supabase
             .from('tip_split_items')
-            .select('employee_id, amount, tip_split_id')
+            .select('employee_id, amount, tip_split_id, tip_splits(split_date)')
             .in('tip_split_id', splitIds)
         : { data: [], error: null };
 
@@ -185,21 +190,47 @@ export const usePayroll = (
         punchesPerEmployee.get(punch.employee_id)?.push(typedPunch);
       });
 
-      // Include tips from tip_split_items and legacy/other tip entries in employee_tips for the period
+      // Include tips from tip_split_items and employee_tips for the period
+      // We'll use the new utility to prevent double-counting
       const { data: employeeTips, error: employeeTipsError } = await supabase
         .from('employee_tips')
-        .select('employee_id, tip_amount, recorded_at')
+        .select('employee_id, tip_amount, tip_date')
         .eq('restaurant_id', restaurantId)
-        .gte('recorded_at', startDate.toISOString())
-        .lte('recorded_at', endDate.toISOString());
+        .gte('tip_date', format(startDate, 'yyyy-MM-dd'))
+        .lte('tip_date', format(endDate, 'yyyy-MM-dd'));
 
       if (employeeTipsError) throw employeeTipsError;
 
-      const tipsPerEmployee = computeTipTotals(
-        (tips || []) as Array<{ employee_id: string; amount: number; tip_split_id?: string }>,
-        (employeeTips || []) as Array<{ employee_id: string; tip_amount: number }>,
-        (approvedSplits || []) as Array<{ id: string; total_amount: number }>,
-        employees
+      // Transform the data to match the utility's expected types
+      interface DBTipSplitItem {
+        employee_id: string;
+        amount: number;
+        tip_splits?: { split_date: string } | null;
+      }
+
+      interface DBEmployeeTip {
+        employee_id: string;
+        tip_amount: number;
+        tip_date: string;
+      }
+
+      const tipItems: TipSplitItemForAggregation[] = (tips || []).map((item: DBTipSplitItem) => ({
+        employee_id: item.employee_id,
+        amount: item.amount,
+        split_date: item.tip_splits?.split_date,
+      }));
+
+      const employeeTipItems: EmployeeTipForAggregation[] = (employeeTips || []).map((tip: DBEmployeeTip) => ({
+        employee_id: tip.employee_id,
+        amount: tip.tip_amount,
+        tip_date: tip.tip_date,
+      }));
+
+      // Use the new utility with date filtering to prevent double-counting
+      const tipsPerEmployee = computeTipTotalsWithFiltering(
+        tipItems,
+        employeeTipItems,
+        undefined // No POS fallback for now
       );
 
       // Group manual payments by employee

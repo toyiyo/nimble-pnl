@@ -12,6 +12,7 @@ export interface EmployeeTip {
   tip_amount: number; // In cents
   tip_source: TipSource;
   recorded_at: string;
+  tip_date: string; // YYYY-MM-DD format for date-based filtering
   notes?: string;
   created_at: string;
   updated_at: string;
@@ -70,6 +71,7 @@ export function useEmployeeTips(restaurantId: string | null, employeeId?: string
   const { mutateAsync: submitTip, isPending: isSubmitting } = useMutation({
     mutationFn: async (input: CreateEmployeeTipInput) => {
       const { data: user } = await supabase.auth.getUser();
+      const now = new Date();
       
       const { data, error } = await supabase
         .from('employee_tips')
@@ -80,7 +82,8 @@ export function useEmployeeTips(restaurantId: string | null, employeeId?: string
           tip_source: input.tip_source,
           notes: input.notes,
           shift_id: input.shift_id,
-          recorded_at: new Date().toISOString(),
+          recorded_at: now.toISOString(),
+          tip_date: now.toISOString().split('T')[0], // YYYY-MM-DD format
           created_by: user.user?.id,
         })
         .select()

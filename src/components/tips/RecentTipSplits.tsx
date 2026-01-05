@@ -2,9 +2,18 @@ import { format, subDays } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { History, Edit, CheckCircle, FileText, Calendar, DollarSign } from 'lucide-react';
+import { History, Edit, CheckCircle, FileText, Calendar, DollarSign, RotateCcw } from 'lucide-react';
 import { formatCurrencyFromCents } from '@/utils/tipPooling';
 import { useTipSplits } from '@/hooks/useTipSplits';
+import { useState } from 'react';
+import { TipSplitAuditLog } from './TipSplitAuditLog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface RecentTipSplitsProps {
   restaurantId: string;
@@ -17,10 +26,17 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
   const startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
   const endDate = format(new Date(), 'yyyy-MM-dd');
   
-  const { splits, isLoading } = useTipSplits(restaurantId, startDate, endDate);
+  const { splits, isLoading, reopenSplit, isReopening } = useTipSplits(restaurantId, startDate, endDate);
 
   // Show all splits including today's entries
   const recentSplits = splits || [];
+
+  // State for audit log dialog
+  const [selectedSplitId, setSelectedSplitId] = useState<string | null>(null);
+
+  const handleReopenSplit = (splitId: string) => {
+    reopenSplit(splitId);
+  };
 
   if (isLoading) {
     return (
@@ -86,7 +102,7 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
                     )}
                     <span className="text-sm text-muted-foreground flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
-                      {format(new Date(split.split_date), 'MMM d, yyyy')}
+                      {format(new Date(split.split_date + 'T12:00:00'), 'MMM d, yyyy')}
                     </span>
                   </div>
 
@@ -118,13 +134,26 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
                     </Button>
                   )}
                   {isApproved && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onEditSplit(split.id)}
-                    >
-                      View Details
-                    </Button>
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleReopenSplit(split.id)}
+                        disabled={isReopening}
+                        aria-label="Reopen split for editing"
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        Reopen
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedSplitId(split.id)}
+                        aria-label="View audit trail"
+                      >
+                        View Details
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -132,6 +161,19 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
           })}
         </div>
       </CardContent>
+
+      {/* Audit Log Dialog */}
+      <Dialog open={!!selectedSplitId} onOpenChange={() => setSelectedSplitId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tip Split Details</DialogTitle>
+            <DialogDescription>
+              View the complete history of changes for this tip split
+            </DialogDescription>
+          </DialogHeader>
+          {selectedSplitId && <TipSplitAuditLog splitId={selectedSplitId} />}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };

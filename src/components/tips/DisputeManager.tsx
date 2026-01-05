@@ -107,7 +107,7 @@ function DisputeCard({
                 </Badge>
                 {dispute.tip_split && (
                   <span>
-                    • {format(new Date(dispute.tip_split.split_date), 'MMM d')}
+                    • {format(new Date(dispute.tip_split.split_date + 'T12:00:00'), 'MMM d')}
                   </span>
                 )}
               </div>
@@ -138,7 +138,7 @@ function DisputeCard({
             <div className="space-y-2">
               <p className="text-sm font-medium">Date:</p>
               <p className="text-sm text-muted-foreground">
-                {format(new Date(dispute.tip_split.split_date), 'EEEE, MMMM d, yyyy')}
+                {format(new Date(dispute.tip_split.split_date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
               </p>
             </div>
           )}

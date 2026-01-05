@@ -23,6 +23,7 @@ import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionD
 import { ScheduleStatusBadge } from '@/components/ScheduleStatusBadge';
 import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
+import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
 import { 
   Calendar, 
   Plus, 
@@ -40,6 +41,7 @@ import {
   Unlock,
   Send,
   History,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -466,6 +468,10 @@ const Scheduling = () => {
             <CalendarClock className="h-4 w-4 mr-2" />
             Availability
           </TabsTrigger>
+          <TabsTrigger value="trades">
+            <ArrowLeftRight className="h-4 w-4 mr-2" />
+            Shift Trades
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule">
@@ -704,6 +710,11 @@ const Scheduling = () => {
               </p>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Shift Trades Tab */}
+        <TabsContent value="trades">
+          <TradeApprovalQueue restaurantId={restaurantId} />
         </TabsContent>
       </Tabs>
 

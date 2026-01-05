@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useShifts } from '@/hooks/useShifts';
+import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import {
   EmployeePageHeader,
   NoRestaurantState,
@@ -24,6 +25,7 @@ import {
   CheckCircle,
   XCircle,
   ClockIcon,
+  ArrowLeftRight,
 } from 'lucide-react';
 import {
   format,
@@ -110,6 +112,9 @@ const EmployeeSchedule = () => {
   const [currentWeekStart, setCurrentWeekStart] = useState(
     startOfWeek(new Date(), { weekStartsOn: 0 })
   );
+  const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
+  const [selectedShiftForTrade, setSelectedShiftForTrade] = useState<Shift | null>(null);
+
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
@@ -175,6 +180,11 @@ const EmployeeSchedule = () => {
 
   const handleNextWeek = () => {
     setCurrentWeekStart(addWeeks(currentWeekStart, 1));
+  };
+
+  const handleTradeShift = (shift: Shift) => {
+    setSelectedShiftForTrade(shift);
+    setTradeDialogOpen(true);
   };
 
   const handleToday = () => {
@@ -362,6 +372,17 @@ const EmployeeSchedule = () => {
                                 </div>
                               )}
                               {getShiftStatusBadge(shift)}
+                              {isFuture(parseISO(shift.start_time)) && shift.status !== 'cancelled' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleTradeShift(shift)}
+                                  className="ml-2"
+                                >
+                                  <ArrowLeftRight className="h-4 w-4 mr-1" />
+                                  Trade
+                                </Button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -409,6 +430,13 @@ const EmployeeSchedule = () => {
         <strong>Note:</strong> Your schedule may change. Check back regularly or enable
         notifications to stay updated. Contact your manager if you have any scheduling conflicts.
       </EmployeeInfoAlert>
+
+      {/* Trade Request Dialog */}
+      <TradeRequestDialog
+        open={tradeDialogOpen}
+        onOpenChange={setTradeDialogOpen}
+        shift={selectedShiftForTrade}
+      />
     </div>
   );
 };

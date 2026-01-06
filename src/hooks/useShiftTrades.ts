@@ -406,7 +406,7 @@ export const useMarketplaceTrades = (
       if (!restaurantId) return [];
 
       // Get open trades (marketplace or not targeted at specific employee)
-      const { data: trades, error: tradesError } = await supabase
+      let query = supabase
         .from('shift_trades')
         .select(`
           *,
@@ -424,9 +424,17 @@ export const useMarketplaceTrades = (
           )
         `)
         .eq('restaurant_id', restaurantId)
-        .eq('status', 'open')
-        .or(`target_employee_id.is.null,target_employee_id.eq.${currentEmployeeId}`)
-        .order('created_at', { ascending: false });
+        .eq('status', 'open');
+
+      // Filter by target employee if provided
+      if (currentEmployeeId) {
+        query = query.or(`target_employee_id.is.null,target_employee_id.eq.${currentEmployeeId}`);
+      } else {
+        // If no current employee, only show marketplace trades (no specific target)
+        query = query.is('target_employee_id', null);
+      }
+
+      const { data: trades, error: tradesError } = await query.order('created_at', { ascending: false });
 
       if (tradesError) throw tradesError;
 

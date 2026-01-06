@@ -182,6 +182,11 @@ export const TradeRequestDialog = ({
                           <span className="text-xs text-muted-foreground">
                             ({employee.position})
                           </span>
+                          {!employee.user_id && (
+                            <span className="text-xs text-yellow-600 dark:text-yellow-500">
+                              • No account
+                            </span>
+                          )}
                         </div>
                       </SelectItem>
                     ))

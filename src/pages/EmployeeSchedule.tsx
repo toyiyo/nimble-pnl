@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -208,11 +209,19 @@ const EmployeeSchedule = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <EmployeePageHeader
-        icon={CalendarDays}
-        title="My Schedule"
-        subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
-      />
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+        <EmployeePageHeader
+          icon={CalendarDays}
+          title="My Schedule"
+          subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
+        />
+        <Link to="/employee/shifts">
+          <Button className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
+            <ArrowLeftRight className="h-4 w-4 mr-2" />
+            Browse Available Shifts
+          </Button>
+        </Link>
+      </div>
 
       {/* Upcoming Shifts */}
       {upcomingShifts.length > 0 && (
@@ -436,6 +445,8 @@ const EmployeeSchedule = () => {
         open={tradeDialogOpen}
         onOpenChange={setTradeDialogOpen}
         shift={selectedShiftForTrade}
+        restaurantId={restaurantId!}
+        currentEmployeeId={currentEmployee.id}
       />
     </div>
   );

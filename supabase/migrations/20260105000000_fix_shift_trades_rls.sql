@@ -1,0 +1,28 @@
+-- Fix shift_trades RLS policy to ensure restaurant_id matches employee's restaurant
+-- This prevents RLS violations when creating trades
+
+-- Drop the old policy
+DROP POLICY IF EXISTS "Employees can create trades for their own shifts" ON shift_trades;
+
+-- Create improved policy that checks both user_id and restaurant_id
+CREATE POLICY "Employees can create trades for their own shifts"
+  ON shift_trades FOR INSERT
+  WITH CHECK (
+    -- Employee must be the one creating the trade
+    offered_by_employee_id IN (
+      SELECT id FROM employees
+      WHERE user_id = auth.uid()
+      AND is_active = true
+    )
+    AND
+    -- Restaurant ID must match the employee's restaurant
+    restaurant_id IN (
+      SELECT restaurant_id FROM employees
+      WHERE user_id = auth.uid()
+      AND is_active = true
+    )
+  );
+
+-- Add a helpful comment
+COMMENT ON POLICY "Employees can create trades for their own shifts" ON shift_trades IS 
+  'Employees can create shift trades for their own shifts. Both employee and restaurant must match.';

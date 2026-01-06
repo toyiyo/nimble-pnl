@@ -199,11 +199,16 @@ const EmployeeShiftMarketplace = () => {
 
                         {/* Action Button */}
                         <div className="flex flex-col justify-center items-center sm:items-end gap-2">
-                          {trade.status === 'accepted' ? (
-                            <Badge className="bg-gradient-to-r from-yellow-500 to-orange-600">
-                              <Clock className="w-3 h-3 mr-1" />
-                              Pending Approval
-                            </Badge>
+                          {trade.status === 'pending_approval' ? (
+                            <div className="text-center">
+                              <Badge className="bg-gradient-to-r from-yellow-500 to-orange-600 mb-2">
+                                <Clock className="w-3 h-3 mr-1" />
+                                Pending Approval
+                              </Badge>
+                              <p className="text-xs text-muted-foreground">
+                                Awaiting manager review
+                              </p>
+                            </div>
                           ) : (
                             <Button
                               onClick={() => handleAcceptTrade(trade.id)}

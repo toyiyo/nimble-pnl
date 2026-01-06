@@ -400,7 +400,7 @@ export const useMarketplaceTrades = (
   restaurantId: string | null,
   currentEmployeeId: string | null
 ) => {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['marketplace_trades', restaurantId, currentEmployeeId],
     queryFn: async () => {
       if (!restaurantId) return [];
@@ -484,5 +484,6 @@ export const useMarketplaceTrades = (
     trades: data || [],
     loading: isLoading,
     error,
+    refetch,
   };
 };

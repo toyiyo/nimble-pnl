@@ -83,6 +83,11 @@ export const TradeRequestDialog = ({
     );
   };
 
+  // Early return if shift is null (dialog not yet opened)
+  if (!shift) {
+    return null;
+  }
+
   const shiftStart = new Date(shift.start_time);
   const shiftEnd = new Date(shift.end_time);
 

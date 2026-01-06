@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
 
 const corsHeaders = {
@@ -60,7 +60,7 @@ const formatDateTime = (date: string) => new Date(date).toLocaleString('en-US', 
 });
 
 const buildEmails = async (
-  supabase: any,
+  supabase: SupabaseClient,
   restaurantId: string,
   action: RequestBody['action'],
   offeredByEmployeeEmail?: string,

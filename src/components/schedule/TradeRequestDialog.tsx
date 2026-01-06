@@ -21,7 +21,6 @@ import {
 import { useCreateShiftTrade } from '@/hooks/useShiftTrades';
 import { useEmployees } from '@/hooks/useEmployees';
 import { ArrowRightLeft, Users, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 interface Shift {
   id: string;
@@ -125,7 +124,7 @@ export const TradeRequestDialog = ({
         {/* Trade Type Selection */}
         <div className="space-y-4">
           <Label className="text-base font-semibold">Trade Type</Label>
-          <RadioGroup value={tradeType} onValueChange={(val) => setTradeType(val as 'marketplace' | 'directed')}>
+          <RadioGroup value={tradeType} onValueChange={(val: 'marketplace' | 'directed') => setTradeType(val)}>
             <div className="flex items-start space-x-3">
               <RadioGroupItem value="marketplace" id="marketplace" className="mt-1" />
               <div className="flex-1">

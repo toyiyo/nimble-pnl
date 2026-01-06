@@ -265,22 +265,30 @@ export const TradeApprovalQueue = () => {
               disabled={isApproving || isRejecting}
               variant={actionType === 'approve' ? 'default' : 'destructive'}
             >
-              {isApproving || isRejecting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing...
-                </>
-              ) : actionType === 'approve' ? (
-                <>
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Approve
-                </>
-              ) : (
-                <>
-                  <XCircle className="mr-2 h-4 w-4" />
-                  Reject
-                </>
-              )}
+              {(() => {
+                if (isApproving || isRejecting) {
+                  return (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processing...
+                    </>
+                  );
+                }
+                if (actionType === 'approve') {
+                  return (
+                    <>
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      Approve
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Reject
+                  </>
+                );
+              })()}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -502,7 +502,7 @@ const EmployeeSchedule = () => {
           open={tradeDialogOpen}
           onOpenChange={setTradeDialogOpen}
           shift={selectedShiftForTrade}
-          restaurantId={restaurantId!}
+          restaurantId={restaurantId}
           currentEmployeeId={currentEmployee.id}
         />
       )}

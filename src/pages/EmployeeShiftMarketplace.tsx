@@ -127,18 +127,20 @@ const EmployeeShiftMarketplace = () => {
               <Skeleton className="h-32 w-full" />
               <Skeleton className="h-32 w-full" />
             </div>
-          ) : !trades || trades.length === 0 ? (
-            <div className="text-center py-12">
-              <ArrowRightLeft className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No shifts available</h3>
-              <p className="text-muted-foreground mb-4">
-                There are currently no shifts available for trade.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Check back later or offer one of your own shifts!
-              </p>
-            </div>
           ) : (
+            <>
+              {!trades || trades.length === 0 ? (
+                <div className="text-center py-12">
+                  <ArrowRightLeft className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No shifts available</h3>
+                  <p className="text-muted-foreground mb-4">
+                    There are currently no shifts available for trade.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Check back later or offer one of your own shifts!
+                  </p>
+                </div>
+              ) : (
             <div className="space-y-4">
               {trades.map((trade) => {
                 const shiftStart = parseISO(trade.offered_shift.start_time);
@@ -218,19 +220,25 @@ const EmployeeShiftMarketplace = () => {
                                 'min-w-[140px]'
                               )}
                             >
-                              {isAcceptingThis ? (
-                                <>
-                                  <Clock className="w-4 h-4 mr-2 animate-spin" />
-                                  Accepting...
-                                </>
-                              ) : isPast ? (
-                                'Past Shift'
-                              ) : (
-                                <>
-                                  <CheckCircle className="w-4 h-4 mr-2" />
-                                  Accept Shift
-                                </>
-                              )}
+                              {(() => {
+                                if (isAcceptingThis) {
+                                  return (
+                                    <>
+                                      <Clock className="w-4 h-4 mr-2 animate-spin" />
+                                      Accepting...
+                                    </>
+                                  );
+                                }
+                                if (isPast) {
+                                  return 'Past Shift';
+                                }
+                                return (
+                                  <>
+                                    <CheckCircle className="w-4 h-4 mr-2" />
+                                    Accept Shift
+                                  </>
+                                );
+                              })()}
                             </Button>
                           )}
                           {trade.target_employee_id === currentEmployee.id && (
@@ -245,6 +253,8 @@ const EmployeeShiftMarketplace = () => {
                 );
               })}
             </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

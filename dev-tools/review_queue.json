@@ -18694,12 +18694,15 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**`accept_shift_trade` missing `FOR UPDATE` lock - race condition risk.**\n\nMultiple employees could simultaneously pass the `status = 'open'` check before any update occurs. The version in `20260104120000_create_shift_trades.sql` (line 185) correctly uses `FOR UPDATE`.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n   -- Get the trade\n   SELECT * INTO v_trade\n   FROM shift_trades\n-  WHERE id = p_trade_id;\n+  WHERE id = p_trade_id\n+  FOR UPDATE;\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260105000100_create_shift_trade_functions.sql around\nlines 5-68, The accept_shift_trade function risks a race because the initial\nSELECT that reads the shift_trades row (into v_trade) isn't locking it; modify\nthe SELECT ... FROM shift_trades WHERE id = p_trade_id to acquire a row lock\n(e.g., add FOR UPDATE) so concurrent transactions cannot pass the 'status =\nopen' check simultaneously; update the SELECT that fetches v_trade (and\noptionally the SELECT for v_shift/offered_shift_id) to use FOR UPDATE/FOR NO KEY\nUPDATE as appropriate before checking and updating the trade.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "def3238442362d6afb90ec70ec6fab6db7e307d1",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T12:39:22.864Z",
+      "updated_at": "2026-01-06T14:32:18.147Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Added FOR UPDATE lock to prevent race conditions"
       ]
     },
     {
@@ -18714,12 +18717,15 @@
       "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Missing manager authorization in `approve_shift_trade`.**\n\nThis function lacks the manager role verification that exists in the earlier migration (`20260104120000`). The `p_manager_user_id` parameter is passed but not verified against `auth.uid()` or checked for manager role. Any authenticated user could call this function to approve trades.\n\nCompare with the secure version in `20260104120000_create_shift_trades.sql` (lines 260-319) which verifies the caller's role.\n\n\n<details>\n<summary>🔎 Proposed fix to add authorization check</summary>\n\n```diff\n CREATE OR REPLACE FUNCTION approve_shift_trade(\n   p_trade_id UUID,\n   p_manager_user_id UUID,\n   p_manager_note TEXT DEFAULT NULL\n )\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n AS $$\n DECLARE\n   v_trade shift_trades;\n   v_shift shifts;\n+  v_user_role TEXT;\n BEGIN\n+  -- Verify caller is the manager specified and has manager role\n+  IF p_manager_user_id != auth.uid() THEN\n+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');\n+  END IF;\n+\n+  SELECT role INTO v_user_role\n+  FROM user_restaurants\n+  WHERE user_id = auth.uid()\n+  AND restaurant_id = (SELECT restaurant_id FROM shift_trades WHERE id = p_trade_id)\n+  LIMIT 1;\n+\n+  IF v_user_role NOT IN ('owner', 'manager') THEN\n+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Manager access required');\n+  END IF;\n+\n   -- Get the trade\n   SELECT * INTO v_trade\n   FROM shift_trades\n-  WHERE id = p_trade_id;\n+  WHERE id = p_trade_id\n+  FOR UPDATE;\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260105000100_create_shift_trade_functions.sql around\nlines 70-123, approve_shift_trade lacks authorization: ensure the caller is\nactually the manager by checking auth.uid() against the provided\np_manager_user_id and verifying that the caller has the manager role before\nperforming updates; add a pre-check in the approve_shift_trade function that\nqueries the users (or equivalent) table for auth.uid() to confirm role =\n'manager' (or use the same role-check logic as in\n20260104120000_create_shift_trades.sql), and if the check fails return\njsonb_build_object('success', false, 'error', 'Not authorized') so only\nauthorized managers can approve trades.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "9bcac684600fd6f61487b88f0f082c9c4500e979",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T12:39:22.864Z",
+      "updated_at": "2026-01-06T14:32:17.393Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Added manager authorization checks (auth.uid + role verification)"
       ]
     },
     {
@@ -18734,12 +18740,15 @@
       "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Missing manager authorization in `reject_shift_trade`.**\n\nSame issue as `approve_shift_trade` - no verification that `p_manager_user_id` matches `auth.uid()` or has manager role.\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "dc34ef099d9dcea012c91a58924e22eef9358278",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T12:39:22.864Z",
+      "updated_at": "2026-01-06T14:32:16.521Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Added manager authorization checks (auth.uid + role verification)"
       ]
     },
     {
@@ -18754,12 +18763,15 @@
       "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**`cancel_shift_trade` trusts client-provided `p_employee_id` without verification.**\n\nThe function checks that `p_employee_id` matches `offered_by_employee_id`, but doesn't verify that the caller (`auth.uid()`) actually owns that employee record. A malicious user could pass any employee ID.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n BEGIN\n   -- Get the trade\n   SELECT * INTO v_trade\n   FROM shift_trades\n   WHERE id = p_trade_id;\n\n   IF NOT FOUND THEN\n     RETURN jsonb_build_object('success', false, 'error', 'Trade not found');\n   END IF;\n\n-  -- Check employee is the one who created the trade\n-  IF v_trade.offered_by_employee_id != p_employee_id THEN\n+  -- Verify the caller owns the employee record that created this trade\n+  IF NOT EXISTS (\n+    SELECT 1 FROM employees\n+    WHERE id = v_trade.offered_by_employee_id\n+    AND user_id = auth.uid()\n+  ) THEN\n     RETURN jsonb_build_object('success', false, 'error', 'You can only cancel your own trades');\n   END IF;\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n-- Function to cancel a shift trade (employee who created it)\nCREATE OR REPLACE FUNCTION cancel_shift_trade(\n  p_trade_id UUID,\n  p_employee_id UUID\n)\nRETURNS jsonb\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  v_trade shift_trades;\nBEGIN\n  -- Get the trade\n  SELECT * INTO v_trade\n  FROM shift_trades\n  WHERE id = p_trade_id;\n\n  IF NOT FOUND THEN\n    RETURN jsonb_build_object('success', false, 'error', 'Trade not found');\n  END IF;\n\n  -- Verify the caller owns the employee record that created this trade\n  IF NOT EXISTS (\n    SELECT 1 FROM employees\n    WHERE id = v_trade.offered_by_employee_id\n    AND user_id = auth.uid()\n  ) THEN\n    RETURN jsonb_build_object('success', false, 'error', 'You can only cancel your own trades');\n  END IF;\n\n  -- Check trade is still open (can't cancel after accepted)\n  IF v_trade.status != 'open' THEN\n    RETURN jsonb_build_object('success', false, 'error', 'Cannot cancel trade after it has been accepted');\n  END IF;\n\n  -- Update trade status\n  UPDATE shift_trades\n  SET \n    status = 'cancelled',\n    updated_at = NOW()\n  WHERE id = p_trade_id;\n\n  RETURN jsonb_build_object('success', true);\nEND;\n$$;\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260105000100_create_shift_trade_functions.sql around\nlines 166-206, The function cancel_shift_trade currently trusts the\ncaller-supplied p_employee_id; fix it by verifying ownership: inside\ncancel_shift_trade, query the employees table (e.g., SELECT 1 FROM employees\nWHERE id = p_employee_id AND user_id = auth.uid()) and if no row is found RETURN\njsonb_build_object('success', false, 'error', 'Unauthorized')—this ensures the\ncaller (auth.uid()) actually owns the employee record before proceeding with the\nexisting checks and the UPDATE on shift_trades.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "4bf444e6be6ef658b10ed6d259687029cc3c1801",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T12:39:22.864Z",
+      "updated_at": "2026-01-06T14:32:15.048Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Changed to verify employee ownership via auth.uid() instead of trusting client parameter"
       ]
     },
     {
@@ -18795,9 +18807,12 @@
         "npm run lint"
       ],
       "id": "72fbd9635af863c665fc1f39ef995861b635aedf",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.518Z",
-      "updated_at": "2026-01-06T04:40:23.518Z"
+      "updated_at": "2026-01-06T14:58:23.475Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "sonarqube",
@@ -18814,9 +18829,12 @@
         "npm run lint"
       ],
       "id": "cf999d4d434e6f39953145f91d158aa52d7ee912",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.518Z",
-      "updated_at": "2026-01-06T04:40:23.518Z"
+      "updated_at": "2026-01-06T14:58:22.603Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "sonarqube",
@@ -18833,9 +18851,12 @@
         "npm run lint"
       ],
       "id": "643e66aa07aa05777a33dc5fb8452f8a5b8f1411",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.518Z",
-      "updated_at": "2026-01-06T04:40:23.518Z"
+      "updated_at": "2026-01-06T14:58:21.612Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "sonarqube",
@@ -18852,9 +18873,12 @@
         "npm run lint"
       ],
       "id": "9146ff800501fc43bd0c17bdaf6f5cbd2b1e5fae",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.518Z",
-      "updated_at": "2026-01-06T04:40:23.518Z"
+      "updated_at": "2026-01-06T14:58:20.848Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "sonarqube",
@@ -18871,9 +18895,12 @@
         "npm run lint"
       ],
       "id": "11ec8e629b98f6ecb8d76b1d37948ea3d8f5f6c2",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.518Z",
-      "updated_at": "2026-01-06T04:40:23.518Z"
+      "updated_at": "2026-01-06T14:58:19.426Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "sonarqube",
@@ -18890,9 +18917,9 @@
         "npm run lint"
       ],
       "id": "e9d19aa122567982d4c64b52f8ff4d8fbd03c6d1",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.518Z",
-      "updated_at": "2026-01-06T04:40:23.518Z"
+      "updated_at": "2026-01-06T15:05:30.684Z"
     },
     {
       "source": "sonarqube",
@@ -18909,9 +18936,9 @@
         "npm run lint"
       ],
       "id": "f0d53af33cc2b5123fb5b1f2809d5201169f1b9e",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.518Z",
-      "updated_at": "2026-01-06T04:40:23.518Z"
+      "updated_at": "2026-01-06T15:05:30.684Z"
     },
     {
       "source": "problems",
@@ -18926,9 +18953,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/schedule/TradeRequestDialog.tsx"
       ],
       "id": "d4bb94d2afb99cbc1d2cb1c6a123a400e351212f",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.531Z",
-      "updated_at": "2026-01-06T04:40:23.531Z"
+      "updated_at": "2026-01-06T15:05:30.684Z"
     },
     {
       "source": "problems",
@@ -18943,9 +18970,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Scheduling.tsx"
       ],
       "id": "c654bb65ec73639f0b40ce9016bfaed7f6305671",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.532Z",
-      "updated_at": "2026-01-06T04:40:23.532Z"
+      "updated_at": "2026-01-06T15:05:30.684Z"
     },
     {
       "source": "problems",
@@ -18960,9 +18987,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts"
       ],
       "id": "0953c8a930ab95279aa4b768ddd163c99c44f658",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T04:40:23.534Z"
+      "updated_at": "2026-01-06T15:05:30.684Z"
     },
     {
       "source": "problems",

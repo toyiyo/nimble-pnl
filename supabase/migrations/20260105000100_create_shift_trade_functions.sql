@@ -15,10 +15,11 @@ DECLARE
   v_shift shifts;
   v_conflict shifts;
 BEGIN
-  -- Get the trade
+  -- Get the trade with row lock to prevent race conditions
   SELECT * INTO v_trade
   FROM shift_trades
-  WHERE id = p_trade_id;
+  WHERE id = p_trade_id
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RETURN jsonb_build_object('success', false, 'error', 'Trade not found');
@@ -81,11 +82,28 @@ AS $$
 DECLARE
   v_trade shift_trades;
   v_shift shifts;
+  v_user_role TEXT;
 BEGIN
-  -- Get the trade
+  -- Verify caller is the manager specified and has manager role
+  IF p_manager_user_id != auth.uid() THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');
+  END IF;
+
+  SELECT role INTO v_user_role
+  FROM user_restaurants
+  WHERE user_id = auth.uid()
+  AND restaurant_id = (SELECT restaurant_id FROM shift_trades WHERE id = p_trade_id)
+  LIMIT 1;
+
+  IF v_user_role NOT IN ('owner', 'manager') THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Manager access required');
+  END IF;
+
+  -- Get the trade with row lock
   SELECT * INTO v_trade
   FROM shift_trades
-  WHERE id = p_trade_id;
+  WHERE id = p_trade_id
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RETURN jsonb_build_object('success', false, 'error', 'Trade not found');
@@ -134,11 +152,28 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_trade shift_trades;
+  v_user_role TEXT;
 BEGIN
-  -- Get the trade
+  -- Verify caller is the manager specified and has manager role
+  IF p_manager_user_id != auth.uid() THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');
+  END IF;
+
+  SELECT role INTO v_user_role
+  FROM user_restaurants
+  WHERE user_id = auth.uid()
+  AND restaurant_id = (SELECT restaurant_id FROM shift_trades WHERE id = p_trade_id)
+  LIMIT 1;
+
+  IF v_user_role NOT IN ('owner', 'manager') THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Manager access required');
+  END IF;
+
+  -- Get the trade with row lock
   SELECT * INTO v_trade
   FROM shift_trades
-  WHERE id = p_trade_id;
+  WHERE id = p_trade_id
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RETURN jsonb_build_object('success', false, 'error', 'Trade not found');
@@ -175,17 +210,22 @@ AS $$
 DECLARE
   v_trade shift_trades;
 BEGIN
-  -- Get the trade
+  -- Get the trade with row lock
   SELECT * INTO v_trade
   FROM shift_trades
-  WHERE id = p_trade_id;
+  WHERE id = p_trade_id
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RETURN jsonb_build_object('success', false, 'error', 'Trade not found');
   END IF;
 
-  -- Check employee is the one who created the trade
-  IF v_trade.offered_by_employee_id != p_employee_id THEN
+  -- Verify the caller owns the employee record that created this trade
+  IF NOT EXISTS (
+    SELECT 1 FROM employees
+    WHERE id = v_trade.offered_by_employee_id
+    AND user_id = auth.uid()
+  ) THEN
     RETURN jsonb_build_object('success', false, 'error', 'You can only cancel your own trades');
   END IF;
 

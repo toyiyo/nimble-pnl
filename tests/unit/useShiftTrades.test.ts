@@ -290,6 +290,7 @@ describe('useShiftTrades', () => {
 
       const builder = createMutationQueryBuilder(mockNewTrade);
       mockSupabase.from.mockReturnValue(builder);
+      mockSupabase.functions.invoke.mockResolvedValue({ data: { success: true }, error: null });
 
       const { result } = renderHook(() => useCreateShiftTrade(), {
         wrapper: createWrapper(),
@@ -307,6 +308,12 @@ describe('useShiftTrades', () => {
       await result.current.mutateAsync(tradeData);
 
       expect(mockSupabase.from).toHaveBeenCalledWith('shift_trades');
+      expect(mockSupabase.functions.invoke).toHaveBeenCalledWith(
+        'send-shift-trade-notification',
+        {
+          body: { tradeId: 'trade-new', action: 'created' },
+        }
+      );
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: expect.stringContaining('posted'),
@@ -345,6 +352,7 @@ describe('useShiftTrades', () => {
     it('CRITICAL: should call accept_shift_trade RPC with conflict validation', async () => {
       // Mock RPC call for accept_shift_trade - must return { success: true }
       mockSupabase.rpc.mockResolvedValue({ data: { success: true }, error: null });
+      mockSupabase.functions.invoke.mockResolvedValue({ data: { success: true }, error: null });
 
       const { result } = renderHook(() => useAcceptShiftTrade(), {
         wrapper: createWrapper(),
@@ -361,6 +369,12 @@ describe('useShiftTrades', () => {
         p_trade_id: 'trade-1',
         p_accepting_employee_id: 'emp-2',
       });
+      expect(mockSupabase.functions.invoke).toHaveBeenCalledWith(
+        'send-shift-trade-notification',
+        {
+          body: { tradeId: 'trade-1', action: 'accepted' },
+        }
+      );
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: expect.stringContaining('sent'),
@@ -420,6 +434,12 @@ describe('useShiftTrades', () => {
         p_manager_user_id: 'manager-user-123',
         p_manager_note: 'Approved - coverage confirmed',
       });
+      expect(mockSupabase.functions.invoke).toHaveBeenCalledWith(
+        'send-shift-trade-notification',
+        {
+          body: { tradeId: 'trade-1', action: 'approved' },
+        }
+      );
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: expect.stringContaining('approved'),
@@ -431,6 +451,7 @@ describe('useShiftTrades', () => {
   describe('useRejectShiftTrade - Manager rejection', () => {
     it('should call reject_shift_trade RPC with reason', async () => {
       mockSupabase.rpc.mockResolvedValue({ data: { success: true }, error: null });
+      mockSupabase.functions.invoke.mockResolvedValue({ data: { success: true }, error: null });
 
       const { result } = renderHook(() => useRejectShiftTrade(), {
         wrapper: createWrapper(),
@@ -449,6 +470,12 @@ describe('useShiftTrades', () => {
         p_manager_user_id: 'manager-user-123',
         p_manager_note: 'Insufficient coverage',
       });
+      expect(mockSupabase.functions.invoke).toHaveBeenCalledWith(
+        'send-shift-trade-notification',
+        {
+          body: { tradeId: 'trade-1', action: 'rejected' },
+        }
+      );
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: expect.stringContaining('rejected'),
@@ -463,6 +490,7 @@ describe('useShiftTrades', () => {
         data: { success: true },
         error: null,
       });
+      mockSupabase.functions.invoke.mockResolvedValue({ data: { success: true }, error: null });
 
       const { result } = renderHook(() => useCancelShiftTrade(), {
         wrapper: createWrapper(),
@@ -476,6 +504,12 @@ describe('useShiftTrades', () => {
         p_trade_id: 'trade-1',
         p_employee_id: 'emp-1',
       });
+      expect(mockSupabase.functions.invoke).toHaveBeenCalledWith(
+        'send-shift-trade-notification',
+        {
+          body: { tradeId: 'trade-1', action: 'cancelled' },
+        }
+      );
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: expect.stringContaining('cancelled'),
@@ -906,6 +940,12 @@ describe('useShiftTrades', () => {
         })
       ).resolves.toBeDefined();
 
+      expect(mockSupabase.functions.invoke).toHaveBeenCalledWith(
+        'send-shift-trade-notification',
+        {
+          body: { tradeId: 'trade-new', action: 'created' },
+        }
+      );
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: expect.stringContaining('posted'),
@@ -971,25 +1011,7 @@ describe('useShiftTrades', () => {
     });
 
     it('should handle email notification failure gracefully on cancel', async () => {
-      const mockCancelledTrade: TestShiftTrade = {
-        id: 'trade-1',
-        restaurant_id: 'rest-123',
-        offered_shift_id: 'shift-1',
-        offered_by_employee_id: 'emp-1',
-        requested_shift_id: null,
-        target_employee_id: null,
-        accepted_by_employee_id: null,
-        status: 'cancelled',
-        reason: null,
-        manager_note: null,
-        reviewed_by: null,
-        reviewed_at: null,
-        created_at: '2026-01-04T10:00:00Z',
-        updated_at: '2026-01-04T10:05:00Z',
-      };
-
-      const builder = createMutationQueryBuilder(mockCancelledTrade);
-      mockSupabase.from.mockReturnValue(builder);
+      mockSupabase.rpc.mockResolvedValue({ data: { success: true }, error: null });
       mockSupabase.functions.invoke.mockRejectedValue(new Error('Email service unavailable'));
 
       const { result } = renderHook(() => useCancelShiftTrade(), {
@@ -999,7 +1021,15 @@ describe('useShiftTrades', () => {
       await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
 
       // Should not throw even if email fails
-      await expect(result.current.mutateAsync('trade-1')).resolves.toBeDefined();
+      await expect(
+        result.current.mutateAsync({ tradeId: 'trade-1', employeeId: 'emp-1' })
+      ).resolves.toBeDefined();
+      expect(mockSupabase.functions.invoke).toHaveBeenCalledWith(
+        'send-shift-trade-notification',
+        {
+          body: { tradeId: 'trade-1', action: 'cancelled' },
+        }
+      );
     });
 
     it('should handle cancel with no data returned', async () => {

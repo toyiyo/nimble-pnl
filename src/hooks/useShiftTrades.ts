@@ -44,6 +44,52 @@ export interface ShiftTrade {
   };
 }
 
+type ShiftTradeNotificationAction =
+  | 'created'
+  | 'accepted'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled';
+
+const sendShiftTradeNotification = async (
+  tradeId: string,
+  action: ShiftTradeNotificationAction
+) => {
+  try {
+    await supabase.functions.invoke('send-shift-trade-notification', {
+      body: { tradeId, action },
+    });
+  } catch (emailError) {
+    console.error('Failed to send notification:', emailError);
+  }
+};
+
+const executeShiftTradeAction = async ({
+  rpc,
+  params,
+  tradeId,
+  action,
+  failureMessage,
+}: {
+  rpc: 'accept_shift_trade' | 'approve_shift_trade' | 'reject_shift_trade' | 'cancel_shift_trade';
+  params: Record<string, unknown>;
+  tradeId: string;
+  action: Exclude<ShiftTradeNotificationAction, 'created'>;
+  failureMessage: string;
+}) => {
+  const { data, error } = await supabase.rpc(rpc, params);
+
+  if (error) throw error;
+
+  if (!data || !data.success) {
+    throw new Error(data?.error || failureMessage);
+  }
+
+  await sendShiftTradeNotification(tradeId, action);
+
+  return data;
+};
+
 /**
  * Hook to fetch shift trades for a restaurant
  * @param restaurantId - Restaurant ID
@@ -150,15 +196,8 @@ export const useCreateShiftTrade = () => {
 
       if (error) throw error;
 
-      // Send notification email
-      try {
-        await supabase.functions.invoke('send-shift-trade-notification', {
-          body: { tradeId: data.id, action: 'created' },
-        });
-      } catch (emailError) {
-        console.error('Failed to send notification:', emailError);
-        // Don't fail the trade creation if email fails
-      }
+      // Send notification email (non-blocking for failures)
+      await sendShiftTradeNotification(data.id, 'created');
 
       return data;
     },
@@ -195,28 +234,16 @@ export const useAcceptShiftTrade = () => {
       tradeId: string;
       acceptingEmployeeId: string;
     }) => {
-      // Call the database function for conflict checking
-      const { data, error } = await supabase.rpc('accept_shift_trade', {
-        p_trade_id: tradeId,
-        p_accepting_employee_id: acceptingEmployeeId,
+      return executeShiftTradeAction({
+        rpc: 'accept_shift_trade',
+        params: {
+          p_trade_id: tradeId,
+          p_accepting_employee_id: acceptingEmployeeId,
+        },
+        tradeId,
+        action: 'accepted',
+        failureMessage: 'Failed to accept trade',
       });
-
-      if (error) throw error;
-
-      if (!data || !data.success) {
-        throw new Error(data?.error || 'Failed to accept trade');
-      }
-
-      // Send notification email
-      try {
-        await supabase.functions.invoke('send-shift-trade-notification', {
-          body: { tradeId, action: 'accepted' },
-        });
-      } catch (emailError) {
-        console.error('Failed to send notification:', emailError);
-      }
-
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
@@ -252,28 +279,17 @@ export const useApproveShiftTrade = () => {
       managerNote?: string;
       managerUserId: string;
     }) => {
-      const { data, error } = await supabase.rpc('approve_shift_trade', {
-        p_trade_id: tradeId,
-        p_manager_user_id: managerUserId,
-        p_manager_note: managerNote || null,
+      return executeShiftTradeAction({
+        rpc: 'approve_shift_trade',
+        params: {
+          p_trade_id: tradeId,
+          p_manager_user_id: managerUserId,
+          p_manager_note: managerNote || null,
+        },
+        tradeId,
+        action: 'approved',
+        failureMessage: 'Failed to approve trade',
       });
-
-      if (error) throw error;
-
-      if (!data || !data.success) {
-        throw new Error(data?.error || 'Failed to approve trade');
-      }
-
-      // Send notification email
-      try {
-        await supabase.functions.invoke('send-shift-trade-notification', {
-          body: { tradeId, action: 'approved' },
-        });
-      } catch (emailError) {
-        console.error('Failed to send notification:', emailError);
-      }
-
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
@@ -310,28 +326,17 @@ export const useRejectShiftTrade = () => {
       managerNote?: string;
       managerUserId: string;
     }) => {
-      const { data, error } = await supabase.rpc('reject_shift_trade', {
-        p_trade_id: tradeId,
-        p_manager_user_id: managerUserId,
-        p_manager_note: managerNote || null,
+      return executeShiftTradeAction({
+        rpc: 'reject_shift_trade',
+        params: {
+          p_trade_id: tradeId,
+          p_manager_user_id: managerUserId,
+          p_manager_note: managerNote || null,
+        },
+        tradeId,
+        action: 'rejected',
+        failureMessage: 'Failed to reject trade',
       });
-
-      if (error) throw error;
-
-      if (!data || !data.success) {
-        throw new Error(data?.error || 'Failed to reject trade');
-      }
-
-      // Send notification email
-      try {
-        await supabase.functions.invoke('send-shift-trade-notification', {
-          body: { tradeId, action: 'rejected' },
-        });
-      } catch (emailError) {
-        console.error('Failed to send notification:', emailError);
-      }
-
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
@@ -359,26 +364,16 @@ export const useCancelShiftTrade = () => {
 
   return useMutation({
     mutationFn: async ({ tradeId, employeeId }: { tradeId: string; employeeId: string }) => {
-      const { data, error } = await supabase.rpc('cancel_shift_trade', {
-        p_trade_id: tradeId,
-        p_employee_id: employeeId,
+      return executeShiftTradeAction({
+        rpc: 'cancel_shift_trade',
+        params: {
+          p_trade_id: tradeId,
+          p_employee_id: employeeId,
+        },
+        tradeId,
+        action: 'cancelled',
+        failureMessage: 'Failed to cancel trade',
       });
-
-      if (error) throw error;
-      if (!data || !data.success) {
-        throw new Error(data?.error || 'Failed to cancel trade');
-      }
-
-      // Send notification email
-      try {
-        await supabase.functions.invoke('send-shift-trade-notification', {
-          body: { tradeId, action: 'cancelled' },
-        });
-      } catch (emailError) {
-        console.error('Failed to send notification:', emailError);
-      }
-
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shift_trades'] });

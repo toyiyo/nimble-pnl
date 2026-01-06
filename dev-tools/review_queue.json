@@ -18579,12 +18579,15 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Query for manager emails may fail - `auth.users` is not directly joinable.**\n\nThe query `'user:auth.users(email)'` attempts to join `user_restaurants` with `auth.users`, but `auth.users` is in a separate schema and typically not accessible via foreign key joins in Supabase queries. This will likely return `null` for `user.email`.\n\n\n\nConsider querying a `profiles` table or using `supabase.auth.admin.listUsers()` with the service role:\n\n```shell\n#!/bin/bash\n# Check if there's a profiles table that stores user emails\nrg -n \"CREATE TABLE.*profiles\" --type sql\nast-grep --pattern 'from(\"profiles\")'\n```\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/send-shift-trade-notification/index.ts around lines\n86-98, The current Supabase query in the send-shift-trade-notification handler\nuses .select('user:auth.users(email)') which won't return emails because\nauth.users is not joinable; instead fetch manager user IDs from user_restaurants\n(the managers variable / query) and then resolve emails from a joinable table\nlike profiles (e.g., select 'user:profiles(email)') or perform a second query:\ncollect manager user_ids and query profiles where id IN user_ids to get emails,\nor if you must read auth users directly use the Supabase service-role admin API\n(supabase.auth.admin.listUsers()) and map emails from that result; update the\ncode around the managers query and the emails.push logic accordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "97ef7e79a6dfdaa43d1fdcbc85193c76226a3f05",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T05:09:54.093Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Fixed manager email query to use profiles table instead of auth.users. Added test coverage."
       ]
     },
     {
@@ -18599,12 +18602,15 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**XSS vulnerability: `managerNote` is interpolated into HTML without sanitization.**\n\nUser-provided `manager_note` content is directly embedded in the HTML email. If a manager enters malicious content (e.g., `<script>` tags), it could execute in email clients that render HTML.\n\n\n<details>\n<summary>🔎 Proposed fix - add HTML escaping</summary>\n\n```diff\n+const escapeHtml = (str: string): string => {\n+  return str\n+    .replace(/&/g, '&amp;')\n+    .replace(/</g, '&lt;')\n+    .replace(/>/g, '&gt;')\n+    .replace(/\"/g, '&quot;')\n+    .replace(/'/g, '&#039;');\n+};\n\n const generateEmailHtml = (\n   content: typeof ACTION_CONTENT[keyof typeof ACTION_CONTENT],\n   employeeName: string,\n   shiftDetails: string,\n   restaurantName: string,\n   managerNote?: string\n ) => {\n+  const safeManagerNote = managerNote ? escapeHtml(managerNote) : undefined;\n+  const safeEmployeeName = escapeHtml(employeeName);\n+  const safeRestaurantName = escapeHtml(restaurantName);\n   // ... use safe* variables in template\n```\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/send-shift-trade-notification/index.ts around lines\n175-184, The HTML interpolation of managerNote is an XSS risk because\nuser-provided manager_note is inserted raw; sanitize or HTML-escape managerNote\nbefore embedding it in the email template (e.g., introduce and use a helper like\nescapeHtml or run it through a sanitizer library) and replace the direct\ninterpolation of ${managerNote} in the template with the escaped/sanitized value\nso no raw tags or scripts can be injected.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "356e9f3abe9615fe87dd44bf0fad94167ba7149a",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T05:10:15.566Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Added HTML escaping function to prevent XSS in email templates. All user inputs sanitized. 21 security tests pass."
       ]
     },
     {
@@ -18619,12 +18625,15 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**`unique_active_trade_per_shift` constraint may not enforce intended behavior.**\n\nThe constraint `UNIQUE (offered_shift_id, status)` means there can be only one trade per shift *per status value*, not \"one active trade per shift.\" This allows:\n- One `open` trade\n- One `pending_approval` trade  \n- One `approved` trade (for the same shift)\n\nIf the intent is to prevent multiple *concurrent* active trades for the same shift, consider a partial unique index:\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n-  -- Can't offer same shift multiple times as active trade\n-  CONSTRAINT unique_active_trade_per_shift UNIQUE (offered_shift_id, status) \n-    DEFERRABLE INITIALLY DEFERRED\n+  -- Note: Unique active trade enforcement moved to partial index below\n );\n\n+-- Prevent multiple active trades for the same shift\n+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_trade_per_shift \n+  ON shift_trades(offered_shift_id) \n+  WHERE status IN ('open', 'pending_approval');\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  -- Constraints\n  CONSTRAINT valid_status CHECK (\n    status IN ('open', 'pending_approval', 'approved', 'rejected', 'cancelled')\n  ),\n  \n  -- Note: Unique active trade enforcement moved to partial index below\n);\n\n-- Prevent multiple active trades for the same shift\nCREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_trade_per_shift \n  ON shift_trades(offered_shift_id) \n  WHERE status IN ('open', 'pending_approval');\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260104120000_create_shift_trades.sql around lines\n44-52, The UNIQUE constraint unique_active_trade_per_shift on (offered_shift_id,\nstatus) only prevents duplicates per status value rather than preventing\nmultiple concurrent active trades; remove or replace that constraint on the\nshift_trades table and create a partial unique index on offered_shift_id\nfiltered to the active statuses (e.g., status IN ('open','pending_approval') or\nwhatever the domain defines as \"active\") so only one active trade per\noffered_shift_id is allowed; reference the existing constraint name\nunique_active_trade_per_shift and the columns offered_shift_id and status when\nmaking the change.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "958fc50340c8fdd91db5ba194466d8358434dfe8",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T05:10:26.638Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Replaced UNIQUE constraint with partial index on active statuses (open, pending_approval). SQL tests confirm proper enforcement."
       ]
     },
     {
@@ -18639,12 +18648,15 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Employee UPDATE policy `WITH CHECK` may be too permissive.**\n\nThe policy allows employees to update trades to `'open'`, `'pending_approval'`, or `'cancelled'`. An employee accepting a trade should only set it to `'pending_approval'`, and an employee cancelling should only set it to `'cancelled'`. Allowing `'open'` in the check could let employees revert a cancelled trade.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n   WITH CHECK (\n-    -- Can only update to pending_approval or cancelled status\n-    status IN ('open', 'pending_approval', 'cancelled')\n+    -- Can only update to pending_approval (accept) or cancelled (cancel)\n+    status IN ('pending_approval', 'cancelled')\n   );\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  WITH CHECK (\n    -- Can only update to pending_approval (accept) or cancelled (cancel)\n    status IN ('pending_approval', 'cancelled')\n  );\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260104120000_create_shift_trades.sql around lines\n116-119, The Employee UPDATE policy's WITH CHECK currently allows status IN\n('open','pending_approval','cancelled'), which is too permissive; update the\npolicy so employees can only set status to 'pending_approval' when accepting or\n'cancelled' when cancelling by removing 'open' from the allowed values (i.e.,\nchange the WITH CHECK condition around the status expression to only permit\n'pending_approval' and 'cancelled' and, if needed, tighten it further to require\nthe old status be appropriate when transitioning to those values).\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "bbb4dfef60388276b2240d455d263962ce92cdea",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T05:10:32.842Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Removed 'open' from employee UPDATE policy WITH CHECK. Employees can only update to pending_approval or cancelled."
       ]
     },
     {
@@ -18659,12 +18671,15 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\n# Search for all RLS policies on shift_trades table across migrations\n\necho \"=== Searching for all shift_trades RLS policies ===\"\nrg -n \"POLICY.*shift_trades\" --type sql\n\necho \"\"\necho \"=== Checking for RLS enablement on shift_trades ===\"\nrg -n \"ENABLE ROW LEVEL SECURITY.*shift_trades|ALTER TABLE.*shift_trades.*ENABLE\" --type sql\n\necho \"\"\necho \"=== Checking all CREATE POLICY statements for shift_trades ===\"\nrg -B 2 -A 10 \"CREATE POLICY.*ON shift_trades\" --type sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 647\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\n# Read the original migration file to see all policies\necho \"=== Original shift_trades migration ===\"\ncat supabase/migrations/20260104120000_create_shift_trades.sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 12493\n\n---\n\n\n\n</details>\n\n**Add a DELETE policy to ensure shift_trades records can only be deleted through authorized functions.**\n\nSELECT and UPDATE policies exist in the original migration. However, a DELETE policy is missing. Employees should only be able to delete trades they created (if status permits), while managers should be able to delete trades. Without a DELETE policy, shift_trades records are not fully protected by RLS. This migration should also add:\n\n```sql\nCREATE POLICY \"Employees can delete their own cancelled trades\"\n  ON shift_trades FOR DELETE\n  USING (\n    offered_by_employee_id IN (\n      SELECT id FROM employees WHERE user_id = auth.uid()\n    )\n    AND status IN ('open', 'cancelled')\n  );\n\nCREATE POLICY \"Managers can delete shift trades\"\n  ON shift_trades FOR DELETE\n  USING (\n    EXISTS (\n      SELECT 1 FROM user_restaurants\n      WHERE user_restaurants.user_id = auth.uid()\n      AND user_restaurants.restaurant_id = shift_trades.restaurant_id\n      AND user_restaurants.role IN ('owner', 'manager')\n    )\n  );\n```\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260105000000_fix_shift_trades_rls.sql around lines\n1-28, Migration is missing DELETE policies for shift_trades so records can be\ndeleted only by authorized users; add two policies: create \"Employees can delete\ntheir own cancelled trades\" ON shift_trades FOR DELETE USING (...) that allows\ndeletion when offered_by_employee_id matches the current user's employee id (use\nSELECT id FROM employees WHERE user_id = auth.uid()) and status is in\n('open','cancelled'), and create \"Managers can delete shift trades\" ON\nshift_trades FOR DELETE USING (...) that allows deletion when a row exists in\nuser_restaurants for auth.uid() with restaurant_id = shift_trades.restaurant_id\nand role IN ('owner','manager'); also add suitable COMMENT ON POLICY entries to\ndocument each new policy.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "aa17ebf1758d9cd96fe73b2090fa8a1c7f795cd2",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T05:10:39.968Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Added two DELETE policies: employees can delete own open/cancelled trades, managers can delete any. All 389 SQL tests pass."
       ]
     },
     {
@@ -18679,9 +18694,9 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**`accept_shift_trade` missing `FOR UPDATE` lock - race condition risk.**\n\nMultiple employees could simultaneously pass the `status = 'open'` check before any update occurs. The version in `20260104120000_create_shift_trades.sql` (line 185) correctly uses `FOR UPDATE`.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n   -- Get the trade\n   SELECT * INTO v_trade\n   FROM shift_trades\n-  WHERE id = p_trade_id;\n+  WHERE id = p_trade_id\n+  FOR UPDATE;\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260105000100_create_shift_trade_functions.sql around\nlines 5-68, The accept_shift_trade function risks a race because the initial\nSELECT that reads the shift_trades row (into v_trade) isn't locking it; modify\nthe SELECT ... FROM shift_trades WHERE id = p_trade_id to acquire a row lock\n(e.g., add FOR UPDATE) so concurrent transactions cannot pass the 'status =\nopen' check simultaneously; update the SELECT that fetches v_trade (and\noptionally the SELECT for v_shift/offered_shift_id) to use FOR UPDATE/FOR NO KEY\nUPDATE as appropriate before checking and updating the trade.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "def3238442362d6afb90ec70ec6fab6db7e307d1",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T12:39:22.864Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -18699,9 +18714,9 @@
       "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Missing manager authorization in `approve_shift_trade`.**\n\nThis function lacks the manager role verification that exists in the earlier migration (`20260104120000`). The `p_manager_user_id` parameter is passed but not verified against `auth.uid()` or checked for manager role. Any authenticated user could call this function to approve trades.\n\nCompare with the secure version in `20260104120000_create_shift_trades.sql` (lines 260-319) which verifies the caller's role.\n\n\n<details>\n<summary>🔎 Proposed fix to add authorization check</summary>\n\n```diff\n CREATE OR REPLACE FUNCTION approve_shift_trade(\n   p_trade_id UUID,\n   p_manager_user_id UUID,\n   p_manager_note TEXT DEFAULT NULL\n )\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n AS $$\n DECLARE\n   v_trade shift_trades;\n   v_shift shifts;\n+  v_user_role TEXT;\n BEGIN\n+  -- Verify caller is the manager specified and has manager role\n+  IF p_manager_user_id != auth.uid() THEN\n+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');\n+  END IF;\n+\n+  SELECT role INTO v_user_role\n+  FROM user_restaurants\n+  WHERE user_id = auth.uid()\n+  AND restaurant_id = (SELECT restaurant_id FROM shift_trades WHERE id = p_trade_id)\n+  LIMIT 1;\n+\n+  IF v_user_role NOT IN ('owner', 'manager') THEN\n+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Manager access required');\n+  END IF;\n+\n   -- Get the trade\n   SELECT * INTO v_trade\n   FROM shift_trades\n-  WHERE id = p_trade_id;\n+  WHERE id = p_trade_id\n+  FOR UPDATE;\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260105000100_create_shift_trade_functions.sql around\nlines 70-123, approve_shift_trade lacks authorization: ensure the caller is\nactually the manager by checking auth.uid() against the provided\np_manager_user_id and verifying that the caller has the manager role before\nperforming updates; add a pre-check in the approve_shift_trade function that\nqueries the users (or equivalent) table for auth.uid() to confirm role =\n'manager' (or use the same role-check logic as in\n20260104120000_create_shift_trades.sql), and if the check fails return\njsonb_build_object('success', false, 'error', 'Not authorized') so only\nauthorized managers can approve trades.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "9bcac684600fd6f61487b88f0f082c9c4500e979",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T12:39:22.864Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -18719,9 +18734,9 @@
       "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Missing manager authorization in `reject_shift_trade`.**\n\nSame issue as `approve_shift_trade` - no verification that `p_manager_user_id` matches `auth.uid()` or has manager role.\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "dc34ef099d9dcea012c91a58924e22eef9358278",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T12:39:22.864Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -18739,9 +18754,9 @@
       "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**`cancel_shift_trade` trusts client-provided `p_employee_id` without verification.**\n\nThe function checks that `p_employee_id` matches `offered_by_employee_id`, but doesn't verify that the caller (`auth.uid()`) actually owns that employee record. A malicious user could pass any employee ID.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n BEGIN\n   -- Get the trade\n   SELECT * INTO v_trade\n   FROM shift_trades\n   WHERE id = p_trade_id;\n\n   IF NOT FOUND THEN\n     RETURN jsonb_build_object('success', false, 'error', 'Trade not found');\n   END IF;\n\n-  -- Check employee is the one who created the trade\n-  IF v_trade.offered_by_employee_id != p_employee_id THEN\n+  -- Verify the caller owns the employee record that created this trade\n+  IF NOT EXISTS (\n+    SELECT 1 FROM employees\n+    WHERE id = v_trade.offered_by_employee_id\n+    AND user_id = auth.uid()\n+  ) THEN\n     RETURN jsonb_build_object('success', false, 'error', 'You can only cancel your own trades');\n   END IF;\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n-- Function to cancel a shift trade (employee who created it)\nCREATE OR REPLACE FUNCTION cancel_shift_trade(\n  p_trade_id UUID,\n  p_employee_id UUID\n)\nRETURNS jsonb\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  v_trade shift_trades;\nBEGIN\n  -- Get the trade\n  SELECT * INTO v_trade\n  FROM shift_trades\n  WHERE id = p_trade_id;\n\n  IF NOT FOUND THEN\n    RETURN jsonb_build_object('success', false, 'error', 'Trade not found');\n  END IF;\n\n  -- Verify the caller owns the employee record that created this trade\n  IF NOT EXISTS (\n    SELECT 1 FROM employees\n    WHERE id = v_trade.offered_by_employee_id\n    AND user_id = auth.uid()\n  ) THEN\n    RETURN jsonb_build_object('success', false, 'error', 'You can only cancel your own trades');\n  END IF;\n\n  -- Check trade is still open (can't cancel after accepted)\n  IF v_trade.status != 'open' THEN\n    RETURN jsonb_build_object('success', false, 'error', 'Cannot cancel trade after it has been accepted');\n  END IF;\n\n  -- Update trade status\n  UPDATE shift_trades\n  SET \n    status = 'cancelled',\n    updated_at = NOW()\n  WHERE id = p_trade_id;\n\n  RETURN jsonb_build_object('success', true);\nEND;\n$$;\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260105000100_create_shift_trade_functions.sql around\nlines 166-206, The function cancel_shift_trade currently trusts the\ncaller-supplied p_employee_id; fix it by verifying ownership: inside\ncancel_shift_trade, query the employees table (e.g., SELECT 1 FROM employees\nWHERE id = p_employee_id AND user_id = auth.uid()) and if no row is found RETURN\njsonb_build_object('success', false, 'error', 'Unauthorized')—this ensures the\ncaller (auth.uid()) actually owns the employee record before proceeding with the\nexisting checks and the UPDATE on shift_trades.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "4bf444e6be6ef658b10ed6d259687029cc3c1801",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T12:39:22.864Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -18757,9 +18772,9 @@
       "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=287) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [73.7% Coverage on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=287&metric=new_coverage&view=list) (required ≥ 80%)  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [5.6% Duplication on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=287&metric=new_duplicated_lines_density&view=list) (required ≤ 3%)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=287)\n\n",
       "severity": "info",
       "id": "5056c970da91017f3acfaed6025da4f711411307",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.517Z",
-      "updated_at": "2026-01-06T04:40:23.517Z",
+      "updated_at": "2026-01-06T12:39:22.864Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"

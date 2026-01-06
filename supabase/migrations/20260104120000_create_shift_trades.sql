@@ -44,12 +44,13 @@ CREATE TABLE IF NOT EXISTS shift_trades (
   -- Constraints
   CONSTRAINT valid_status CHECK (
     status IN ('open', 'pending_approval', 'approved', 'rejected', 'cancelled')
-  ),
-  
-  -- Can't offer same shift multiple times as active trade
-  CONSTRAINT unique_active_trade_per_shift UNIQUE (offered_shift_id, status) 
-    DEFERRABLE INITIALLY DEFERRED
+  )
 );
+
+-- Prevent multiple active trades for the same shift
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_trade_per_shift 
+  ON shift_trades(offered_shift_id) 
+  WHERE status IN ('open', 'pending_approval');
 
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_shift_trades_restaurant_id ON shift_trades(restaurant_id);
@@ -114,8 +115,8 @@ CREATE POLICY "Employees can update trades they're involved in"
     )
   )
   WITH CHECK (
-    -- Can only update to pending_approval or cancelled status
-    status IN ('open', 'pending_approval', 'cancelled')
+    -- Can only update to pending_approval (accept) or cancelled (cancel)
+    status IN ('pending_approval', 'cancelled')
   );
 
 -- Policy 4: Managers can view all trades in their restaurants

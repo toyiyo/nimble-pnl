@@ -87,14 +87,22 @@ const buildEmails = async (
     // Notify managers about pending approval
     const { data: managers } = await supabase
       .from('user_restaurants')
-      .select('user:auth.users(email)')
+      .select('user_id')
       .eq('restaurant_id', restaurantId)
       .in('role', ['owner', 'manager']);
 
-    if (managers) {
-      managers.forEach((manager: any) => {
-        if (manager.user?.email) emails.push(manager.user.email);
-      });
+    if (managers && managers.length > 0) {
+      const managerUserIds = managers.map((m: any) => m.user_id);
+      const { data: managerProfiles } = await supabase
+        .from('profiles')
+        .select('email')
+        .in('user_id', managerUserIds);
+      
+      if (managerProfiles) {
+        managerProfiles.forEach((profile: any) => {
+          if (profile.email) emails.push(profile.email);
+        });
+      }
     }
 
     // Notify original employee
@@ -115,6 +123,16 @@ const buildEmails = async (
   return [...new Set(emails)];
 };
 
+// HTML escape function to prevent XSS
+const escapeHtml = (str: string): string => {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
 const generateEmailHtml = (
   content: typeof ACTION_CONTENT[keyof typeof ACTION_CONTENT],
   employeeName: string,
@@ -122,13 +140,18 @@ const generateEmailHtml = (
   restaurantName: string,
   managerNote?: string
 ) => {
+  // Escape all user-provided content
+  const safeEmployeeName = escapeHtml(employeeName);
+  const safeShiftDetails = escapeHtml(shiftDetails);
+  const safeRestaurantName = escapeHtml(restaurantName);
+  const safeManagerNote = managerNote ? escapeHtml(managerNote) : undefined;
   return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${content.subject(employeeName)}</title>
+  <title>${content.subject(safeEmployeeName)}</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
@@ -154,12 +177,12 @@ const generateEmailHtml = (
               
               <!-- Restaurant Name -->
               <p style="margin: 0 0 24px; color: #6b7280; font-size: 16px; text-align: center;">
-                ${restaurantName}
+                ${safeRestaurantName}
               </p>
               
               <!-- Message -->
               <p style="margin: 0 0 24px; color: #1f2937; font-size: 16px; line-height: 1.6;">
-                ${content.message(employeeName, shiftDetails)}
+                ${content.message(safeEmployeeName, safeShiftDetails)}
               </p>
               
               <!-- Shift Details Card -->
@@ -168,18 +191,18 @@ const generateEmailHtml = (
                   Shift Details
                 </h3>
                 <p style="margin: 0; color: #6b7280; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">
-                  ${shiftDetails}
+                  ${safeShiftDetails}
                 </p>
               </div>
               
-              ${managerNote ? `
+              ${safeManagerNote ? `
               <!-- Manager Note -->
               <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px; padding: 16px; margin: 24px 0;">
                 <p style="margin: 0 0 8px; color: #92400e; font-size: 14px; font-weight: 600;">
                   Manager Note:
                 </p>
                 <p style="margin: 0; color: #78350f; font-size: 14px; line-height: 1.5;">
-                  ${managerNote}
+                  ${safeManagerNote}
                 </p>
               </div>
               ` : ''}

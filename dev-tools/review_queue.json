@@ -19219,9 +19219,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts"
       ],
       "id": "f338968ebcd0f42642687ab4c514cf0c51af7b2a",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T16:00:33.477Z",
+      "notes": [
+        "No any type errors found - file is clean"
+      ]
     },
     {
       "source": "problems",
@@ -19236,9 +19239,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
       ],
       "id": "56e0f851979b32f22be09e6fdb150d7e686e971d",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T16:00:32.824Z",
+      "notes": [
+        "Replaced as any with as MockQueryBuilder - tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -19253,9 +19259,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
       ],
       "id": "3e0466c88abc6d46f37a2ab23282b18d1254f789",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T16:00:32.115Z",
+      "notes": [
+        "Replaced as any with as MockQueryBuilder - tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -19270,9 +19279,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
       ],
       "id": "ebcdbaa88f69b35b906d30515c900447d222dea3",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T16:00:31.299Z",
+      "notes": [
+        "Replaced as any with as MockQueryBuilder - tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -19287,9 +19299,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
       ],
       "id": "c2927e40b2e6105757ea03f52d000512380c3141",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T16:00:29.837Z",
+      "notes": [
+        "Replaced as any with as MockQueryBuilder - tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -19304,9 +19319,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
       ],
       "id": "ac9f2d3f72a06d6f01f6f597c90eac9c578538bd",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T16:26:10.582Z"
     },
     {
       "source": "problems",
@@ -19321,9 +19336,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
       ],
       "id": "94499ffb4b906064709821db8c01fd96c7127db1",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T16:26:10.582Z"
     },
     {
       "source": "problems",
@@ -19338,9 +19353,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
       ],
       "id": "582fd0d6b58f1c710971db7c526550495f8fec6d",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T16:26:10.582Z"
     },
     {
       "source": "problems",
@@ -19355,9 +19370,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
       ],
       "id": "f2732f5db41c14fbdcf655e860972e1364cb0b47",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T16:26:10.582Z"
     },
     {
       "source": "problems",
@@ -19372,9 +19387,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
       ],
       "id": "79ce96ccdea03ebdb6d17f3adcba9535c880af1b",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T16:26:10.582Z"
     },
     {
       "source": "problems",

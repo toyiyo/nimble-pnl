@@ -13,9 +13,11 @@ SELECT
 DELETE FROM unified_sales;
 
 -- Seed a restaurant
-INSERT INTO restaurants (id, name) VALUES (:'restaurant_id', 'P&L Test Restaurant');
+INSERT INTO restaurants (id, name) VALUES (:'restaurant_id', 'P&L Test Restaurant')
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 -- Seed a second restaurant to satisfy FK for out-of-scope data
-INSERT INTO restaurants (id, name) VALUES ('99999999-9999-9999-9999-999999999999', 'Other Resto');
+INSERT INTO restaurants (id, name) VALUES ('99999999-9999-9999-9999-999999999999', 'Other Resto')
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 -- Cleanup prior data for deterministic results
 DELETE FROM unified_sales WHERE restaurant_id IN (:'restaurant_id', '99999999-9999-9999-9999-999999999999');

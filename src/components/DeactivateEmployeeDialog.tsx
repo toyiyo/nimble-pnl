@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -9,18 +9,21 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useDeactivateEmployee } from '@/hooks/useEmployees';
 import { Employee } from '@/types/scheduling';
-import { AlertTriangle, UserX } from 'lucide-react';
+import { AlertTriangle, UserX, Info } from 'lucide-react';
 
 interface DeactivateEmployeeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   employee: Employee | null;
 }
+
+const getTodayDate = () => new Date().toISOString().split('T')[0];
 
 export const DeactivateEmployeeDialog = ({
   open,
@@ -29,17 +32,26 @@ export const DeactivateEmployeeDialog = ({
 }: DeactivateEmployeeDialogProps) => {
   const [reason, setReason] = useState<string>('');
   const [removeFromSchedules, setRemoveFromSchedules] = useState(true);
+  const [terminationDate, setTerminationDate] = useState(getTodayDate());
   
   const deactivateMutation = useDeactivateEmployee();
 
+  // Reset termination date when dialog opens
+  useEffect(() => {
+    if (open) {
+      setTerminationDate(getTodayDate());
+    }
+  }, [open]);
+
   const handleDeactivate = () => {
-    if (!employee) return;
+    if (!employee || !terminationDate) return;
 
     deactivateMutation.mutate(
       {
         employeeId: employee.id,
         reason: reason || undefined,
         removeFromSchedules,
+        terminationDate,
       },
       {
         onSuccess: () => {
@@ -47,6 +59,7 @@ export const DeactivateEmployeeDialog = ({
           // Reset form
           setReason('');
           setRemoveFromSchedules(true);
+          setTerminationDate(getTodayDate());
         },
       }
     );
@@ -56,6 +69,7 @@ export const DeactivateEmployeeDialog = ({
     onOpenChange(false);
     setReason('');
     setRemoveFromSchedules(true);
+    setTerminationDate(getTodayDate());
   };
 
   if (!employee) return null;
@@ -85,6 +99,25 @@ export const DeactivateEmployeeDialog = ({
               This will not delete their historical punches or payroll. You can reactivate them at any time.
             </AlertDescription>
           </Alert>
+
+          {/* Termination Date - CRITICAL for payroll calculations */}
+          <div className="space-y-2">
+            <Label htmlFor="terminationDate" className="flex items-center gap-1.5">
+              Termination/Effective Date <span className="text-destructive">*</span>
+              <Info className="h-3.5 w-3.5 text-muted-foreground" />
+            </Label>
+            <Input
+              id="terminationDate"
+              type="date"
+              value={terminationDate}
+              onChange={(e) => setTerminationDate(e.target.value)}
+              required
+              aria-label="Termination date"
+            />
+            <p className="text-xs text-muted-foreground">
+              <strong>Important:</strong> Payroll calculations will stop after this date. Set a future date if the employee is giving notice.
+            </p>
+          </div>
 
           {/* Reason Selection */}
           <div className="space-y-3">
@@ -163,7 +196,7 @@ export const DeactivateEmployeeDialog = ({
           <Button
             variant="destructive"
             onClick={handleDeactivate}
-            disabled={deactivateMutation.isPending}
+            disabled={deactivateMutation.isPending || !terminationDate}
           >
             {deactivateMutation.isPending ? 'Deactivating...' : 'Deactivate Employee'}
           </Button>

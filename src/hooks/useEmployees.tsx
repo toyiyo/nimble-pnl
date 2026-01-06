@@ -160,6 +160,7 @@ export interface DeactivateEmployeeParams {
   employeeId: string;
   reason?: string;
   removeFromSchedules?: boolean;
+  terminationDate: string; // CRITICAL: Required for payroll calculations
 }
 
 export const useDeactivateEmployee = () => {
@@ -167,7 +168,7 @@ export const useDeactivateEmployee = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ employeeId, reason, removeFromSchedules = true }: DeactivateEmployeeParams) => {
+    mutationFn: async ({ employeeId, reason, removeFromSchedules = true, terminationDate }: DeactivateEmployeeParams) => {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
@@ -178,6 +179,7 @@ export const useDeactivateEmployee = () => {
         p_deactivated_by: user.id,
         p_reason: reason || null,
         p_remove_from_future_shifts: removeFromSchedules,
+        p_termination_date: terminationDate,
       });
 
       if (error) throw error;

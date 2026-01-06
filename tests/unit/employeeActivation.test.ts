@@ -209,6 +209,7 @@ describe('Employee Activation Status', () => {
         employeeId: 'emp-1',
         reason: 'seasonal',
         removeFromSchedules: true,
+        terminationDate: '2026-01-06',
       });
 
       await waitFor(() => {
@@ -219,6 +220,7 @@ describe('Employee Activation Status', () => {
             p_deactivated_by: 'user-123',
             p_reason: 'seasonal',
             p_remove_from_future_shifts: true,
+            p_termination_date: '2026-01-06',
           })
         );
       });
@@ -260,6 +262,7 @@ describe('Employee Activation Status', () => {
       result.current.mutate({
         employeeId: 'emp-2',
         removeFromSchedules: false,
+        terminationDate: '2026-01-06',
       });
 
       await waitFor(() => {
@@ -268,6 +271,63 @@ describe('Employee Activation Status', () => {
           expect.objectContaining({
             p_employee_id: 'emp-2',
             p_remove_from_future_shifts: false,
+            p_termination_date: '2026-01-06',
+          })
+        );
+      });
+    });
+
+    it('CRITICAL: should set termination_date for future deactivation (two-week notice)', async () => {
+      const futureDate = '2026-01-20'; // Employee gives notice but hasn't left yet
+      const mockDeactivatedEmployee = {
+        id: 'emp-3',
+        name: 'Future Leaver',
+        is_active: false,
+        status: 'inactive',
+        deactivation_reason: 'left_company',
+        deactivated_at: new Date().toISOString(),
+        deactivated_by: 'user-123',
+        termination_date: futureDate,
+      };
+
+      const mockRpc = vi.fn().mockResolvedValue({ 
+        data: mockDeactivatedEmployee, 
+        error: null 
+      });
+
+      mockSupabase.rpc = mockRpc;
+      
+      mockSupabase.auth.getUser.mockResolvedValue({
+        data: { user: { id: 'user-123' } },
+        error: null,
+      });
+
+      const { useDeactivateEmployee } = await import('@/hooks/useEmployees');
+
+      const { result } = renderHook(() => useDeactivateEmployee(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(result.current).toBeDefined();
+      });
+
+      result.current.mutate({
+        employeeId: 'emp-3',
+        reason: 'left_company',
+        removeFromSchedules: true,
+        terminationDate: futureDate,
+      });
+
+      await waitFor(() => {
+        expect(mockRpc).toHaveBeenCalledWith(
+          'deactivate_employee',
+          expect.objectContaining({
+            p_employee_id: 'emp-3',
+            p_deactivated_by: 'user-123',
+            p_reason: 'left_company',
+            p_remove_from_future_shifts: true,
+            p_termination_date: futureDate,
           })
         );
       });

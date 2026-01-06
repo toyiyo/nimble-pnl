@@ -37,9 +37,11 @@ type ActionType = 'approve' | 'reject' | null;
 
 export const TradeApprovalQueue = () => {
   const { selectedRestaurant } = useRestaurantContext();
+  const restaurantId = selectedRestaurant?.restaurant_id || null;
   const { trades, loading } = useShiftTrades(
-    selectedRestaurant?.id || null,
-    'pending_approval'
+    restaurantId,
+    'pending_approval',
+    null // Don't filter by employee - show all trades
   );
   const { mutate: approveTrade, isPending: isApproving } = useApproveShiftTrade();
   const { mutate: rejectTrade, isPending: isRejecting } = useRejectShiftTrade();

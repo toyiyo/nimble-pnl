@@ -18917,9 +18917,12 @@
         "npm run lint"
       ],
       "id": "e9d19aa122567982d4c64b52f8ff4d8fbd03c6d1",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.518Z",
-      "updated_at": "2026-01-06T15:05:30.684Z"
+      "updated_at": "2026-01-06T15:17:10.157Z",
+      "notes": [
+        "Extracted nested ternary into IIFE - tests pass"
+      ]
     },
     {
       "source": "sonarqube",
@@ -18936,9 +18939,12 @@
         "npm run lint"
       ],
       "id": "f0d53af33cc2b5123fb5b1f2809d5201169f1b9e",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.518Z",
-      "updated_at": "2026-01-06T15:05:30.684Z"
+      "updated_at": "2026-01-06T15:17:09.229Z",
+      "notes": [
+        "Removed unused cn import - tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -18953,9 +18959,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/schedule/TradeRequestDialog.tsx"
       ],
       "id": "d4bb94d2afb99cbc1d2cb1c6a123a400e351212f",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.531Z",
-      "updated_at": "2026-01-06T15:05:30.684Z"
+      "updated_at": "2026-01-06T15:17:08.167Z",
+      "notes": [
+        "Replaced any with proper type - tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -18970,9 +18979,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Scheduling.tsx"
       ],
       "id": "c654bb65ec73639f0b40ce9016bfaed7f6305671",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.532Z",
-      "updated_at": "2026-01-06T15:05:30.684Z"
+      "updated_at": "2026-01-06T15:17:07.025Z",
+      "notes": [
+        "Added formatToUTC to dependency array with useCallback - tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -18987,9 +18999,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts"
       ],
       "id": "0953c8a930ab95279aa4b768ddd163c99c44f658",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T15:05:30.684Z"
+      "updated_at": "2026-01-06T15:17:04.530Z",
+      "notes": [
+        "Replaced any with SupabaseClient and specific types - tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -19004,9 +19019,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts"
       ],
       "id": "59e53c805dd09b64b0d50e7dad3dd984fdc28eda",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T04:40:23.534Z"
+      "updated_at": "2026-01-06T15:17:39.366Z"
     },
     {
       "source": "problems",
@@ -19021,9 +19036,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts"
       ],
       "id": "74f74ab17d94133c1148b840c84dc1edafa087ca",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T04:40:23.534Z"
+      "updated_at": "2026-01-06T15:17:39.366Z"
     },
     {
       "source": "problems",
@@ -19038,9 +19053,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-team-invitation/index.ts"
       ],
       "id": "8266cf7d749b15874dd9c38bfaf6338482b78868",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T04:40:23.534Z"
+      "updated_at": "2026-01-06T15:17:39.366Z"
     },
     {
       "source": "problems",
@@ -19055,9 +19070,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-team-invitation/index.ts"
       ],
       "id": "0c505ebbb5d66c4c118b14ebda570dbc2428d846",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T04:40:23.534Z"
+      "updated_at": "2026-01-06T15:17:39.366Z"
     },
     {
       "source": "problems",
@@ -19072,9 +19087,9 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-time-off-notification/index.ts"
       ],
       "id": "d452c7adc5336495f2ca29012988fc15ff6c1644",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T04:40:23.534Z"
+      "updated_at": "2026-01-06T15:17:39.366Z"
     },
     {
       "source": "problems",

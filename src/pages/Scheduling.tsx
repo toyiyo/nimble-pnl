@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -71,20 +71,20 @@ const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
   const { fromZonedTime } = dateFnsTz;
 
-  const formatToUTC = (isoString: string) => {
+  const formatToUTC = useCallback((isoString: string) => {
     const date = new Date(isoString);
     const converter = fromZonedTime ?? ((value: Date) => value);
     const utcDate = converter(date, restaurantTimezone);
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;
-  };
+  }, [fromZonedTime, restaurantTimezone]);
 
   const conflictParams = useMemo(() => ({
     employeeId: shift.employee_id,
     restaurantId: shift.restaurant_id,
     startTime: formatToUTC(shift.start_time),
     endTime: formatToUTC(shift.end_time),
-  }), [shift, restaurantTimezone]);
+  }), [shift, restaurantTimezone, formatToUTC]);
 
   const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);
 

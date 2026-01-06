@@ -79,7 +79,7 @@ const buildEmails = async (
       .not('email', 'is', null);
 
     if (employees) {
-      employees.forEach((emp: any) => {
+      employees.forEach((emp: { email: string | null }) => {
         if (emp.email) emails.push(emp.email);
       });
     }
@@ -92,14 +92,14 @@ const buildEmails = async (
       .in('role', ['owner', 'manager']);
 
     if (managers && managers.length > 0) {
-      const managerUserIds = managers.map((m: any) => m.user_id);
+      const managerUserIds = managers.map((m: { user_id: string }) => m.user_id);
       const { data: managerProfiles } = await supabase
         .from('profiles')
         .select('email')
         .in('user_id', managerUserIds);
       
       if (managerProfiles) {
-        managerProfiles.forEach((profile: any) => {
+        managerProfiles.forEach((profile: { email: string | null }) => {
           if (profile.email) emails.push(profile.email);
         });
       }

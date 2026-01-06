@@ -44,7 +44,13 @@ const formatDate = (date: string) => new Date(date).toLocaleDateString('en-US', 
   year: 'numeric'
 });
 
-const buildEmails = async (supabase: any, restaurantId: string, employeeEmail?: string, notifyEmployee?: boolean, notifyManagers?: boolean) => {
+const buildEmails = async (
+  supabase: ReturnType<typeof createClient>,
+  restaurantId: string,
+  employeeEmail?: string,
+  notifyEmployee?: boolean,
+  notifyManagers?: boolean
+) => {
   const emails: string[] = [];
 
   if (notifyEmployee && employeeEmail) {
@@ -61,7 +67,7 @@ const buildEmails = async (supabase: any, restaurantId: string, employeeEmail?: 
       .in('role', ['owner', 'manager']);
 
     if (!managersError && managers) {
-      managers.forEach((manager: any) => {
+      managers.forEach((manager: { user?: { email?: string } }) => {
         if (manager.user?.email) {
           emails.push(manager.user.email);
         }
@@ -296,11 +302,12 @@ const handler = async (req: Request): Promise<Response> => {
       console.error("Failed to send notification emails:", emailError);
       throw new Error('Failed to send notification emails');
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error sending time-off notification:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: errorMessage,
         success: false 
       }),
       {

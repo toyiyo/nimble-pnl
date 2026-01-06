@@ -786,5 +786,535 @@ describe('useShiftTrades', () => {
         })
       ).rejects.toThrow();
     });
+
+    it('should handle RPC success:false in accept trade', async () => {
+      // RPC returns data but success: false
+      mockSupabase.rpc.mockResolvedValue({
+        data: { success: false, error: 'Custom validation error' },
+        error: null,
+      });
+
+      const { result } = renderHook(() => useAcceptShiftTrade(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      await expect(
+        result.current.mutateAsync({
+          tradeId: 'trade-1',
+          acceptingEmployeeId: 'emp-2',
+        })
+      ).rejects.toThrow('Custom validation error');
+    });
+
+    it('should handle RPC success:false without error message in accept trade', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: { success: false },
+        error: null,
+      });
+
+      const { result } = renderHook(() => useAcceptShiftTrade(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      await expect(
+        result.current.mutateAsync({
+          tradeId: 'trade-1',
+          acceptingEmployeeId: 'emp-2',
+        })
+      ).rejects.toThrow('Failed to accept trade');
+    });
+
+    it('should handle RPC success:false in approve trade', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: { success: false, error: 'Cannot approve already approved trade' },
+        error: null,
+      });
+
+      const { result } = renderHook(() => useApproveShiftTrade(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      await expect(
+        result.current.mutateAsync({
+          tradeId: 'trade-1',
+        })
+      ).rejects.toThrow('Cannot approve already approved trade');
+    });
+
+    it('should handle RPC success:false in reject trade', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: { success: false, error: 'Cannot reject already rejected trade' },
+        error: null,
+      });
+
+      const { result } = renderHook(() => useRejectShiftTrade(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      await expect(
+        result.current.mutateAsync({
+          tradeId: 'trade-1',
+        })
+      ).rejects.toThrow('Cannot reject already rejected trade');
+    });
+
+    it('should handle email notification failure gracefully on create', async () => {
+      const mockNewTrade: TestShiftTrade = {
+        id: 'trade-new',
+        restaurant_id: 'rest-123',
+        offered_shift_id: 'shift-1',
+        offered_by_employee_id: 'emp-1',
+        requested_shift_id: null,
+        target_employee_id: null,
+        accepted_by_employee_id: null,
+        status: 'open',
+        reason: 'Need day off',
+        manager_note: null,
+        reviewed_by: null,
+        reviewed_at: null,
+        created_at: '2026-01-04T10:00:00Z',
+        updated_at: '2026-01-04T10:00:00Z',
+      };
+
+      const builder = createMutationQueryBuilder(mockNewTrade);
+      mockSupabase.from.mockReturnValue(builder);
+      mockSupabase.functions.invoke.mockRejectedValue(new Error('Email service unavailable'));
+
+      const { result } = renderHook(() => useCreateShiftTrade(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      // Should not throw even if email fails
+      await expect(
+        result.current.mutateAsync({
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-1',
+          offered_by_employee_id: 'emp-1',
+          reason: 'Need day off',
+        })
+      ).resolves.toBeDefined();
+
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: expect.stringContaining('posted'),
+        })
+      );
+    });
+
+    it('should handle email notification failure gracefully on accept', async () => {
+      mockSupabase.rpc.mockResolvedValue({ data: { success: true }, error: null });
+      mockSupabase.functions.invoke.mockRejectedValue(new Error('Email service unavailable'));
+
+      const { result } = renderHook(() => useAcceptShiftTrade(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      // Should not throw even if email fails
+      await expect(
+        result.current.mutateAsync({
+          tradeId: 'trade-1',
+          acceptingEmployeeId: 'emp-2',
+        })
+      ).resolves.toBeDefined();
+    });
+
+    it('should handle email notification failure gracefully on approve', async () => {
+      mockSupabase.rpc.mockResolvedValue({ data: { success: true }, error: null });
+      mockSupabase.functions.invoke.mockRejectedValue(new Error('Email service unavailable'));
+
+      const { result } = renderHook(() => useApproveShiftTrade(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      await expect(
+        result.current.mutateAsync({
+          tradeId: 'trade-1',
+          managerNote: 'Approved',
+        })
+      ).resolves.toBeDefined();
+    });
+
+    it('should handle email notification failure gracefully on reject', async () => {
+      mockSupabase.rpc.mockResolvedValue({ data: { success: true }, error: null });
+      mockSupabase.functions.invoke.mockRejectedValue(new Error('Email service unavailable'));
+
+      const { result } = renderHook(() => useRejectShiftTrade(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      await expect(
+        result.current.mutateAsync({
+          tradeId: 'trade-1',
+          managerNote: 'Rejected',
+        })
+      ).resolves.toBeDefined();
+    });
+
+    it('should handle email notification failure gracefully on cancel', async () => {
+      const mockCancelledTrade: TestShiftTrade = {
+        id: 'trade-1',
+        restaurant_id: 'rest-123',
+        offered_shift_id: 'shift-1',
+        offered_by_employee_id: 'emp-1',
+        requested_shift_id: null,
+        target_employee_id: null,
+        accepted_by_employee_id: null,
+        status: 'cancelled',
+        reason: null,
+        manager_note: null,
+        reviewed_by: null,
+        reviewed_at: null,
+        created_at: '2026-01-04T10:00:00Z',
+        updated_at: '2026-01-04T10:05:00Z',
+      };
+
+      const builder = createMutationQueryBuilder(mockCancelledTrade);
+      mockSupabase.from.mockReturnValue(builder);
+      mockSupabase.functions.invoke.mockRejectedValue(new Error('Email service unavailable'));
+
+      const { result } = renderHook(() => useCancelShiftTrade(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      // Should not throw even if email fails
+      await expect(result.current.mutateAsync('trade-1')).resolves.toBeDefined();
+    });
+
+    it('should handle cancel with no data returned', async () => {
+      const builder = createMutationQueryBuilder(null);
+      mockSupabase.from.mockReturnValue(builder);
+
+      const { result } = renderHook(() => useCancelShiftTrade(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      await expect(result.current.mutateAsync('trade-1')).rejects.toThrow(
+        'Trade not found or already accepted'
+      );
+    });
+  });
+
+  describe('useMarketplaceTrades - Conflict Detection', () => {
+    it('CRITICAL: should detect time conflicts with employee shifts', async () => {
+      const mockTrades: TestShiftTrade[] = [
+        {
+          id: 'trade-1',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-1',
+          offered_by_employee_id: 'emp-1',
+          requested_shift_id: null,
+          target_employee_id: null,
+          accepted_by_employee_id: null,
+          status: 'open',
+          reason: 'Need coverage',
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T10:00:00Z',
+          updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: {
+            id: 'shift-1',
+            start_time: '2026-01-10T09:00:00Z',
+            end_time: '2026-01-10T17:00:00Z',
+            position: 'Server',
+            break_duration: 30,
+          },
+          offered_by: {
+            id: 'emp-1',
+            name: 'John Doe',
+            email: 'john@example.com',
+            position: 'Server',
+          },
+        },
+      ];
+
+      const mockEmployeeShifts = [
+        {
+          start_time: '2026-01-10T08:00:00Z',
+          end_time: '2026-01-10T12:00:00Z', // Overlaps with trade (9am-5pm)
+        },
+      ];
+
+      // Create builder that returns employee shifts with proper chaining
+      const shiftsBuilder = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({ data: mockEmployeeShifts, error: null }),
+      };
+
+      const tradesBuilder = createSelectQueryBuilder(mockTrades);
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'shift_trades') return tradesBuilder;
+        if (table === 'shifts') return shiftsBuilder;
+        return tradesBuilder;
+      });
+
+      const { result } = renderHook(
+        () => useMarketplaceTrades('rest-123', 'emp-2'),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.trades).toHaveLength(1);
+      expect(result.current.trades[0].hasConflict).toBe(true);
+    });
+
+    it('should not mark conflict when shifts do not overlap', async () => {
+      const mockTrades: TestShiftTrade[] = [
+        {
+          id: 'trade-1',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-1',
+          offered_by_employee_id: 'emp-1',
+          requested_shift_id: null,
+          target_employee_id: null,
+          accepted_by_employee_id: null,
+          status: 'open',
+          reason: 'Need coverage',
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T10:00:00Z',
+          updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: {
+            id: 'shift-1',
+            start_time: '2026-01-10T09:00:00Z',
+            end_time: '2026-01-10T17:00:00Z',
+            position: 'Server',
+            break_duration: 30,
+          },
+          offered_by: {
+            id: 'emp-1',
+            name: 'John Doe',
+            email: 'john@example.com',
+            position: 'Server',
+          },
+        },
+      ];
+
+      const mockEmployeeShifts = [
+        {
+          start_time: '2026-01-10T18:00:00Z',
+          end_time: '2026-01-10T22:00:00Z', // No overlap
+        },
+      ];
+
+      const shiftsBuilder = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({ data: mockEmployeeShifts, error: null }),
+      };
+
+      const tradesBuilder = createSelectQueryBuilder(mockTrades);
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'shift_trades') return tradesBuilder;
+        if (table === 'shifts') return shiftsBuilder;
+        return tradesBuilder;
+      });
+
+      const { result } = renderHook(
+        () => useMarketplaceTrades('rest-123', 'emp-2'),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.trades).toHaveLength(1);
+      expect(result.current.trades[0].hasConflict).toBe(false);
+    });
+
+    it('should handle empty employee shifts', async () => {
+      const mockTrades: TestShiftTrade[] = [
+        {
+          id: 'trade-1',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-1',
+          offered_by_employee_id: 'emp-1',
+          requested_shift_id: null,
+          target_employee_id: null,
+          accepted_by_employee_id: null,
+          status: 'open',
+          reason: 'Need coverage',
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T10:00:00Z',
+          updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: {
+            id: 'shift-1',
+            start_time: '2026-01-10T09:00:00Z',
+            end_time: '2026-01-10T17:00:00Z',
+            position: 'Server',
+            break_duration: 30,
+          },
+          offered_by: {
+            id: 'emp-1',
+            name: 'John Doe',
+            email: 'john@example.com',
+            position: 'Server',
+          },
+        },
+      ];
+
+      const shiftsBuilder = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({ data: [], error: null }),
+      };
+
+      const tradesBuilder = createSelectQueryBuilder(mockTrades);
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'shift_trades') return tradesBuilder;
+        if (table === 'shifts') return shiftsBuilder;
+        return tradesBuilder;
+      });
+
+      const { result } = renderHook(
+        () => useMarketplaceTrades('rest-123', 'emp-2'),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.trades).toHaveLength(1);
+      expect(result.current.trades[0].hasConflict).toBe(false);
+    });
+
+    it('should include targeted trades when currentEmployeeId matches', async () => {
+      const mockTrades: TestShiftTrade[] = [
+        {
+          id: 'trade-1',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-1',
+          offered_by_employee_id: 'emp-1',
+          requested_shift_id: null,
+          target_employee_id: 'emp-2', // Targeted at specific employee
+          accepted_by_employee_id: null,
+          status: 'open',
+          reason: 'Directed trade',
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T10:00:00Z',
+          updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: {
+            id: 'shift-1',
+            start_time: '2026-01-10T09:00:00Z',
+            end_time: '2026-01-10T17:00:00Z',
+            position: 'Server',
+            break_duration: 30,
+          },
+          offered_by: {
+            id: 'emp-1',
+            name: 'John Doe',
+            email: 'john@example.com',
+            position: 'Server',
+          },
+        },
+      ];
+
+      const shiftsBuilder = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({ data: [], error: null }),
+      };
+
+      const tradesBuilder = createSelectQueryBuilder(mockTrades);
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'shift_trades') return tradesBuilder;
+        if (table === 'shifts') return shiftsBuilder;
+        return tradesBuilder;
+      });
+
+      const { result } = renderHook(
+        () => useMarketplaceTrades('rest-123', 'emp-2'),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.trades).toHaveLength(1);
+      expect(result.current.trades[0].target_employee_id).toBe('emp-2');
+    });
+
+    it('should handle shifts error gracefully', async () => {
+      const mockTrades: TestShiftTrade[] = [
+        {
+          id: 'trade-1',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-1',
+          offered_by_employee_id: 'emp-1',
+          requested_shift_id: null,
+          target_employee_id: null,
+          accepted_by_employee_id: null,
+          status: 'open',
+          reason: 'Need coverage',
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T10:00:00Z',
+          updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: {
+            id: 'shift-1',
+            start_time: '2026-01-10T09:00:00Z',
+            end_time: '2026-01-10T17:00:00Z',
+            position: 'Server',
+            break_duration: 30,
+          },
+          offered_by: {
+            id: 'emp-1',
+            name: 'John Doe',
+            email: 'john@example.com',
+            position: 'Server',
+          },
+        },
+      ];
+
+      const shiftsBuilder = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({ data: null, error: { message: 'Shifts fetch error' } }),
+      };
+
+      const tradesBuilder = createSelectQueryBuilder(mockTrades);
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'shift_trades') return tradesBuilder;
+        if (table === 'shifts') return shiftsBuilder;
+        return tradesBuilder;
+      });
+
+      const { result } = renderHook(
+        () => useMarketplaceTrades('rest-123', 'emp-2'),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => expect(result.current.error).toBeDefined());
+    });
   });
 });

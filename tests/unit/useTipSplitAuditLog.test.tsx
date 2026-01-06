@@ -5,6 +5,14 @@ import { useTipSplitAuditLog } from '@/hooks/useTipSplitAuditLog';
 import { supabase } from '@/integrations/supabase/client';
 import React, { type ReactNode } from 'react';
 
+// Type for mocked Supabase query builder
+type MockQueryBuilder = {
+  select: ReturnType<typeof vi.fn>;
+  eq?: ReturnType<typeof vi.fn>;
+  order?: ReturnType<typeof vi.fn>;
+  in?: ReturnType<typeof vi.fn>;
+};
+
 // Mock Supabase client
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
@@ -76,15 +84,15 @@ describe('useTipSplitAuditLog', () => {
           select: mockSelect,
           eq: mockEq,
           order: mockOrder,
-        } as any;
+        } as MockQueryBuilder;
       }
       if (table === 'profiles') {
         return {
           select: mockProfilesSelect,
           in: mockIn,
-        } as any;
+        } as MockQueryBuilder;
       }
-      return {} as any;
+      return {} as MockQueryBuilder;
     });
 
     vi.mocked(supabase.rpc).mockImplementation(mockRpc);
@@ -244,15 +252,15 @@ describe('useTipSplitAuditLog', () => {
           select: mockSelect,
           eq: mockEq,
           order: mockOrder,
-        } as any;
+        } as MockQueryBuilder;
       }
       if (table === 'profiles') {
         return {
           select: mockProfilesSelect,
           in: mockIn,
-        } as any;
+        } as MockQueryBuilder;
       }
-      return {} as any;
+      return {} as MockQueryBuilder;
     });
 
     mockSelect.mockReturnValue({ eq: mockEq });
@@ -323,15 +331,15 @@ describe('useTipSplitAuditLog', () => {
           select: mockSelect,
           eq: mockEq,
           order: mockOrder,
-        } as any;
+        } as MockQueryBuilder;
       }
       if (table === 'profiles') {
         return {
           select: mockProfilesSelect,
           in: mockIn,
-        } as any;
+        } as MockQueryBuilder;
       }
-      return {} as any;
+      return {} as MockQueryBuilder;
     });
 
     mockSelect.mockReturnValue({ eq: mockEq });
@@ -408,15 +416,15 @@ describe('useTipSplitAuditLog', () => {
           select: mockSelect,
           eq: mockEq,
           order: mockOrder,
-        } as any;
+        } as MockQueryBuilder;
       }
       if (table === 'profiles') {
         return {
           select: mockProfilesSelect,
           in: mockIn,
-        } as any;
+        } as MockQueryBuilder;
       }
-      return {} as any;
+      return {} as MockQueryBuilder;
     });
 
     mockSelect.mockReturnValue({ eq: mockEq });
@@ -463,15 +471,15 @@ describe('useTipSplitAuditLog', () => {
           select: mockSelect,
           eq: mockEq,
           order: mockOrder,
-        } as any;
+        } as MockQueryBuilder;
       }
       if (table === 'profiles') {
         return {
           select: mockProfilesSelect,
           in: mockIn,
-        } as any;
+        } as MockQueryBuilder;
       }
-      return {} as any;
+      return {} as MockQueryBuilder;
     });
 
     mockSelect.mockReturnValue({ eq: mockEq });
@@ -569,15 +577,15 @@ describe('useTipSplitAuditLog', () => {
           select: mockSelect,
           eq: mockEq,
           order: mockOrder,
-        } as any;
+        } as MockQueryBuilder;
       }
       if (table === 'profiles') {
         return {
           select: mockProfilesSelect,
           in: mockIn,
-        } as any;
+        } as MockQueryBuilder;
       }
-      return {} as any;
+      return {} as MockQueryBuilder;
     });
 
     mockSelect.mockReturnValue({ eq: mockEq });

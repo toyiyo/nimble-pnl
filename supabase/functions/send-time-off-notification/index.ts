@@ -2,8 +2,6 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
 
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -46,7 +44,13 @@ const formatDate = (date: string) => new Date(date).toLocaleDateString('en-US', 
   year: 'numeric'
 });
 
-const buildEmails = async (supabase: any, restaurantId: string, employeeEmail?: string, notifyEmployee?: boolean, notifyManagers?: boolean) => {
+const buildEmails = async (
+  supabase: ReturnType<typeof createClient>,
+  restaurantId: string,
+  employeeEmail?: string,
+  notifyEmployee?: boolean,
+  notifyManagers?: boolean
+) => {
   const emails: string[] = [];
 
   if (notifyEmployee && employeeEmail) {
@@ -63,7 +67,7 @@ const buildEmails = async (supabase: any, restaurantId: string, employeeEmail?: 
       .in('role', ['owner', 'manager']);
 
     if (!managersError && managers) {
-      managers.forEach((manager: any) => {
+      managers.forEach((manager: { user?: { email?: string } | null } | null) => {
         if (manager.user?.email) {
           emails.push(manager.user.email);
         }
@@ -81,6 +85,17 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    // Initialize Resend with API key check
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) {
+      console.error('RESEND_API_KEY is not set');
+      return new Response(
+        JSON.stringify({ error: 'Email service not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    const resend = new Resend(resendApiKey);
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -283,15 +298,16 @@ const handler = async (req: Request): Promise<Response> => {
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
         }
       );
-    } catch (emailError) {
+    } catch (emailError: unknown) {
       console.error("Failed to send notification emails:", emailError);
       throw new Error('Failed to send notification emails');
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error sending time-off notification:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: errorMessage,
         success: false 
       }),
       {

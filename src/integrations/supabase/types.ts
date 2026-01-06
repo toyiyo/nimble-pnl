@@ -4356,6 +4356,142 @@ export type Database = {
           },
         ]
       }
+      shift_trades: {
+        Row: {
+          accepted_by_employee_id: string | null
+          created_at: string | null
+          id: string
+          manager_note: string | null
+          offered_by_employee_id: string
+          offered_shift_id: string
+          reason: string | null
+          requested_shift_id: string | null
+          restaurant_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_employee_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          accepted_by_employee_id?: string | null
+          created_at?: string | null
+          id?: string
+          manager_note?: string | null
+          offered_by_employee_id: string
+          offered_shift_id: string
+          reason?: string | null
+          requested_shift_id?: string | null
+          restaurant_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          target_employee_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          accepted_by_employee_id?: string | null
+          created_at?: string | null
+          id?: string
+          manager_note?: string | null
+          offered_by_employee_id?: string
+          offered_shift_id?: string
+          reason?: string | null
+          requested_shift_id?: string | null
+          restaurant_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          target_employee_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
+            columns: ["accepted_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
+            columns: ["accepted_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
+            columns: ["accepted_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
+            columns: ["offered_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
+            columns: ["offered_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
+            columns: ["offered_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_offered_shift_id_fkey"
+            columns: ["offered_shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_requested_shift_id_fkey"
+            columns: ["requested_shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_target_employee_id_fkey"
+            columns: ["target_employee_id"]
+            isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_target_employee_id_fkey"
+            columns: ["target_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_target_employee_id_fkey"
+            columns: ["target_employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shift4_charges: {
         Row: {
           amount: number
@@ -6755,6 +6891,10 @@ export type Database = {
       _table_privs: { Args: never; Returns: unknown[] }
       _temptypes: { Args: { "": string }; Returns: string }
       _todo: { Args: never; Returns: string }
+      accept_shift_trade: {
+        Args: { p_accepting_employee_id: string; p_trade_id: string }
+        Returns: Json
+      }
       advanced_product_search: {
         Args: {
           p_limit?: number
@@ -6802,6 +6942,10 @@ export type Database = {
           applied_count: number
           total_count: number
         }[]
+      }
+      approve_shift_trade: {
+        Args: { p_manager_note?: string; p_trade_id: string }
+        Returns: Json
       }
       bulk_process_historical_sales: {
         Args: {
@@ -7204,6 +7348,14 @@ export type Database = {
           transaction_count: number
         }[]
       }
+      get_users_by_ids: {
+        Args: { user_ids: string[] }
+        Returns: {
+          email: string
+          full_name: string
+          id: string
+        }[]
+      }
       has_unique: { Args: { "": string }; Returns: string }
       hash_invitation_token: { Args: { token: string }; Returns: string }
       in_todo: { Args: never; Returns: boolean }
@@ -7335,6 +7487,10 @@ export type Database = {
       rebuild_account_balances: {
         Args: { p_restaurant_id: string }
         Returns: number
+      }
+      reject_shift_trade: {
+        Args: { p_manager_note?: string; p_trade_id: string }
+        Returns: Json
       }
       runtests:
         | { Args: never; Returns: string[] }

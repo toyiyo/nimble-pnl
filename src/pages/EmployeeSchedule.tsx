@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,6 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useShifts } from '@/hooks/useShifts';
+import { useShiftTrades } from '@/hooks/useShiftTrades';
+import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import {
   EmployeePageHeader,
   NoRestaurantState,
@@ -24,6 +27,7 @@ import {
   CheckCircle,
   XCircle,
   ClockIcon,
+  ArrowLeftRight,
 } from 'lucide-react';
 import {
   format,
@@ -110,11 +114,19 @@ const EmployeeSchedule = () => {
   const [currentWeekStart, setCurrentWeekStart] = useState(
     startOfWeek(new Date(), { weekStartsOn: 0 })
   );
+  const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
+  const [selectedShiftForTrade, setSelectedShiftForTrade] = useState<Shift | null>(null);
+
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
+  const { trades: pendingTrades, loading: tradesLoading } = useShiftTrades(
+    restaurantId,
+    'pending_approval',
+    currentEmployee?.id || null
+  );
 
   // Filter shifts to only show current employee's shifts
   const myShifts = useMemo(() => {
@@ -177,6 +189,11 @@ const EmployeeSchedule = () => {
     setCurrentWeekStart(addWeeks(currentWeekStart, 1));
   };
 
+  const handleTradeShift = (shift: Shift) => {
+    setSelectedShiftForTrade(shift);
+    setTradeDialogOpen(true);
+  };
+
   const handleToday = () => {
     setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }));
   };
@@ -198,11 +215,69 @@ const EmployeeSchedule = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <EmployeePageHeader
-        icon={CalendarDays}
-        title="My Schedule"
-        subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
-      />
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+        <EmployeePageHeader
+          icon={CalendarDays}
+          title="My Schedule"
+          subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
+        />
+        <Link to="/employee/shifts">
+          <Button className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
+            <ArrowLeftRight className="h-4 w-4 mr-2" />
+            Browse Available Shifts
+          </Button>
+        </Link>
+      </div>
+
+      {/* Pending Trade Requests */}
+      {!tradesLoading && pendingTrades && pendingTrades.length > 0 && (
+        <Card className="bg-gradient-to-br from-yellow-500/5 to-orange-500/5 border-yellow-500/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ClockIcon className="h-5 w-5 text-yellow-600" />
+              Pending Trade Requests
+            </CardTitle>
+            <CardDescription>
+              These shifts are awaiting manager approval. They will appear in your schedule once approved.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {pendingTrades.map((trade) => (
+                <div
+                  key={trade.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-background border border-yellow-500/20"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="text-center">
+                      <div className="text-sm font-medium text-muted-foreground">
+                        {format(parseISO(trade.offered_shift.start_time), 'EEE')}
+                      </div>
+                      <div className="text-2xl font-bold">
+                        {format(parseISO(trade.offered_shift.start_time), 'd')}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {format(parseISO(trade.offered_shift.start_time), 'MMM')}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="font-medium">{trade.offered_shift.position}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {format(parseISO(trade.offered_shift.start_time), 'h:mm a')} -{' '}
+                        {format(parseISO(trade.offered_shift.end_time), 'h:mm a')}
+                      </div>
+                    </div>
+                  </div>
+                  <Badge className="bg-gradient-to-r from-yellow-500 to-orange-600 text-white">
+                    <ClockIcon className="w-3 h-3 mr-1" />
+                    Pending Approval
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Upcoming Shifts */}
       {upcomingShifts.length > 0 && (
@@ -362,6 +437,17 @@ const EmployeeSchedule = () => {
                                 </div>
                               )}
                               {getShiftStatusBadge(shift)}
+                              {isFuture(parseISO(shift.start_time)) && shift.status !== 'cancelled' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleTradeShift(shift)}
+                                  className="ml-2"
+                                >
+                                  <ArrowLeftRight className="h-4 w-4 mr-1" />
+                                  Trade
+                                </Button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -409,6 +495,17 @@ const EmployeeSchedule = () => {
         <strong>Note:</strong> Your schedule may change. Check back regularly or enable
         notifications to stay updated. Contact your manager if you have any scheduling conflicts.
       </EmployeeInfoAlert>
+
+      {/* Trade Request Dialog */}
+      {selectedShiftForTrade && (
+        <TradeRequestDialog
+          open={tradeDialogOpen}
+          onOpenChange={setTradeDialogOpen}
+          shift={selectedShiftForTrade}
+          restaurantId={restaurantId}
+          currentEmployeeId={currentEmployee.id}
+        />
+      )}
     </div>
   );
 };

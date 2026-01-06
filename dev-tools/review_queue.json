@@ -18336,6 +18336,1264 @@
       "status": "open",
       "created_at": "2026-01-04T18:35:23.172Z",
       "updated_at": "2026-01-04T18:35:23.172Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538362,
+        "file": "docs/SHIFT_TRADING.md",
+        "line": 126
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Schema table name inconsistency with implementation.**\n\nThe documentation refers to `shift_change_requests` table, but based on the AI summary and the RLS migration file in this PR, the actual implementation uses `shift_trades` table. This inconsistency could confuse developers.\n\nConsider updating the schema sketch to match the actual table name `shift_trades` or add a note explaining the naming difference.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @docs/SHIFT_TRADING.md around lines 91-126, The docs show a schema for table\nshift_change_requests but the implementation and RLS migration use shift_trades;\nupdate the documentation to use the actual table name shift_trades (rename\noccurrences of shift_change_requests and its related index idx_pool_requests) or\nalternatively add a short note in the schema section clarifying that the runtime\ntable is named shift_trades while the doc uses shift_change_requests for\nillustrative purposes so readers aren’t confused.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "a4df5342c337521be931f68f98fe33a767a64724",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.515Z",
+      "updated_at": "2026-01-06T04:53:56.055Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Updated docs: shift_change_requests → shift_trades, idx_pool_requests → idx_pool_trades. Tests pass."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538363,
+        "file": "docs/SHIFT_TRADING.md",
+        "line": 222
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Missing manager authorization check in function example.**\n\nThe `approve_shift_change` function accepts `manager_id` as a parameter but doesn't verify that this user is actually authorized to approve trades for the given restaurant. The function should validate that the manager belongs to the restaurant associated with the request.\n\n<details>\n<summary>🔎 Suggested authorization check</summary>\n\n```diff\n BEGIN\n   -- 1. Lock and Get Request\n   SELECT * INTO req FROM shift_change_requests WHERE id = request_id FOR UPDATE;\n   \n   IF req.status != 'pending_approval' THEN\n     RAISE EXCEPTION 'Request is not pending approval';\n   END IF;\n+\n+  -- Verify manager is authorized for this restaurant\n+  IF NOT EXISTS (\n+    SELECT 1 FROM restaurant_members \n+    WHERE user_id = manager_id \n+    AND restaurant_id = req.restaurant_id \n+    AND role IN ('owner', 'manager')\n+  ) THEN\n+    RAISE EXCEPTION 'User is not authorized to approve trades for this restaurant';\n+  END IF;\n```\n</details>\n\nAs per coding guidelines, RLS policies should enforce authorization at the database level. Based on learnings, never rely on client-side permission checks.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @docs/SHIFT_TRADING.md around lines 182-222, The approve_shift_change\nfunction lacks a verification that the supplied manager_id is authorized for the\nrestaurant on the request; update approve_shift_change to SELECT the request\n(req) and verify manager_id belongs to the same restaurant (e.g., join\nshift_change_requests.req.restaurant_id to a managers/restaurant_managers table\nor check a managers.restaurant_id) and raise an exception if not authorized\nbefore applying status/shift updates; keep the existing FOR UPDATE lock on req\nand perform the authorization check immediately after fetching req to prevent\nTOCTOU issues.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "f73d737779b8472867fe54b560cdca123d85af7f",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:53:55.176Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added manager authorization check in approve_shift_change function. Validates user_restaurants table. Tests pass."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538367,
+        "file": "src/components/schedule/TradeRequestDialog.tsx",
+        "line": 128
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**Remove unsafe type assertion.**\n\nThe type assertion `as any` bypasses TypeScript's type checking. Use a proper type for the radio group value change handler.\n\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n-          <RadioGroup value={tradeType} onValueChange={(val) => setTradeType(val as any)}>\n+          <RadioGroup value={tradeType} onValueChange={(val) => setTradeType(val as 'marketplace' | 'directed')}>\n```\n\n</details>\n\nAs per coding guidelines: use TypeScript types and interfaces (PascalCase) for all type definitions instead of any.\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n          <RadioGroup value={tradeType} onValueChange={(val) => setTradeType(val as 'marketplace' | 'directed')}>\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/schedule/TradeRequestDialog.tsx around line 128, The\nonValueChange handler currently uses an unsafe cast (as any); define a proper\nTradeType type (e.g., union or enum) and ensure the tradeType state is typed as\nTradeType, then change the RadioGroup handler to accept a parameter typed as\nTradeType (or cast to TradeType only at the call site) and pass it to\nsetTradeType without using any; reference RadioGroup, tradeType, and\nsetTradeType to update the value prop and handler types consistently.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "a31ec14185c037c35b55bac4b63d2895e8ffe56e",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:53:54.338Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Replaced 'as any' with proper type 'as \"marketplace\" | \"directed\"' in TradeRequestDialog. Tests pass."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538369,
+        "file": "src/hooks/useShiftTrades.ts",
+        "line": 256
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Missing `p_manager_user_id` parameter in RPC call.**\n\nThe `approve_shift_trade` database function expects `p_manager_user_id` as the second parameter, but it's not being passed. This will cause the function call to fail or use incorrect authorization.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n mutationFn: async ({\n   tradeId,\n   managerNote,\n+  managerUserId,\n }: {\n   tradeId: string;\n   managerNote?: string;\n+  managerUserId: string;\n }) => {\n   const { data, error } = await supabase.rpc('approve_shift_trade', {\n     p_trade_id: tradeId,\n+    p_manager_user_id: managerUserId,\n     p_manager_note: managerNote || null,\n   });\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n      const { data, error } = await supabase.rpc('approve_shift_trade', {\n        p_trade_id: tradeId,\n        p_manager_user_id: managerUserId,\n        p_manager_note: managerNote || null,\n      });\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useShiftTrades.ts around lines 253-256, The RPC call to\napprove_shift_trade is missing the required p_manager_user_id parameter; update\nthe supabase.rpc call in useShiftTrades (where approve_shift_trade is invoked\nwith p_trade_id: tradeId and p_manager_note: managerNote) to include\np_manager_user_id, supplying the manager's user id (e.g., currentUser.id or the\nmanagerUserId argument from the hook/context), and ensure you validate/handle a\nnull/undefined id before calling so the RPC receives a proper value (or explicit\nnull) to avoid authorization failures.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "1dfcff81e254c1b94f4a7fa478e82ae86bb330c4",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:53:53.545Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added p_manager_user_id parameter to approve_shift_trade RPC call. Updated hook, component, and tests. Tests pass."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538372,
+        "file": "src/hooks/useShiftTrades.ts",
+        "line": 311
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Missing `p_manager_user_id` parameter in RPC call.**\n\nSame issue as `useApproveShiftTrade` - the `reject_shift_trade` function requires `p_manager_user_id`.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useShiftTrades.ts around lines 308-311, The RPC call to\nreject_shift_trade is missing the required p_manager_user_id parameter; update\nthe supabase.rpc call in useShiftTrades (reject_shift_trade) to include\np_manager_user_id set to the manager's user id from your auth/context (e.g.,\nsession.user.id or the same managerUserId used in useApproveShiftTrade), passing\nnull/undefined handling consistently with p_manager_note, so the RPC receives {\np_trade_id: tradeId, p_manager_note: managerNote || null, p_manager_user_id:\nmanagerUserId } (match the exact variable you use for the current manager).\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "465e67c46a59fb3e0238429ad18b18dbf6a40115",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:53:50.745Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added p_manager_user_id parameter to reject_shift_trade RPC call. Updated hook, component, and tests. Tests pass."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538373,
+        "file": "src/hooks/useShiftTrades.ts",
+        "line": 376
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**`useCancelShiftTrade` bypasses the database function.**\n\nThis hook uses a direct `UPDATE` instead of calling the `cancel_shift_trade` RPC function. This bypasses the ownership validation in the database function and relies solely on RLS policies, which may not be sufficient.\n\nAdditionally, there's no `p_employee_id` passed for authorization verification.\n\n\n<details>\n<summary>🔎 Proposed fix - use the RPC function</summary>\n\n```diff\n export const useCancelShiftTrade = () => {\n   const queryClient = useQueryClient();\n   const { toast } = useToast();\n\n   return useMutation({\n-    mutationFn: async (tradeId: string) => {\n-      const { data, error } = await supabase\n-        .from('shift_trades')\n-        .update({ status: 'cancelled', updated_at: new Date().toISOString() })\n-        .eq('id', tradeId)\n-        .eq('status', 'open') // Can only cancel if still open\n-        .select()\n-        .single();\n-\n-      if (error) throw error;\n-      if (!data) throw new Error('Trade not found or already accepted');\n+    mutationFn: async ({ tradeId, employeeId }: { tradeId: string; employeeId: string }) => {\n+      const { data, error } = await supabase.rpc('cancel_shift_trade', {\n+        p_trade_id: tradeId,\n+        p_employee_id: employeeId,\n+      });\n+\n+      if (error) throw error;\n+      if (!data || !data.success) {\n+        throw new Error(data?.error || 'Failed to cancel trade');\n+      }\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  return useMutation({\n    mutationFn: async ({ tradeId, employeeId }: { tradeId: string; employeeId: string }) => {\n      const { data, error } = await supabase.rpc('cancel_shift_trade', {\n        p_trade_id: tradeId,\n        p_employee_id: employeeId,\n      });\n\n      if (error) throw error;\n      if (!data || !data.success) {\n        throw new Error(data?.error || 'Failed to cancel trade');\n      }\n\n      // Send notification email\n      try {\n        await supabase.functions.invoke('send-shift-trade-notification', {\n          body: { tradeId, action: 'cancelled' },\n        });\n      } catch (emailError) {\n        console.error('Failed to send notification:', emailError);\n      }\n\n      return data;\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "b2aab42e85949c516c3b9a32a5e19550f3239bc2",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:58:43.039Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Updated useCancelShiftTrade to use cancel_shift_trade RPC function with employeeId parameter. Updated tests to match new signature. All tests passing."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538376,
+        "file": "src/pages/EmployeeSchedule.tsx",
+        "line": 503
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Handle potential null value for shift prop.**\n\nThe `shift` prop passed to `TradeRequestDialog` uses `selectedShiftForTrade` which can be `null`. While the dialog component handles this internally with an early return, the type definition expects a non-null `Shift`. Consider using conditional rendering or updating the prop type to accept `Shift | null`.\n\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n      <TradeRequestDialog\n        open={tradeDialogOpen}\n        onOpenChange={setTradeDialogOpen}\n-       shift={selectedShiftForTrade}\n+       shift={selectedShiftForTrade!}\n        restaurantId={restaurantId!}\n        currentEmployeeId={currentEmployee.id}\n      />\n```\n\nOr better, conditionally render:\n\n```diff\n-      <TradeRequestDialog\n-        open={tradeDialogOpen}\n-        onOpenChange={setTradeDialogOpen}\n-        shift={selectedShiftForTrade}\n-        restaurantId={restaurantId!}\n-        currentEmployeeId={currentEmployee.id}\n-      />\n+      {selectedShiftForTrade && (\n+        <TradeRequestDialog\n+          open={tradeDialogOpen}\n+          onOpenChange={setTradeDialogOpen}\n+          shift={selectedShiftForTrade}\n+          restaurantId={restaurantId!}\n+          currentEmployeeId={currentEmployee.id}\n+        />\n+      )}\n```\n\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/pages/EmployeeSchedule.tsx around line 503, The shift prop passed to\nTradeRequestDialog uses selectedShiftForTrade which can be null; update the\nusage so the component's prop type matches the possible null value or avoid\npassing null by conditionally rendering the dialog. Specifically, either change\nthe TradeRequestDialog prop/type for shift to accept Shift | null (update its\nprops/interface) or wrap the TradeRequestDialog render so it only renders when\nselectedShiftForTrade !== null (e.g., render TradeRequestDialog only when\nselectedShiftForTrade is truthy), referencing selectedShiftForTrade and\nTradeRequestDialog to locate the code.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "b5912710d58ba22582e203f55e4a3e8054407054",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:58:42.756Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Wrapped TradeRequestDialog in conditional render to only show when selectedShiftForTrade is not null. Tests passing."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538377,
+        "file": "src/pages/EmployeeShiftMarketplace.tsx",
+        "line": 102
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Verify EmployeePageHeader prop name.**\n\nThe `EmployeePageHeader` component is passed a `description` prop, but based on the relevant code snippets (src/components/employee/EmployeePageHeader.tsx), the component expects a `subtitle` prop instead.\n\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n         <EmployeePageHeader\n           icon={ArrowRightLeft}\n           title=\"Shift Marketplace\"\n-          description=\"Browse and accept available shifts from your teammates\"\n+          subtitle=\"Browse and accept available shifts from your teammates\"\n         />\n```\n\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n        <EmployeePageHeader\n          icon={ArrowRightLeft}\n          title=\"Shift Marketplace\"\n          subtitle=\"Browse and accept available shifts from your teammates\"\n        />\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/pages/EmployeeShiftMarketplace.tsx around lines 98-102, The\nEmployeeShiftMarketplace page is passing a description prop to\nEmployeePageHeader but EmployeePageHeader expects subtitle; update the JSX in\nEmployeeShiftMarketplace (the EmployeePageHeader usage with icon ArrowRightLeft,\ntitle \"Shift Marketplace\") to replace the description prop with subtitle so the\nprop name matches the EmployeePageHeader component API.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "d6736d27a68a916f012e89f94f0987d8d44935b9",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:58:42.305Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Changed description prop to subtitle in EmployeePageHeader usage. Tests passing."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538380,
+        "file": "src/pages/EmployeeShiftMarketplace.tsx",
+        "line": 240
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Verify property name - potential runtime error.**\n\nThe code references `trade.to_employee_id`, but based on the ShiftTrade type definition, the property should be `target_employee_id`. This will cause a runtime error where the badge is never shown.\n\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n-                          {trade.to_employee_id === currentEmployee.id && (\n+                          {trade.target_employee_id === currentEmployee.id && (\n                             <Badge variant=\"outline\" className=\"text-xs\">\n                               Offered to you\n                             </Badge>\n                           )}\n```\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/pages/EmployeeShiftMarketplace.tsx around lines 236-240, The component\nuses the wrong property name trade.to_employee_id (which doesn't exist on\nShiftTrade) so the \"Offered to you\" Badge never renders; replace references to\ntrade.to_employee_id with the correct property trade.target_employee_id in\nEmployeeShiftMarketplace (and any other occurrences in that file), and ensure\nany type imports/use of ShiftTrade match that field name so TypeScript/Runtime\nreflect the correct property.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "ee62857bec1a04e215af80daf6f16268e65c92a6",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:58:41.863Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Fixed property name from trade.to_employee_id to trade.target_employee_id to match ShiftTrade interface. Tests passing."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538382,
+        "file": "src/pages/Scheduling.tsx",
+        "line": 718
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\n# Find TradeApprovalQueue component definition and check restaurantId usage\n\necho \"=== Finding TradeApprovalQueue file ===\"\nfd -e tsx -e ts \"TradeApprovalQueue\" src/\n\necho \"\"\necho \"=== TradeApprovalQueue component signature ===\"\ncat -n src/components/schedule/TradeApprovalQueue.tsx | head -50\n\necho \"\"\necho \"=== Search for restaurantId in TradeApprovalQueue ===\"\nrg -n \"restaurantId\" src/components/schedule/TradeApprovalQueue.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2270\n\n---\n\n\n\n</details>\n\n**Remove unused `restaurantId` prop from `TradeApprovalQueue`.**\n\nThe `TradeApprovalQueue` component doesn't accept any props and derives `restaurantId` from `useRestaurantContext` internally. The `restaurantId` prop being passed on line 717 is ignored and should be removed: use `<TradeApprovalQueue />` instead.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/pages/Scheduling.tsx around lines 716-718, The Trades tab is passing an\nunused prop; remove the unused restaurantId prop from the Trades tab JSX by\nchanging the <TradeApprovalQueue restaurantId={restaurantId} /> usage to simply\n<TradeApprovalQueue /> because TradeApprovalQueue reads restaurantId from\nuseRestaurantContext internally; update the TabsContent block where\nTradeApprovalQueue is rendered (value=\"trades\") accordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "7da68ecaef1d33ad541f2e2b5bab3686668c2ef4",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:58:40.743Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Removed unused restaurantId prop from TradeApprovalQueue component usage. Tests passing."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538385,
+        "file": "supabase/functions/send-shift-trade-notification/index.ts",
+        "line": 98
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Query for manager emails may fail - `auth.users` is not directly joinable.**\n\nThe query `'user:auth.users(email)'` attempts to join `user_restaurants` with `auth.users`, but `auth.users` is in a separate schema and typically not accessible via foreign key joins in Supabase queries. This will likely return `null` for `user.email`.\n\n\n\nConsider querying a `profiles` table or using `supabase.auth.admin.listUsers()` with the service role:\n\n```shell\n#!/bin/bash\n# Check if there's a profiles table that stores user emails\nrg -n \"CREATE TABLE.*profiles\" --type sql\nast-grep --pattern 'from(\"profiles\")'\n```\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/send-shift-trade-notification/index.ts around lines\n86-98, The current Supabase query in the send-shift-trade-notification handler\nuses .select('user:auth.users(email)') which won't return emails because\nauth.users is not joinable; instead fetch manager user IDs from user_restaurants\n(the managers variable / query) and then resolve emails from a joinable table\nlike profiles (e.g., select 'user:profiles(email)') or perform a second query:\ncollect manager user_ids and query profiles where id IN user_ids to get emails,\nor if you must read auth users directly use the Supabase service-role admin API\n(supabase.auth.admin.listUsers()) and map emails from that result; update the\ncode around the managers query and the emails.push logic accordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "97ef7e79a6dfdaa43d1fdcbc85193c76226a3f05",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T05:09:54.093Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Fixed manager email query to use profiles table instead of auth.users. Added test coverage."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538386,
+        "file": "supabase/functions/send-shift-trade-notification/index.ts",
+        "line": 184
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**XSS vulnerability: `managerNote` is interpolated into HTML without sanitization.**\n\nUser-provided `manager_note` content is directly embedded in the HTML email. If a manager enters malicious content (e.g., `<script>` tags), it could execute in email clients that render HTML.\n\n\n<details>\n<summary>🔎 Proposed fix - add HTML escaping</summary>\n\n```diff\n+const escapeHtml = (str: string): string => {\n+  return str\n+    .replace(/&/g, '&amp;')\n+    .replace(/</g, '&lt;')\n+    .replace(/>/g, '&gt;')\n+    .replace(/\"/g, '&quot;')\n+    .replace(/'/g, '&#039;');\n+};\n\n const generateEmailHtml = (\n   content: typeof ACTION_CONTENT[keyof typeof ACTION_CONTENT],\n   employeeName: string,\n   shiftDetails: string,\n   restaurantName: string,\n   managerNote?: string\n ) => {\n+  const safeManagerNote = managerNote ? escapeHtml(managerNote) : undefined;\n+  const safeEmployeeName = escapeHtml(employeeName);\n+  const safeRestaurantName = escapeHtml(restaurantName);\n   // ... use safe* variables in template\n```\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/send-shift-trade-notification/index.ts around lines\n175-184, The HTML interpolation of managerNote is an XSS risk because\nuser-provided manager_note is inserted raw; sanitize or HTML-escape managerNote\nbefore embedding it in the email template (e.g., introduce and use a helper like\nescapeHtml or run it through a sanitizer library) and replace the direct\ninterpolation of ${managerNote} in the template with the escaped/sanitized value\nso no raw tags or scripts can be injected.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "356e9f3abe9615fe87dd44bf0fad94167ba7149a",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T05:10:15.566Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added HTML escaping function to prevent XSS in email templates. All user inputs sanitized. 21 security tests pass."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538389,
+        "file": "supabase/migrations/20260104120000_create_shift_trades.sql",
+        "line": 52
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**`unique_active_trade_per_shift` constraint may not enforce intended behavior.**\n\nThe constraint `UNIQUE (offered_shift_id, status)` means there can be only one trade per shift *per status value*, not \"one active trade per shift.\" This allows:\n- One `open` trade\n- One `pending_approval` trade  \n- One `approved` trade (for the same shift)\n\nIf the intent is to prevent multiple *concurrent* active trades for the same shift, consider a partial unique index:\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n-  -- Can't offer same shift multiple times as active trade\n-  CONSTRAINT unique_active_trade_per_shift UNIQUE (offered_shift_id, status) \n-    DEFERRABLE INITIALLY DEFERRED\n+  -- Note: Unique active trade enforcement moved to partial index below\n );\n\n+-- Prevent multiple active trades for the same shift\n+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_trade_per_shift \n+  ON shift_trades(offered_shift_id) \n+  WHERE status IN ('open', 'pending_approval');\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  -- Constraints\n  CONSTRAINT valid_status CHECK (\n    status IN ('open', 'pending_approval', 'approved', 'rejected', 'cancelled')\n  ),\n  \n  -- Note: Unique active trade enforcement moved to partial index below\n);\n\n-- Prevent multiple active trades for the same shift\nCREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_trade_per_shift \n  ON shift_trades(offered_shift_id) \n  WHERE status IN ('open', 'pending_approval');\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260104120000_create_shift_trades.sql around lines\n44-52, The UNIQUE constraint unique_active_trade_per_shift on (offered_shift_id,\nstatus) only prevents duplicates per status value rather than preventing\nmultiple concurrent active trades; remove or replace that constraint on the\nshift_trades table and create a partial unique index on offered_shift_id\nfiltered to the active statuses (e.g., status IN ('open','pending_approval') or\nwhatever the domain defines as \"active\") so only one active trade per\noffered_shift_id is allowed; reference the existing constraint name\nunique_active_trade_per_shift and the columns offered_shift_id and status when\nmaking the change.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "958fc50340c8fdd91db5ba194466d8358434dfe8",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T05:10:26.638Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Replaced UNIQUE constraint with partial index on active statuses (open, pending_approval). SQL tests confirm proper enforcement."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538392,
+        "file": "supabase/migrations/20260104120000_create_shift_trades.sql",
+        "line": 119
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Employee UPDATE policy `WITH CHECK` may be too permissive.**\n\nThe policy allows employees to update trades to `'open'`, `'pending_approval'`, or `'cancelled'`. An employee accepting a trade should only set it to `'pending_approval'`, and an employee cancelling should only set it to `'cancelled'`. Allowing `'open'` in the check could let employees revert a cancelled trade.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n   WITH CHECK (\n-    -- Can only update to pending_approval or cancelled status\n-    status IN ('open', 'pending_approval', 'cancelled')\n+    -- Can only update to pending_approval (accept) or cancelled (cancel)\n+    status IN ('pending_approval', 'cancelled')\n   );\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  WITH CHECK (\n    -- Can only update to pending_approval (accept) or cancelled (cancel)\n    status IN ('pending_approval', 'cancelled')\n  );\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260104120000_create_shift_trades.sql around lines\n116-119, The Employee UPDATE policy's WITH CHECK currently allows status IN\n('open','pending_approval','cancelled'), which is too permissive; update the\npolicy so employees can only set status to 'pending_approval' when accepting or\n'cancelled' when cancelling by removing 'open' from the allowed values (i.e.,\nchange the WITH CHECK condition around the status expression to only permit\n'pending_approval' and 'cancelled' and, if needed, tighten it further to require\nthe old status be appropriate when transitioning to those values).\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "bbb4dfef60388276b2240d455d263962ce92cdea",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T05:10:32.842Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Removed 'open' from employee UPDATE policy WITH CHECK. Employees can only update to pending_approval or cancelled."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538398,
+        "file": "supabase/migrations/20260105000000_fix_shift_trades_rls.sql",
+        "line": 28
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\n# Search for all RLS policies on shift_trades table across migrations\n\necho \"=== Searching for all shift_trades RLS policies ===\"\nrg -n \"POLICY.*shift_trades\" --type sql\n\necho \"\"\necho \"=== Checking for RLS enablement on shift_trades ===\"\nrg -n \"ENABLE ROW LEVEL SECURITY.*shift_trades|ALTER TABLE.*shift_trades.*ENABLE\" --type sql\n\necho \"\"\necho \"=== Checking all CREATE POLICY statements for shift_trades ===\"\nrg -B 2 -A 10 \"CREATE POLICY.*ON shift_trades\" --type sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 647\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\n# Read the original migration file to see all policies\necho \"=== Original shift_trades migration ===\"\ncat supabase/migrations/20260104120000_create_shift_trades.sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 12493\n\n---\n\n\n\n</details>\n\n**Add a DELETE policy to ensure shift_trades records can only be deleted through authorized functions.**\n\nSELECT and UPDATE policies exist in the original migration. However, a DELETE policy is missing. Employees should only be able to delete trades they created (if status permits), while managers should be able to delete trades. Without a DELETE policy, shift_trades records are not fully protected by RLS. This migration should also add:\n\n```sql\nCREATE POLICY \"Employees can delete their own cancelled trades\"\n  ON shift_trades FOR DELETE\n  USING (\n    offered_by_employee_id IN (\n      SELECT id FROM employees WHERE user_id = auth.uid()\n    )\n    AND status IN ('open', 'cancelled')\n  );\n\nCREATE POLICY \"Managers can delete shift trades\"\n  ON shift_trades FOR DELETE\n  USING (\n    EXISTS (\n      SELECT 1 FROM user_restaurants\n      WHERE user_restaurants.user_id = auth.uid()\n      AND user_restaurants.restaurant_id = shift_trades.restaurant_id\n      AND user_restaurants.role IN ('owner', 'manager')\n    )\n  );\n```\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260105000000_fix_shift_trades_rls.sql around lines\n1-28, Migration is missing DELETE policies for shift_trades so records can be\ndeleted only by authorized users; add two policies: create \"Employees can delete\ntheir own cancelled trades\" ON shift_trades FOR DELETE USING (...) that allows\ndeletion when offered_by_employee_id matches the current user's employee id (use\nSELECT id FROM employees WHERE user_id = auth.uid()) and status is in\n('open','cancelled'), and create \"Managers can delete shift trades\" ON\nshift_trades FOR DELETE USING (...) that allows deletion when a row exists in\nuser_restaurants for auth.uid() with restaurant_id = shift_trades.restaurant_id\nand role IN ('owner','manager'); also add suitable COMMENT ON POLICY entries to\ndocument each new policy.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "aa17ebf1758d9cd96fe73b2090fa8a1c7f795cd2",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T05:10:39.968Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added two DELETE policies: employees can delete own open/cancelled trades, managers can delete any. All 389 SQL tests pass."
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538402,
+        "file": "supabase/migrations/20260105000100_create_shift_trade_functions.sql",
+        "line": 68
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**`accept_shift_trade` missing `FOR UPDATE` lock - race condition risk.**\n\nMultiple employees could simultaneously pass the `status = 'open'` check before any update occurs. The version in `20260104120000_create_shift_trades.sql` (line 185) correctly uses `FOR UPDATE`.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n   -- Get the trade\n   SELECT * INTO v_trade\n   FROM shift_trades\n-  WHERE id = p_trade_id;\n+  WHERE id = p_trade_id\n+  FOR UPDATE;\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260105000100_create_shift_trade_functions.sql around\nlines 5-68, The accept_shift_trade function risks a race because the initial\nSELECT that reads the shift_trades row (into v_trade) isn't locking it; modify\nthe SELECT ... FROM shift_trades WHERE id = p_trade_id to acquire a row lock\n(e.g., add FOR UPDATE) so concurrent transactions cannot pass the 'status =\nopen' check simultaneously; update the SELECT that fetches v_trade (and\noptionally the SELECT for v_shift/offered_shift_id) to use FOR UPDATE/FOR NO KEY\nUPDATE as appropriate before checking and updating the trade.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "def3238442362d6afb90ec70ec6fab6db7e307d1",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T14:32:18.147Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added FOR UPDATE lock to prevent race conditions"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538404,
+        "file": "supabase/migrations/20260105000100_create_shift_trade_functions.sql",
+        "line": 123
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Missing manager authorization in `approve_shift_trade`.**\n\nThis function lacks the manager role verification that exists in the earlier migration (`20260104120000`). The `p_manager_user_id` parameter is passed but not verified against `auth.uid()` or checked for manager role. Any authenticated user could call this function to approve trades.\n\nCompare with the secure version in `20260104120000_create_shift_trades.sql` (lines 260-319) which verifies the caller's role.\n\n\n<details>\n<summary>🔎 Proposed fix to add authorization check</summary>\n\n```diff\n CREATE OR REPLACE FUNCTION approve_shift_trade(\n   p_trade_id UUID,\n   p_manager_user_id UUID,\n   p_manager_note TEXT DEFAULT NULL\n )\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n AS $$\n DECLARE\n   v_trade shift_trades;\n   v_shift shifts;\n+  v_user_role TEXT;\n BEGIN\n+  -- Verify caller is the manager specified and has manager role\n+  IF p_manager_user_id != auth.uid() THEN\n+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');\n+  END IF;\n+\n+  SELECT role INTO v_user_role\n+  FROM user_restaurants\n+  WHERE user_id = auth.uid()\n+  AND restaurant_id = (SELECT restaurant_id FROM shift_trades WHERE id = p_trade_id)\n+  LIMIT 1;\n+\n+  IF v_user_role NOT IN ('owner', 'manager') THEN\n+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Manager access required');\n+  END IF;\n+\n   -- Get the trade\n   SELECT * INTO v_trade\n   FROM shift_trades\n-  WHERE id = p_trade_id;\n+  WHERE id = p_trade_id\n+  FOR UPDATE;\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260105000100_create_shift_trade_functions.sql around\nlines 70-123, approve_shift_trade lacks authorization: ensure the caller is\nactually the manager by checking auth.uid() against the provided\np_manager_user_id and verifying that the caller has the manager role before\nperforming updates; add a pre-check in the approve_shift_trade function that\nqueries the users (or equivalent) table for auth.uid() to confirm role =\n'manager' (or use the same role-check logic as in\n20260104120000_create_shift_trades.sql), and if the check fails return\njsonb_build_object('success', false, 'error', 'Not authorized') so only\nauthorized managers can approve trades.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "9bcac684600fd6f61487b88f0f082c9c4500e979",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T14:32:17.393Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added manager authorization checks (auth.uid + role verification)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538405,
+        "file": "supabase/migrations/20260105000100_create_shift_trade_functions.sql",
+        "line": 164
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Missing manager authorization in `reject_shift_trade`.**\n\nSame issue as `approve_shift_trade` - no verification that `p_manager_user_id` matches `auth.uid()` or has manager role.\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "dc34ef099d9dcea012c91a58924e22eef9358278",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T14:32:16.521Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added manager authorization checks (auth.uid + role verification)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 2663538407,
+        "file": "supabase/migrations/20260105000100_create_shift_trade_functions.sql",
+        "line": 206
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**`cancel_shift_trade` trusts client-provided `p_employee_id` without verification.**\n\nThe function checks that `p_employee_id` matches `offered_by_employee_id`, but doesn't verify that the caller (`auth.uid()`) actually owns that employee record. A malicious user could pass any employee ID.\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n BEGIN\n   -- Get the trade\n   SELECT * INTO v_trade\n   FROM shift_trades\n   WHERE id = p_trade_id;\n\n   IF NOT FOUND THEN\n     RETURN jsonb_build_object('success', false, 'error', 'Trade not found');\n   END IF;\n\n-  -- Check employee is the one who created the trade\n-  IF v_trade.offered_by_employee_id != p_employee_id THEN\n+  -- Verify the caller owns the employee record that created this trade\n+  IF NOT EXISTS (\n+    SELECT 1 FROM employees\n+    WHERE id = v_trade.offered_by_employee_id\n+    AND user_id = auth.uid()\n+  ) THEN\n     RETURN jsonb_build_object('success', false, 'error', 'You can only cancel your own trades');\n   END IF;\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n-- Function to cancel a shift trade (employee who created it)\nCREATE OR REPLACE FUNCTION cancel_shift_trade(\n  p_trade_id UUID,\n  p_employee_id UUID\n)\nRETURNS jsonb\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  v_trade shift_trades;\nBEGIN\n  -- Get the trade\n  SELECT * INTO v_trade\n  FROM shift_trades\n  WHERE id = p_trade_id;\n\n  IF NOT FOUND THEN\n    RETURN jsonb_build_object('success', false, 'error', 'Trade not found');\n  END IF;\n\n  -- Verify the caller owns the employee record that created this trade\n  IF NOT EXISTS (\n    SELECT 1 FROM employees\n    WHERE id = v_trade.offered_by_employee_id\n    AND user_id = auth.uid()\n  ) THEN\n    RETURN jsonb_build_object('success', false, 'error', 'You can only cancel your own trades');\n  END IF;\n\n  -- Check trade is still open (can't cancel after accepted)\n  IF v_trade.status != 'open' THEN\n    RETURN jsonb_build_object('success', false, 'error', 'Cannot cancel trade after it has been accepted');\n  END IF;\n\n  -- Update trade status\n  UPDATE shift_trades\n  SET \n    status = 'cancelled',\n    updated_at = NOW()\n  WHERE id = p_trade_id;\n\n  RETURN jsonb_build_object('success', true);\nEND;\n$$;\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260105000100_create_shift_trade_functions.sql around\nlines 166-206, The function cancel_shift_trade currently trusts the\ncaller-supplied p_employee_id; fix it by verifying ownership: inside\ncancel_shift_trade, query the employees table (e.g., SELECT 1 FROM employees\nWHERE id = p_employee_id AND user_id = auth.uid()) and if no row is found RETURN\njsonb_build_object('success', false, 'error', 'Unauthorized')—this ensures the\ncaller (auth.uid()) actually owns the employee record before proceeding with the\nexisting checks and the UPDATE on shift_trades.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "4bf444e6be6ef658b10ed6d259687029cc3c1801",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T14:32:15.048Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Changed to verify employee ownership via auth.uid() instead of trusting client parameter"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "287",
+        "comment_id": 3713045157
+      },
+      "title": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')",
+      "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=287) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [73.7% Coverage on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=287&metric=new_coverage&view=list) (required ≥ 80%)  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [5.6% Duplication on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=287&metric=new_duplicated_lines_density&view=list) (required ≤ 3%)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=287)\n\n",
+      "severity": "info",
+      "id": "5056c970da91017f3acfaed6025da4f711411307",
+      "status": "in_progress",
+      "created_at": "2026-01-06T04:40:23.517Z",
+      "updated_at": "2026-01-06T12:39:22.864Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuRhfHGANWoXH2oHTe0",
+        "pr": "287",
+        "file": "src/pages/EmployeeShiftMarketplace.tsx",
+        "line": 130
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "72fbd9635af863c665fc1f39ef995861b635aedf",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.518Z",
+      "updated_at": "2026-01-06T14:58:23.475Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuRhfG0ANWoXH2oHTez",
+        "pr": "287",
+        "file": "src/pages/EmployeeSchedule.tsx",
+        "line": 504
+      },
+      "title": "This assertion is unnecessary since it does not change the type of the expression.",
+      "body": "This assertion is unnecessary since it does not change the type of the expression.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "cf999d4d434e6f39953145f91d158aa52d7ee912",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.518Z",
+      "updated_at": "2026-01-06T14:58:22.603Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuRhfHGANWoXH2oHTe1",
+        "pr": "287",
+        "file": "src/pages/EmployeeShiftMarketplace.tsx",
+        "line": 226
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "643e66aa07aa05777a33dc5fb8452f8a5b8f1411",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.518Z",
+      "updated_at": "2026-01-06T14:58:21.612Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuRhfFuANWoXH2oHTew",
+        "pr": "287",
+        "file": "src/components/schedule/TradeApprovalQueue.tsx",
+        "line": 27
+      },
+      "title": "Remove this unused import of 'Calendar'.",
+      "body": "Remove this unused import of 'Calendar'.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "9146ff800501fc43bd0c17bdaf6f5cbd2b1e5fae",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.518Z",
+      "updated_at": "2026-01-06T14:58:20.848Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuRhfFuANWoXH2oHTex",
+        "pr": "287",
+        "file": "src/components/schedule/TradeApprovalQueue.tsx",
+        "line": 33
+      },
+      "title": "Remove this unused import of 'cn'.",
+      "body": "Remove this unused import of 'cn'.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "11ec8e629b98f6ecb8d76b1d37948ea3d8f5f6c2",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.518Z",
+      "updated_at": "2026-01-06T14:58:19.426Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuRhfFuANWoXH2oHTey",
+        "pr": "287",
+        "file": "src/components/schedule/TradeApprovalQueue.tsx",
+        "line": 266
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "e9d19aa122567982d4c64b52f8ff4d8fbd03c6d1",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.518Z",
+      "updated_at": "2026-01-06T15:17:10.157Z",
+      "notes": [
+        "Extracted nested ternary into IIFE - tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuRhfDNANWoXH2oHTev",
+        "pr": "287",
+        "file": "src/components/schedule/TradeRequestDialog.tsx",
+        "line": 24
+      },
+      "title": "Remove this unused import of 'cn'.",
+      "body": "Remove this unused import of 'cn'.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "f0d53af33cc2b5123fb5b1f2809d5201169f1b9e",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.518Z",
+      "updated_at": "2026-01-06T15:17:09.229Z",
+      "notes": [
+        "Removed unused cn import - tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/schedule/TradeRequestDialog.tsx",
+        "line": 128
+      },
+      "title": "@typescript-eslint/no-explicit-any in TradeRequestDialog.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/schedule/TradeRequestDialog.tsx"
+      ],
+      "id": "d4bb94d2afb99cbc1d2cb1c6a123a400e351212f",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.531Z",
+      "updated_at": "2026-01-06T15:17:08.167Z",
+      "notes": [
+        "Replaced any with proper type - tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Scheduling.tsx",
+        "line": 87
+      },
+      "title": "react-hooks/exhaustive-deps in Scheduling.tsx",
+      "body": "React Hook useMemo has a missing dependency: 'formatToUTC'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Scheduling.tsx"
+      ],
+      "id": "c654bb65ec73639f0b40ce9016bfaed7f6305671",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.532Z",
+      "updated_at": "2026-01-06T15:17:07.025Z",
+      "notes": [
+        "Added formatToUTC to dependency array with useCallback - tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts",
+        "line": 63
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts"
+      ],
+      "id": "0953c8a930ab95279aa4b768ddd163c99c44f658",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.534Z",
+      "updated_at": "2026-01-06T15:17:04.530Z",
+      "notes": [
+        "Replaced any with SupabaseClient and specific types - tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts",
+        "line": 82
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts"
+      ],
+      "id": "59e53c805dd09b64b0d50e7dad3dd984fdc28eda",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.534Z",
+      "updated_at": "2026-01-06T15:39:53.342Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts",
+        "line": 95
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts"
+      ],
+      "id": "74f74ab17d94133c1148b840c84dc1edafa087ca",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.534Z",
+      "updated_at": "2026-01-06T15:39:52.839Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-team-invitation/index.ts",
+        "line": 110
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-team-invitation/index.ts"
+      ],
+      "id": "8266cf7d749b15874dd9c38bfaf6338482b78868",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.534Z",
+      "updated_at": "2026-01-06T15:39:52.313Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-team-invitation/index.ts",
+        "line": 242
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-team-invitation/index.ts"
+      ],
+      "id": "0c505ebbb5d66c4c118b14ebda570dbc2428d846",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.534Z",
+      "updated_at": "2026-01-06T15:39:51.280Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-time-off-notification/index.ts",
+        "line": 47
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-time-off-notification/index.ts"
+      ],
+      "id": "d452c7adc5336495f2ca29012988fc15ff6c1644",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.534Z",
+      "updated_at": "2026-01-06T15:39:49.139Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-time-off-notification/index.ts",
+        "line": 64
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-time-off-notification/index.ts"
+      ],
+      "id": "52f84ed2d16fcf3df7dd38d1824ed3f84ea8ef8a",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.534Z",
+      "updated_at": "2026-01-06T15:46:04.973Z",
+      "notes": [
+        "Fixed 'any' type for manager user at line 70 - typed as { user?: { email?: string } | null } | null. Tests pass."
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-time-off-notification/index.ts",
+        "line": 299
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-time-off-notification/index.ts"
+      ],
+      "id": "cd0789b86069e4430baa8584e2f65ca1ff314d9d",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.534Z",
+      "updated_at": "2026-01-06T15:46:03.794Z",
+      "notes": [
+        "Fixed 'any' type for emailError in catch block at line 301 - typed as unknown. Tests pass."
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts",
+        "line": 107
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTrades.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts"
+      ],
+      "id": "fd9fad7c5d5824207e7281d426dcd211c3f16e66",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T15:46:02.874Z",
+      "notes": [
+        "Fixed 'any' type for error param at line 107 - typed as Error | null. Tests pass."
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts",
+        "line": 125
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTrades.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts"
+      ],
+      "id": "398d2d6f116266ec2da20a7de6d57c71e5230123",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T15:46:01.835Z",
+      "notes": [
+        "Fixed 'any' type for error param at line 125 - typed as Error | null. Tests pass."
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts",
+        "line": 306
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTrades.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts"
+      ],
+      "id": "ff5a56d7854f36b30514f447fffd89f2d304b9fd",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T15:46:00.759Z",
+      "notes": [
+        "Fixed 'any' type cast at line 306 - added missing restaurant_id property to tradeData object. Tests pass."
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts",
+        "line": 332
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTrades.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts"
+      ],
+      "id": "f338968ebcd0f42642687ab4c514cf0c51af7b2a",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T16:00:33.477Z",
+      "notes": [
+        "No any type errors found - file is clean"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 79
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "56e0f851979b32f22be09e6fdb150d7e686e971d",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T16:00:32.824Z",
+      "notes": [
+        "Replaced as any with as MockQueryBuilder - tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 85
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "3e0466c88abc6d46f37a2ab23282b18d1254f789",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T16:00:32.115Z",
+      "notes": [
+        "Replaced as any with as MockQueryBuilder - tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 87
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "ebcdbaa88f69b35b906d30515c900447d222dea3",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T16:00:31.299Z",
+      "notes": [
+        "Replaced as any with as MockQueryBuilder - tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 134
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "c2927e40b2e6105757ea03f52d000512380c3141",
+      "status": "fixed",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T16:00:29.837Z",
+      "notes": [
+        "Replaced as any with as MockQueryBuilder - tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 155
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "ac9f2d3f72a06d6f01f6f597c90eac9c578538bd",
+      "status": "in_progress",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T16:26:10.582Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 188
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "94499ffb4b906064709821db8c01fd96c7127db1",
+      "status": "in_progress",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T16:26:10.582Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 247
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "582fd0d6b58f1c710971db7c526550495f8fec6d",
+      "status": "in_progress",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T16:26:10.582Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 253
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "f2732f5db41c14fbdcf655e860972e1364cb0b47",
+      "status": "in_progress",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T16:26:10.582Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 255
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "79ce96ccdea03ebdb6d17f3adcba9535c880af1b",
+      "status": "in_progress",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T16:26:10.582Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 326
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "dc33e8c3a483daa7e1dab34e35b2690e586efb52",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 332
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "0dd6e2700f9e4006f334187ef2b84999f04c9bfc",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 334
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "52f2c12364ce85ed4aaeb7fe7d6ff31c4a0a6f6e",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 411
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "9e80020c9eac09fc7aac1008d8298325c55d37dd",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 417
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "2f0b760a895db40364b89c3581337626e8723d74",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 419
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "d57b52dca142b98b68b04fef6dba330d1fe97dda",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 466
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "9f008c480df838344f2083469dbdb629f005c835",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 472
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "d80d459896e5fced198138ae6ea5a745cbeb0f4c",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 474
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "646a4906b2295d1d438532095a0066b7c1991d1a",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 572
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "303181bd39189cfb5134ef1b22ecf0c330e51bcd",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 578
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "0c37950a2a873ebdf7034d7c53156f389a4c2c67",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 580
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "af32efdc9798dd84db54b9af232d957d7d9654da",
+      "status": "open",
+      "created_at": "2026-01-06T04:40:23.536Z",
+      "updated_at": "2026-01-06T04:40:23.536Z"
     }
   ]
 }

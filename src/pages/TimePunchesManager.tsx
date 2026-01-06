@@ -1188,7 +1188,7 @@ const TimePunchesManager = () => {
                   <div>
                     <div className="font-medium">{session.employee_name}</div>
                     <div className="text-sm text-muted-foreground">Clocked in: {format(new Date(session.clock_in), 'MMM d, yyyy h:mm a')}</div>
-                    <div className="text-sm text-muted-foreground">Open for {Math.max(0, Math.round(differenceInMinutes(new Date(), new Date(session.clock_in)) / 60))}h {Math.max(0, differenceInMinutes(new Date(), new Date(session.clock_in)) % 60)}m</div>
+                    <div className="text-sm text-muted-foreground">Open for {Math.max(0, Math.floor(differenceInMinutes(new Date(), new Date(session.clock_in)) / 60))}h {Math.max(0, differenceInMinutes(new Date(), new Date(session.clock_in)) % 60)}m</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button

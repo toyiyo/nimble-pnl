@@ -1,5 +1,9 @@
 -- Create functions for shift trade operations
 
+-- Drop old function signatures if they exist
+DROP FUNCTION IF EXISTS approve_shift_trade(UUID, TEXT);
+DROP FUNCTION IF EXISTS reject_shift_trade(UUID, TEXT);
+
 -- Function to accept a shift trade
 -- This checks for conflicts and updates the trade status to pending_approval
 CREATE OR REPLACE FUNCTION accept_shift_trade(

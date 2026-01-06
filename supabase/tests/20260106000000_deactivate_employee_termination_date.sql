@@ -8,6 +8,12 @@ SELECT plan(8);
 SET LOCAL role TO postgres;
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000001"}';
 
+-- Create test user in auth.users (for deactivated_by foreign key)
+INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
+VALUES
+  ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'manager@deactivate.test', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
+ON CONFLICT (id) DO NOTHING;
+
 -- Create test restaurant
 INSERT INTO restaurants (id, name) VALUES
   ('00000000-0000-0000-0000-0000000DEAC1', 'Test Restaurant Deactivation')

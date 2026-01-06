@@ -456,26 +456,11 @@ describe('useShiftTrades', () => {
   });
 
   describe('useCancelShiftTrade - Cancel own trade', () => {
-    it('should update trade status to cancelled', async () => {
-      const mockCancelledTrade: TestShiftTrade = {
-        id: 'trade-1',
-        restaurant_id: 'rest-123',
-        offered_shift_id: 'shift-1',
-        offered_by_employee_id: 'emp-1',
-        requested_shift_id: null,
-        target_employee_id: null,
-        accepted_by_employee_id: null,
-        status: 'cancelled',
-        reason: null,
-        manager_note: null,
-        reviewed_by: null,
-        reviewed_at: null,
-        created_at: '2026-01-04T10:00:00Z',
-        updated_at: '2026-01-04T10:05:00Z',
-      };
-
-      const builder = createMutationQueryBuilder(mockCancelledTrade);
-      mockSupabase.from.mockReturnValue(builder);
+    it('should call RPC function to cancel trade', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: { success: true },
+        error: null,
+      });
 
       const { result } = renderHook(() => useCancelShiftTrade(), {
         wrapper: createWrapper(),
@@ -483,9 +468,12 @@ describe('useShiftTrades', () => {
 
       await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
 
-      await result.current.mutateAsync('trade-1');
+      await result.current.mutateAsync({ tradeId: 'trade-1', employeeId: 'emp-1' });
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('shift_trades');
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('cancel_shift_trade', {
+        p_trade_id: 'trade-1',
+        p_employee_id: 'emp-1',
+      });
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: expect.stringContaining('cancelled'),
@@ -493,9 +481,11 @@ describe('useShiftTrades', () => {
       );
     });
 
-    it('should handle cancellation error', async () => {
-      const builder = createMutationQueryBuilder(null, { message: 'Cannot cancel approved trade' });
-      mockSupabase.from.mockReturnValue(builder);
+    it('should handle cancellation error from RPC', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: { success: false, error: 'Cannot cancel approved trade' },
+        error: null,
+      });
 
       const { result } = renderHook(() => useCancelShiftTrade(), {
         wrapper: createWrapper(),
@@ -503,7 +493,9 @@ describe('useShiftTrades', () => {
 
       await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
 
-      await expect(result.current.mutateAsync('trade-1')).rejects.toThrow();
+      await expect(
+        result.current.mutateAsync({ tradeId: 'trade-1', employeeId: 'emp-1' })
+      ).rejects.toThrow('Cannot cancel approved trade');
 
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1009,8 +1001,10 @@ describe('useShiftTrades', () => {
     });
 
     it('should handle cancel with no data returned', async () => {
-      const builder = createMutationQueryBuilder(null);
-      mockSupabase.from.mockReturnValue(builder);
+      mockSupabase.rpc.mockResolvedValue({
+        data: null,
+        error: null,
+      });
 
       const { result } = renderHook(() => useCancelShiftTrade(), {
         wrapper: createWrapper(),
@@ -1018,9 +1012,9 @@ describe('useShiftTrades', () => {
 
       await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
 
-      await expect(result.current.mutateAsync('trade-1')).rejects.toThrow(
-        'Trade not found or already accepted'
-      );
+      await expect(
+        result.current.mutateAsync({ tradeId: 'trade-1', employeeId: 'emp-1' })
+      ).rejects.toThrow('Failed to cancel trade');
     });
   });
 

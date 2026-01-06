@@ -98,7 +98,7 @@ const EmployeeShiftMarketplace = () => {
         <EmployeePageHeader
           icon={ArrowRightLeft}
           title="Shift Marketplace"
-          description="Browse and accept available shifts from your teammates"
+          subtitle="Browse and accept available shifts from your teammates"
         />
         <Link to="/employee/schedule">
           <Button variant="outline" className="border-primary/20 hover:bg-primary/5">
@@ -233,7 +233,7 @@ const EmployeeShiftMarketplace = () => {
                               )}
                             </Button>
                           )}
-                          {trade.to_employee_id === currentEmployee.id && (
+                          {trade.target_employee_id === currentEmployee.id && (
                             <Badge variant="outline" className="text-xs">
                               Offered to you
                             </Badge>

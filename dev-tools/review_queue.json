@@ -18464,12 +18464,15 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**`useCancelShiftTrade` bypasses the database function.**\n\nThis hook uses a direct `UPDATE` instead of calling the `cancel_shift_trade` RPC function. This bypasses the ownership validation in the database function and relies solely on RLS policies, which may not be sufficient.\n\nAdditionally, there's no `p_employee_id` passed for authorization verification.\n\n\n<details>\n<summary>🔎 Proposed fix - use the RPC function</summary>\n\n```diff\n export const useCancelShiftTrade = () => {\n   const queryClient = useQueryClient();\n   const { toast } = useToast();\n\n   return useMutation({\n-    mutationFn: async (tradeId: string) => {\n-      const { data, error } = await supabase\n-        .from('shift_trades')\n-        .update({ status: 'cancelled', updated_at: new Date().toISOString() })\n-        .eq('id', tradeId)\n-        .eq('status', 'open') // Can only cancel if still open\n-        .select()\n-        .single();\n-\n-      if (error) throw error;\n-      if (!data) throw new Error('Trade not found or already accepted');\n+    mutationFn: async ({ tradeId, employeeId }: { tradeId: string; employeeId: string }) => {\n+      const { data, error } = await supabase.rpc('cancel_shift_trade', {\n+        p_trade_id: tradeId,\n+        p_employee_id: employeeId,\n+      });\n+\n+      if (error) throw error;\n+      if (!data || !data.success) {\n+        throw new Error(data?.error || 'Failed to cancel trade');\n+      }\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  return useMutation({\n    mutationFn: async ({ tradeId, employeeId }: { tradeId: string; employeeId: string }) => {\n      const { data, error } = await supabase.rpc('cancel_shift_trade', {\n        p_trade_id: tradeId,\n        p_employee_id: employeeId,\n      });\n\n      if (error) throw error;\n      if (!data || !data.success) {\n        throw new Error(data?.error || 'Failed to cancel trade');\n      }\n\n      // Send notification email\n      try {\n        await supabase.functions.invoke('send-shift-trade-notification', {\n          body: { tradeId, action: 'cancelled' },\n        });\n      } catch (emailError) {\n        console.error('Failed to send notification:', emailError);\n      }\n\n      return data;\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "b2aab42e85949c516c3b9a32a5e19550f3239bc2",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:58:43.039Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Updated useCancelShiftTrade to use cancel_shift_trade RPC function with employeeId parameter. Updated tests to match new signature. All tests passing."
       ]
     },
     {
@@ -18484,12 +18487,15 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Handle potential null value for shift prop.**\n\nThe `shift` prop passed to `TradeRequestDialog` uses `selectedShiftForTrade` which can be `null`. While the dialog component handles this internally with an early return, the type definition expects a non-null `Shift`. Consider using conditional rendering or updating the prop type to accept `Shift | null`.\n\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n      <TradeRequestDialog\n        open={tradeDialogOpen}\n        onOpenChange={setTradeDialogOpen}\n-       shift={selectedShiftForTrade}\n+       shift={selectedShiftForTrade!}\n        restaurantId={restaurantId!}\n        currentEmployeeId={currentEmployee.id}\n      />\n```\n\nOr better, conditionally render:\n\n```diff\n-      <TradeRequestDialog\n-        open={tradeDialogOpen}\n-        onOpenChange={setTradeDialogOpen}\n-        shift={selectedShiftForTrade}\n-        restaurantId={restaurantId!}\n-        currentEmployeeId={currentEmployee.id}\n-      />\n+      {selectedShiftForTrade && (\n+        <TradeRequestDialog\n+          open={tradeDialogOpen}\n+          onOpenChange={setTradeDialogOpen}\n+          shift={selectedShiftForTrade}\n+          restaurantId={restaurantId!}\n+          currentEmployeeId={currentEmployee.id}\n+        />\n+      )}\n```\n\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/pages/EmployeeSchedule.tsx around line 503, The shift prop passed to\nTradeRequestDialog uses selectedShiftForTrade which can be null; update the\nusage so the component's prop type matches the possible null value or avoid\npassing null by conditionally rendering the dialog. Specifically, either change\nthe TradeRequestDialog prop/type for shift to accept Shift | null (update its\nprops/interface) or wrap the TradeRequestDialog render so it only renders when\nselectedShiftForTrade !== null (e.g., render TradeRequestDialog only when\nselectedShiftForTrade is truthy), referencing selectedShiftForTrade and\nTradeRequestDialog to locate the code.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "b5912710d58ba22582e203f55e4a3e8054407054",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:58:42.756Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Wrapped TradeRequestDialog in conditional render to only show when selectedShiftForTrade is not null. Tests passing."
       ]
     },
     {
@@ -18504,12 +18510,15 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Verify EmployeePageHeader prop name.**\n\nThe `EmployeePageHeader` component is passed a `description` prop, but based on the relevant code snippets (src/components/employee/EmployeePageHeader.tsx), the component expects a `subtitle` prop instead.\n\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n         <EmployeePageHeader\n           icon={ArrowRightLeft}\n           title=\"Shift Marketplace\"\n-          description=\"Browse and accept available shifts from your teammates\"\n+          subtitle=\"Browse and accept available shifts from your teammates\"\n         />\n```\n\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n        <EmployeePageHeader\n          icon={ArrowRightLeft}\n          title=\"Shift Marketplace\"\n          subtitle=\"Browse and accept available shifts from your teammates\"\n        />\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/pages/EmployeeShiftMarketplace.tsx around lines 98-102, The\nEmployeeShiftMarketplace page is passing a description prop to\nEmployeePageHeader but EmployeePageHeader expects subtitle; update the JSX in\nEmployeeShiftMarketplace (the EmployeePageHeader usage with icon ArrowRightLeft,\ntitle \"Shift Marketplace\") to replace the description prop with subtitle so the\nprop name matches the EmployeePageHeader component API.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "d6736d27a68a916f012e89f94f0987d8d44935b9",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:58:42.305Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Changed description prop to subtitle in EmployeePageHeader usage. Tests passing."
       ]
     },
     {
@@ -18524,12 +18533,15 @@
       "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Verify property name - potential runtime error.**\n\nThe code references `trade.to_employee_id`, but based on the ShiftTrade type definition, the property should be `target_employee_id`. This will cause a runtime error where the badge is never shown.\n\n\n\n<details>\n<summary>🔎 Proposed fix</summary>\n\n```diff\n-                          {trade.to_employee_id === currentEmployee.id && (\n+                          {trade.target_employee_id === currentEmployee.id && (\n                             <Badge variant=\"outline\" className=\"text-xs\">\n                               Offered to you\n                             </Badge>\n                           )}\n```\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/pages/EmployeeShiftMarketplace.tsx around lines 236-240, The component\nuses the wrong property name trade.to_employee_id (which doesn't exist on\nShiftTrade) so the \"Offered to you\" Badge never renders; replace references to\ntrade.to_employee_id with the correct property trade.target_employee_id in\nEmployeeShiftMarketplace (and any other occurrences in that file), and ensure\nany type imports/use of ShiftTrade match that field name so TypeScript/Runtime\nreflect the correct property.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:puma -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "ee62857bec1a04e215af80daf6f16268e65c92a6",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:58:41.863Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Fixed property name from trade.to_employee_id to trade.target_employee_id to match ShiftTrade interface. Tests passing."
       ]
     },
     {
@@ -18544,12 +18556,15 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\n# Find TradeApprovalQueue component definition and check restaurantId usage\n\necho \"=== Finding TradeApprovalQueue file ===\"\nfd -e tsx -e ts \"TradeApprovalQueue\" src/\n\necho \"\"\necho \"=== TradeApprovalQueue component signature ===\"\ncat -n src/components/schedule/TradeApprovalQueue.tsx | head -50\n\necho \"\"\necho \"=== Search for restaurantId in TradeApprovalQueue ===\"\nrg -n \"restaurantId\" src/components/schedule/TradeApprovalQueue.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2270\n\n---\n\n\n\n</details>\n\n**Remove unused `restaurantId` prop from `TradeApprovalQueue`.**\n\nThe `TradeApprovalQueue` component doesn't accept any props and derives `restaurantId` from `useRestaurantContext` internally. The `restaurantId` prop being passed on line 717 is ignored and should be removed: use `<TradeApprovalQueue />` instead.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/pages/Scheduling.tsx around lines 716-718, The Trades tab is passing an\nunused prop; remove the unused restaurantId prop from the Trades tab JSX by\nchanging the <TradeApprovalQueue restaurantId={restaurantId} /> usage to simply\n<TradeApprovalQueue /> because TradeApprovalQueue reads restaurantId from\nuseRestaurantContext internally; update the TabsContent block where\nTradeApprovalQueue is rendered (value=\"trades\") accordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "7da68ecaef1d33ad541f2e2b5bab3686668c2ef4",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.516Z",
-      "updated_at": "2026-01-06T04:40:23.516Z",
+      "updated_at": "2026-01-06T04:58:40.743Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Removed unused restaurantId prop from TradeApprovalQueue component usage. Tests passing."
       ]
     },
     {

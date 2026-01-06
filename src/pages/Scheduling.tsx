@@ -714,7 +714,7 @@ const Scheduling = () => {
 
         {/* Shift Trades Tab */}
         <TabsContent value="trades">
-          <TradeApprovalQueue restaurantId={restaurantId} />
+          <TradeApprovalQueue />
         </TabsContent>
       </Tabs>
 

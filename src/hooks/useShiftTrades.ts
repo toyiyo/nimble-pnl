@@ -358,17 +358,16 @@ export const useCancelShiftTrade = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (tradeId: string) => {
-      const { data, error } = await supabase
-        .from('shift_trades')
-        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-        .eq('id', tradeId)
-        .eq('status', 'open') // Can only cancel if still open
-        .select()
-        .single();
+    mutationFn: async ({ tradeId, employeeId }: { tradeId: string; employeeId: string }) => {
+      const { data, error } = await supabase.rpc('cancel_shift_trade', {
+        p_trade_id: tradeId,
+        p_employee_id: employeeId,
+      });
 
       if (error) throw error;
-      if (!data) throw new Error('Trade not found or already accepted');
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Failed to cancel trade');
+      }
 
       // Send notification email
       try {

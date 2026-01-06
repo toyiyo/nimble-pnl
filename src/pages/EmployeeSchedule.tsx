@@ -497,13 +497,15 @@ const EmployeeSchedule = () => {
       </EmployeeInfoAlert>
 
       {/* Trade Request Dialog */}
-      <TradeRequestDialog
-        open={tradeDialogOpen}
-        onOpenChange={setTradeDialogOpen}
-        shift={selectedShiftForTrade}
-        restaurantId={restaurantId!}
-        currentEmployeeId={currentEmployee.id}
-      />
+      {selectedShiftForTrade && (
+        <TradeRequestDialog
+          open={tradeDialogOpen}
+          onOpenChange={setTradeDialogOpen}
+          shift={selectedShiftForTrade}
+          restaurantId={restaurantId!}
+          currentEmployeeId={currentEmployee.id}
+        />
+      )}
     </div>
   );
 };

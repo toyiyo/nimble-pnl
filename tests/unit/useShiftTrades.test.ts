@@ -410,10 +410,12 @@ describe('useShiftTrades', () => {
       await result.current.mutateAsync({
         tradeId: 'trade-1',
         managerNote: 'Approved - coverage confirmed',
+        managerUserId: 'manager-user-123',
       });
 
       expect(mockSupabase.rpc).toHaveBeenCalledWith('approve_shift_trade', {
         p_trade_id: 'trade-1',
+        p_manager_user_id: 'manager-user-123',
         p_manager_note: 'Approved - coverage confirmed',
       });
       expect(mockToast).toHaveBeenCalledWith(
@@ -437,10 +439,12 @@ describe('useShiftTrades', () => {
       await result.current.mutateAsync({
         tradeId: 'trade-1',
         managerNote: 'Insufficient coverage',
+        managerUserId: 'manager-user-123',
       });
 
       expect(mockSupabase.rpc).toHaveBeenCalledWith('reject_shift_trade', {
         p_trade_id: 'trade-1',
+        p_manager_user_id: 'manager-user-123',
         p_manager_note: 'Insufficient coverage',
       });
       expect(mockToast).toHaveBeenCalledWith(
@@ -764,6 +768,7 @@ describe('useShiftTrades', () => {
       await expect(
         result.current.mutateAsync({
           tradeId: 'trade-1',
+          managerUserId: 'manager-user-123',
         })
       ).rejects.toThrow();
     });
@@ -783,6 +788,7 @@ describe('useShiftTrades', () => {
       await expect(
         result.current.mutateAsync({
           tradeId: 'trade-1',
+          managerUserId: 'manager-user-123',
         })
       ).rejects.toThrow();
     });
@@ -843,6 +849,7 @@ describe('useShiftTrades', () => {
       await expect(
         result.current.mutateAsync({
           tradeId: 'trade-1',
+          managerUserId: 'manager-user-123',
         })
       ).rejects.toThrow('Cannot approve already approved trade');
     });
@@ -862,6 +869,7 @@ describe('useShiftTrades', () => {
       await expect(
         result.current.mutateAsync({
           tradeId: 'trade-1',
+          managerUserId: 'manager-user-123',
         })
       ).rejects.toThrow('Cannot reject already rejected trade');
     });
@@ -944,6 +952,7 @@ describe('useShiftTrades', () => {
         result.current.mutateAsync({
           tradeId: 'trade-1',
           managerNote: 'Approved',
+          managerUserId: 'manager-user-123',
         })
       ).resolves.toBeDefined();
     });
@@ -962,6 +971,7 @@ describe('useShiftTrades', () => {
         result.current.mutateAsync({
           tradeId: 'trade-1',
           managerNote: 'Rejected',
+          managerUserId: 'manager-user-123',
         })
       ).resolves.toBeDefined();
     });

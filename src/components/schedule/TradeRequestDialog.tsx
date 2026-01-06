@@ -125,7 +125,7 @@ export const TradeRequestDialog = ({
         {/* Trade Type Selection */}
         <div className="space-y-4">
           <Label className="text-base font-semibold">Trade Type</Label>
-          <RadioGroup value={tradeType} onValueChange={(val) => setTradeType(val as any)}>
+          <RadioGroup value={tradeType} onValueChange={(val) => setTradeType(val as 'marketplace' | 'directed')}>
             <div className="flex items-start space-x-3">
               <RadioGroupItem value="marketplace" id="marketplace" className="mt-1" />
               <div className="flex-1">

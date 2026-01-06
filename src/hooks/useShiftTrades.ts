@@ -246,12 +246,15 @@ export const useApproveShiftTrade = () => {
     mutationFn: async ({
       tradeId,
       managerNote,
+      managerUserId,
     }: {
       tradeId: string;
       managerNote?: string;
+      managerUserId: string;
     }) => {
       const { data, error } = await supabase.rpc('approve_shift_trade', {
         p_trade_id: tradeId,
+        p_manager_user_id: managerUserId,
         p_manager_note: managerNote || null,
       });
 
@@ -301,12 +304,15 @@ export const useRejectShiftTrade = () => {
     mutationFn: async ({
       tradeId,
       managerNote,
+      managerUserId,
     }: {
       tradeId: string;
       managerNote?: string;
+      managerUserId: string;
     }) => {
       const { data, error } = await supabase.rpc('reject_shift_trade', {
         p_trade_id: tradeId,
+        p_manager_user_id: managerUserId,
         p_manager_note: managerNote || null,
       });
 

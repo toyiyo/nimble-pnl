@@ -20,6 +20,7 @@ import {
   ShiftTrade,
 } from '@/hooks/useShiftTrades';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { supabase } from '@/integrations/supabase/client';
 import {
   CheckCircle,
   XCircle,
@@ -56,12 +57,20 @@ export const TradeApprovalQueue = () => {
     setManagerNote('');
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!selectedTrade || !actionType) return;
+
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.id) {
+      console.error('No authenticated user');
+      return;
+    }
 
     const payload = {
       tradeId: selectedTrade.id,
       managerNote: managerNote || undefined,
+      managerUserId: user.id,
     };
 
     if (actionType === 'approve') {

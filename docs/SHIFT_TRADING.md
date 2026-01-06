@@ -93,7 +93,7 @@ We need a dedicated table for requests. This separates "potential" changes from 
 CREATE TYPE request_type AS ENUM ('offer', 'trade');
 CREATE TYPE request_status AS ENUM ('pending_pickup', 'pending_approval', 'approved', 'denied', 'cancelled');
 
-CREATE TABLE shift_change_requests (
+CREATE TABLE shift_trades (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   restaurant_id UUID NOT NULL REFERENCES restaurants(id),
   requester_id UUID NOT NULL REFERENCES employees(id),
@@ -120,7 +120,7 @@ CREATE TABLE shift_change_requests (
 );
 
 -- Index for fast "Pool" lookups
-CREATE INDEX idx_pool_requests ON shift_change_requests(restaurant_id, status) 
+CREATE INDEX idx_pool_trades ON shift_trades(restaurant_id, status) 
 WHERE status = 'pending_pickup';
 
 ```
@@ -188,18 +188,28 @@ DECLARE
   req RECORD;
 BEGIN
   -- 1. Lock and Get Request
-  SELECT * INTO req FROM shift_change_requests WHERE id = request_id FOR UPDATE;
+  SELECT * INTO req FROM shift_trades WHERE id = request_id FOR UPDATE;
   
   IF req.status != 'pending_approval' THEN
     RAISE EXCEPTION 'Request is not pending approval';
   END IF;
 
-  -- 2. Update Request Status
-  UPDATE shift_change_requests 
+  -- 2. Verify manager is authorized for this restaurant
+  IF NOT EXISTS (
+    SELECT 1 FROM user_restaurants 
+    WHERE user_id = manager_id 
+    AND restaurant_id = req.restaurant_id 
+    AND role IN ('owner', 'manager')
+  ) THEN
+    RAISE EXCEPTION 'User is not authorized to approve trades for this restaurant';
+  END IF;
+
+  -- 3. Update Request Status
+  UPDATE shift_trades 
   SET status = 'approved', updated_at = NOW() 
   WHERE id = request_id;
 
-  -- 3. Execute the Swap/Offer Logic
+  -- 4. Execute the Swap/Offer Logic
   -- (Simple case: Reassign the offered shift to the target)
   UPDATE shifts
   SET employee_id = req.target_employee_id,
@@ -214,7 +224,7 @@ BEGIN
     WHERE id = req.wanted_shift_id;
   END IF;
   
-  -- 4. Handle Partial Shifts (If start/end times differ from original)
+  -- 5. Handle Partial Shifts (If start/end times differ from original)
   -- Logic would go here to split the shift if necessary
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

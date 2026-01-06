@@ -104,7 +104,7 @@ const createWrapper = () => {
 };
 
 // Helper: Create mock query builder for SELECT operations
-const createSelectQueryBuilder = (mockData: TestShiftTrade[] | TestShiftTrade | null, error: any = null): QueryBuilder => {
+const createSelectQueryBuilder = (mockData: TestShiftTrade[] | TestShiftTrade | null, error: Error | null = null): QueryBuilder => {
   const builder: QueryBuilder = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
@@ -122,7 +122,7 @@ const createSelectQueryBuilder = (mockData: TestShiftTrade[] | TestShiftTrade | 
 };
 
 // Helper: Create mock query builder for INSERT/UPDATE operations
-const createMutationQueryBuilder = (mockData: TestShiftTrade | null, error: any = null): QueryBuilder => {
+const createMutationQueryBuilder = (mockData: TestShiftTrade | null, error: Error | null = null): QueryBuilder => {
   const builder: QueryBuilder = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
@@ -298,12 +298,13 @@ describe('useShiftTrades', () => {
       await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
 
       const tradeData = {
+        restaurant_id: 'rest-123',
         offered_shift_id: 'shift-1',
         offered_by_employee_id: 'emp-1',
         reason: 'Need day off',
       };
 
-      await result.current.mutateAsync(tradeData as any);
+      await result.current.mutateAsync(tradeData);
 
       expect(mockSupabase.from).toHaveBeenCalledWith('shift_trades');
       expect(mockToast).toHaveBeenCalledWith(
@@ -324,12 +325,13 @@ describe('useShiftTrades', () => {
       await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
 
       const tradeData = {
+        restaurant_id: 'rest-123',
         offered_shift_id: 'shift-1',
         offered_by_employee_id: 'emp-1',
         reason: 'Test',
       };
 
-      await expect(result.current.mutateAsync(tradeData as any)).rejects.toThrow();
+      await expect(result.current.mutateAsync(tradeData)).rejects.toThrow();
 
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({

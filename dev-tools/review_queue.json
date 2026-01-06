@@ -19019,9 +19019,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts"
       ],
       "id": "59e53c805dd09b64b0d50e7dad3dd984fdc28eda",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T15:17:39.366Z"
+      "updated_at": "2026-01-06T15:39:53.342Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -19036,9 +19039,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-shift-trade-notification/index.ts"
       ],
       "id": "74f74ab17d94133c1148b840c84dc1edafa087ca",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T15:17:39.366Z"
+      "updated_at": "2026-01-06T15:39:52.839Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -19053,9 +19059,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-team-invitation/index.ts"
       ],
       "id": "8266cf7d749b15874dd9c38bfaf6338482b78868",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T15:17:39.366Z"
+      "updated_at": "2026-01-06T15:39:52.313Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -19070,9 +19079,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-team-invitation/index.ts"
       ],
       "id": "0c505ebbb5d66c4c118b14ebda570dbc2428d846",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T15:17:39.366Z"
+      "updated_at": "2026-01-06T15:39:51.280Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -19087,9 +19099,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-time-off-notification/index.ts"
       ],
       "id": "d452c7adc5336495f2ca29012988fc15ff6c1644",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T15:17:39.366Z"
+      "updated_at": "2026-01-06T15:39:49.139Z",
+      "notes": [
+        "tests pass"
+      ]
     },
     {
       "source": "problems",
@@ -19104,9 +19119,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-time-off-notification/index.ts"
       ],
       "id": "52f84ed2d16fcf3df7dd38d1824ed3f84ea8ef8a",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T04:40:23.534Z"
+      "updated_at": "2026-01-06T15:46:04.973Z",
+      "notes": [
+        "Fixed 'any' type for manager user at line 70 - typed as { user?: { email?: string } | null } | null. Tests pass."
+      ]
     },
     {
       "source": "problems",
@@ -19121,9 +19139,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/send-time-off-notification/index.ts"
       ],
       "id": "cd0789b86069e4430baa8584e2f65ca1ff314d9d",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.534Z",
-      "updated_at": "2026-01-06T04:40:23.534Z"
+      "updated_at": "2026-01-06T15:46:03.794Z",
+      "notes": [
+        "Fixed 'any' type for emailError in catch block at line 301 - typed as unknown. Tests pass."
+      ]
     },
     {
       "source": "problems",
@@ -19138,9 +19159,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts"
       ],
       "id": "fd9fad7c5d5824207e7281d426dcd211c3f16e66",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T15:46:02.874Z",
+      "notes": [
+        "Fixed 'any' type for error param at line 107 - typed as Error | null. Tests pass."
+      ]
     },
     {
       "source": "problems",
@@ -19155,9 +19179,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts"
       ],
       "id": "398d2d6f116266ec2da20a7de6d57c71e5230123",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T15:46:01.835Z",
+      "notes": [
+        "Fixed 'any' type for error param at line 125 - typed as Error | null. Tests pass."
+      ]
     },
     {
       "source": "problems",
@@ -19172,9 +19199,12 @@
         "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useShiftTrades.test.ts"
       ],
       "id": "ff5a56d7854f36b30514f447fffd89f2d304b9fd",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-01-06T04:40:23.536Z",
-      "updated_at": "2026-01-06T04:40:23.536Z"
+      "updated_at": "2026-01-06T15:46:00.759Z",
+      "notes": [
+        "Fixed 'any' type cast at line 306 - added missing restaurant_id property to tradeData object. Tests pass."
+      ]
     },
     {
       "source": "problems",

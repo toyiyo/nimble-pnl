@@ -107,7 +107,16 @@ const handler = async (req: Request): Promise<Response> => {
     console.log('Token hashed successfully with Web Crypto API');
     
     // Store invitation with hashed token in database
-    const invitationData: any = {
+    const invitationData: {
+      restaurant_id: string;
+      invited_by: string;
+      email: string;
+      role: string;
+      token: string;
+      status: string;
+      expires_at: Date;
+      employee_id?: string;
+    } = {
       restaurant_id: restaurantId,
       invited_by: user.id,
       email,
@@ -239,11 +248,12 @@ const handler = async (req: Request): Promise<Response> => {
         },
       }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error sending team invitation:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: errorMessage,
         success: false 
       }),
       {

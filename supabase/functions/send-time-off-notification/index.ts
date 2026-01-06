@@ -67,7 +67,7 @@ const buildEmails = async (
       .in('role', ['owner', 'manager']);
 
     if (!managersError && managers) {
-      managers.forEach((manager: { user?: { email?: string } }) => {
+      managers.forEach((manager: { user?: { email?: string } | null } | null) => {
         if (manager.user?.email) {
           emails.push(manager.user.email);
         }
@@ -298,7 +298,7 @@ const handler = async (req: Request): Promise<Response> => {
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
         }
       );
-    } catch (emailError) {
+    } catch (emailError: unknown) {
       console.error("Failed to send notification emails:", emailError);
       throw new Error('Failed to send notification emails');
     }

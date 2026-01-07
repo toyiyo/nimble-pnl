@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
+import { normalizePrices, hasValidPriceData, normalizeConfidenceScore } from "../_shared/priceNormalization.ts";
 
 interface ReceiptProcessRequest {
   receiptId: string;
@@ -662,63 +663,31 @@ serve(async (req) => {
       // Validate each line item has required fields
       let validItemCount = 0;
       parsedData.lineItems = parsedData.lineItems.filter((item: any, index: number) => {
-        // Check for required fields - now allow either parsedPrice OR (unitPrice+lineTotal)
-        const hasLegacyPrice = typeof item.parsedPrice === "number";
-        const hasNewPrices = typeof item.unitPrice === "number" || typeof item.lineTotal === "number";
-        
-        if (!item.parsedName || typeof item.parsedQuantity !== "number" || (!hasLegacyPrice && !hasNewPrices)) {
+        if (!hasValidPriceData(item)) {
           console.warn(`Line item ${index} missing required fields, skipping:`, item);
           return false;
         }
         // Ensure confidence score is within valid range
-        if (item.confidenceScore > 1.0) item.confidenceScore = 1.0;
-        if (item.confidenceScore < 0.0) item.confidenceScore = 0.0;
+        item.confidenceScore = normalizeConfidenceScore(item.confidenceScore);
         validItemCount++;
         return true;
       });
 
-      // Normalize and validate prices for each line item
+      // Normalize and validate prices for each line item using shared utility
       parsedData.lineItems = parsedData.lineItems.map((item: any) => {
-        let unitPrice = item.unitPrice;
-        let lineTotal = item.lineTotal;
-        const quantity = item.parsedQuantity || 1;
-
-        // Handle backward compatibility with old parsedPrice field
-        if (unitPrice === undefined && lineTotal === undefined && item.parsedPrice !== undefined) {
-          // Legacy format: assume parsedPrice is lineTotal
-          lineTotal = item.parsedPrice;
-          unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
-        }
-
-        // If only unitPrice provided, calculate lineTotal
-        if (unitPrice !== undefined && lineTotal === undefined) {
-          lineTotal = unitPrice * quantity;
-        }
-
-        // If only lineTotal provided, calculate unitPrice
-        if (lineTotal !== undefined && unitPrice === undefined) {
-          unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
-        }
-
-        // Validation: check if lineTotal ≈ quantity × unitPrice (allow 2% tolerance for rounding)
-        if (unitPrice !== undefined && lineTotal !== undefined) {
-          const expectedTotal = unitPrice * quantity;
-          const tolerance = Math.max(0.02, expectedTotal * 0.02); // 2% or $0.02 minimum
-
-          if (Math.abs(lineTotal - expectedTotal) > tolerance) {
-            console.warn(`⚠️ Price mismatch for "${item.parsedName}": ` +
-              `${quantity} × $${unitPrice} = $${expectedTotal}, but lineTotal = $${lineTotal}`);
-            // Trust lineTotal and recalculate unitPrice
-            unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
-          }
-        }
+        const normalized = normalizePrices({
+          parsedName: item.parsedName,
+          parsedQuantity: item.parsedQuantity,
+          unitPrice: item.unitPrice,
+          lineTotal: item.lineTotal,
+          parsedPrice: item.parsedPrice,
+        });
 
         return {
           ...item,
-          unitPrice: unitPrice || 0,
-          lineTotal: lineTotal || 0,
-          // Keep parsedPrice for backward compatibility (set to lineTotal)
-          parsedPrice: lineTotal || item.parsedPrice || 0,
+          unitPrice: normalized.unitPrice,
+          lineTotal: normalized.lineTotal,
+          parsedPrice: normalized.parsedPrice,
         };
       });
 

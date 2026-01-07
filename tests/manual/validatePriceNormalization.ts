@@ -3,6 +3,9 @@
  * Run with: npx tsx tests/manual/validatePriceNormalization.ts
  */
 
+// Import the shared utility instead of duplicating logic
+import { normalizePrices } from '../../src/lib/priceNormalization';
+
 // Test scenarios matching the problem statement
 const testScenarios = [
   {
@@ -47,45 +50,6 @@ const testScenarios = [
   },
 ];
 
-function normalizePrices(item: any): any {
-  let unitPrice = item.unitPrice;
-  let lineTotal = item.lineTotal;
-  const quantity = item.parsedQuantity || 1;
-
-  // Handle backward compatibility with old parsedPrice field
-  if (unitPrice === undefined && lineTotal === undefined && item.parsedPrice !== undefined) {
-    lineTotal = item.parsedPrice;
-    unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
-  }
-
-  // If only unitPrice provided, calculate lineTotal
-  if (unitPrice !== undefined && lineTotal === undefined) {
-    lineTotal = unitPrice * quantity;
-  }
-
-  // If only lineTotal provided, calculate unitPrice
-  if (lineTotal !== undefined && unitPrice === undefined) {
-    unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
-  }
-
-  // Validation: check if lineTotal ≈ quantity × unitPrice (allow 2% tolerance for rounding)
-  if (unitPrice !== undefined && lineTotal !== undefined) {
-    const expectedTotal = unitPrice * quantity;
-    const tolerance = Math.max(0.02, expectedTotal * 0.02);
-
-    if (Math.abs(lineTotal - expectedTotal) > tolerance) {
-      console.log(`  ⚠️  Price mismatch: ${quantity} × $${unitPrice} = $${expectedTotal}, but lineTotal = $${lineTotal}`);
-      unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
-    }
-  }
-
-  return {
-    unitPrice: unitPrice || 0,
-    lineTotal: lineTotal || 0,
-    parsedPrice: lineTotal || item.parsedPrice || 0,
-  };
-}
-
 console.log("🧪 Receipt Price Normalization Validation\n");
 console.log("=" .repeat(70));
 
@@ -97,8 +61,9 @@ testScenarios.forEach((scenario, index) => {
   console.log(`  AI Extracted:`, JSON.stringify(scenario.aiExtracted));
   
   const input = {
-    ...scenario.aiExtracted,
+    parsedName: scenario.name,
     parsedQuantity: scenario.quantity,
+    ...scenario.aiExtracted,
   };
   
   const result = normalizePrices(input);

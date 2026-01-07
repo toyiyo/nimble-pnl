@@ -1,63 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { normalizePrices, hasValidPriceData, normalizeConfidenceScore } from '@/lib/priceNormalization';
 
 /**
  * Tests for receipt price normalization and validation logic
- * This validates the price handling in process-receipt Edge Function
+ * Uses the shared utility that is also used by the Edge Function
  */
-
-interface LineItem {
-  parsedName: string;
-  parsedQuantity: number;
-  unitPrice?: number;
-  lineTotal?: number;
-  parsedPrice?: number;
-}
-
-/**
- * Normalizes and validates prices for a line item
- * This mirrors the logic in process-receipt/index.ts
- */
-function normalizePrices(item: LineItem): { unitPrice: number; lineTotal: number; parsedPrice: number } {
-  let unitPrice = item.unitPrice;
-  let lineTotal = item.lineTotal;
-  const quantity = item.parsedQuantity || 1;
-
-  // Handle backward compatibility with old parsedPrice field
-  if (unitPrice === undefined && lineTotal === undefined && item.parsedPrice !== undefined) {
-    // Legacy format: assume parsedPrice is lineTotal
-    lineTotal = item.parsedPrice;
-    unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
-  }
-
-  // If only unitPrice provided, calculate lineTotal
-  if (unitPrice !== undefined && lineTotal === undefined) {
-    lineTotal = unitPrice * quantity;
-  }
-
-  // If only lineTotal provided, calculate unitPrice
-  if (lineTotal !== undefined && unitPrice === undefined) {
-    unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
-  }
-
-  // Validation: check if lineTotal ≈ quantity × unitPrice (allow 2% tolerance for rounding)
-  if (unitPrice !== undefined && lineTotal !== undefined) {
-    const expectedTotal = unitPrice * quantity;
-    const tolerance = Math.max(0.02, expectedTotal * 0.02); // 2% or $0.02 minimum
-
-    if (Math.abs(lineTotal - expectedTotal) > tolerance) {
-      console.warn(`⚠️ Price mismatch for "${item.parsedName}": ` +
-        `${quantity} × $${unitPrice} = $${expectedTotal}, but lineTotal = $${lineTotal}`);
-      // Trust lineTotal and recalculate unitPrice
-      unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
-    }
-  }
-
-  return {
-    unitPrice: unitPrice || 0,
-    lineTotal: lineTotal || 0,
-    parsedPrice: lineTotal || item.parsedPrice || 0,
-  };
-}
 
 describe('Receipt Price Normalization', () => {
   describe('normalizePrices', () => {
@@ -229,6 +176,81 @@ describe('Receipt Price Normalization', () => {
       expect(result.unitPrice).toBe(1.00); // NOT 0.50
       expect(result.lineTotal).toBe(2.00);
       expect(result.parsedPrice).toBe(2.00);
+    });
+  });
+
+  describe('hasValidPriceData', () => {
+    it('should return true for item with legacy parsedPrice', () => {
+      const item = {
+        parsedName: 'Test Item',
+        parsedQuantity: 1,
+        parsedPrice: 5.00,
+      };
+      expect(hasValidPriceData(item)).toBe(true);
+    });
+
+    it('should return true for item with unitPrice', () => {
+      const item = {
+        parsedName: 'Test Item',
+        parsedQuantity: 1,
+        unitPrice: 5.00,
+      };
+      expect(hasValidPriceData(item)).toBe(true);
+    });
+
+    it('should return true for item with lineTotal', () => {
+      const item = {
+        parsedName: 'Test Item',
+        parsedQuantity: 1,
+        lineTotal: 5.00,
+      };
+      expect(hasValidPriceData(item)).toBe(true);
+    });
+
+    it('should return false for item missing price data', () => {
+      const item = {
+        parsedName: 'Test Item',
+        parsedQuantity: 1,
+      };
+      expect(hasValidPriceData(item)).toBe(false);
+    });
+
+    it('should return false for item missing parsedName', () => {
+      const item = {
+        parsedQuantity: 1,
+        parsedPrice: 5.00,
+      };
+      expect(hasValidPriceData(item)).toBe(false);
+    });
+
+    it('should return false for item missing parsedQuantity', () => {
+      const item = {
+        parsedName: 'Test Item',
+        parsedPrice: 5.00,
+      };
+      expect(hasValidPriceData(item)).toBe(false);
+    });
+  });
+
+  describe('normalizeConfidenceScore', () => {
+    it('should return score as-is when within valid range', () => {
+      expect(normalizeConfidenceScore(0.5)).toBe(0.5);
+      expect(normalizeConfidenceScore(0.0)).toBe(0.0);
+      expect(normalizeConfidenceScore(1.0)).toBe(1.0);
+    });
+
+    it('should clamp score above 1.0 to 1.0', () => {
+      expect(normalizeConfidenceScore(1.5)).toBe(1.0);
+      expect(normalizeConfidenceScore(2.0)).toBe(1.0);
+    });
+
+    it('should clamp score below 0.0 to 0.0', () => {
+      expect(normalizeConfidenceScore(-0.5)).toBe(0.0);
+      expect(normalizeConfidenceScore(-1.0)).toBe(0.0);
+    });
+
+    it('should return 0 for undefined score', () => {
+      expect(normalizeConfidenceScore(undefined)).toBe(0.0);
     });
   });
 });

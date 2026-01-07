@@ -11,18 +11,8 @@ AS $$
 DECLARE
   v_synced_count INTEGER := 0;
 BEGIN
-  -- Delete existing entries for orders we're about to sync
-  -- This ensures we don't have duplicates when reprocessing orders
-  DELETE FROM public.unified_sales
-  WHERE restaurant_id = p_restaurant_id
-    AND pos_system = 'toast'
-    AND external_order_id IN (
-      SELECT DISTINCT toast_order_guid
-      FROM public.toast_orders
-      WHERE restaurant_id = p_restaurant_id
-    );
-
-  -- 1. Insert REVENUE entries (from order items)
+  -- 1. Insert/Update REVENUE entries (from order items)
+  -- Use ON CONFLICT to preserve categorization instead of deleting
   INSERT INTO public.unified_sales (
     restaurant_id,
     pos_system,
@@ -61,11 +51,23 @@ BEGIN
     AND toi.restaurant_id = too.restaurant_id
   WHERE toi.restaurant_id = p_restaurant_id
     AND toi.total_price IS NOT NULL
-    AND toi.total_price != 0;
+    AND toi.total_price != 0
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET
+    item_name = EXCLUDED.item_name,
+    quantity = EXCLUDED.quantity,
+    unit_price = EXCLUDED.unit_price,
+    total_price = EXCLUDED.total_price,
+    sale_date = EXCLUDED.sale_date,
+    sale_time = EXCLUDED.sale_time,
+    pos_category = EXCLUDED.pos_category,
+    raw_data = EXCLUDED.raw_data,
+    synced_at = EXCLUDED.synced_at;
 
   GET DIAGNOSTICS v_synced_count = ROW_COUNT;
 
-  -- 2. Insert DISCOUNT entries (from order discounts)
+  -- 2. Insert/Update DISCOUNT entries (from order discounts)
   INSERT INTO public.unified_sales (
     restaurant_id,
     pos_system,
@@ -100,9 +102,19 @@ BEGIN
   FROM public.toast_orders too
   WHERE too.restaurant_id = p_restaurant_id
     AND too.discount_amount IS NOT NULL
-    AND too.discount_amount != 0;
+    AND too.discount_amount != 0
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET
+    item_name = EXCLUDED.item_name,
+    total_price = EXCLUDED.total_price,
+    unit_price = EXCLUDED.unit_price,
+    sale_date = EXCLUDED.sale_date,
+    sale_time = EXCLUDED.sale_time,
+    raw_data = EXCLUDED.raw_data,
+    synced_at = EXCLUDED.synced_at;
 
-  -- 3. Insert TAX entries
+  -- 3. Insert/Update TAX entries
   INSERT INTO public.unified_sales (
     restaurant_id,
     pos_system,
@@ -137,9 +149,19 @@ BEGIN
   FROM public.toast_orders too
   WHERE too.restaurant_id = p_restaurant_id
     AND too.tax_amount IS NOT NULL
-    AND too.tax_amount != 0;
+    AND too.tax_amount != 0
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET
+    item_name = EXCLUDED.item_name,
+    total_price = EXCLUDED.total_price,
+    unit_price = EXCLUDED.unit_price,
+    sale_date = EXCLUDED.sale_date,
+    sale_time = EXCLUDED.sale_time,
+    raw_data = EXCLUDED.raw_data,
+    synced_at = EXCLUDED.synced_at;
 
-  -- 4. Insert TIP entries (from payments)
+  -- 4. Insert/Update TIP entries (from payments)
   INSERT INTO public.unified_sales (
     restaurant_id,
     pos_system,
@@ -174,9 +196,19 @@ BEGIN
   FROM public.toast_payments tp
   WHERE tp.restaurant_id = p_restaurant_id
     AND tp.tip_amount IS NOT NULL
-    AND tp.tip_amount != 0;
+    AND tp.tip_amount != 0
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET
+    item_name = EXCLUDED.item_name,
+    total_price = EXCLUDED.total_price,
+    unit_price = EXCLUDED.unit_price,
+    sale_date = EXCLUDED.sale_date,
+    sale_time = EXCLUDED.sale_time,
+    raw_data = EXCLUDED.raw_data,
+    synced_at = EXCLUDED.synced_at;
 
-  -- 5. Insert REFUND entries (from payments with negative amounts or refund status)
+  -- 5. Insert/Update REFUND entries (from payments with negative amounts or refund status)
   INSERT INTO public.unified_sales (
     restaurant_id,
     pos_system,
@@ -213,7 +245,17 @@ BEGIN
     AND (
       tp.payment_status = 'REFUNDED'
       OR tp.amount < 0
-    );
+    )
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET
+    item_name = EXCLUDED.item_name,
+    total_price = EXCLUDED.total_price,
+    unit_price = EXCLUDED.unit_price,
+    sale_date = EXCLUDED.sale_date,
+    sale_time = EXCLUDED.sale_time,
+    raw_data = EXCLUDED.raw_data,
+    synced_at = EXCLUDED.synced_at;
 
   RETURN v_synced_count;
 END;
@@ -223,4 +265,4 @@ $$;
 GRANT EXECUTE ON FUNCTION sync_toast_to_unified_sales TO authenticated;
 
 COMMENT ON FUNCTION sync_toast_to_unified_sales IS 
-'Syncs Toast orders to unified_sales with separate entries for revenue, discounts, tax, tips, and refunds';
+'Syncs Toast orders to unified_sales with separate entries for revenue, discounts, tax, tips, and refunds. Uses ON CONFLICT to preserve existing categorization when updating records.';

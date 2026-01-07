@@ -147,7 +147,7 @@ export function PrepRecipeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] overflow-hidden p-0">
+      <DialogContent className="w-[95vw] max-w-5xl h-[90dvh] max-h-[90dvh] overflow-hidden p-0 flex flex-col">
         <div className="flex h-full flex-col">
           <div className="sticky top-0 z-10 border-b bg-background/95 px-6 py-4 backdrop-blur">
             <DialogHeader className="space-y-2">

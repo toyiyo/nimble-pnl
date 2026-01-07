@@ -72,6 +72,32 @@ export interface ReceiptLineItem {
   updated_at: string;
 }
 
+// Units that represent measurements (weight/volume) where quantity = size
+const MEASUREMENT_UNITS = new Set([
+  'lb', 'lbs', 'oz', 'kg', 'g', 'gram', 'grams',  // Weight
+  'gal', 'gallon', 'qt', 'quart', 'pt', 'pint', 'l', 'liter', 'ml', 'fl oz',  // Volume
+]);
+
+// Check if a unit is a measurement unit (where quantity represents size)
+const isMeasurementUnit = (unit: string | null | undefined): boolean => {
+  if (!unit) return false;
+  return MEASUREMENT_UNITS.has(unit.toLowerCase().trim());
+};
+
+// Normalize unit for storage (standardize common variations)
+const normalizeUnit = (unit: string | null | undefined): string => {
+  if (!unit) return 'unit';
+  const normalized = unit.toLowerCase().trim();
+  // Standardize common variations
+  if (normalized === 'lbs') return 'lb';
+  if (normalized === 'gallon' || normalized === 'gallons') return 'gal';
+  if (normalized === 'quart' || normalized === 'quarts') return 'qt';
+  if (normalized === 'pint' || normalized === 'pints') return 'pt';
+  if (normalized === 'liter' || normalized === 'liters') return 'l';
+  if (normalized === 'gram' || normalized === 'grams') return 'g';
+  return unit;
+};
+
 export const useReceiptImport = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -567,19 +593,33 @@ export const useReceiptImport = () => {
               ? (item.parsed_price || 0) / item.parsed_quantity 
               : (item.parsed_price || 0);
 
+          // Normalize the unit for storage
+          const normalizedUnit = normalizeUnit(item.parsed_unit);
+          
+          // Build product data with optional size/packaging info
+          const productData: Record<string, any> = {
+            restaurant_id: selectedRestaurant.restaurant_id,
+            name: item.parsed_name || item.raw_text,
+            sku: item.parsed_sku || `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            current_stock: item.parsed_quantity || 0,
+            cost_per_unit: unitPrice,
+            uom_purchase: normalizedUnit,
+            receipt_item_names: [receiptItemName],
+            supplier_id: supplierId,
+            supplier_name: vendorName
+          };
+
+          // For measurement units (lb, oz, gal, etc.), set size info from quantity
+          // This represents "X lbs per package" where X is the quantity purchased
+          if (isMeasurementUnit(item.parsed_unit) && item.parsed_quantity && item.parsed_quantity > 0) {
+            productData.size_unit = normalizedUnit;
+            productData.size_value = item.parsed_quantity;
+            console.log(`📦 Setting package size for ${item.parsed_name}: ${item.parsed_quantity} ${normalizedUnit}`);
+          }
+
           const { data: newProduct, error: productError } = await supabase
             .from('products')
-            .insert({
-              restaurant_id: selectedRestaurant.restaurant_id,
-              name: item.parsed_name || item.raw_text,
-              sku: item.parsed_sku || `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-              current_stock: item.parsed_quantity || 0,
-              cost_per_unit: unitPrice,
-              uom_purchase: item.parsed_unit || 'unit',
-              receipt_item_names: [receiptItemName],
-              supplier_id: supplierId,  // Set initial supplier
-              supplier_name: vendorName  // Keep for backwards compatibility
-            })
+            .insert(productData as any)
             .select()
             .single();
 

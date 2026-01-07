@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 
 // Get Supabase base URL from the client configuration for environment portability
 const getSupabaseUrl = (): string => {
@@ -72,16 +73,14 @@ export interface ReceiptLineItem {
   updated_at: string;
 }
 
-// Units that represent measurements (weight/volume) where quantity = size
-const MEASUREMENT_UNITS = new Set([
-  'lb', 'lbs', 'oz', 'kg', 'g', 'gram', 'grams',  // Weight
-  'gal', 'gallon', 'qt', 'quart', 'pt', 'pint', 'l', 'liter', 'ml', 'fl oz',  // Volume
-]);
+// Combined set of measurement units (weight + volume) for quick lookup
+const MEASUREMENT_UNITS_SET = new Set([...WEIGHT_UNITS, ...VOLUME_UNITS].map(u => u.toLowerCase()));
 
 // Check if a unit is a measurement unit (where quantity represents size)
 const isMeasurementUnit = (unit: string | null | undefined): boolean => {
   if (!unit) return false;
-  return MEASUREMENT_UNITS.has(unit.toLowerCase().trim());
+  const normalized = normalizeUnit(unit);
+  return MEASUREMENT_UNITS_SET.has(normalized.toLowerCase());
 };
 
 // Normalize unit for storage (standardize common variations)

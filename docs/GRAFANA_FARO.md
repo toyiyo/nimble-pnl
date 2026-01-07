@@ -146,7 +146,9 @@ if (faro) {
 
 ## Disabling Faro
 
-To disable Faro:
+Local/test runs skip Faro automatically to avoid noisy CORS errors. Set `VITE_FARO_ENABLE_LOCAL=true` if you need it during local development. To force-disable everywhere (including production), set `VITE_FARO_DISABLED=true`.
+
+To disable Faro by configuration:
 1. Remove or comment out `VITE_FARO_COLLECTOR_URL` in `.env`
 2. Faro will not initialize and will log a warning message
 

@@ -62,6 +62,7 @@ import StripeAccountManagement from "./pages/StripeAccountManagement";
 import PayrollCalculationsHelp from "./pages/Help/PayrollCalculations";
 
 const queryClient = new QueryClient();
+const enableSpeedInsights = import.meta.env.VITE_ENABLE_SPEED_INSIGHTS === "true";
 
 // Protected Route Component with staff restrictions
 const ProtectedRoute = ({ children, allowStaff = false, noChrome = false }: { children: React.ReactNode; allowStaff?: boolean; noChrome?: boolean }) => {
@@ -147,7 +148,7 @@ const App = () => (
         <Sonner />
         <InstallBanner />
         <Analytics />
-        <SpeedInsights />
+        {enableSpeedInsights && <SpeedInsights />}
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />

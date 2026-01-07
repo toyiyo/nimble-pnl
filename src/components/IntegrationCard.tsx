@@ -51,18 +51,19 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   // Toast-specific integration hook
   const toastConnection = useToastConnection();
   
-  // Check Toast connection status on mount
-  useEffect(() => {
-    if (isToastIntegration && restaurantId) {
-      toastConnection.checkConnectionStatus(restaurantId);
-    }
-  }, [restaurantId]);
-  
   // Check if this integration is Square, Clover, Shift4, or Toast and if it's connected
   const isSquareIntegration = integration.id === 'square-pos';
   const isCloverIntegration = integration.id === 'clover-pos';
   const isShift4Integration = integration.id === 'shift4-pos';
   const isToastIntegration = integration.id === 'toast-pos';
+  
+  // Check Toast connection status on mount
+  useEffect(() => {
+    if (isToastIntegration && restaurantId) {
+      toastConnection.checkConnectionStatus(restaurantId);
+    }
+  }, [restaurantId, isToastIntegration]);
+  
   const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected : 
                             isCloverIntegration ? cloverIntegration.isConnected :
                             isShift4Integration ? shift4Integration.isConnected :

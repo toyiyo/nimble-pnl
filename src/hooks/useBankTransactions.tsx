@@ -141,7 +141,7 @@ const applyMetadataFilters = (
   filters: TransactionFilters,
   stripeAccountId?: string | null
 ): SupabaseQuery => {
-  if (filters.status) query = query.eq('status', filters.status);
+  if (filters.status) query = query.eq('status', filters.status as Database['public']['Enums']['transaction_status_enum']);
   if (filters.transactionType === 'debit') query = query.lt('amount', 0);
   if (filters.transactionType === 'credit') query = query.gt('amount', 0);
   if (filters.categoryId) query = query.eq('category_id', filters.categoryId);
@@ -328,7 +328,7 @@ export function useBankTransactionsWithRelations(restaurantId: string | null | u
         .limit(1000);
 
       if (error) throw error;
-      return (data || []) as BankTransaction[];
+      return (data || []) as unknown as BankTransaction[];
     },
     enabled: !!restaurantId,
     staleTime: 60000,
@@ -491,8 +491,8 @@ export function useSplitTransaction() {
     }) => {
       const splitPayload = {
         p_transaction_id: transactionId,
-        p_splits: splits,
-      } satisfies SplitBankTransactionArgs;
+        p_splits: splits as unknown as Database['public']['Functions']['split_bank_transaction']['Args']['p_splits'],
+      };
 
       const { data, error } = await supabase.rpc('split_bank_transaction', splitPayload);
 
@@ -577,8 +577,8 @@ export function useUpdateBankTransactionSplit() {
       // Re-split by calling the split function (it handles existing splits)
       const splitPayload = {
         p_transaction_id: transactionId,
-        p_splits: splits,
-      } satisfies SplitBankTransactionArgs;
+        p_splits: splits as unknown as Database['public']['Functions']['split_bank_transaction']['Args']['p_splits'],
+      };
 
       const { data, error } = await supabase.rpc('split_bank_transaction', splitPayload);
 

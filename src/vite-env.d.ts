@@ -67,3 +67,11 @@ interface BluetoothCharacteristicProperties {
   reliableWrite: boolean;
   writableAuxiliaries: boolean;
 }
+
+interface ImportMetaEnv {
+  readonly VITE_ENABLE_SPEED_INSIGHTS?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}

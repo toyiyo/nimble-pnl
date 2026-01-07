@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useShifts, useDeleteShift } from '@/hooks/useShifts';
+import { useShiftTrades } from '@/hooks/useShiftTrades';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
@@ -187,6 +188,7 @@ const Scheduling = () => {
   // Fetch ALL employees (including inactive) to show historical shifts
   const { employees: allEmployees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'all' });
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
+  const { trades: pendingTrades } = useShiftTrades(restaurantId, 'pending_approval', null);
   const deleteShift = useDeleteShift();
   const publishSchedule = usePublishSchedule();
   const unpublishSchedule = useUnpublishSchedule();
@@ -200,6 +202,8 @@ const Scheduling = () => {
     currentWeekStart,
     weekEnd
   );
+  
+  const pendingTradeCount = pendingTrades.length;
 
   // Separate active employees for creating new shifts
   const activeEmployees = allEmployees.filter(emp => Boolean(emp.is_active));
@@ -468,9 +472,14 @@ const Scheduling = () => {
             <CalendarClock className="h-4 w-4 mr-2" />
             Availability
           </TabsTrigger>
-          <TabsTrigger value="trades">
+          <TabsTrigger value="trades" className="relative">
             <ArrowLeftRight className="h-4 w-4 mr-2" />
             Shift Trades
+            {pendingTradeCount > 0 && (
+              <Badge className="ml-2 h-5 min-w-5 px-1.5 bg-amber-500 text-xs">
+                {pendingTradeCount}
+              </Badge>
+            )}
           </TabsTrigger>
         </TabsList>
 

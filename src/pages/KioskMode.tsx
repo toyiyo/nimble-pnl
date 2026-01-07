@@ -108,7 +108,8 @@ const KioskMode = () => {
 
   const sendQueuedPunch = useCallback(
     async (payload: QueuedPunchPayload) => {
-      await mutateRef.current(payload);
+      if (!payload.employee_id) return; // Skip if no employee_id
+      await mutateRef.current(payload as Parameters<typeof createPunch.mutateAsync>[0]);
     },
     []
   );

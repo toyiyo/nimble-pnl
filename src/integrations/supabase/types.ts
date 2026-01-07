@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
@@ -652,6 +632,7 @@ export type Database = {
           restaurant_id: string
           rule_name: string
           split_categories: Json | null
+          split_config: Json | null
           supplier_id: string | null
           transaction_type: string | null
           updated_at: string
@@ -677,6 +658,7 @@ export type Database = {
           restaurant_id: string
           rule_name: string
           split_categories?: Json | null
+          split_config?: Json | null
           supplier_id?: string | null
           transaction_type?: string | null
           updated_at?: string
@@ -702,6 +684,7 @@ export type Database = {
           restaurant_id?: string
           rule_name?: string
           split_categories?: Json | null
+          split_config?: Json | null
           supplier_id?: string | null
           transaction_type?: string | null
           updated_at?: string
@@ -3180,6 +3163,7 @@ export type Database = {
         Row: {
           barcode_data: Json | null
           brand: string | null
+          bulk_purchase_unit: string | null
           category: string | null
           conversion_factor: number | null
           cost_per_unit: number | null
@@ -3189,10 +3173,14 @@ export type Database = {
           gtin: string | null
           id: string
           image_url: string | null
+          individual_unit: string | null
+          individual_unit_size: number | null
+          items_per_package: number | null
           name: string
           package_qty: number | null
           par_level_max: number | null
           par_level_min: number | null
+          pos_item_name: string | null
           receipt_item_names: string[] | null
           reorder_point: number | null
           restaurant_id: string
@@ -3211,6 +3199,7 @@ export type Database = {
         Insert: {
           barcode_data?: Json | null
           brand?: string | null
+          bulk_purchase_unit?: string | null
           category?: string | null
           conversion_factor?: number | null
           cost_per_unit?: number | null
@@ -3220,10 +3209,14 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
+          individual_unit?: string | null
+          individual_unit_size?: number | null
+          items_per_package?: number | null
           name: string
           package_qty?: number | null
           par_level_max?: number | null
           par_level_min?: number | null
+          pos_item_name?: string | null
           receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id: string
@@ -3242,6 +3235,7 @@ export type Database = {
         Update: {
           barcode_data?: Json | null
           brand?: string | null
+          bulk_purchase_unit?: string | null
           category?: string | null
           conversion_factor?: number | null
           cost_per_unit?: number | null
@@ -3251,10 +3245,14 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
+          individual_unit?: string | null
+          individual_unit_size?: number | null
+          items_per_package?: number | null
           name?: string
           package_qty?: number | null
           par_level_max?: number | null
           par_level_min?: number | null
+          pos_item_name?: string | null
           receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id?: string
@@ -4308,12 +4306,12 @@ export type Database = {
       }
       shift_templates: {
         Row: {
-          break_duration: number
+          break_duration: number | null
           created_at: string | null
           day_of_week: number
           end_time: string
           id: string
-          is_active: boolean
+          is_active: boolean | null
           name: string
           position: string
           restaurant_id: string
@@ -4321,12 +4319,12 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          break_duration?: number
+          break_duration?: number | null
           created_at?: string | null
           day_of_week: number
           end_time: string
           id?: string
-          is_active?: boolean
+          is_active?: boolean | null
           name: string
           position: string
           restaurant_id: string
@@ -4334,12 +4332,12 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          break_duration?: number
+          break_duration?: number | null
           created_at?: string | null
           day_of_week?: number
           end_time?: string
           id?: string
-          is_active?: boolean
+          is_active?: boolean | null
           name?: string
           position?: string
           restaurant_id?: string
@@ -6590,7 +6588,7 @@ export type Database = {
       unified_sales_splits: {
         Row: {
           amount: number
-          category_id: string
+          category_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -6598,7 +6596,7 @@ export type Database = {
         }
         Insert: {
           amount: number
-          category_id: string
+          category_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -6606,7 +6604,7 @@ export type Database = {
         }
         Update: {
           amount?: number
-          category_id?: string
+          category_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -6835,62 +6833,8 @@ export type Database = {
           },
         ]
       }
-      pg_all_foreign_keys: {
-        Row: {
-          fk_columns: unknown[] | null
-          fk_constraint_name: unknown
-          fk_schema_name: unknown
-          fk_table_name: unknown
-          fk_table_oid: unknown
-          is_deferrable: boolean | null
-          is_deferred: boolean | null
-          match_type: string | null
-          on_delete: string | null
-          on_update: string | null
-          pk_columns: unknown[] | null
-          pk_constraint_name: unknown
-          pk_index_name: unknown
-          pk_schema_name: unknown
-          pk_table_name: unknown
-          pk_table_oid: unknown
-        }
-        Relationships: []
-      }
-      tap_funky: {
-        Row: {
-          args: string | null
-          is_definer: boolean | null
-          is_strict: boolean | null
-          is_visible: boolean | null
-          kind: unknown
-          langoid: unknown
-          name: unknown
-          oid: unknown
-          owner: unknown
-          returns: string | null
-          returns_set: boolean | null
-          schema: unknown
-          volatility: string | null
-        }
-        Relationships: []
-      }
     }
     Functions: {
-      _cleanup: { Args: never; Returns: boolean }
-      _contract_on: { Args: { "": string }; Returns: unknown }
-      _currtest: { Args: never; Returns: number }
-      _db_privs: { Args: never; Returns: unknown[] }
-      _extensions: { Args: never; Returns: unknown[] }
-      _get: { Args: { "": string }; Returns: number }
-      _get_latest: { Args: { "": string }; Returns: number[] }
-      _get_note: { Args: { "": string }; Returns: string }
-      _is_verbose: { Args: never; Returns: boolean }
-      _prokind: { Args: { p_oid: unknown }; Returns: unknown }
-      _query: { Args: { "": string }; Returns: string }
-      _refine_vol: { Args: { "": string }; Returns: string }
-      _table_privs: { Args: never; Returns: unknown[] }
-      _temptypes: { Args: { "": string }; Returns: string }
-      _todo: { Args: never; Returns: string }
       accept_shift_trade: {
         Args: { p_accepting_employee_id: string; p_trade_id: string }
         Returns: Json
@@ -6936,6 +6880,22 @@ export type Database = {
           total_count: number
         }[]
       }
+      apply_rules_to_bank_transactions_debug: {
+        Args: { p_batch_limit?: number; p_restaurant_id: string }
+        Returns: {
+          amount: number
+          description: string
+          error_detail: string
+          is_split_rule: boolean
+          rule_found: boolean
+          rule_name: string
+          split_categories_raw: Json
+          split_message: string
+          split_success: boolean
+          splits_converted: Json
+          transaction_id: string
+        }[]
+      }
       apply_rules_to_pos_sales: {
         Args: { p_batch_limit?: number; p_restaurant_id: string }
         Returns: {
@@ -6943,8 +6903,39 @@ export type Database = {
           total_count: number
         }[]
       }
+      apply_rules_to_pos_sales_debug: {
+        Args: { p_batch_limit?: number; p_restaurant_id: string }
+        Returns: {
+          error_detail: string
+          is_split_rule: boolean
+          item_name: string
+          rule_found: boolean
+          rule_name: string
+          sale_id: string
+          split_categories_raw: Json
+          split_message: string
+          split_success: boolean
+          splits_converted: Json
+        }[]
+      }
+      apply_split_rule_to_bank_transaction: {
+        Args: {
+          p_rule_id: string
+          p_transaction_amount: number
+          p_transaction_id: string
+        }
+        Returns: undefined
+      }
+      apply_split_rule_to_pos_sale: {
+        Args: { p_rule_id: string; p_sale_amount: number; p_sale_id: string }
+        Returns: undefined
+      }
       approve_shift_trade: {
-        Args: { p_manager_note?: string; p_trade_id: string }
+        Args: {
+          p_manager_note?: string
+          p_manager_user_id: string
+          p_trade_id: string
+        }
         Returns: Json
       }
       bulk_process_historical_sales: {
@@ -6984,6 +6975,10 @@ export type Database = {
           regular_hours: number
           total_hours: number
         }[]
+      }
+      cancel_shift_trade: {
+        Args: { p_employee_id: string; p_trade_id: string }
+        Returns: Json
       }
       categorize_bank_transaction:
         | {
@@ -7060,42 +7055,6 @@ export type Database = {
       cleanup_expired_invitations: { Args: never; Returns: undefined }
       cleanup_old_audit_logs: { Args: never; Returns: undefined }
       cleanup_rate_limit_logs: { Args: never; Returns: undefined }
-      col_is_null:
-        | {
-            Args: {
-              column_name: unknown
-              description?: string
-              schema_name: unknown
-              table_name: unknown
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              column_name: unknown
-              description?: string
-              table_name: unknown
-            }
-            Returns: string
-          }
-      col_not_null:
-        | {
-            Args: {
-              column_name: unknown
-              description?: string
-              schema_name: unknown
-              table_name: unknown
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              column_name: unknown
-              description?: string
-              table_name: unknown
-            }
-            Returns: string
-          }
       complete_production_run: {
         Args: {
           p_actual_yield: number
@@ -7167,6 +7126,7 @@ export type Database = {
           p_employee_id: string
           p_reason?: string
           p_remove_from_future_shifts?: boolean
+          p_termination_date?: string
         }
         Returns: {
           allocate_daily: boolean | null
@@ -7206,32 +7166,12 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      diag:
-        | {
-            Args: { msg: unknown }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.diag(msg => text), public.diag(msg => anyelement). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
-          }
-        | {
-            Args: { msg: string }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.diag(msg => text), public.diag(msg => anyelement). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
-          }
-      diag_test_name: { Args: { "": string }; Returns: string }
       dmetaphone: { Args: { "": string }; Returns: string }
       dmetaphone_alt: { Args: { "": string }; Returns: string }
-      do_tap:
-        | { Args: never; Returns: string[] }
-        | { Args: { "": string }; Returns: string[] }
       exclude_bank_transaction: {
         Args: { p_reason?: string; p_transaction_id: string }
         Returns: Json
       }
-      fail:
-        | { Args: never; Returns: string }
-        | { Args: { "": string }; Returns: string }
       find_matching_rules_for_bank_transaction: {
         Args: { p_restaurant_id: string; p_transaction: Json }
         Returns: {
@@ -7264,8 +7204,6 @@ export type Database = {
           name: string
         }[]
       }
-      findfuncs: { Args: { "": string }; Returns: string[] }
-      finish: { Args: { exception_on_failure?: boolean }; Returns: string[] }
       fulltext_product_search: {
         Args: {
           p_limit?: number
@@ -7356,19 +7294,11 @@ export type Database = {
           id: string
         }[]
       }
-      has_unique: { Args: { "": string }; Returns: string }
       hash_invitation_token: { Args: { token: string }; Returns: string }
-      in_todo: { Args: never; Returns: boolean }
-      is_current_user_employee: {
-        Args: { p_employee_id: string }
-        Returns: boolean
-      }
-      is_empty: { Args: { "": string }; Returns: string }
       is_restaurant_owner: {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: boolean
       }
-      isnt_empty: { Args: { "": string }; Returns: string }
       link_employee_to_user: {
         Args: { p_employee_id: string; p_user_id: string }
         Returns: {
@@ -7378,7 +7308,6 @@ export type Database = {
           success: boolean
         }[]
       }
-      lives_ok: { Args: { "": string }; Returns: string }
       log_security_event: {
         Args: {
           p_details?: Json
@@ -7401,15 +7330,6 @@ export type Database = {
         Args: { p_rule_id: string; p_sale: Json }
         Returns: boolean
       }
-      no_plan: { Args: never; Returns: boolean[] }
-      num_failed: { Args: never; Returns: number }
-      os_name: { Args: never; Returns: string }
-      pass:
-        | { Args: never; Returns: string }
-        | { Args: { "": string }; Returns: string }
-      pg_version: { Args: never; Returns: string }
-      pg_version_num: { Args: never; Returns: number }
-      pgtap_version: { Args: never; Returns: number }
       process_inventory_deduction: {
         Args: {
           p_pos_item_name: string
@@ -7489,12 +7409,13 @@ export type Database = {
         Returns: number
       }
       reject_shift_trade: {
-        Args: { p_manager_note?: string; p_trade_id: string }
+        Args: {
+          p_manager_note?: string
+          p_manager_user_id: string
+          p_trade_id: string
+        }
         Returns: Json
       }
-      runtests:
-        | { Args: never; Returns: string[] }
-        | { Args: { "": string }; Returns: string[] }
       search_products_by_name: {
         Args: { p_restaurant_id: string; p_search_term: string }
         Returns: {
@@ -7516,9 +7437,6 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
-      skip:
-        | { Args: { "": string }; Returns: string }
-        | { Args: { how_many: number; why: string }; Returns: string }
       soundex: { Args: { "": string }; Returns: string }
       split_bank_transaction: {
         Args: { p_splits: Json; p_transaction_id: string }
@@ -7568,16 +7486,6 @@ export type Database = {
         Returns: number
       }
       text_soundex: { Args: { "": string }; Returns: string }
-      throws_ok: { Args: { "": string }; Returns: string }
-      todo:
-        | { Args: { how_many: number }; Returns: boolean[] }
-        | { Args: { how_many: number; why: string }; Returns: boolean[] }
-        | { Args: { why: string }; Returns: boolean[] }
-        | { Args: { how_many: number; why: string }; Returns: boolean[] }
-      todo_end: { Args: never; Returns: boolean[] }
-      todo_start:
-        | { Args: never; Returns: boolean[] }
-        | { Args: { "": string }; Returns: boolean[] }
       trigger_square_periodic_sync: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
       unpublish_schedule: {
@@ -7603,8 +7511,8 @@ export type Database = {
         }
         Returns: undefined
       }
-      user_has_restaurant_access: {
-        Args: { p_require_manager_role?: boolean; p_restaurant_id: string }
+      validate_split_config: {
+        Args: { p_split_config: Json }
         Returns: boolean
       }
       verify_employee_can_login: {
@@ -7728,9 +7636,7 @@ export type Database = {
       transaction_status_enum: "pending" | "posted" | "reconciled" | "void"
     }
     CompositeTypes: {
-      _time_trial_type: {
-        a_time: number | null
-      }
+      [_ in never]: never
     }
   }
 }
@@ -7853,9 +7759,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       account_subtype_enum: [
@@ -7965,4 +7868,3 @@ export const Constants = {
     },
   },
 } as const
-

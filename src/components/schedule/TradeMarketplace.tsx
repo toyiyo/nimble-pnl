@@ -48,9 +48,10 @@ interface TradeWithConflict {
 
 export const TradeMarketplace = () => {
   const { selectedRestaurant } = useRestaurantContext();
-  const { employee } = useCurrentEmployee();
+  const restaurantId = selectedRestaurant?.restaurant_id || selectedRestaurant?.restaurant?.id || null;
+  const { currentEmployee: employee } = useCurrentEmployee(restaurantId);
   const { trades, loading } = useMarketplaceTrades(
-    selectedRestaurant?.id || null,
+    restaurantId,
     employee?.id || null
   );
   const { mutate: acceptTrade, isPending: isAccepting } = useAcceptShiftTrade();
@@ -94,8 +95,8 @@ export const TradeMarketplace = () => {
     );
   }
 
-  const availableTrades = trades.filter((t) => !t.hasConflict);
-  const conflictTrades = trades.filter((t) => t.hasConflict);
+  const availableTrades = trades.filter((t) => !(t as TradeWithConflict).hasConflict);
+  const conflictTrades = trades.filter((t) => (t as TradeWithConflict).hasConflict);
 
   return (
     <div className="space-y-6">

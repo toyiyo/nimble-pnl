@@ -27,8 +27,8 @@ export const useProductSuppliers = (productId: string | null, restaurantId: stri
   const { toast } = useToast();
 
   const fetchSuppliers = useCallback(async () => {
-    if (!productId || !restaurantId) {
-      console.log('[useProductSuppliers] Missing productId or restaurantId:', { productId, restaurantId });
+    // Skip fetch for new products (empty or missing IDs) - this is expected behavior
+    if (!productId || productId === '' || !restaurantId) {
       setSuppliers([]);
       return;
     }

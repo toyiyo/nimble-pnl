@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { format, subDays } from 'date-fns';
 import { useCostsFromSource } from './useCostsFromSource';
@@ -101,23 +101,33 @@ export function usePnLAnalyticsFromSource(
   restaurantId: string | null, 
   options: { days?: number; dateFrom?: Date; dateTo?: Date } = { days: 30 }
 ) {
-  const [data, setData] = useState<PnLAnalytics | null>(null);
   const { toast } = useToast();
 
   const { days = 30, dateFrom, dateTo } = options;
 
-  // Use provided dates or calculate from days
-  const endDate = dateTo || new Date();
-  const startDate = dateFrom || subDays(endDate, days);
-  
-  // Normalize date range: swap if startDate > endDate
-  const normalizedStartDate = startDate > endDate ? endDate : startDate;
-  const normalizedEndDate = startDate > endDate ? startDate : endDate;
-  
-  const rawPeriodDays = Math.ceil((normalizedEndDate.getTime() - normalizedStartDate.getTime()) / (1000 * 60 * 60 * 24));
-  const periodDays = Math.max(1, rawPeriodDays + 1); // Add 1 to make the range inclusive
-  const previousPeriodStart = subDays(normalizedStartDate, periodDays);
-  const previousPeriodEnd = subDays(normalizedStartDate, 1);
+  // Keep date range stable across renders to avoid infinite query churn (and update loops)
+  const {
+    normalizedStartDate,
+    normalizedEndDate,
+    previousPeriodStart,
+    previousPeriodEnd,
+  } = useMemo(() => {
+    const endDate = dateTo ? new Date(dateTo) : new Date();
+    const startDate = dateFrom ? new Date(dateFrom) : subDays(endDate, days);
+    
+    const normalizedStart = startDate > endDate ? endDate : startDate;
+    const normalizedEnd = startDate > endDate ? startDate : endDate;
+    
+    const rawPeriodDays = Math.ceil((normalizedEnd.getTime() - normalizedStart.getTime()) / (1000 * 60 * 60 * 24));
+    const periodDays = Math.max(1, rawPeriodDays + 1); // inclusive range
+
+    return {
+      normalizedStartDate: normalizedStart,
+      normalizedEndDate: normalizedEnd,
+      previousPeriodStart: subDays(normalizedStart, periodDays),
+      previousPeriodEnd: subDays(normalizedStart, 1),
+    };
+  }, [days, dateFrom?.getTime(), dateTo?.getTime()]);
 
   // Fetch current period data
   const { data: currentRevenue, isLoading: currentRevenueLoading } = useRevenueBreakdown(
@@ -147,9 +157,9 @@ export function usePnLAnalyticsFromSource(
 
   const loading = currentRevenueLoading || currentCostsLoading || previousRevenueLoading || previousCostsLoading;
 
-  useEffect(() => {
+  const { data, error } = useMemo<{ data: PnLAnalytics | null; error: string | null }>(() => {
     if (loading || !currentRevenue || !currentCosts) {
-      return;
+      return { data: null, error: null };
     }
 
     try {
@@ -300,25 +310,34 @@ export function usePnLAnalyticsFromSource(
         margin_trend,
       };
 
-      setData({
-        dailyData,
-        comparison,
-        dayOfWeekPatterns,
-        insights,
-        forecast,
-        benchmarks,
-        efficiency,
-      });
+      return {
+        data: {
+          dailyData,
+          comparison,
+          dayOfWeekPatterns,
+          insights,
+          forecast,
+          benchmarks,
+          efficiency,
+        },
+        error: null,
+      };
 
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      return { data: null, error: errorMessage };
+    }
+  }, [loading, currentRevenue, currentCosts, previousRevenue, prevFoodCost, prevLaborCost]);
+
+  useEffect(() => {
+    if (error) {
       toast({
         title: "Error calculating P&L analytics",
-        description: errorMessage,
+        description: error,
         variant: "destructive",
       });
     }
-  }, [loading, currentRevenue, currentCosts, previousRevenue, prevFoodCost, prevLaborCost, toast]);
+  }, [error, toast]);
 
   return { data, loading };
 }

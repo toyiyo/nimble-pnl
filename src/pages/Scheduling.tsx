@@ -168,7 +168,7 @@ const Scheduling = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
-  const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 0 }));
+  const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
@@ -182,7 +182,7 @@ const Scheduling = () => {
   const [changeLogDialogOpen, setChangeLogDialogOpen] = useState(false);
   const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
 
-  const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
+  const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
   // Fetch ALL employees (including inactive) to show historical shifts
@@ -258,7 +258,7 @@ const Scheduling = () => {
   };
 
   const handleToday = () => {
-    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }));
+    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
   };
 
   const handleEditEmployee = (employee: Employee) => {

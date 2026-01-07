@@ -199,8 +199,8 @@ const handler = async (req: Request): Promise<Response> => {
               
               <div style="text-align: center; margin: 32px 0;">
                 <a href="${invitationUrl}" 
-                   style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); transition: all 0.2s;">
-                  Accept Invitation
+                   style="background-color: #059669; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff !important; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); mso-padding-alt: 14px 32px; border: 2px solid #059669;">
+                  <span style="color: #ffffff !important;">Accept Invitation</span>
                 </a>
               </div>
               

@@ -684,10 +684,16 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                     disabled={isImported}
                   />
                   {item.parsed_quantity && item.parsed_quantity > 0 && item.parsed_price && (
-                    <Badge variant="secondary" className="mt-2">
-                      Price per {item.parsed_unit || 'unit'}: $
-                      {(item.parsed_price / item.parsed_quantity).toFixed(2)}
-                    </Badge>
+                    <div className="mt-2 space-y-1">
+                      <Badge variant="secondary">
+                        Unit: ${(item.unit_price || item.parsed_price / item.parsed_quantity).toFixed(2)}/{item.parsed_unit || 'unit'}
+                      </Badge>
+                      {item.parsed_quantity > 1 && (
+                        <Badge variant="outline" className="ml-2">
+                          Line Total: ${item.parsed_price.toFixed(2)}
+                        </Badge>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

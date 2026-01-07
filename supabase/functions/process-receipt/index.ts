@@ -15,7 +15,9 @@ interface ParsedLineItem {
   parsedName: string;
   parsedQuantity: number;
   parsedUnit: string;
-  parsedPrice: number;
+  unitPrice?: number;      // NEW: Price per unit
+  lineTotal?: number;      // NEW: Total for this line (qty × unit price)
+  parsedPrice?: number;    // DEPRECATED: Keep for backward compatibility
   confidenceScore: number;
 }
 
@@ -84,9 +86,17 @@ CRITICAL REQUIREMENT: Extract EVERY SINGLE LINE ITEM from this receipt. This rec
 EXTRACTION METHODOLOGY:
 1. **Scan the ENTIRE document** - Read every page from start to finish
 2. **Extract ALL line items** - Every product purchase, no matter how many items there are
-3. **Identify key components**: Product name, quantity, unit of measure, price per item or total
+3. **Identify key components**: Product name, quantity, unit of measure, UNIT PRICE, and LINE TOTAL
 4. **Expand abbreviations**: Common food service abbreviations (CHKN=Chicken, DNA=Banana, BROC=Broccoli, etc.)
 5. **Standardize units**: Convert to standard restaurant units (lb, oz, case, each, gal, etc.)
+
+**CRITICAL PRICE EXTRACTION RULES:**
+- **unitPrice**: The price PER SINGLE ITEM/UNIT (e.g., "$1.00/ea", "$2.50/lb")
+- **lineTotal**: The TOTAL PRICE for that line (quantity × unit price)
+- If only ONE price is visible, determine if it's the unit price or line total based on context
+- For "2 @ $1.00 = $2.00": unitPrice=1.00, lineTotal=2.00
+- For "CHICKEN BREAST 5LB $15.00": unitPrice=3.00, lineTotal=15.00
+- If unsure, set the visible price as lineTotal and calculate unitPrice = lineTotal / quantity
 
 IMPORTANT FOR LARGE RECEIPTS (100+ items):
 - Keep rawText concise (max 40 chars per item) to fit all items in response
@@ -95,9 +105,9 @@ IMPORTANT FOR LARGE RECEIPTS (100+ items):
 - Prioritize completeness over detailed descriptions
 
 CONFIDENCE SCORING:
-- 0.90-0.95: Crystal clear, complete info
-- 0.80-0.89: Readable, minor ambiguity
-- 0.65-0.79: Partially clear, some guessing
+- 0.90-0.95: Crystal clear, complete info with both prices visible
+- 0.80-0.89: Readable, one price visible (other calculated)
+- 0.65-0.79: Partially clear, some guessing required
 - 0.40-0.64: Poor quality, significant interpretation
 - 0.20-0.39: Very unclear, major uncertainty
 
@@ -117,7 +127,8 @@ RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
       "parsedName": "standardized product name",
       "parsedQuantity": numeric_quantity,
       "parsedUnit": "standard_unit",
-      "parsedPrice": numeric_price,
+      "unitPrice": numeric_price_per_unit,
+      "lineTotal": numeric_total_for_this_line,
       "confidenceScore": realistic_score_0_to_1,
       "category": "estimated category"
     }
@@ -651,7 +662,11 @@ serve(async (req) => {
       // Validate each line item has required fields
       let validItemCount = 0;
       parsedData.lineItems = parsedData.lineItems.filter((item: any, index: number) => {
-        if (!item.parsedName || typeof item.parsedQuantity !== "number" || typeof item.parsedPrice !== "number") {
+        // Check for required fields - now allow either parsedPrice OR (unitPrice+lineTotal)
+        const hasLegacyPrice = typeof item.parsedPrice === "number";
+        const hasNewPrices = typeof item.unitPrice === "number" || typeof item.lineTotal === "number";
+        
+        if (!item.parsedName || typeof item.parsedQuantity !== "number" || (!hasLegacyPrice && !hasNewPrices)) {
           console.warn(`Line item ${index} missing required fields, skipping:`, item);
           return false;
         }
@@ -660,6 +675,51 @@ serve(async (req) => {
         if (item.confidenceScore < 0.0) item.confidenceScore = 0.0;
         validItemCount++;
         return true;
+      });
+
+      // Normalize and validate prices for each line item
+      parsedData.lineItems = parsedData.lineItems.map((item: any) => {
+        let unitPrice = item.unitPrice;
+        let lineTotal = item.lineTotal;
+        const quantity = item.parsedQuantity || 1;
+
+        // Handle backward compatibility with old parsedPrice field
+        if (unitPrice === undefined && lineTotal === undefined && item.parsedPrice !== undefined) {
+          // Legacy format: assume parsedPrice is lineTotal
+          lineTotal = item.parsedPrice;
+          unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
+        }
+
+        // If only unitPrice provided, calculate lineTotal
+        if (unitPrice !== undefined && lineTotal === undefined) {
+          lineTotal = unitPrice * quantity;
+        }
+
+        // If only lineTotal provided, calculate unitPrice
+        if (lineTotal !== undefined && unitPrice === undefined) {
+          unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
+        }
+
+        // Validation: check if lineTotal ≈ quantity × unitPrice (allow 2% tolerance for rounding)
+        if (unitPrice !== undefined && lineTotal !== undefined) {
+          const expectedTotal = unitPrice * quantity;
+          const tolerance = Math.max(0.02, expectedTotal * 0.02); // 2% or $0.02 minimum
+
+          if (Math.abs(lineTotal - expectedTotal) > tolerance) {
+            console.warn(`⚠️ Price mismatch for "${item.parsedName}": ` +
+              `${quantity} × $${unitPrice} = $${expectedTotal}, but lineTotal = $${lineTotal}`);
+            // Trust lineTotal and recalculate unitPrice
+            unitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
+          }
+        }
+
+        return {
+          ...item,
+          unitPrice: unitPrice || 0,
+          lineTotal: lineTotal || 0,
+          // Keep parsedPrice for backward compatibility (set to lineTotal)
+          parsedPrice: lineTotal || item.parsedPrice || 0,
+        };
       });
 
       console.log(`✅ Successfully parsed ${validItemCount} valid line items`);
@@ -787,7 +847,8 @@ serve(async (req) => {
       parsed_name: item.parsedName,
       parsed_quantity: item.parsedQuantity,
       parsed_unit: item.parsedUnit,
-      parsed_price: item.parsedPrice,
+      parsed_price: item.lineTotal,   // Store lineTotal in parsed_price for backward compat
+      unit_price: item.unitPrice,     // NEW: Store actual unit price
       confidence_score: item.confidenceScore,
       line_sequence: index + 1,
     }));

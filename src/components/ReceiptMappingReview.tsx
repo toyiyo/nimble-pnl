@@ -733,6 +733,20 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                       )}
                     </div>
                   )}
+                  {/* Packaging info indicator for new items with measurement units */}
+                  {item.mapping_status === 'new_item' && 
+                   item.parsed_unit && 
+                   ['lb', 'lbs', 'oz', 'kg', 'g', 'gram', 'grams', 'gal', 'gallon', 'qt', 'quart', 'pt', 'pint', 'l', 'liter', 'ml', 'fl oz'].includes(item.parsed_unit.toLowerCase().trim()) &&
+                   item.parsed_quantity && item.parsed_quantity > 0 && (
+                    <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-950/30 rounded-md border border-blue-200 dark:border-blue-800">
+                      <div className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-300">
+                        <Package className="h-3 w-3" />
+                        <span>
+                          Will set package size: <strong>{item.parsed_quantity} {item.parsed_unit}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

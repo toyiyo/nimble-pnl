@@ -3557,6 +3557,7 @@ export type Database = {
           parsed_name: string | null
           parsed_price: number | null
           parsed_quantity: number | null
+          parsed_sku: string | null
           parsed_unit: string | null
           raw_text: string
           receipt_id: string
@@ -3573,6 +3574,7 @@ export type Database = {
           parsed_name?: string | null
           parsed_price?: number | null
           parsed_quantity?: number | null
+          parsed_sku?: string | null
           parsed_unit?: string | null
           raw_text: string
           receipt_id: string
@@ -3589,6 +3591,7 @@ export type Database = {
           parsed_name?: string | null
           parsed_price?: number | null
           parsed_quantity?: number | null
+          parsed_sku?: string | null
           parsed_unit?: string | null
           raw_text?: string
           receipt_id?: string

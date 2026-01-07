@@ -63,7 +63,8 @@ export interface ReceiptLineItem {
   parsed_quantity: number | null;
   parsed_unit: string | null;
   parsed_price: number | null;
-  unit_price?: number | null;  // NEW: Price per unit
+  parsed_sku: string | null;  // SKU for barcode scanning
+  unit_price?: number | null;  // Price per unit
   matched_product_id: string | null;
   confidence_score: number | null;
   mapping_status: string;
@@ -408,6 +409,7 @@ export const useReceiptImport = () => {
       parsed_quantity?: number;
       parsed_unit?: string;
       parsed_price?: number;
+      parsed_sku?: string;
     }
   ) => {
     const { error } = await supabase
@@ -570,7 +572,7 @@ export const useReceiptImport = () => {
             .insert({
               restaurant_id: selectedRestaurant.restaurant_id,
               name: item.parsed_name || item.raw_text,
-              sku: `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              sku: item.parsed_sku || `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               current_stock: item.parsed_quantity || 0,
               cost_per_unit: unitPrice,
               uom_purchase: item.parsed_unit || 'unit',

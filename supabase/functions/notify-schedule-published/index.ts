@@ -113,6 +113,9 @@ serve(async (req) => {
     const weekStartFormatted = formatDate(weekStart);
     const weekEndFormatted = formatDate(weekEnd);
 
+    // App URL for the button
+    const appUrl = "https://app.easyshifthq.com/employee";
+
     // Send email notifications using Resend
     const emailPromises = scheduledEmployees
       .filter((emp) => emp.email) // Only send to employees with email
@@ -122,22 +125,72 @@ serve(async (req) => {
           to: employee.email,
           subject: `New Schedule Published: ${weekStartFormatted} - ${weekEndFormatted}`,
           html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #2563eb;">New Schedule Published</h2>
-              <p>Hi ${employee.name},</p>
-              <p>Your schedule for <strong>${weekStartFormatted} - ${weekEndFormatted}</strong> has been published at ${restaurant.name}.</p>
-              <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <p style="margin: 0; font-size: 14px; color: #6b7280;">
-                  Log in to EasyShiftHQ to view your complete schedule and shift details.
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+              <!-- Header with Logo -->
+              <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 32px 24px; text-align: center; border-radius: 8px 8px 0 0;">
+                <div style="display: inline-flex; align-items: center; justify-content: center; background-color: rgba(255, 255, 255, 0.95); border-radius: 12px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
+                  <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 8px; padding: 8px; display: inline-block; margin-right: 12px;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="16" y1="2" x2="16" y2="6"></line>
+                      <line x1="8" y1="2" x2="8" y2="6"></line>
+                      <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                  </div>
+                  <span style="font-size: 20px; font-weight: 700; color: #1f2937; letter-spacing: -0.5px;">EasyShiftHQ</span>
+                </div>
+              </div>
+              
+              <!-- Content -->
+              <div style="padding: 40px 32px; background-color: #ffffff;">
+                <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">New Schedule Published</h1>
+                
+                <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
+                  Hi <strong style="color: #1f2937;">${employee.name}</strong>,
+                </p>
+                
+                <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
+                  Your schedule for <strong style="color: #1f2937;">${weekStartFormatted} - ${weekEndFormatted}</strong> has been published at <strong style="color: #1f2937;">${restaurant.name}</strong>.
+                </p>
+                
+                <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 24px; border-radius: 12px; margin: 24px 0; border-left: 4px solid #10b981;">
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 6px 0; color: #4b5563; font-size: 14px; font-weight: 600;">Restaurant:</td>
+                      <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${restaurant.name}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #4b5563; font-size: 14px; font-weight: 600;">Schedule Period:</td>
+                      <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${weekStartFormatted} - ${weekEndFormatted}</td>
+                    </tr>
+                  </table>
+                </div>
+                
+                <div style="text-align: center; margin: 32px 0;">
+                  <a href="${appUrl}" 
+                     style="background-color: #059669; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff !important; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); mso-padding-alt: 14px 32px; border: 2px solid #059669;">
+                    <span style="color: #ffffff !important;">View My Schedule</span>
+                  </a>
+                </div>
+                
+                <p style="color: #6b7280; font-size: 14px; margin: 32px 0 0 0; line-height: 1.6;">
+                  If you have any questions or concerns about your schedule, please contact your manager.
                 </p>
               </div>
-              <p style="font-size: 14px; color: #6b7280;">
-                If you have any questions or concerns about your schedule, please contact your manager.
-              </p>
-              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
-              <p style="font-size: 12px; color: #9ca3af;">
-                This is an automated notification from EasyShiftHQ. Please do not reply to this email.
-              </p>
+              
+              <!-- Footer -->
+              <div style="background-color: #f9fafb; padding: 24px 32px; border-radius: 0 0 8px 8px; border-top: 1px solid #e5e7eb;">
+                <p style="color: #6b7280; font-size: 13px; text-align: center; margin: 0; line-height: 1.5;">
+                  <strong style="color: #4b5563;">EasyShiftHQ</strong><br>
+                  Restaurant Operations Management System
+                </p>
+                <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 12px 0 0 0;">
+                  © ${new Date().getFullYear()} EasyShiftHQ. All rights reserved.
+                </p>
+                <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 8px 0 0 0;">
+                  This is an automated notification. Please do not reply to this email.
+                </p>
+              </div>
             </div>
           `,
         };

@@ -163,6 +163,23 @@ export const useWeekPublicationStatus = (
       const weekStartStr = weekStart.toISOString().split('T')[0];
       const weekEndStr = weekEnd.toISOString().split('T')[0];
 
+      // Check if there are actually published shifts for this week
+      const { count: publishedShiftCount, error: shiftError } = await supabase
+        .from('shifts')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', restaurantId)
+        .gte('start_time', `${weekStartStr}T00:00:00Z`)
+        .lte('start_time', `${weekEndStr}T23:59:59Z`)
+        .eq('is_published', true);
+
+      if (shiftError) throw shiftError;
+
+      // If no published shifts, return null (not published)
+      if (!publishedShiftCount || publishedShiftCount === 0) {
+        return null;
+      }
+
+      // Get the publication record if shifts are published
       const { data, error } = await supabase
         .from('schedule_publications')
         .select('*')

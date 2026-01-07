@@ -16,7 +16,7 @@ import { useSuppliers } from '@/hooks/useSuppliers';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { getUnitOptions } from '@/lib/validUnits';
+import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import Fuse from 'fuse.js';
@@ -646,17 +646,17 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                     />
                   </div>
                   <div>
-                    <Label htmlFor={`unit-${item.id}`}>Unit</Label>
+                    <Label htmlFor={`unit-${item.id}`}>Package Type 📦</Label>
                   <Select
                     value={item.parsed_unit || ''}
                     onValueChange={(value) => handleUnitChange(item.id, value)}
                     disabled={isImported}
                   >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select unit" />
+                        <SelectValue placeholder="Select package type" />
                       </SelectTrigger>
-                      <SelectContent>
-                        {getUnitOptions().map((group) => (
+                      <SelectContent className="max-h-[400px]">
+                        {PACKAGE_TYPE_OPTIONS.map((group) => (
                           <SelectGroup key={group.label}>
                             <SelectLabel>{group.label}</SelectLabel>
                             {group.options.map((option) => (

@@ -20,11 +20,29 @@ export function initFaro(): Faro | null {
     return faroInstance;
   }
 
+  const environment = import.meta.env.VITE_FARO_ENVIRONMENT || import.meta.env.MODE || 'production';
+  const isDevLike = import.meta.env.DEV || ['development', 'test'].includes(environment);
+  const isLocalhost =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const allowLocalFaro = import.meta.env.VITE_FARO_ENABLE_LOCAL === 'true';
+  const forceDisable = import.meta.env.VITE_FARO_DISABLED === 'true';
+
+  // Avoid noisy network errors in local/test environments unless explicitly enabled
+  if (forceDisable) {
+    console.info('Grafana Faro disabled via VITE_FARO_DISABLED flag.');
+    return null;
+  }
+
+  if ((isDevLike || isLocalhost) && !allowLocalFaro) {
+    console.info('Grafana Faro disabled for local/test environments to reduce console noise.');
+    return null;
+  }
+
   // Get configuration from environment variables
   const collectorUrl = import.meta.env.VITE_FARO_COLLECTOR_URL;
   const appName = import.meta.env.VITE_FARO_APP_NAME || 'easyshifthq';
   const appVersion = import.meta.env.VITE_FARO_APP_VERSION || '1.0.0';
-  const environment = import.meta.env.VITE_FARO_ENVIRONMENT || import.meta.env.MODE || 'production';
 
   // Skip initialization if collector URL is not configured
   if (!collectorUrl) {

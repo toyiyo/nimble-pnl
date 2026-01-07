@@ -1,103 +1,259 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getEncryptionService } from "../_shared/encryption.ts";
+import { logSecurityEvent } from "../_shared/securityEvents.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface ToastSyncRequest {
-  restaurantId: string;
-  action: 'initial_sync' | 'daily_sync' | 'hourly_sync';
-  dateRange?: {
-    startDate: string;
-    endDate: string;
-  };
-}
-
-Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    console.log('Toast manual sync started');
 
-    const body: ToastSyncRequest = await req.json();
-    const { restaurantId, action, dateRange } = body;
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing authorization' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    console.log('Toast sync started:', { restaurantId, action, dateRange });
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
-    // Get Toast connection and decrypt tokens
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { restaurantId } = await req.json();
+
+    if (!restaurantId) {
+      return new Response(JSON.stringify({ error: 'Missing restaurantId' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Get connection
     const { data: connection, error: connectionError } = await supabase
       .from('toast_connections')
       .select('*')
       .eq('restaurant_id', restaurantId)
+      .eq('is_active', true)
       .single();
 
     if (connectionError || !connection) {
-      throw new Error('Toast connection not found');
+      return new Response(JSON.stringify({ error: 'No active Toast connection found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Decrypt the access token
     const encryption = await getEncryptionService();
-    const decryptedAccessToken = await encryption.decrypt(connection.access_token);
 
-    // Log security event for token access
-    await logSecurityEvent(supabase, 'TOAST_TOKEN_ACCESSED', undefined, restaurantId, {
-      action: action,
-      toastRestaurantGuid: connection.toast_restaurant_guid
+    // Get or refresh access token
+    let accessToken = connection.access_token_encrypted 
+      ? await encryption.decrypt(connection.access_token_encrypted) 
+      : null;
+    
+    const tokenExpired = !connection.token_expires_at || 
+      new Date(connection.token_expires_at).getTime() < Date.now() + (3600 * 1000);
+    
+    if (!accessToken || tokenExpired) {
+      console.log('Refreshing access token...');
+      const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
+      
+      const authResponse = await fetch('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: connection.client_id,
+          clientSecret: clientSecret,
+          userAccessType: 'TOAST_MACHINE_CLIENT'
+        })
+      });
+
+      if (!authResponse.ok) {
+        throw new Error(`Token refresh failed: ${authResponse.status}`);
+      }
+
+      const authData = await authResponse.json();
+      accessToken = authData.token.accessToken;
+      
+      const encryptedToken = await encryption.encrypt(accessToken);
+      const expiresAt = new Date(Date.now() + (authData.token.expiresIn * 1000));
+      
+      await supabase.from('toast_connections').update({
+        access_token_encrypted: encryptedToken,
+        token_expires_at: expiresAt.toISOString(),
+        token_fetched_at: new Date().toISOString()
+      }).eq('id', connection.id);
+    }
+
+    // Sync last 25 hours (24h + 1h buffer)
+    const endDate = new Date().toISOString();
+    const startDate = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+
+    console.log(`Syncing orders from ${startDate} to ${endDate}`);
+
+    let totalOrders = 0;
+    let page = 1;
+    let hasMorePages = true;
+
+    while (hasMorePages) {
+      const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=100&page=${page}`;
+      
+      const ordersResponse = await fetch(bulkUrl, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
+        }
+      });
+
+      if (!ordersResponse.ok) {
+        throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);
+      }
+
+      const orders = await ordersResponse.json();
+      
+      if (!orders || orders.length === 0) {
+        hasMorePages = false;
+        break;
+      }
+
+      for (const order of orders) {
+        await processOrder(supabase, order, connection.restaurant_id, connection.toast_restaurant_guid);
+        totalOrders++;
+      }
+
+      if (orders.length < 100) {
+        hasMorePages = false;
+      } else {
+        page++;
+        await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting
+      }
+    }
+
+    // Sync to unified_sales
+    console.log('Syncing to unified_sales...');
+    await supabase.rpc('sync_toast_to_unified_sales', {
+      p_restaurant_id: connection.restaurant_id
     });
 
-    const TOAST_BASE_URL = 'https://ws-api.toasttab.com';
-    const toastHeaders = {
-      'Authorization': `Bearer ${decryptedAccessToken}`,
-      'Toast-Restaurant-External-ID': connection.toast_restaurant_guid,
-      'Content-Type': 'application/json',
-    };
+    // Update last sync time
+    await supabase.from('toast_connections').update({
+      last_sync_time: new Date().toISOString(),
+      connection_status: 'connected',
+      last_error: null,
+      last_error_at: null
+    }).eq('id', connection.id);
 
-    const results = {
-      ordersSynced: 0,
-      itemsSynced: 0,
-      paymentsSynced: 0,
-      menuItemsSynced: 0,
-      errors: [] as string[]
-    };
+    await logSecurityEvent(supabase, 'TOAST_MANUAL_SYNC', user.id, connection.restaurant_id, {
+      ordersSynced: totalOrders
+    });
 
-    // Calculate date range based on action
-    let startDate: string;
-    let endDate: string;
+    console.log(`Manual sync completed: ${totalOrders} orders`);
 
-    if (dateRange) {
-      startDate = dateRange.startDate;
-      endDate = dateRange.endDate;
-    } else {
-      const now = new Date();
-      endDate = now.toISOString().split('T')[0];
+    return new Response(JSON.stringify({
+      success: true,
+      ordersSynced: totalOrders,
+      errors: []
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
-      switch (action) {
-        case 'initial_sync':
-          // Last 90 days
-          const ninetyDaysAgo = new Date(now);
-          ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-          startDate = ninetyDaysAgo.toISOString().split('T')[0];
-          break;
-        case 'daily_sync':
-          // Yesterday
-          const yesterday = new Date(now);
-          yesterday.setDate(yesterday.getDate() - 1);
-          startDate = yesterday.toISOString().split('T')[0];
-          endDate = startDate;
-          break;
-        case 'hourly_sync':
-          // Last 2 hours
-          const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-          startDate = twoHoursAgo.toISOString().split('T')[0];
-          break;
+  } catch (error: any) {
+    console.error('Toast manual sync error:', error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});
+
+async function processOrder(supabase: any, order: any, restaurantId: string, toastRestaurantGuid: string) {
+  const closedDate = order.closedDate ? new Date(order.closedDate) : null;
+  const orderDate = closedDate ? closedDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+  const orderTime = closedDate ? closedDate.toISOString().split('T')[1].split('.')[0] : null;
+
+  await supabase.from('toast_orders').upsert({
+    restaurant_id: restaurantId,
+    toast_order_guid: order.guid,
+    toast_restaurant_guid: toastRestaurantGuid,
+    order_number: order.orderNumber || null,
+    order_date: orderDate,
+    order_time: orderTime,
+    total_amount: order.totalAmount ? order.totalAmount / 100 : null,
+    subtotal_amount: order.subtotal ? order.subtotal / 100 : null,
+    tax_amount: order.taxAmount ? order.taxAmount / 100 : null,
+    tip_amount: order.tipAmount ? order.tipAmount / 100 : null,
+    discount_amount: order.discountAmount ? order.discountAmount / 100 : null,
+    service_charge_amount: order.serviceChargeAmount ? order.serviceChargeAmount / 100 : null,
+    payment_status: order.paymentStatus || null,
+    dining_option: order.diningOption?.behavior || null,
+    raw_json: order,
+    synced_at: new Date().toISOString(),
+  }, {
+    onConflict: 'restaurant_id,toast_order_guid'
+  });
+
+  if (order.checks) {
+    for (const check of order.checks) {
+      if (check.selections) {
+        for (const selection of check.selections) {
+          await supabase.from('toast_order_items').upsert({
+            restaurant_id: restaurantId,
+            toast_item_guid: selection.guid,
+            toast_order_guid: order.guid,
+            item_name: selection.itemName || selection.name || 'Unknown Item',
+            quantity: selection.quantity || 1,
+            unit_price: selection.preDiscountPrice ? selection.preDiscountPrice / 100 : 0,
+            total_price: selection.price ? selection.price / 100 : 0,
+            menu_category: selection.salesCategory || null,
+            modifiers: selection.modifiers || null,
+            raw_json: selection,
+            synced_at: new Date().toISOString(),
+          }, {
+            onConflict: 'restaurant_id,toast_item_guid,toast_order_guid'
+          });
+        }
+      }
+
+      if (check.payments) {
+        for (const payment of check.payments) {
+          await supabase.from('toast_payments').upsert({
+            restaurant_id: restaurantId,
+            toast_payment_guid: payment.guid,
+            toast_order_guid: order.guid,
+            payment_type: payment.type || null,
+            amount: payment.amount ? payment.amount / 100 : 0,
+            tip_amount: payment.tipAmount ? payment.tipAmount / 100 : null,
+            payment_date: orderDate,
+            payment_status: payment.status || null,
+            raw_json: payment,
+            synced_at: new Date().toISOString(),
+          }, {
+            onConflict: 'restaurant_id,toast_payment_guid,toast_order_guid'
+          });
+        }
+      }
+    }
+  }
+}
+
         default:
           startDate = endDate;
       }

@@ -243,10 +243,15 @@ export const Inventory: React.FC = () => {
 
   const handleBarcodeScanned = async (gtin: string, format: string, aiData?: string) => {
     console.log('📱 Barcode scanned:', gtin, format, aiData ? 'with AI data' : '');
-    
+
+    // Prevent scan spam while we are looking up / editing a newly-scanned product
+    if (isLookingUp || showUpdateDialog || showQuickInventoryDialog) {
+      return;
+    }
+
     setLastScannedGtin(gtin);
     setLookupResult(null);
-    
+
     // For manual entry with AI data, create product directly
     if (gtin === 'MANUAL_ENTRY' && aiData) {
       // Parse AI data to extract product information

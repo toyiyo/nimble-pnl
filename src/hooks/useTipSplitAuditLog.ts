@@ -42,10 +42,10 @@ export function useTipSplitAuditLog(splitId: string | null) {
           .select('id, email, full_name')
           .in('id', userIds);
 
-        // @ts-expect-error - get_users_by_ids RPC not yet in generated types
         const { data: authUsers } = await supabase.rpc('get_users_by_ids', { 
           user_ids: userIds 
-        }) as { data: Array<{ id: string; email: string; full_name: string }> | null };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }) as any as { data: Array<{ id: string; email: string; full_name: string }> | null };
 
         return (data as unknown as AuditEntry[])?.map(entry => {
           // Check profiles first

@@ -63,6 +63,8 @@ export interface ReceiptLineItem {
   parsed_quantity: number | null;
   parsed_unit: string | null;
   parsed_price: number | null;
+  parsed_sku: string | null;  // SKU for barcode scanning
+  unit_price?: number | null;  // Price per unit
   matched_product_id: string | null;
   confidence_score: number | null;
   mapping_status: string;
@@ -407,6 +409,7 @@ export const useReceiptImport = () => {
       parsed_quantity?: number;
       parsed_unit?: string;
       parsed_price?: number;
+      parsed_sku?: string;
     }
   ) => {
     const { error } = await supabase
@@ -499,10 +502,12 @@ export const useReceiptImport = () => {
             ? currentMappings 
             : [...currentMappings, receiptItemName];
 
-          // Calculate unit price
-          const unitPrice = (item.parsed_quantity && item.parsed_quantity > 0) 
-            ? (item.parsed_price || 0) / item.parsed_quantity 
-            : (item.parsed_price || 0);
+          // Calculate unit price - prefer stored unit_price, fallback to calculation
+          const unitPrice = item.unit_price 
+            ? item.unit_price 
+            : (item.parsed_quantity && item.parsed_quantity > 0) 
+              ? (item.parsed_price || 0) / item.parsed_quantity 
+              : (item.parsed_price || 0);
 
           const { error: stockError } = await supabase
             .from('products')
@@ -555,17 +560,19 @@ export const useReceiptImport = () => {
           // Create new product with receipt item mapping
           const receiptItemName = item.parsed_name || item.raw_text;
           
-          // Calculate unit price
-          const unitPrice = (item.parsed_quantity && item.parsed_quantity > 0) 
-            ? (item.parsed_price || 0) / item.parsed_quantity 
-            : (item.parsed_price || 0);
+          // Calculate unit price - prefer stored unit_price, fallback to calculation
+          const unitPrice = item.unit_price 
+            ? item.unit_price 
+            : (item.parsed_quantity && item.parsed_quantity > 0) 
+              ? (item.parsed_price || 0) / item.parsed_quantity 
+              : (item.parsed_price || 0);
 
           const { data: newProduct, error: productError } = await supabase
             .from('products')
             .insert({
               restaurant_id: selectedRestaurant.restaurant_id,
               name: item.parsed_name || item.raw_text,
-              sku: `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              sku: item.parsed_sku || `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               current_stock: item.parsed_quantity || 0,
               cost_per_unit: unitPrice,
               uom_purchase: item.parsed_unit || 'unit',

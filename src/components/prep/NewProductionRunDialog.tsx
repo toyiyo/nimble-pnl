@@ -73,13 +73,15 @@ const selectedRecipe = useMemo(
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>New Batch</DialogTitle>
-          <DialogDescription>Create a production run and auto-scale ingredients from the recipe.</DialogDescription>
-        </DialogHeader>
+      <DialogContent className="w-[95vw] max-w-3xl h-[90dvh] max-h-[90dvh] overflow-hidden p-0 flex flex-col">
+        <div className="sticky top-0 z-10 border-b bg-background/95 px-6 py-4 backdrop-blur">
+          <DialogHeader>
+            <DialogTitle>New Batch</DialogTitle>
+            <DialogDescription>Create a production run and auto-scale ingredients from the recipe.</DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Prep recipe</Label>
@@ -171,11 +173,11 @@ const selectedRecipe = useMemo(
           </div>
         </div>
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+        <DialogFooter className="sticky bottom-0 z-10 border-t bg-background/95 px-6 py-4 backdrop-blur flex-col sm:flex-row sm:justify-end sm:space-x-2 gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving} className="w-full sm:w-auto">
             Cancel
           </Button>
-          <Button onClick={handleCreate} disabled={saving || !selectedRecipe}>
+          <Button onClick={handleCreate} disabled={saving || !selectedRecipe} className="w-full sm:w-auto">
             Create batch
           </Button>
         </DialogFooter>

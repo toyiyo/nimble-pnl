@@ -77,17 +77,19 @@ const executeShiftTradeAction = async ({
   action: Exclude<ShiftTradeNotificationAction, 'created'>;
   failureMessage: string;
 }) => {
-  const { data, error } = await supabase.rpc(rpc, params);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await supabase.rpc(rpc, params as any);
 
   if (error) throw error;
 
-  if (!data || !data.success) {
-    throw new Error(data?.error || failureMessage);
+  const result = data as { success?: boolean; error?: string } | null;
+  if (!result || !result.success) {
+    throw new Error(result?.error || failureMessage);
   }
 
   await sendShiftTradeNotification(tradeId, action);
 
-  return data;
+  return result;
 };
 
 /**

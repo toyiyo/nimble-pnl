@@ -165,24 +165,26 @@ export const Html5QrcodeScanner = ({
           cameraConstraints,
           config,
           (decodedText, decodedResult) => {
-            // Check if we should deduplicate this scan
-            if (shouldDeduplicateScan(lastScanRef.current, decodedText, 1500)) {
-              return; // Skip duplicate scan
-            }
+            const formatName = decodedResult.result.format.formatName;
 
-            console.log('✅ Barcode detected:', decodedText, decodedResult.result.format.formatName);
-            
-            // Process barcode (EAN-13 to UPC-A conversion)
-            const processedValue = processEAN13ToUPCA(decodedText, decodedResult.result.format.formatName);
+            // Normalize the value first (e.g., EAN-13 → UPC-A) so dedupe compares apples-to-apples
+            const processedValue = processEAN13ToUPCA(decodedText, formatName);
             if (processedValue !== decodedText) {
               console.log('🔄 Converted EAN-13 to UPC-A:', decodedText, '→', processedValue);
             }
+
+            // Check if we should deduplicate this scan
+            if (shouldDeduplicateScan(lastScanRef.current, processedValue, 1500)) {
+              return; // Skip duplicate scan
+            }
+
+            console.log('✅ Barcode detected:', processedValue, formatName);
 
             // Update state
             const now = Date.now();
             lastScanRef.current = { value: processedValue, time: now };
             setLastScanned(processedValue);
-            onScan(processedValue, decodedResult.result.format.formatName);
+            onScan(processedValue, formatName);
 
             // Clear visual indicator after 2 seconds
             setTimeout(() => setLastScanned(null), 2000);

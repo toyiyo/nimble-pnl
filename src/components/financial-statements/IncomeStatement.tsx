@@ -31,10 +31,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   const periodIncludesFuture = dateTo > today;
 
   // Merge inventory usage (source of truth for COGS) into COGS accounts when no journaled COGS exist
-  const mergeInventoryCOGS = (
-    cogsAccounts: ChartAccount[],
+  const mergeInventoryCOGS = <T extends { current_balance?: number }>(
+    cogsAccounts: T[],
     inventoryUsageTotal: number
-  ) => {
+  ): T[] => {
     const existingCOGSTotal = cogsAccounts.reduce((sum, acc) => sum + (acc.current_balance || 0), 0);
     if (existingCOGSTotal > 0 || inventoryUsageTotal <= 0) return cogsAccounts;
 
@@ -49,7 +49,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         normal_balance: 'debit',
         current_balance: inventoryUsageTotal,
         is_inventory_usage: true,
-      },
+      } as unknown as T,
     ];
   };
 

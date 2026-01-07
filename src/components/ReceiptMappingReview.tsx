@@ -14,9 +14,9 @@ import { useReceiptImport, ReceiptLineItem, ReceiptImport } from '@/hooks/useRec
 import { useProducts } from '@/hooks/useProducts';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil, Calendar as CalendarIcon } from 'lucide-react';
+import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil, Calendar as CalendarIcon, Barcode } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { getUnitOptions } from '@/lib/validUnits';
+import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import Fuse from 'fuse.js';
@@ -150,6 +150,24 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   const handleUnitChange = (itemId: string, unit: string) => {
     handleItemUpdate(itemId, { parsed_unit: unit });
+  };
+
+  const handleSkuChange = (itemId: string, sku: string) => {
+    handleItemUpdate(itemId, { parsed_sku: sku });
+    
+    // Try to auto-match by SKU when user enters/scans one
+    if (sku && sku.length >= 3) {
+      const matchedProduct = products.find(p => 
+        p.sku?.toLowerCase() === sku.toLowerCase()
+      );
+      if (matchedProduct) {
+        handleMappingChange(itemId, matchedProduct.id);
+        toast({
+          title: "Product Matched",
+          description: `Matched to "${matchedProduct.name}" by SKU`,
+        });
+      }
+    }
   };
 
   const handleSupplierChange = async (supplierIdOrName: string, isNew: boolean) => {
@@ -620,6 +638,26 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Left column: Item details */}
               <div className="space-y-3">
+                {/* SKU field for barcode scanning */}
+                <div>
+                  <Label htmlFor={`sku-${item.id}`} className="flex items-center gap-1">
+                    <Barcode className="h-3 w-3" />
+                    SKU / Barcode
+                  </Label>
+                  <Input
+                    key={`sku-${item.id}`}
+                    id={`sku-${item.id}`}
+                    defaultValue={item.parsed_sku || ''}
+                    onChange={(e) => handleSkuChange(item.id, e.target.value)}
+                    placeholder="Scan or type SKU"
+                    disabled={isImported}
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Use scanner gun or type manually
+                  </p>
+                </div>
+                
                 <div>
                   <Label htmlFor={`name-${item.id}`}>Item Name</Label>
                   <Input
@@ -646,17 +684,17 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                     />
                   </div>
                   <div>
-                    <Label htmlFor={`unit-${item.id}`}>Unit</Label>
+                    <Label htmlFor={`unit-${item.id}`}>Package Type 📦</Label>
                   <Select
                     value={item.parsed_unit || ''}
                     onValueChange={(value) => handleUnitChange(item.id, value)}
                     disabled={isImported}
                   >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select unit" />
+                        <SelectValue placeholder="Select package type" />
                       </SelectTrigger>
-                      <SelectContent>
-                        {getUnitOptions().map((group) => (
+                      <SelectContent className="max-h-[400px]">
+                        {PACKAGE_TYPE_OPTIONS.map((group) => (
                           <SelectGroup key={group.label}>
                             <SelectLabel>{group.label}</SelectLabel>
                             {group.options.map((option) => (
@@ -684,10 +722,16 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                     disabled={isImported}
                   />
                   {item.parsed_quantity && item.parsed_quantity > 0 && item.parsed_price && (
-                    <Badge variant="secondary" className="mt-2">
-                      Price per {item.parsed_unit || 'unit'}: $
-                      {(item.parsed_price / item.parsed_quantity).toFixed(2)}
-                    </Badge>
+                    <div className="mt-2 space-y-1">
+                      <Badge variant="secondary">
+                        Unit: ${(item.unit_price || item.parsed_price / item.parsed_quantity).toFixed(2)}/{item.parsed_unit || 'unit'}
+                      </Badge>
+                      {item.parsed_quantity > 1 && (
+                        <Badge variant="outline" className="ml-2">
+                          Line Total: ${item.parsed_price.toFixed(2)}
+                        </Badge>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectGroup, SelectLabel, SelectItem, SelectTrig
 import { Package, Scale } from 'lucide-react';
 import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
 import { convertUnits, WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
+import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
 
 interface SizePackagingSectionProps {
   form: any;
@@ -264,106 +265,16 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent className="max-h-[400px]">
-                  <SelectGroup>
-                    <SelectLabel>Primary</SelectLabel>
-                    <SelectItem value="bag">Bag</SelectItem>
-                    <SelectItem value="box">Box</SelectItem>
-                    <SelectItem value="bottle">Bottle</SelectItem>
-                    <SelectItem value="can">Can</SelectItem>
-                    <SelectItem value="jar">Jar</SelectItem>
-                    <SelectItem value="tube">Tube</SelectItem>
-                    <SelectItem value="sachet">Sachet</SelectItem>
-                    <SelectItem value="packet">Packet</SelectItem>
-                    <SelectItem value="pouch">Pouch</SelectItem>
-                    <SelectItem value="tray">Tray</SelectItem>
-                    <SelectItem value="cup">Cup</SelectItem>
-                    <SelectItem value="bowl">Bowl</SelectItem>
-                    <SelectItem value="wrapper">Wrapper</SelectItem>
-                    <SelectItem value="carton">Carton</SelectItem>
-                    <SelectItem value="roll">Roll</SelectItem>
-                    <SelectItem value="stick">Stick</SelectItem>
-                    <SelectItem value="bar">Bar</SelectItem>
-                    <SelectItem value="piece">Piece</SelectItem>
-                    <SelectItem value="slice">Slice</SelectItem>
-                    <SelectItem value="loaf">Loaf</SelectItem>
-                    <SelectItem value="portion">Portion</SelectItem>
-                    <SelectItem value="pair">Pair</SelectItem>
-                    <SelectItem value="pod">Pod</SelectItem>
-                    <SelectItem value="capsule">Capsule</SelectItem>
-                    <SelectItem value="vial">Vial</SelectItem>
-                  </SelectGroup>
-                  
-                  <SelectGroup>
-                    <SelectLabel>Secondary</SelectLabel>
-                    <SelectItem value="case">Case</SelectItem>
-                    <SelectItem value="crate">Crate</SelectItem>
-                    <SelectItem value="pack">Pack</SelectItem>
-                    <SelectItem value="multipack">Multipack</SelectItem>
-                    <SelectItem value="sleeve">Sleeve</SelectItem>
-                    <SelectItem value="bundle">Bundle</SelectItem>
-                    <SelectItem value="set">Set</SelectItem>
-                    <SelectItem value="strip">Strip</SelectItem>
-                    <SelectItem value="carton_outer">Carton (Outer)</SelectItem>
-                    <SelectItem value="pallet">Pallet</SelectItem>
-                    <SelectItem value="display_box">Display Box</SelectItem>
-                    <SelectItem value="inner_pack">Inner Pack</SelectItem>
-                  </SelectGroup>
-                  
-                  <SelectGroup>
-                    <SelectLabel>Bulk</SelectLabel>
-                    <SelectItem value="drum">Drum</SelectItem>
-                    <SelectItem value="barrel">Barrel</SelectItem>
-                    <SelectItem value="bucket">Bucket</SelectItem>
-                    <SelectItem value="bin">Bin</SelectItem>
-                    <SelectItem value="sack">Sack</SelectItem>
-                    <SelectItem value="tote">Tote</SelectItem>
-                    <SelectItem value="tank">Tank</SelectItem>
-                    <SelectItem value="bag_bulk">Bag (Bulk)</SelectItem>
-                    <SelectItem value="box_bulk">Box (Bulk)</SelectItem>
-                    <SelectItem value="tub">Tub</SelectItem>
-                    <SelectItem value="jug">Jug</SelectItem>
-                    <SelectItem value="jerrycan">Jerrycan</SelectItem>
-                    <SelectItem value="carboy">Carboy</SelectItem>
-                  </SelectGroup>
-                  
-                  <SelectGroup>
-                    <SelectLabel>Perishable</SelectLabel>
-                    <SelectItem value="meat_tray">Tray (Meat/Deli)</SelectItem>
-                    <SelectItem value="pan">Pan</SelectItem>
-                    <SelectItem value="clamshell">Clamshell</SelectItem>
-                    <SelectItem value="vacuum_pack">Vacuum Pack</SelectItem>
-                    <SelectItem value="sleeve_pack">Sleeve Pack</SelectItem>
-                    <SelectItem value="film_wrap">Film Wrap</SelectItem>
-                    <SelectItem value="ice_block">Ice Block</SelectItem>
-                    <SelectItem value="brick">Brick</SelectItem>
-                  </SelectGroup>
-                  
-                  <SelectGroup>
-                    <SelectLabel>Count/Special</SelectLabel>
-                    <SelectItem value="sheet">Sheet</SelectItem>
-                    <SelectItem value="unit">Unit</SelectItem>
-                    <SelectItem value="portion_pack">Portion Pack</SelectItem>
-                    <SelectItem value="cone">Cone</SelectItem>
-                    <SelectItem value="disc">Disc</SelectItem>
-                    <SelectItem value="ring">Ring</SelectItem>
-                    <SelectItem value="skewer">Skewer</SelectItem>
-                    <SelectItem value="strip_cut">Strip (Cut)</SelectItem>
-                    <SelectItem value="segment">Segment</SelectItem>
-                    <SelectItem value="serving">Serving</SelectItem>
-                  </SelectGroup>
-                  
-                  <SelectGroup>
-                    <SelectLabel>Industrial/Supplies</SelectLabel>
-                    <SelectItem value="roll_material">Roll (Material)</SelectItem>
-                    <SelectItem value="coil">Coil</SelectItem>
-                    <SelectItem value="reel">Reel</SelectItem>
-                    <SelectItem value="cartridge">Cartridge</SelectItem>
-                    <SelectItem value="canister">Canister</SelectItem>
-                    <SelectItem value="cylinder">Cylinder</SelectItem>
-                    <SelectItem value="container">Container</SelectItem>
-                    <SelectItem value="dispenser">Dispenser</SelectItem>
-                    <SelectItem value="refill_pack">Refill Pack</SelectItem>
-                  </SelectGroup>
+                  {PACKAGE_TYPE_OPTIONS.map((group) => (
+                    <SelectGroup key={group.label}>
+                      <SelectLabel>{group.label}</SelectLabel>
+                      {group.options.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">Type of container/package</p>

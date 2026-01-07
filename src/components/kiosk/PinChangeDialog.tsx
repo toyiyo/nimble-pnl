@@ -108,7 +108,7 @@ export const PinChangeDialog = ({
               maxLength={6}
               value={newPin}
               onChange={(e) => {
-                const value = e.target.value.replaceAll(/\D/g, '');
+                const value = e.target.value.replace(/\D/g, '');
                 setNewPin(value);
                 setError(null);
               }}
@@ -144,7 +144,7 @@ export const PinChangeDialog = ({
               maxLength={6}
               value={confirmPin}
               onChange={(e) => {
-                const value = e.target.value.replaceAll(/\D/g, '');
+                const value = e.target.value.replace(/\D/g, '');
                 setConfirmPin(value);
                 setError(null);
               }}

@@ -258,8 +258,8 @@ export function PrepRecipeDialog({
                 </div>
               </div>
 
-              <div className="space-y-3 rounded-lg border bg-card/40 p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col space-y-3 rounded-lg border bg-card/40 p-4 min-h-0 max-h-[50vh] lg:max-h-none">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between shrink-0">
                   <div>
                     <Label>Ingredients</Label>
                     <p className="text-xs text-muted-foreground">Expected amounts for one default batch</p>
@@ -270,7 +270,7 @@ export function PrepRecipeDialog({
                   </Button>
                 </div>
 
-                <ScrollArea className="max-h-[55vh] pr-2">
+                <ScrollArea className="flex-1 min-h-0 pr-2">
                   <div className="space-y-3 pb-1">
                     {ingredientRows.map((ingredient, index) => (
                       <div key={ingredient.id || `temp-${index}`} className="rounded-lg border bg-card p-3 shadow-sm space-y-3">

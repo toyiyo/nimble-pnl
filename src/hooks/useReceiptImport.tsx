@@ -63,6 +63,7 @@ export interface ReceiptLineItem {
   parsed_quantity: number | null;
   parsed_unit: string | null;
   parsed_price: number | null;
+  unit_price?: number | null;  // NEW: Price per unit
   matched_product_id: string | null;
   confidence_score: number | null;
   mapping_status: string;
@@ -499,10 +500,12 @@ export const useReceiptImport = () => {
             ? currentMappings 
             : [...currentMappings, receiptItemName];
 
-          // Calculate unit price
-          const unitPrice = (item.parsed_quantity && item.parsed_quantity > 0) 
-            ? (item.parsed_price || 0) / item.parsed_quantity 
-            : (item.parsed_price || 0);
+          // Calculate unit price - prefer stored unit_price, fallback to calculation
+          const unitPrice = item.unit_price 
+            ? item.unit_price 
+            : (item.parsed_quantity && item.parsed_quantity > 0) 
+              ? (item.parsed_price || 0) / item.parsed_quantity 
+              : (item.parsed_price || 0);
 
           const { error: stockError } = await supabase
             .from('products')
@@ -555,10 +558,12 @@ export const useReceiptImport = () => {
           // Create new product with receipt item mapping
           const receiptItemName = item.parsed_name || item.raw_text;
           
-          // Calculate unit price
-          const unitPrice = (item.parsed_quantity && item.parsed_quantity > 0) 
-            ? (item.parsed_price || 0) / item.parsed_quantity 
-            : (item.parsed_price || 0);
+          // Calculate unit price - prefer stored unit_price, fallback to calculation
+          const unitPrice = item.unit_price 
+            ? item.unit_price 
+            : (item.parsed_quantity && item.parsed_quantity > 0) 
+              ? (item.parsed_price || 0) / item.parsed_quantity 
+              : (item.parsed_price || 0);
 
           const { data: newProduct, error: productError } = await supabase
             .from('products')

@@ -16,7 +16,7 @@ import { useSuppliers } from '@/hooks/useSuppliers';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { getUnitOptions } from '@/lib/validUnits';
+import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import Fuse from 'fuse.js';
@@ -646,17 +646,17 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                     />
                   </div>
                   <div>
-                    <Label htmlFor={`unit-${item.id}`}>Unit</Label>
+                    <Label htmlFor={`unit-${item.id}`}>Package Type 📦</Label>
                   <Select
                     value={item.parsed_unit || ''}
                     onValueChange={(value) => handleUnitChange(item.id, value)}
                     disabled={isImported}
                   >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select unit" />
+                        <SelectValue placeholder="Select package type" />
                       </SelectTrigger>
-                      <SelectContent>
-                        {getUnitOptions().map((group) => (
+                      <SelectContent className="max-h-[400px]">
+                        {PACKAGE_TYPE_OPTIONS.map((group) => (
                           <SelectGroup key={group.label}>
                             <SelectLabel>{group.label}</SelectLabel>
                             {group.options.map((option) => (
@@ -684,10 +684,16 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                     disabled={isImported}
                   />
                   {item.parsed_quantity && item.parsed_quantity > 0 && item.parsed_price && (
-                    <Badge variant="secondary" className="mt-2">
-                      Price per {item.parsed_unit || 'unit'}: $
-                      {(item.parsed_price / item.parsed_quantity).toFixed(2)}
-                    </Badge>
+                    <div className="mt-2 space-y-1">
+                      <Badge variant="secondary">
+                        Unit: ${(item.unit_price || item.parsed_price / item.parsed_quantity).toFixed(2)}/{item.parsed_unit || 'unit'}
+                      </Badge>
+                      {item.parsed_quantity > 1 && (
+                        <Badge variant="outline" className="ml-2">
+                          Line Total: ${item.parsed_price.toFixed(2)}
+                        </Badge>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

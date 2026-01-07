@@ -3560,6 +3560,7 @@ export type Database = {
           parsed_unit: string | null
           raw_text: string
           receipt_id: string
+          unit_price: number | null
           updated_at: string
         }
         Insert: {
@@ -3575,6 +3576,7 @@ export type Database = {
           parsed_unit?: string | null
           raw_text: string
           receipt_id: string
+          unit_price?: number | null
           updated_at?: string
         }
         Update: {
@@ -3590,6 +3592,7 @@ export type Database = {
           parsed_unit?: string | null
           raw_text?: string
           receipt_id?: string
+          unit_price?: number | null
           updated_at?: string
         }
         Relationships: [

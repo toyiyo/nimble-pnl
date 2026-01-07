@@ -14,6 +14,11 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import {
   useShiftTrades,
   useApproveShiftTrade,
   useRejectShiftTrade,
@@ -29,6 +34,8 @@ import {
   Loader2,
   AlertCircle,
   FileText,
+  ChevronDown,
+  ShoppingBag,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -37,17 +44,28 @@ type ActionType = 'approve' | 'reject' | null;
 export const TradeApprovalQueue = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
-  const { trades, loading } = useShiftTrades(
+  
+  // Fetch both pending_approval and open trades
+  const { trades: pendingTrades, loading: pendingLoading } = useShiftTrades(
     restaurantId,
     'pending_approval',
-    null // Don't filter by employee - show all trades
+    null
   );
+  const { trades: openTrades, loading: openLoading } = useShiftTrades(
+    restaurantId,
+    'open',
+    null
+  );
+  
   const { mutate: approveTrade, isPending: isApproving } = useApproveShiftTrade();
   const { mutate: rejectTrade, isPending: isRejecting } = useRejectShiftTrade();
 
   const [selectedTrade, setSelectedTrade] = useState<ShiftTrade | null>(null);
   const [actionType, setActionType] = useState<ActionType>(null);
   const [managerNote, setManagerNote] = useState('');
+  const [openSectionExpanded, setOpenSectionExpanded] = useState(true);
+
+  const loading = pendingLoading || openLoading;
 
   const handleAction = (trade: ShiftTrade, action: 'approve' | 'reject') => {
     setSelectedTrade(trade);
@@ -105,37 +123,37 @@ export const TradeApprovalQueue = () => {
     );
   }
 
+  const hasPendingTrades = pendingTrades.length > 0;
+  const hasOpenTrades = openTrades.length > 0;
+  const hasNoTrades = !hasPendingTrades && !hasOpenTrades;
+
   return (
     <div className="space-y-6">
-      {/* Header Card */}
+      {/* Pending Approval Section */}
       <Card className="border-amber-200 bg-gradient-to-br from-amber-50 via-orange-50 to-transparent dark:border-amber-800 dark:from-amber-950/20 dark:via-orange-950/20">
         <CardHeader>
           <div className="flex items-center gap-3">
             <Clock className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-            <div>
-              <CardTitle className="text-2xl text-amber-900 dark:text-amber-100">
-                Pending Trade Requests
-              </CardTitle>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-2xl text-amber-900 dark:text-amber-100">
+                  Pending Approval
+                </CardTitle>
+                {hasPendingTrades && (
+                  <Badge className="bg-amber-500">{pendingTrades.length}</Badge>
+                )}
+              </div>
               <CardDescription className="text-amber-700 dark:text-amber-300">
-                Review and approve shift trades between employees
+                Trades accepted by employees awaiting your approval
               </CardDescription>
             </div>
           </div>
         </CardHeader>
       </Card>
 
-      {/* Trade Requests */}
-      {trades.length === 0 ? (
-        <Card className="bg-gradient-to-br from-muted/50 to-transparent">
-          <CardContent className="py-12 text-center">
-            <CheckCircle className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-            <h3 className="mb-2 text-lg font-semibold">All caught up!</h3>
-            <p className="text-muted-foreground">No pending trade requests to review.</p>
-          </CardContent>
-        </Card>
-      ) : (
+      {hasPendingTrades ? (
         <div className="space-y-4">
-          {trades.map((trade) => (
+          {pendingTrades.map((trade) => (
             <TradeRequestCard
               key={trade.id}
               trade={trade}
@@ -145,7 +163,60 @@ export const TradeApprovalQueue = () => {
             />
           ))}
         </div>
+      ) : (
+        <Card className="bg-gradient-to-br from-muted/50 to-transparent">
+          <CardContent className="py-8 text-center">
+            <CheckCircle className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+            <h3 className="mb-1 text-base font-semibold">No pending approvals</h3>
+            <p className="text-sm text-muted-foreground">No trades awaiting your decision.</p>
+          </CardContent>
+        </Card>
       )}
+
+      {/* Open Marketplace Section */}
+      <Collapsible open={openSectionExpanded} onOpenChange={setOpenSectionExpanded}>
+        <Card className="border-blue-200 bg-gradient-to-br from-blue-50 via-sky-50 to-transparent dark:border-blue-800 dark:from-blue-950/20 dark:via-sky-950/20">
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-blue-100/50 dark:hover:bg-blue-900/20 transition-colors rounded-t-lg">
+              <div className="flex items-center gap-3">
+                <ShoppingBag className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-xl text-blue-900 dark:text-blue-100">
+                      Open in Marketplace
+                    </CardTitle>
+                    {hasOpenTrades && (
+                      <Badge variant="outline" className="border-blue-300 text-blue-700 dark:border-blue-600 dark:text-blue-300">
+                        {openTrades.length}
+                      </Badge>
+                    )}
+                  </div>
+                  <CardDescription className="text-blue-700 dark:text-blue-300">
+                    Shifts posted for trade, awaiting another employee to accept
+                  </CardDescription>
+                </div>
+                <ChevronDown className={`h-5 w-5 text-blue-600 dark:text-blue-400 transition-transform ${openSectionExpanded ? 'rotate-180' : ''}`} />
+              </div>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0">
+              {hasOpenTrades ? (
+                <div className="space-y-3">
+                  {openTrades.map((trade) => (
+                    <OpenTradeCard key={trade.id} trade={trade} />
+                  ))}
+                </div>
+              ) : (
+                <div className="py-6 text-center">
+                  <ShoppingBag className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No shifts currently in the marketplace.</p>
+                </div>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
 
       {/* Approval/Rejection Dialog */}
       <Dialog open={!!selectedTrade && !!actionType} onOpenChange={(open) => !open && handleCancel()}>
@@ -379,5 +450,52 @@ const TradeRequestCard = ({ trade, onApprove, onReject, disabled }: TradeRequest
         </div>
       </CardContent>
     </Card>
+  );
+};
+
+// Open Trade Card (read-only for managers)
+interface OpenTradeCardProps {
+  trade: ShiftTrade;
+}
+
+const OpenTradeCard = ({ trade }: OpenTradeCardProps) => {
+  if (!trade.offered_shift || !trade.offered_by) {
+    return null;
+  }
+
+  const shiftStart = new Date(trade.offered_shift.start_time);
+  const shiftEnd = new Date(trade.offered_shift.end_time);
+  const postedAt = new Date(trade.created_at);
+
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50/50 p-4 dark:border-blue-800 dark:bg-blue-950/30">
+      <div className="flex-1 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{trade.offered_by.name}</span>
+          <span className="text-muted-foreground">•</span>
+          <span className="text-sm text-muted-foreground">{trade.offered_by.position}</span>
+        </div>
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <span>{format(shiftStart, 'EEE, MMM d')}</span>
+          <span>
+            {format(shiftStart, 'h:mm a')} - {format(shiftEnd, 'h:mm a')}
+          </span>
+          <Badge variant="outline" className="text-xs">
+            {trade.offered_shift.position}
+          </Badge>
+        </div>
+        {trade.reason && (
+          <p className="text-xs text-muted-foreground italic">"{trade.reason}"</p>
+        )}
+      </div>
+      <div className="text-right">
+        <Badge variant="outline" className="border-blue-300 text-blue-700 dark:border-blue-600 dark:text-blue-300">
+          Open
+        </Badge>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Posted {format(postedAt, 'MMM d')}
+        </p>
+      </div>
+    </div>
   );
 };

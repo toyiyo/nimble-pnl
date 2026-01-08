@@ -154,7 +154,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Send invitation email
     try {
       const emailResponse = await resend.emails.send({
-        from: "Restaurant Team <team@easyshifthq.com>",
+        from: "EasyShiftHQ <notifications@easyshifthq.com>",
         to: [email],
         subject: `You're invited to join ${restaurant.name}`,
         html: `

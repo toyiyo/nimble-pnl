@@ -2599,10 +2599,36 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          invoice_overdue_days: number | null
+          notify_compensation_changed: boolean | null
+          notify_employee_activated: boolean | null
+          notify_employee_deactivated: boolean | null
+          notify_employee_reactivated: boolean | null
+          notify_invoice_created: boolean | null
+          notify_invoice_overdue: boolean | null
+          notify_invoice_paid: boolean | null
+          notify_invoice_sent: boolean | null
+          notify_manual_payment: boolean | null
+          notify_missed_punch_out: boolean | null
+          notify_payroll_finalized: boolean | null
+          notify_pin_reset: boolean | null
+          notify_production_run_completed: boolean | null
+          notify_production_variance: boolean | null
+          notify_shift_created: boolean | null
+          notify_shift_deleted: boolean | null
+          notify_shift_modified: boolean | null
+          notify_shift_reminder: boolean | null
           notify_time_off_approved: boolean
           notify_time_off_rejected: boolean
           notify_time_off_request: boolean
+          notify_timecard_edited: boolean | null
+          notify_tip_dispute_resolved: boolean | null
+          notify_tip_dispute_submitted: boolean | null
+          notify_tip_split_approved: boolean | null
+          notify_tip_split_created: boolean | null
+          production_variance_threshold: number | null
           restaurant_id: string
+          shift_reminder_hours: number | null
           time_off_notify_employee: boolean
           time_off_notify_managers: boolean
           updated_at: string | null
@@ -2610,10 +2636,36 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          invoice_overdue_days?: number | null
+          notify_compensation_changed?: boolean | null
+          notify_employee_activated?: boolean | null
+          notify_employee_deactivated?: boolean | null
+          notify_employee_reactivated?: boolean | null
+          notify_invoice_created?: boolean | null
+          notify_invoice_overdue?: boolean | null
+          notify_invoice_paid?: boolean | null
+          notify_invoice_sent?: boolean | null
+          notify_manual_payment?: boolean | null
+          notify_missed_punch_out?: boolean | null
+          notify_payroll_finalized?: boolean | null
+          notify_pin_reset?: boolean | null
+          notify_production_run_completed?: boolean | null
+          notify_production_variance?: boolean | null
+          notify_shift_created?: boolean | null
+          notify_shift_deleted?: boolean | null
+          notify_shift_modified?: boolean | null
+          notify_shift_reminder?: boolean | null
           notify_time_off_approved?: boolean
           notify_time_off_rejected?: boolean
           notify_time_off_request?: boolean
+          notify_timecard_edited?: boolean | null
+          notify_tip_dispute_resolved?: boolean | null
+          notify_tip_dispute_submitted?: boolean | null
+          notify_tip_split_approved?: boolean | null
+          notify_tip_split_created?: boolean | null
+          production_variance_threshold?: number | null
           restaurant_id: string
+          shift_reminder_hours?: number | null
           time_off_notify_employee?: boolean
           time_off_notify_managers?: boolean
           updated_at?: string | null
@@ -2621,10 +2673,36 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          invoice_overdue_days?: number | null
+          notify_compensation_changed?: boolean | null
+          notify_employee_activated?: boolean | null
+          notify_employee_deactivated?: boolean | null
+          notify_employee_reactivated?: boolean | null
+          notify_invoice_created?: boolean | null
+          notify_invoice_overdue?: boolean | null
+          notify_invoice_paid?: boolean | null
+          notify_invoice_sent?: boolean | null
+          notify_manual_payment?: boolean | null
+          notify_missed_punch_out?: boolean | null
+          notify_payroll_finalized?: boolean | null
+          notify_pin_reset?: boolean | null
+          notify_production_run_completed?: boolean | null
+          notify_production_variance?: boolean | null
+          notify_shift_created?: boolean | null
+          notify_shift_deleted?: boolean | null
+          notify_shift_modified?: boolean | null
+          notify_shift_reminder?: boolean | null
           notify_time_off_approved?: boolean
           notify_time_off_rejected?: boolean
           notify_time_off_request?: boolean
+          notify_timecard_edited?: boolean | null
+          notify_tip_dispute_resolved?: boolean | null
+          notify_tip_dispute_submitted?: boolean | null
+          notify_tip_split_approved?: boolean | null
+          notify_tip_split_created?: boolean | null
+          production_variance_threshold?: number | null
           restaurant_id?: string
+          shift_reminder_hours?: number | null
           time_off_notify_employee?: boolean
           time_off_notify_managers?: boolean
           updated_at?: string | null

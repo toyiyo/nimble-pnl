@@ -490,6 +490,8 @@ export const useReceiptImport = () => {
       const purchaseDate = receiptResult.data?.purchase_date || null;
 
       let importedCount = 0;
+      // Track created products by parsed_name to reuse for duplicates
+      const createdProducts = new Map<string, string>(); // parsed_name (lowercase) -> product_id
 
       for (const item of lineItems) {
         if (item.mapping_status === 'mapped' && item.matched_product_id) {
@@ -584,6 +586,7 @@ export const useReceiptImport = () => {
         } else if (item.mapping_status === 'new_item') {
           // Create new product with receipt item mapping
           const receiptItemName = item.parsed_name || item.raw_text;
+          const itemNameKey = receiptItemName.toLowerCase().trim();
           
           // Calculate unit price - prefer stored unit_price, fallback to calculation
           const unitPrice = item.unit_price 
@@ -592,6 +595,63 @@ export const useReceiptImport = () => {
               ? (item.parsed_price || 0) / item.parsed_quantity 
               : (item.parsed_price || 0);
 
+          // Check if we already created this product from a previous line item
+          if (createdProducts.has(itemNameKey)) {
+            const existingProductId = createdProducts.get(itemNameKey)!;
+            
+            // Get current stock for the existing product
+            const { data: existingProduct, error: fetchError } = await supabase
+              .from('products')
+              .select('current_stock')
+              .eq('id', existingProductId)
+              .single();
+
+            if (fetchError) {
+              console.error('Error fetching existing product:', fetchError);
+              continue;
+            }
+
+            // Update stock for the existing product
+            const newStock = (existingProduct.current_stock || 0) + (item.parsed_quantity || 0);
+            
+            const { error: stockError } = await supabase
+              .from('products')
+              .update({
+                current_stock: newStock,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', existingProductId);
+
+            if (stockError) {
+              console.error('Error updating product stock:', stockError);
+              continue;
+            }
+
+            // Log inventory transaction for the existing product
+            await supabase.from('inventory_transactions').insert({
+              restaurant_id: selectedRestaurant.restaurant_id,
+              product_id: existingProductId,
+              quantity: item.parsed_quantity || 0,
+              unit_cost: unitPrice,
+              total_cost: item.parsed_price || 0,
+              transaction_type: 'purchase',
+              reason: `Receipt import (duplicate item) from ${receiptId}${vendorName ? ` - ${vendorName}` : ''}`,
+              reference_id: `receipt_${receiptId}_${item.id}`,
+              supplier_id: supplierId,
+              transaction_date: purchaseDate
+            });
+
+            // Update line item to reference the existing product
+            await supabase
+              .from('receipt_line_items')
+              .update({ matched_product_id: existingProductId })
+              .eq('id', item.id);
+
+            importedCount++;
+            continue; // Skip to next item
+          }
+
+          // Product doesn't exist yet - create it (first occurrence)
           // Normalize the unit for storage
           const normalizedUnit = normalizeUnit(item.parsed_unit);
           
@@ -626,6 +686,9 @@ export const useReceiptImport = () => {
             console.error('Error creating new product:', productError);
             continue;
           }
+
+          // Track this product for subsequent duplicates
+          createdProducts.set(itemNameKey, newProduct.id);
 
           // Log inventory transaction for new product WITH supplier tracking and purchase date
           await supabase.from('inventory_transactions').insert({

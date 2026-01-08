@@ -75,12 +75,37 @@ const handler = async (req: Request): Promise<Response> => {
     }
     const resend = new Resend(resendApiKey);
 
-    // Use service role for database access
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    // Authenticate request - this should be called from authenticated contexts only
+    // (e.g., database triggers, authenticated API calls, or with internal secret)
+    const authHeader = req.headers.get('Authorization');
     
+    // For this notification, we expect either:
+    // 1. A valid user authentication header (for manual triggers)
+    // 2. Or it should be called from a secure server-side context
     const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    
+    // Use service role for database access (when called from triggers)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return errorResponse('Database configuration error', 500);
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // If there's an auth header, verify it's valid
+    if (authHeader) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser(
+        authHeader.replace('Bearer ', '')
+      );
+      
+      if (authError || !user) {
+        return errorResponse('Unauthorized', 401);
+      }
+      
+      console.log(`Authenticated request from user: ${user.id}`);
+    }
 
     // Parse request body
     const { shiftId, action, previousShift }: RequestBody = await req.json();

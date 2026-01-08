@@ -141,11 +141,29 @@ const generateManagerNote = (note: string): string => {
 };
 
 /**
+ * Validate and sanitize URL to prevent XSS attacks
+ */
+const sanitizeUrl = (url: string): string => {
+  try {
+    const parsed = new URL(url);
+    // Only allow http and https protocols
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      console.warn(`Invalid URL protocol: ${parsed.protocol}, falling back to safe URL`);
+      return '#';
+    }
+    return url;
+  } catch (error) {
+    console.warn(`Invalid URL: ${url}, falling back to safe URL`);
+    return '#';
+  }
+};
+
+/**
  * Generate a call-to-action button
  */
 const generateCTA = (button: { text: string; url: string }): string => {
   const safeText = escapeHtml(button.text);
-  const safeUrl = button.url; // URLs should be pre-validated
+  const safeUrl = sanitizeUrl(button.url);
   
   return `
     <div style="text-align: center; margin: 32px 0;">

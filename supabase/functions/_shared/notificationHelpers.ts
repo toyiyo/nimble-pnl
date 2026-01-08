@@ -242,8 +242,16 @@ export const handleCorsPreflightRequest = (): Response => {
  * Create authenticated Supabase client
  */
 export const createAuthenticatedClient = (authHeader: string | null) => {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  
+  if (!supabaseUrl) {
+    throw new Error('SUPABASE_URL environment variable is not configured');
+  }
+  
+  if (!supabaseKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is not configured');
+  }
   
   return createClient(supabaseUrl, supabaseKey, {
     global: {

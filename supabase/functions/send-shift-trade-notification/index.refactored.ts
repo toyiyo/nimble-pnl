@@ -163,7 +163,7 @@ const handler = async (req: Request): Promise<Response> => {
       : trade.offered_by?.name || 'Employee';
 
     // Generate email template
-    const emailData: EmailTemplateData = {
+    const emailTemplateData: EmailTemplateData = {
       heading: config.heading,
       statusBadge: {
         text: config.statusText,
@@ -184,11 +184,11 @@ const handler = async (req: Request): Promise<Response> => {
       footerNote: 'If you have any questions about shift trades, please contact your manager.',
     };
 
-    const html = generateEmailTemplate(emailData);
+    const html = generateEmailTemplate(emailTemplateData);
     const subject = config.subject(employeeName);
 
     // Send email
-    const { data: emailData, error: emailError } = await resend.emails.send({
+    const { data: emailResponse, error: emailError } = await resend.emails.send({
       from: NOTIFICATION_FROM,
       to: recipients,
       subject,
@@ -200,11 +200,11 @@ const handler = async (req: Request): Promise<Response> => {
       return errorResponse('Failed to send email', 500);
     }
 
-    console.log(`Successfully sent shift trade notification: emailId=${emailData?.id}`);
+    console.log(`Successfully sent shift trade notification: emailId=${emailResponse?.id}`);
 
     return successResponse({ 
       message: `Sent to ${recipients.length} recipient(s)`,
-      emailId: emailData?.id,
+      emailId: emailResponse?.id,
       recipients: recipients.length 
     });
 

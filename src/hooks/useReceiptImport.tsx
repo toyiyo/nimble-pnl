@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 
 // Get Supabase base URL from the client configuration for environment portability
 const getSupabaseUrl = (): string => {
@@ -71,6 +72,30 @@ export interface ReceiptLineItem {
   created_at: string;
   updated_at: string;
 }
+
+// Combined set of measurement units (weight + volume) for quick lookup
+const MEASUREMENT_UNITS_SET = new Set([...WEIGHT_UNITS, ...VOLUME_UNITS].map(u => u.toLowerCase()));
+
+// Check if a unit is a measurement unit (where quantity represents size)
+const isMeasurementUnit = (unit: string | null | undefined): boolean => {
+  if (!unit) return false;
+  const normalized = normalizeUnit(unit);
+  return MEASUREMENT_UNITS_SET.has(normalized.toLowerCase());
+};
+
+// Normalize unit for storage (standardize common variations)
+const normalizeUnit = (unit: string | null | undefined): string => {
+  if (!unit) return 'unit';
+  const normalized = unit.toLowerCase().trim();
+  // Standardize common variations
+  if (normalized === 'lbs') return 'lb';
+  if (normalized === 'gallon' || normalized === 'gallons') return 'gal';
+  if (normalized === 'quart' || normalized === 'quarts') return 'qt';
+  if (normalized === 'pint' || normalized === 'pints') return 'pt';
+  if (normalized === 'liter' || normalized === 'liters') return 'l';
+  if (normalized === 'gram' || normalized === 'grams') return 'g';
+  return unit;
+};
 
 export const useReceiptImport = () => {
   const [isUploading, setIsUploading] = useState(false);
@@ -465,6 +490,8 @@ export const useReceiptImport = () => {
       const purchaseDate = receiptResult.data?.purchase_date || null;
 
       let importedCount = 0;
+      // Track created products by parsed_name to reuse for duplicates
+      const createdProducts = new Map<string, string>(); // parsed_name (lowercase) -> product_id
 
       for (const item of lineItems) {
         if (item.mapping_status === 'mapped' && item.matched_product_id) {
@@ -559,6 +586,7 @@ export const useReceiptImport = () => {
         } else if (item.mapping_status === 'new_item') {
           // Create new product with receipt item mapping
           const receiptItemName = item.parsed_name || item.raw_text;
+          const itemNameKey = receiptItemName.toLowerCase().trim();
           
           // Calculate unit price - prefer stored unit_price, fallback to calculation
           const unitPrice = item.unit_price 
@@ -567,19 +595,90 @@ export const useReceiptImport = () => {
               ? (item.parsed_price || 0) / item.parsed_quantity 
               : (item.parsed_price || 0);
 
+          // Check if we already created this product from a previous line item
+          if (createdProducts.has(itemNameKey)) {
+            const existingProductId = createdProducts.get(itemNameKey)!;
+            
+            // Get current stock for the existing product
+            const { data: existingProduct, error: fetchError } = await supabase
+              .from('products')
+              .select('current_stock')
+              .eq('id', existingProductId)
+              .single();
+
+            if (fetchError) {
+              console.error('Error fetching existing product:', fetchError);
+              continue;
+            }
+
+            // Update stock for the existing product
+            const newStock = (existingProduct.current_stock || 0) + (item.parsed_quantity || 0);
+            
+            const { error: stockError } = await supabase
+              .from('products')
+              .update({
+                current_stock: newStock,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', existingProductId);
+
+            if (stockError) {
+              console.error('Error updating product stock:', stockError);
+              continue;
+            }
+
+            // Log inventory transaction for the existing product
+            await supabase.from('inventory_transactions').insert({
+              restaurant_id: selectedRestaurant.restaurant_id,
+              product_id: existingProductId,
+              quantity: item.parsed_quantity || 0,
+              unit_cost: unitPrice,
+              total_cost: item.parsed_price || 0,
+              transaction_type: 'purchase',
+              reason: `Receipt import (duplicate item) from ${receiptId}${vendorName ? ` - ${vendorName}` : ''}`,
+              reference_id: `receipt_${receiptId}_${item.id}`,
+              supplier_id: supplierId,
+              transaction_date: purchaseDate
+            });
+
+            // Update line item to reference the existing product
+            await supabase
+              .from('receipt_line_items')
+              .update({ matched_product_id: existingProductId })
+              .eq('id', item.id);
+
+            importedCount++;
+            continue; // Skip to next item
+          }
+
+          // Product doesn't exist yet - create it (first occurrence)
+          // Normalize the unit for storage
+          const normalizedUnit = normalizeUnit(item.parsed_unit);
+          
+          // Build product data with optional size/packaging info
+          const productData: Record<string, any> = {
+            restaurant_id: selectedRestaurant.restaurant_id,
+            name: item.parsed_name || item.raw_text,
+            sku: item.parsed_sku || `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            current_stock: item.parsed_quantity || 0,
+            cost_per_unit: unitPrice,
+            uom_purchase: normalizedUnit,
+            receipt_item_names: [receiptItemName],
+            supplier_id: supplierId,
+            supplier_name: vendorName
+          };
+
+          // For measurement units (lb, oz, gal, etc.), set size info from quantity
+          // This represents "X lbs per package" where X is the quantity purchased
+          if (isMeasurementUnit(item.parsed_unit) && item.parsed_quantity && item.parsed_quantity > 0) {
+            productData.size_unit = normalizedUnit;
+            productData.size_value = item.parsed_quantity;
+            console.log(`📦 Setting package size for ${item.parsed_name}: ${item.parsed_quantity} ${normalizedUnit}`);
+          }
+
           const { data: newProduct, error: productError } = await supabase
             .from('products')
-            .insert({
-              restaurant_id: selectedRestaurant.restaurant_id,
-              name: item.parsed_name || item.raw_text,
-              sku: item.parsed_sku || `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-              current_stock: item.parsed_quantity || 0,
-              cost_per_unit: unitPrice,
-              uom_purchase: item.parsed_unit || 'unit',
-              receipt_item_names: [receiptItemName],
-              supplier_id: supplierId,  // Set initial supplier
-              supplier_name: vendorName  // Keep for backwards compatibility
-            })
+            .insert(productData as any)
             .select()
             .single();
 
@@ -587,6 +686,9 @@ export const useReceiptImport = () => {
             console.error('Error creating new product:', productError);
             continue;
           }
+
+          // Track this product for subsequent duplicates
+          createdProducts.set(itemNameKey, newProduct.id);
 
           // Log inventory transaction for new product WITH supplier tracking and purchase date
           await supabase.from('inventory_transactions').insert({

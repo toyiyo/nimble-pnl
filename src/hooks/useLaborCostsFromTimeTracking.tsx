@@ -2,11 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from './useEmployees';
 import { TimePunch } from '@/types/timeTracking';
-import { format, eachDayOfInterval } from 'date-fns';
-import { 
-  calculateEmployeePay, 
-  ManualPayment 
-} from '@/utils/payrollCalculations';
+import { format } from 'date-fns';
+import { calculateActualLaborCost } from '@/services/laborCalculations';
 
 export interface LaborCostData {
   date: string;
@@ -61,7 +58,7 @@ interface ManualPaymentDB {
  * 1. Fetch time_punches for the period
  * 2. Fetch employees with compensation configs
  * 3. Fetch per-job contractor payments (from daily_labor_allocations source='per-job')
- * 4. Calculate costs by employee and date using payrollCalculations.ts logic
+ * 4. Calculate costs using laborCalculations.calculateActualLaborCost() (same logic as payroll)
  * 
  * @param restaurantId - Restaurant ID to filter costs
  * @param dateFrom - Start date for the period
@@ -104,119 +101,56 @@ export function useLaborCostsFromTimeTracking(
 
       if (manualPaymentsError) throw manualPaymentsError;
 
-      // 3. Group punches by employee
-      const punchesPerEmployee = new Map<string, TimePunch[]>();
-      (punches || []).forEach((punch: DBTimePunch) => {
-        if (!punchesPerEmployee.has(punch.employee_id)) {
-          punchesPerEmployee.set(punch.employee_id, []);
-        }
-        const typedPunch: TimePunch = {
-          ...punch,
-          punch_type: punch.punch_type as TimePunch['punch_type'],
-          location: punch.location && typeof punch.location === 'object' && 'latitude' in punch.location && 'longitude' in punch.location
-            ? punch.location as { latitude: number; longitude: number }
-            : undefined,
-        };
-        punchesPerEmployee.get(punch.employee_id)?.push(typedPunch);
-      });
+      // 3. Convert database punches to TimePunch type
+      const typedPunches: TimePunch[] = (punches || []).map((punch: DBTimePunch) => ({
+        ...punch,
+        punch_type: punch.punch_type as TimePunch['punch_type'],
+        location: punch.location && typeof punch.location === 'object' && 'latitude' in punch.location && 'longitude' in punch.location
+          ? punch.location as { latitude: number; longitude: number }
+          : undefined,
+      }));
 
-      // 4. Group manual payments by employee
-      const manualPaymentsPerEmployee = new Map<string, ManualPayment[]>();
-      (manualPaymentsData || []).forEach((payment: ManualPaymentDB) => {
-        if (!manualPaymentsPerEmployee.has(payment.employee_id)) {
-          manualPaymentsPerEmployee.set(payment.employee_id, []);
-        }
-        const paymentsList = manualPaymentsPerEmployee.get(payment.employee_id);
-        if (paymentsList) {
-          paymentsList.push({
-            id: payment.id,
-            date: payment.date,
-            amount: payment.allocated_cost, // Already in cents
-            description: payment.notes || undefined,
-          });
-        }
-      });
+      // 4. Use calculateActualLaborCost from laborCalculations.ts (same as payroll)
+      // This ensures Dashboard and Payroll use identical calculation logic
+      const { dailyCosts: laborDailyCosts } = calculateActualLaborCost(
+        employees,
+        typedPunches,
+        dateFrom,
+        dateTo
+      );
 
-      // 5. Calculate pay for each employee for the entire period
-      const activeEmployees = employees.filter(e => e.status === 'active');
-      const employeePayData = activeEmployees.map(employee => {
-        const employeePunches = punchesPerEmployee.get(employee.id) || [];
-        const manualPayments = manualPaymentsPerEmployee.get(employee.id) || [];
-        
-        return calculateEmployeePay(
-          employee,
-          employeePunches,
-          0, // tips (not included in labor cost for dashboard)
-          dateFrom,
-          dateTo,
-          manualPayments
-        );
-      });
-
-      // 6. Group costs by date
-      const allDates = eachDayOfInterval({ start: dateFrom, end: dateTo });
+      // 5. Add per-job contractor payments to the daily costs
+      // (these are manual payments not included in the time-punch-based calculation)
       const dateMap = new Map<string, LaborCostData>();
-
-      // Initialize all dates with zero costs
-      allDates.forEach(date => {
-        const dateStr = format(date, 'yyyy-MM-dd');
-        dateMap.set(dateStr, {
-          date: dateStr,
-          total_labor_cost: 0,
-          hourly_wages: 0,
-          salary_wages: 0,
-          contractor_payments: 0,
-          total_hours: 0,
+      
+      // Convert laborCalculations format to our format
+      laborDailyCosts.forEach(day => {
+        dateMap.set(day.date, {
+          date: day.date,
+          total_labor_cost: day.total_cost,
+          hourly_wages: day.hourly_cost,
+          salary_wages: day.salary_cost,
+          contractor_payments: day.contractor_cost,
+          total_hours: day.hours_worked,
         });
       });
 
-      // Distribute employee pay across dates in the period
-      employeePayData.forEach(employeePay => {
-        const daysInPeriod = allDates.length;
-        const employee = activeEmployees.find(e => e.id === employeePay.employeeId);
-        
-        if (!employee) return;
-
-        // For hourly employees: calculate hours/pay per day from time punches
-        if (employee.compensation_type === 'hourly') {
-          const employeePunches = punchesPerEmployee.get(employee.id) || [];
-          
-          // Group punches by date
-          employeePunches.forEach(punch => {
-            const punchDate = format(new Date(punch.punch_time), 'yyyy-MM-dd');
-            const dayData = dateMap.get(punchDate);
-            if (dayData) {
-              // Hours are calculated by calculateEmployeePay, but we need per-day
-              // For now, distribute evenly (in future, could parse punches per day)
-              const dailyHourlyPay = (employeePay.regularPay + employeePay.overtimePay) / daysInPeriod;
-              const dailyHours = (employeePay.regularHours + employeePay.overtimeHours) / daysInPeriod;
-              
-              dayData.hourly_wages += dailyHourlyPay / 100; // Convert cents to dollars
-              dayData.total_hours += dailyHours;
-              dayData.total_labor_cost += dailyHourlyPay / 100;
-            }
-          });
-        } 
-        // For salary employees: distribute evenly across period
-        else if (employee.compensation_type === 'salary') {
-          const dailySalary = employeePay.salaryPay / daysInPeriod;
-          allDates.forEach(date => {
-            const dateStr = format(date, 'yyyy-MM-dd');
-            const dayData = dateMap.get(dateStr);
-            if (dayData) {
-              dayData.salary_wages += dailySalary / 100; // Convert cents to dollars
-              dayData.total_labor_cost += dailySalary / 100;
-            }
-          });
-        }
-        // For contractors: use manual payments directly (already distributed by date)
-        else if (employee.compensation_type === 'contractor') {
-          employeePay.manualPayments.forEach(payment => {
-            const dayData = dateMap.get(payment.date);
-            if (dayData) {
-              dayData.contractor_payments += payment.amount / 100; // Convert cents to dollars
-              dayData.total_labor_cost += payment.amount / 100;
-            }
+      // Add per-job contractor payments
+      (manualPaymentsData || []).forEach((payment: ManualPaymentDB) => {
+        const dayData = dateMap.get(payment.date);
+        if (dayData) {
+          const paymentDollars = payment.allocated_cost / 100; // Convert cents to dollars
+          dayData.contractor_payments += paymentDollars;
+          dayData.total_labor_cost += paymentDollars;
+        } else {
+          // Create entry for this date if it doesn't exist (edge case: payment outside period)
+          dateMap.set(payment.date, {
+            date: payment.date,
+            total_labor_cost: payment.allocated_cost / 100,
+            hourly_wages: 0,
+            salary_wages: 0,
+            contractor_payments: payment.allocated_cost / 100,
+            total_hours: 0,
           });
         }
       });

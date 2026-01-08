@@ -202,7 +202,7 @@ const handler = async (req: Request): Promise<Response> => {
     try {
       const emailPromises = uniqueEmails.map(email => 
         resend.emails.send({
-          from: "Restaurant Team <team@easyshifthq.com>",
+          from: "EasyShiftHQ <notifications@easyshifthq.com>",
           to: [email],
           subject: `${emailSubject} - ${restaurant.name}`,
           html: `
@@ -262,9 +262,9 @@ const handler = async (req: Request): Promise<Response> => {
                 </div>
                 
                 <div style="text-align: center; margin: 32px 0;">
-                  <a href="https://app.easyshifthq.com" 
+                  <a href="https://app.easyshifthq.com/scheduling" 
                      style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); transition: all 0.2s;">
-                    View in EasyShiftHQ
+                    View Time-Off Requests
                   </a>
                 </div>
               </div>

@@ -114,7 +114,7 @@ serve(async (req) => {
     const weekEndFormatted = formatDate(weekEnd);
 
     // App URL for the button
-    const appUrl = "https://app.easyshifthq.com/employee";
+    const appUrl = "https://app.easyshifthq.com/employee/schedule";
 
     // Send email notifications using Resend
     const emailPromises = scheduledEmployees

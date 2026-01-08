@@ -165,3 +165,9 @@ verify_jwt = true
 
 [functions.ai-execute-tool]
 verify_jwt = true
+
+[functions.send-shift-trade-notification]
+verify_jwt = true
+
+[functions.notify-schedule-published]
+verify_jwt = true

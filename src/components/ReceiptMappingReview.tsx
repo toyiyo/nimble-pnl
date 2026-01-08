@@ -14,7 +14,7 @@ import { useReceiptImport, ReceiptLineItem, ReceiptImport } from '@/hooks/useRec
 import { useProducts } from '@/hooks/useProducts';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil, Calendar as CalendarIcon, Barcode } from 'lucide-react';
+import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil, Calendar as CalendarIcon, Barcode, Link2 } from 'lucide-react';
 import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 import { useToast } from '@/components/ui/use-toast';
 import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
@@ -117,6 +117,39 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   };
 
   const handleMappingChange = (itemId: string, productId: string | null) => {
+    // Get the current item being changed
+    const currentItem = lineItems.find(i => i.id === itemId);
+    if (!currentItem?.parsed_name) {
+      // Fallback to original behavior if no parsed_name
+      if (productId === 'new_item') {
+        handleItemUpdate(itemId, { 
+          matched_product_id: null, 
+          mapping_status: 'new_item' 
+        });
+      } else if (productId === 'skip') {
+        handleItemUpdate(itemId, { 
+          matched_product_id: null, 
+          mapping_status: 'skipped' 
+        });
+      } else {
+        const matchedProduct = products.find(p => p.id === productId);
+        handleItemUpdate(itemId, { 
+          matched_product_id: productId, 
+          mapping_status: 'mapped',
+          parsed_unit: matchedProduct?.uom_purchase || undefined
+        });
+      }
+      return;
+    }
+
+    // Find all other PENDING items with the same parsed_name (case-insensitive)
+    const matchingItems = lineItems.filter(item => 
+      item.id !== itemId &&
+      item.mapping_status === 'pending' &&
+      item.parsed_name?.toLowerCase().trim() === currentItem.parsed_name?.toLowerCase().trim()
+    );
+
+    // Update the current item
     if (productId === 'new_item') {
       handleItemUpdate(itemId, { 
         matched_product_id: null, 
@@ -133,6 +166,36 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
         matched_product_id: productId, 
         mapping_status: 'mapped',
         parsed_unit: matchedProduct?.uom_purchase || undefined
+      });
+    }
+
+    // Also update matching items (if any)
+    if (matchingItems.length > 0) {
+      matchingItems.forEach(item => {
+        if (productId === 'new_item') {
+          handleItemUpdate(item.id, { 
+            matched_product_id: null, 
+            mapping_status: 'new_item' 
+          });
+        } else if (productId === 'skip') {
+          handleItemUpdate(item.id, { 
+            matched_product_id: null, 
+            mapping_status: 'skipped' 
+          });
+        } else {
+          const matchedProduct = products.find(p => p.id === productId);
+          handleItemUpdate(item.id, { 
+            matched_product_id: productId, 
+            mapping_status: 'mapped',
+            parsed_unit: matchedProduct?.uom_purchase || undefined
+          });
+        }
+      });
+
+      // Toast to inform user
+      toast({
+        title: "Applied to matching items",
+        description: `Also updated ${matchingItems.length} other "${currentItem.parsed_name}" item(s)`,
       });
     }
   };
@@ -304,6 +367,14 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     if (confidence >= 0.8) return 'text-green-600';
     if (confidence >= 0.6) return 'text-yellow-600';
     return 'text-red-600';
+  };
+
+  // Helper to get count of items with the same parsed_name
+  const getLinkedItemsCount = (item: ReceiptLineItem) => {
+    if (!item.parsed_name) return 0;
+    return lineItems.filter(i => 
+      i.parsed_name?.toLowerCase().trim() === item.parsed_name?.toLowerCase().trim()
+    ).length;
   };
 
   const mappedCount = lineItems.filter(item => item.mapping_status === 'mapped').length;
@@ -625,6 +696,13 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Item {index + 1}</span>
                 {getStatusBadge(item)}
+                {/* Show link indicator when multiple items have same name */}
+                {getLinkedItemsCount(item) > 1 && (
+                  <Badge variant="outline" className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                    <Link2 className="w-3 h-3 mr-1" />
+                    {getLinkedItemsCount(item)} linked
+                  </Badge>
+                )}
                 {item.confidence_score && (
                   <span className={`text-xs ${getConfidenceColor(item.confidence_score)}`}>
                     {Math.round(item.confidence_score * 100)}% confidence

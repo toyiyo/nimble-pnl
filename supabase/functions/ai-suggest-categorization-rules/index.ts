@@ -20,24 +20,18 @@ Look for patterns in:
 - POS categories (for sales data)
 - Item names (for POS sales)
 
-IMPORTANT CONTEXT:
-- Data is AGGREGATED by pattern (item name/description, category, price) over the past 12 months
-- The "Occurrences" count shows how many transactions match this pattern
-- Items already covered by existing active rules have been EXCLUDED
-- Prioritize rules that would cover the HIGHEST number of occurrences for maximum impact
-
 Create rules that are:
 1. SPECIFIC enough to be accurate (avoid overly broad patterns)
 2. USEFUL for automating future categorizations
 3. Based on clear, consistent patterns in the data
-4. Prioritized by confidence and frequency (use occurrence count)
+4. Prioritized by confidence and frequency
 
 For each rule, provide:
 - A descriptive name
 - The pattern type and value
 - The target category
 - Confidence level (high/medium/low)
-- Number of historical matches (use the occurrence count provided)
+- Number of historical matches
 - Reasoning for the rule`;
 
 const buildUserPrompt = (source: 'bank' | 'pos', categorizedRecords: any[], accounts: any[]) => {
@@ -46,31 +40,27 @@ const buildUserPrompt = (source: 'bank' | 'pos', categorizedRecords: any[], acco
     ? categorizedRecords.map((rec, idx) => `
 ${idx + 1}. Description: ${rec.description || 'N/A'}
    Merchant/Payee: ${rec.merchant_name || rec.normalized_payee || 'N/A'}
-   Typical Amount: $${rec.typical_amount}
-   Amount Range: ${rec.amount_range}
-   Category: ${rec.category_code} - ${rec.category_name}
-   Occurrences: ${rec.occurrence_count} transactions (${rec.date_range})
+   Amount: $${rec.amount}
+   Supplier: ${rec.supplier?.name || 'N/A'}
+   Category: ${rec.category?.account_code} - ${rec.category?.account_name}
+   Date: ${rec.transaction_date}
 `).join('\n')
     : categorizedRecords.map((rec, idx) => `
 ${idx + 1}. Item Name: ${rec.item_name}
    POS Category: ${rec.pos_category || 'N/A'}
-   Typical Price: $${rec.typical_price}
-   Category: ${rec.category_code} - ${rec.category_name}
-   Occurrences: ${rec.occurrence_count} sales (${rec.date_range})
+   Amount: $${rec.total_price}
+   Category: ${rec.category?.account_code} - ${rec.category?.account_name}
+   Date: ${rec.sale_date}
 `).join('\n');
 
   return `
 AVAILABLE CHART OF ACCOUNTS:
 ${accounts.map(acc => `- ${acc.account_code}: ${acc.account_name} (${acc.account_type})`).join('\n')}
 
-AGGREGATED ${recordType.toUpperCase()} PATTERNS:
-Note: This data is aggregated from the past 12 months. Each entry represents a unique pattern with its occurrence count.
-Items already covered by existing active rules have been excluded.
-
+CATEGORIZED ${recordType.toUpperCase()}:
 ${recordDetails}
 
-Based on these aggregated ${recordType} patterns, suggest automatic categorization rules that would help categorize future ${recordType} without manual intervention.
-Focus on high-occurrence patterns for maximum impact.`;
+Based on these categorized ${recordType}, suggest automatic categorization rules that would help categorize future ${recordType} without manual intervention.`;
 };
 
 function buildRuleSuggestionRequestBody(
@@ -247,47 +237,65 @@ serve(async (req) => {
       throw new Error('No active accounts found');
     }
 
-    // Get categorized records using aggregated patterns
+    // Get categorized records
     let categorizedRecords: any[] = [];
     
     if (source === 'bank') {
-      // Use aggregated bank transaction patterns
-      const { data: patterns, error: patternsError } = await supabaseClient
-        .rpc('get_uncovered_bank_patterns', { 
-          p_restaurant_id: restaurantId, 
-          p_limit: limit * 2  // Request more since they're aggregated
-        });
+      const { data: transactions, error: txnError } = await supabaseClient
+        .from('bank_transactions')
+        .select(`
+          id,
+          description,
+          merchant_name,
+          normalized_payee,
+          amount,
+          transaction_date,
+          category_id,
+          supplier_id,
+          supplier:suppliers(name),
+          category:chart_of_accounts!bank_transactions_category_id_fkey(account_code, account_name)
+        `)
+        .eq('restaurant_id', restaurantId)
+        .eq('is_categorized', true)
+        .not('category_id', 'is', null)
+        .order('transaction_date', { ascending: false })
+        .limit(limit);
 
-      if (patternsError) throw patternsError;
-      categorizedRecords = patterns || [];
+      if (txnError) throw txnError;
+      categorizedRecords = transactions || [];
     } else {
-      // Use aggregated POS sales patterns
-      const { data: patterns, error: patternsError } = await supabaseClient
-        .rpc('get_uncovered_pos_patterns', { 
-          p_restaurant_id: restaurantId, 
-          p_limit: limit * 2  // Request more since they're aggregated
-        });
+      const { data: sales, error: salesError } = await supabaseClient
+        .from('unified_sales')
+        .select(`
+          id,
+          item_name,
+          pos_category,
+          total_price,
+          sale_date,
+          category_id,
+          category:chart_of_accounts!unified_sales_category_id_fkey(account_code, account_name)
+        `)
+        .eq('restaurant_id', restaurantId)
+        .eq('is_categorized', true)
+        .not('category_id', 'is', null)
+        .order('sale_date', { ascending: false })
+        .limit(limit);
 
-      if (patternsError) throw patternsError;
-      categorizedRecords = patterns || [];
+      if (salesError) throw salesError;
+      categorizedRecords = sales || [];
     }
 
     if (categorizedRecords.length === 0) {
       return new Response(
         JSON.stringify({ 
           rules: [],
-          message: `No categorized ${source === 'bank' ? 'transaction' : 'POS sales'} patterns found to analyze. This could mean:
-1. No ${source === 'bank' ? 'transactions' : 'sales'} have been categorized yet
-2. All patterns are already covered by existing active rules
-3. No data exists in the past 12 months
-
-Please categorize some ${source === 'bank' ? 'transactions' : 'sales'} first or review your existing rules.`
+          message: `No categorized ${source === 'bank' ? 'transactions' : 'POS sales'} found to analyze. Please categorize some ${source === 'bank' ? 'transactions' : 'sales'} first.`
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`Found ${categorizedRecords.length} aggregated ${source === 'bank' ? 'transaction' : 'sales'} patterns to analyze`);
+    console.log(`Found ${categorizedRecords.length} categorized ${source === 'bank' ? 'transactions' : 'sales'} to analyze`);
 
     // Build request body for AI
     const requestBody = buildRuleSuggestionRequestBody(source, categorizedRecords, accounts);

@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { useShift4Integration } from '@/hooks/useShift4Integration';
-import { useToastIntegration } from '@/hooks/useToastIntegration';
+import { useToastConnection } from '@/hooks/useToastConnection';
 import { SquareSync } from '@/components/SquareSync';
 import { CloverSync } from '@/components/CloverSync';
 import { Shift4Sync } from '@/components/Shift4Sync';
 import { ToastSync } from '@/components/ToastSync';
 import { Shift4ConnectDialog } from '@/components/Shift4ConnectDialog';
+import { ToastSetupWizard } from '@/components/pos/ToastSetupWizard';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { Plug, Settings, CheckCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -34,6 +36,7 @@ interface IntegrationCardProps {
 export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardProps) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [showShift4Dialog, setShowShift4Dialog] = useState(false);
+  const [showToastSetup, setShowToastSetup] = useState(false);
   const { toast } = useToast();
   
   // Square-specific integration hook
@@ -46,22 +49,30 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   const shift4Integration = useShift4Integration(restaurantId);
   
   // Toast-specific integration hook
-  const toastIntegration = useToastIntegration(restaurantId);
+  const toastConnection = useToastConnection();
   
   // Check if this integration is Square, Clover, Shift4, or Toast and if it's connected
   const isSquareIntegration = integration.id === 'square-pos';
   const isCloverIntegration = integration.id === 'clover-pos';
   const isShift4Integration = integration.id === 'shift4-pos';
   const isToastIntegration = integration.id === 'toast-pos';
+  
+  // Check Toast connection status on mount
+  useEffect(() => {
+    if (isToastIntegration && restaurantId) {
+      toastConnection.checkConnectionStatus(restaurantId);
+    }
+  }, [restaurantId, isToastIntegration]);
+  
   const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected : 
                             isCloverIntegration ? cloverIntegration.isConnected :
                             isShift4Integration ? shift4Integration.isConnected :
-                            isToastIntegration ? toastIntegration.isConnected :
+                            isToastIntegration ? toastConnection.isConnected :
                             integration.connected;
   const actuallyConnecting = isSquareIntegration ? squareIntegration.isConnecting : 
                              isCloverIntegration ? cloverIntegration.isConnecting :
                              isShift4Integration ? shift4Integration.loading :
-                             isToastIntegration ? toastIntegration.isConnecting :
+                             isToastIntegration ? toastConnection.loading :
                              isConnecting;
 
   const handleConnect = async () => {
@@ -81,7 +92,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     }
     
     if (isToastIntegration) {
-      await toastIntegration.connectToast();
+      setShowToastSetup(true);
       return;
     }
     
@@ -134,7 +145,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     }
     
     if (isToastIntegration) {
-      await toastIntegration.disconnectToast();
+      await toastConnection.disconnectToast(restaurantId);
       return;
     }
     
@@ -285,8 +296,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             {/* Toast Sync Component */}
             {isToastIntegration && (
               <ToastSync 
-                restaurantId={restaurantId} 
-                isConnected={actuallyConnected} 
+                restaurantId={restaurantId}
               />
             )}
           </div>
@@ -300,6 +310,19 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
         onConnect={handleShift4Connect}
         isLoading={shift4Integration.loading}
       />
+      
+      {/* Toast Setup Wizard Dialog */}
+      <Dialog open={showToastSetup} onOpenChange={setShowToastSetup}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <ToastSetupWizard
+            restaurantId={restaurantId}
+            onComplete={() => {
+              setShowToastSetup(false);
+              toastConnection.checkConnectionStatus(restaurantId);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };

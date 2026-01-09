@@ -1,353 +1,312 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getEncryptionService } from "../_shared/encryption.ts";
+import { logSecurityEvent } from "../_shared/securityEvents.ts";
+import { processOrder } from "../_shared/toastOrderProcessor.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-interface ToastSyncRequest {
-  restaurantId: string;
-  action: 'initial_sync' | 'daily_sync' | 'hourly_sync';
-  dateRange?: {
-    startDate: string;
-    endDate: string;
-  };
+const FETCH_TIMEOUT_MS = 20000; // 20 seconds for API calls
+const DEBUG = Deno.env.get('DEBUG') === 'true';
+
+function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(id));
 }
 
-Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    if (DEBUG) console.log('Toast manual sync started');
 
-    const body: ToastSyncRequest = await req.json();
-    const { restaurantId, action, dateRange } = body;
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing authorization' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    console.log('Toast sync started:', { restaurantId, action, dateRange });
+    // Validate environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+      console.error('Missing required environment variables');
+      return new Response(JSON.stringify({ error: 'Server misconfigured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    // Get Toast connection and decrypt tokens
-    const { data: connection, error: connectionError } = await supabase
+    // User-scoped client for auth + authorization (RLS enforced)
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    // Service-role client for privileged reads/writes (bypasses RLS)
+    const serviceSupabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { data: { user } } = await userSupabase.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    let restaurantId: string | undefined;
+    try {
+      ({ restaurantId } = await req.json());
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!restaurantId) {
+      return new Response(JSON.stringify({ error: 'Missing restaurantId' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Authorization gate: verify user has access to this restaurant via RLS
+    const { data: authorizedConn, error: authorizedConnError } = await userSupabase
+      .from('toast_connections')
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (authorizedConnError || !authorizedConn?.id) {
+      console.error('Authorization failed:', authorizedConnError?.message || 'No connection found');
+      return new Response(JSON.stringify({ error: 'Forbidden - no access to this restaurant' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Privileged fetch of full connection row (includes encrypted secrets)
+    const { data: connection, error: connectionError } = await serviceSupabase
       .from('toast_connections')
       .select('*')
-      .eq('restaurant_id', restaurantId)
+      .eq('id', authorizedConn.id)
       .single();
 
     if (connectionError || !connection) {
-      throw new Error('Toast connection not found');
+      console.error('Connection fetch failed:', connectionError?.message);
+      return new Response(JSON.stringify({ error: 'No active Toast connection found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Decrypt the access token
-    const encryption = await getEncryptionService();
-    const decryptedAccessToken = await encryption.decrypt(connection.access_token);
+    // Validate encrypted fields exist
+    if (!connection.client_secret_encrypted) {
+      console.error('Missing client_secret_encrypted for connection:', connection.id);
+      return new Response(JSON.stringify({ error: 'Integration configuration incomplete - missing credentials' }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    // Log security event for token access
-    await logSecurityEvent(supabase, 'TOAST_TOKEN_ACCESSED', undefined, restaurantId, {
-      action: action,
-      toastRestaurantGuid: connection.toast_restaurant_guid
+    const encryption = await getEncryptionService();
+
+    // Get or refresh access token
+    let accessToken = connection.access_token_encrypted 
+      ? await encryption.decrypt(connection.access_token_encrypted) 
+      : null;
+    
+    const tokenExpired = !connection.token_expires_at || 
+      new Date(connection.token_expires_at).getTime() < Date.now() + (3600 * 1000);
+    
+    if (!accessToken || tokenExpired) {
+      if (DEBUG) console.log('Refreshing access token...');
+      const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
+      
+      const authResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: connection.client_id,
+          clientSecret: clientSecret,
+          userAccessType: 'TOAST_MACHINE_CLIENT'
+        })
+      }, 15000);
+
+      if (!authResponse.ok) {
+        const errorText = await authResponse.text().catch(() => 'Unknown error');
+        console.error('Token refresh failed:', authResponse.status, errorText);
+        throw new Error(`Token refresh failed: ${authResponse.status}`);
+      }
+
+      const authData = await authResponse.json();
+      accessToken = authData.token.accessToken;
+      
+      const encryptedToken = await encryption.encrypt(accessToken);
+      const expiresAt = new Date(Date.now() + (authData.token.expiresIn * 1000));
+      
+      const { error: tokenUpdateError } = await serviceSupabase.from('toast_connections').update({
+        access_token_encrypted: encryptedToken,
+        token_expires_at: expiresAt.toISOString(),
+        token_fetched_at: new Date().toISOString()
+      }).eq('id', connection.id);
+
+      if (tokenUpdateError) {
+        console.error('Failed to update token:', tokenUpdateError.message);
+        // Continue anyway - we have the token in memory
+      }
+    }
+
+    // Sync last 25 hours (24h + 1h buffer)
+    const endDate = new Date().toISOString();
+    const startDate = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+
+    if (DEBUG) console.log(`Syncing orders from ${startDate} to ${endDate}`);
+
+    let totalOrders = 0;
+    let page = 1;
+    let hasMorePages = true;
+    const errors: Array<{ orderGuid: string; message: string }> = [];
+    const MAX_ERRORS = 50; // Cap error collection
+
+    while (hasMorePages) {
+      const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=100&page=${page}`;
+      
+      let ordersResponse;
+      try {
+        ordersResponse = await fetchWithTimeout(bulkUrl, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
+          }
+        }, 20000);
+      } catch (fetchError: any) {
+        console.error('Fetch orders failed:', fetchError.message);
+        throw new Error(`Failed to fetch orders: ${fetchError.message}`);
+      }
+
+      if (!ordersResponse.ok) {
+        // Handle 401 with one retry after token refresh
+        if (ordersResponse.status === 401 && page === 1) {
+          if (DEBUG) console.log('Got 401, attempting token refresh and retry...');
+          const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
+          
+          const retryAuthResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientId: connection.client_id,
+              clientSecret: clientSecret,
+              userAccessType: 'TOAST_MACHINE_CLIENT'
+            })
+          }, 15000);
+
+          if (retryAuthResponse.ok) {
+            const authData = await retryAuthResponse.json();
+            accessToken = authData.token.accessToken;
+            
+            // Retry the fetch
+            ordersResponse = await fetchWithTimeout(bulkUrl, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
+              }
+            }, 20000);
+          }
+        }
+
+        if (!ordersResponse.ok) {
+          throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);
+        }
+      }
+
+      const orders = await ordersResponse.json();
+      
+      if (!orders || orders.length === 0) {
+        hasMorePages = false;
+        break;
+      }
+
+      for (const order of orders) {
+        try {
+          await processOrder(serviceSupabase, order, connection.restaurant_id, connection.toast_restaurant_guid);
+          totalOrders++;
+        } catch (orderError: any) {
+          console.error(`Error processing order ${order.guid || 'unknown'}:`, orderError.message);
+          if (errors.length < MAX_ERRORS) {
+            errors.push({
+              orderGuid: order.guid || order.id || 'unknown',
+              message: orderError.message || 'Unknown error'
+            });
+          }
+          // Continue processing other orders
+        }
+      }
+
+      if (orders.length < 100) {
+        hasMorePages = false;
+      } else {
+        page++;
+        await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting
+      }
+    }
+
+    // Sync to unified_sales
+    if (DEBUG) console.log('Syncing to unified_sales...');
+    const { error: rpcError } = await serviceSupabase.rpc('sync_toast_to_unified_sales', {
+      p_restaurant_id: connection.restaurant_id
     });
 
-    const TOAST_BASE_URL = 'https://ws-api.toasttab.com';
-    const toastHeaders = {
-      'Authorization': `Bearer ${decryptedAccessToken}`,
-      'Toast-Restaurant-External-ID': connection.toast_restaurant_guid,
-      'Content-Type': 'application/json',
-    };
-
-    const results = {
-      ordersSynced: 0,
-      itemsSynced: 0,
-      paymentsSynced: 0,
-      menuItemsSynced: 0,
-      errors: [] as string[]
-    };
-
-    // Calculate date range based on action
-    let startDate: string;
-    let endDate: string;
-
-    if (dateRange) {
-      startDate = dateRange.startDate;
-      endDate = dateRange.endDate;
-    } else {
-      const now = new Date();
-      endDate = now.toISOString().split('T')[0];
-
-      switch (action) {
-        case 'initial_sync':
-          // Last 90 days
-          const ninetyDaysAgo = new Date(now);
-          ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-          startDate = ninetyDaysAgo.toISOString().split('T')[0];
-          break;
-        case 'daily_sync':
-          // Yesterday
-          const yesterday = new Date(now);
-          yesterday.setDate(yesterday.getDate() - 1);
-          startDate = yesterday.toISOString().split('T')[0];
-          endDate = startDate;
-          break;
-        case 'hourly_sync':
-          // Last 2 hours
-          const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-          startDate = twoHoursAgo.toISOString().split('T')[0];
-          break;
-        default:
-          startDate = endDate;
-      }
+    if (rpcError) {
+      console.error('RPC sync_toast_to_unified_sales failed:', rpcError.message);
+      throw new Error(`Failed to sync to unified_sales: ${rpcError.message}`);
     }
 
-    console.log('Syncing Toast data from', startDate, 'to', endDate);
+    // Update last sync time
+    const { error: syncUpdateError } = await serviceSupabase.from('toast_connections').update({
+      last_sync_time: new Date().toISOString(),
+      connection_status: 'connected',
+      last_error: null,
+      last_error_at: null
+    }).eq('id', connection.id);
 
-    // Sync orders
-    try {
-      const ordersCount = await syncOrders(
-        TOAST_BASE_URL,
-        toastHeaders,
-        connection.toast_restaurant_guid,
-        restaurantId,
-        startDate,
-        endDate,
-        supabase
-      );
-      results.ordersSynced = ordersCount;
-    } catch (error: any) {
-      console.error('Orders sync error:', error);
-      results.errors.push(`Orders sync failed: ${error.message}`);
+    if (syncUpdateError) {
+      console.error('Failed to update last_sync_time:', syncUpdateError.message);
+      // Non-fatal, continue
     }
 
-    // Sync menu items (only for initial sync)
-    if (action === 'initial_sync') {
-      try {
-        const menuCount = await syncMenuItems(
-          TOAST_BASE_URL,
-          toastHeaders,
-          connection.toast_restaurant_guid,
-          restaurantId,
-          supabase
-        );
-        results.menuItemsSynced = menuCount;
-      } catch (error: any) {
-        console.error('Menu sync error:', error);
-        results.errors.push(`Menu sync failed: ${error.message}`);
-      }
-    }
+    await logSecurityEvent(serviceSupabase, 'TOAST_MANUAL_SYNC', user.id, connection.restaurant_id, {
+      ordersSynced: totalOrders,
+      errorCount: errors.length
+    });
 
-    // Sync to unified sales table
-    try {
-      const { data: syncCount, error: syncError } = await supabase.rpc(
-        'sync_toast_to_unified_sales',
-        { p_restaurant_id: restaurantId }
-      );
-
-      if (syncError) throw syncError;
-      results.itemsSynced = syncCount || 0;
-    } catch (error: any) {
-      console.error('Unified sales sync error:', error);
-      results.errors.push(`Unified sales sync failed: ${error.message}`);
-    }
-
-    // Update last_sync_at
-    await supabase
-      .from('toast_connections')
-      .update({ last_sync_at: new Date().toISOString() })
-      .eq('restaurant_id', restaurantId);
-
-    console.log('Toast sync completed:', results);
+    if (DEBUG) console.log(`Manual sync completed: ${totalOrders} orders, ${errors.length} errors`);
 
     return new Response(JSON.stringify({
       success: true,
-      results
+      ordersSynced: totalOrders,
+      errors: errors
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error: any) {
-    console.error('Toast sync error:', error);
-    return new Response(JSON.stringify({
-      success: false,
-      error: error.message || 'An error occurred during Toast sync'
-    }), {
+    console.error('Toast manual sync error:', error);
+    return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
-
-// Helper function to sync orders
-async function syncOrders(
-  baseUrl: string,
-  headers: Record<string, string>,
-  toastRestaurantGuid: string,
-  restaurantId: string,
-  startDate: string,
-  endDate: string,
-  supabase: any
-): Promise<number> {
-  let ordersCount = 0;
-  let page = 1;
-  const pageSize = 100;
-
-  while (true) {
-    const ordersUrl = `${baseUrl}/orders/v2/orders`;
-    const params = new URLSearchParams({
-      businessDate: startDate,
-      endDate: endDate,
-      page: page.toString(),
-      pageSize: pageSize.toString(),
-    });
-
-    const response = await fetch(`${ordersUrl}?${params}`, { headers });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch orders: ${response.statusText}`);
-    }
-
-    const ordersData = await response.json();
-    const orders = ordersData.data || [];
-
-    if (orders.length === 0) break;
-
-    // Store orders
-    for (const order of orders) {
-      const orderDate = new Date(order.closedDate || order.openedDate);
-      
-      // Store order
-      await supabase.from('toast_orders').upsert({
-        restaurant_id: restaurantId,
-        toast_order_guid: order.guid,
-        toast_restaurant_guid: toastRestaurantGuid,
-        order_number: order.orderNumber,
-        order_date: orderDate.toISOString().split('T')[0],
-        order_time: orderDate.toTimeString().split(' ')[0],
-        total_amount: (order.totalAmount || 0) / 100, // Convert cents to dollars
-        subtotal_amount: (order.subtotal || 0) / 100,
-        tax_amount: (order.taxAmount || 0) / 100,
-        tip_amount: (order.tipAmount || 0) / 100,
-        discount_amount: (order.discountAmount || 0) / 100,
-        service_charge_amount: (order.serviceChargeAmount || 0) / 100,
-        payment_status: order.paymentStatus,
-        dining_option: order.diningOption?.behavior,
-        raw_json: order,
-        synced_at: new Date().toISOString(),
-      }, {
-        onConflict: 'restaurant_id,toast_order_guid',
-      });
-
-      // Store order items
-      if (order.checks) {
-        for (const check of order.checks) {
-          if (check.selections) {
-            for (const selection of check.selections) {
-              await supabase.from('toast_order_items').upsert({
-                restaurant_id: restaurantId,
-                toast_order_guid: order.guid,
-                toast_item_guid: selection.itemGuid || selection.guid,
-                item_name: selection.itemName || selection.name,
-                quantity: selection.quantity || 1,
-                unit_price: (selection.preDiscountPrice || 0) / 100,
-                total_price: (selection.price || 0) / 100,
-                menu_category: selection.salesCategory,
-                modifiers: selection.modifiers,
-                raw_json: selection,
-                synced_at: new Date().toISOString(),
-              }, {
-                onConflict: 'restaurant_id,toast_order_guid,toast_item_guid',
-                ignoreDuplicates: true,
-              });
-            }
-          }
-        }
-      }
-
-      // Store payments
-      if (order.checks) {
-        for (const check of order.checks) {
-          if (check.payments) {
-            for (const payment of check.payments) {
-              await supabase.from('toast_payments').upsert({
-                restaurant_id: restaurantId,
-                toast_payment_guid: payment.guid,
-                toast_order_guid: order.guid,
-                payment_type: payment.type,
-                amount: (payment.amount || 0) / 100,
-                tip_amount: (payment.tipAmount || 0) / 100,
-                payment_date: orderDate.toISOString().split('T')[0],
-                payment_status: payment.status,
-                raw_json: payment,
-                synced_at: new Date().toISOString(),
-              }, {
-                onConflict: 'restaurant_id,toast_payment_guid',
-              });
-            }
-          }
-        }
-      }
-
-      ordersCount++;
-    }
-
-    if (orders.length < pageSize) break;
-    page++;
-  }
-
-  console.log(`Synced ${ordersCount} Toast orders`);
-  return ordersCount;
-}
-
-// Helper function to sync menu items
-async function syncMenuItems(
-  baseUrl: string,
-  headers: Record<string, string>,
-  toastRestaurantGuid: string,
-  restaurantId: string,
-  supabase: any
-): Promise<number> {
-  let menuItemsCount = 0;
-
-  const menusUrl = `${baseUrl}/menus/v2/menus`;
-  const response = await fetch(menusUrl, { headers });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch menus: ${response.statusText}`);
-  }
-
-  const menusData = await response.json();
-  const menus = menusData || [];
-
-  for (const menu of menus) {
-    if (menu.groups) {
-      for (const group of menu.groups) {
-        if (group.items) {
-          for (const item of group.items) {
-            await supabase.from('toast_menu_items').upsert({
-              restaurant_id: restaurantId,
-              toast_item_guid: item.guid,
-              toast_restaurant_guid: toastRestaurantGuid,
-              item_name: item.name,
-              description: item.description,
-              price: item.price ? item.price / 100 : null,
-              category: group.name,
-              is_active: !item.visibility || item.visibility === 'VISIBLE',
-              raw_json: item,
-              synced_at: new Date().toISOString(),
-            }, {
-              onConflict: 'restaurant_id,toast_item_guid',
-            });
-
-            menuItemsCount++;
-          }
-        }
-      }
-    }
-  }
-
-  console.log(`Synced ${menuItemsCount} Toast menu items`);
-  return menuItemsCount;
-}

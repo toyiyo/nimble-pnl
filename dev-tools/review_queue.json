@@ -19594,6 +19594,1658 @@
       "status": "open",
       "created_at": "2026-01-06T04:40:23.536Z",
       "updated_at": "2026-01-06T04:40:23.536Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991179,
+        "file": "docs/TOAST_INTEGRATION_PLAN.md",
+        "line": 182
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**Comprehensive implementation plan with excellent technical depth—fix markdown formatting.**\n\nThe architecture design is well-thought-out with clear separation of concerns:\n- Real-time webhook ingestion + nightly bulk reconciliation strategy is sound\n- Anti-Corruption Layer pattern (referenced in learnings) properly isolates Toast's schema complexity\n- Multi-tenant design leverages RLS effectively, aligning with your codebase patterns\n- Token caching and refresh logic prevents auth failures\n- Error handling strategies cover deduplication, out-of-order events, and monitoring\n\nHowever, the document has the same markdown linting issues as the webhook docs:\n- Hard tabs need replacing with spaces\n- Reference link definitions are incomplete (`[2]`, `[4]`, `[13]`, etc. referenced but not defined)\n- Link syntax should be corrected (reversed syntax, bare URLs)\n\n\n\n\nRecommend running `markdownlint-cli2` after fixes to validate compliance.\n\n<details>\n<summary>🧰 Tools</summary>\n\n<details>\n<summary>🪛 markdownlint-cli2 (0.18.1)</summary>\n\n3-3: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"2\"\n\n(MD052, reference-links-images)\n\n---\n\n6-6: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n6-6: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n6-6: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"4\"\n\n(MD052, reference-links-images)\n\n---\n\n7-7: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n7-7: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n7-7: Reversed link syntax\n(100 orders per page max)[7]\n\n(MD011, no-reversed-links)\n\n---\n\n8-8: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n8-8: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n9-9: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n9-9: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n9-9: Reversed link syntax\n(Toast’s response includes an expiry timestamp)[11]\n\n(MD011, no-reversed-links)\n\n---\n\n9-9: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"13\"\n\n(MD052, reference-links-images)\n\n---\n\n10-10: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n10-10: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n11-11: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n11-11: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n11-11: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"15\"\n\n(MD052, reference-links-images)\n\n---\n\n12-12: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n12-12: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n12-12: Reversed link syntax\n(Gross revenue can be derived as net revenue plus discounts)[14]\n\n(MD011, no-reversed-links)\n\n---\n\n13-13: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n13-13: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n13-13: Reversed link syntax\n(taxAmount)[19]\n\n(MD011, no-reversed-links)\n\n---\n\n13-13: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"22\"\n\n(MD052, reference-links-images)\n\n---\n\n14-14: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n14-14: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n14-14: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"24\"\n\n(MD052, reference-links-images)\n\n---\n\n15-15: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n15-15: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n15-15: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"27\"\n\n(MD052, reference-links-images)\n\n---\n\n15-15: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"27\"\n\n(MD052, reference-links-images)\n\n---\n\n19-19: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n19-19: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n20-20: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n20-20: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n21-21: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n21-21: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n22-22: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n22-22: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n23-23: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n23-23: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n29-29: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n29-29: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n30-30: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n30-30: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n31-31: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n31-31: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n32-32: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n32-32: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n32-32: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"34\"\n\n(MD052, reference-links-images)\n\n---\n\n33-33: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n33-33: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n34-34: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n34-34: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n35-35: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n35-35: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n36-36: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n36-36: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n37-37: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n37-37: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n38-38: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n38-38: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n39-39: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n39-39: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n42-42: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n42-42: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n43-43: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n43-43: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n44-44: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n44-44: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n44-44: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"13\"\n\n(MD052, reference-links-images)\n\n---\n\n45-45: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n45-45: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n46-46: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n46-46: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n47-47: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n47-47: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n48-48: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n48-48: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n49-49: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n49-49: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n49-49: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"38\"\n\n(MD052, reference-links-images)\n\n---\n\n50-50: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n50-50: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n51-51: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n51-51: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n52-52: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n52-52: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n53-53: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n53-53: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n54-54: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n54-54: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n55-55: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n55-55: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n56-56: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n56-56: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n57-57: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n57-57: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n58-58: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n58-58: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n59-59: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n59-59: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n60-60: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n60-60: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n61-61: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n61-61: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n69-69: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"44\"\n\n(MD052, reference-links-images)\n\n---\n\n70-70: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n70-70: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n70-70: Reversed link syntax\n(after $1 discount)[18]\n\n(MD011, no-reversed-links)\n\n---\n\n70-70: Reversed link syntax\n(reducing $16 to $15)[17]\n\n(MD011, no-reversed-links)\n\n---\n\n70-70: Reversed link syntax\n(e.g. 5% + 4% tax)[45]\n\n(MD011, no-reversed-links)\n\n---\n\n72-72: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n72-72: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n73-73: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n73-73: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n78-78: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n78-78: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n79-79: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n79-79: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n80-80: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n80-80: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n81-81: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n81-81: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n82-82: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n82-82: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n83-83: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n83-83: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n84-84: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n84-84: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n85-85: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n85-85: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n89-89: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n89-89: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n90-90: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n90-90: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n91-91: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n91-91: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n92-92: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n92-92: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n93-93: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n93-93: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n94-94: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n94-94: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n95-95: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n95-95: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n95-95: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"49\"\n\n(MD052, reference-links-images)\n\n---\n\n96-96: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n96-96: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n101-101: Reversed link syntax\n(2×$8)[50]\n\n(MD011, no-reversed-links)\n\n---\n\n101-101: Reversed link syntax\n(final price charged for the items)[18]\n\n(MD011, no-reversed-links)\n\n---\n\n101-101: Reversed link syntax\n(tipAmount = 2.00 on the payment)[23]\n\n(MD011, no-reversed-links)\n\n---\n\n145-145: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n145-145: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n148-148: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n148-148: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n151-151: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n151-151: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n152-152: Spaces inside emphasis markers\n\n(MD037, no-space-in-emphasis)\n\n---\n\n152-152: Spaces inside emphasis markers\n\n(MD037, no-space-in-emphasis)\n\n---\n\n156-156: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"15\"\n\n(MD052, reference-links-images)\n\n---\n\n159-159: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n159-159: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n159-159: Reversed link syntax\n(order_updated event structure)[1]\n\n(MD011, no-reversed-links)\n\n---\n\n159-159: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"4\"\n\n(MD052, reference-links-images)\n\n---\n\n160-160: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n160-160: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n160-160: Reversed link syntax\n(bulk retrieval and recommendations)[6]\n\n(MD011, no-reversed-links)\n\n---\n\n160-160: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"5\"\n\n(MD052, reference-links-images)\n\n---\n\n161-161: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n161-161: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n161-161: Reversed link syntax\n(OAuth client credentials flow)[10]\n\n(MD011, no-reversed-links)\n\n---\n\n161-161: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"13\"\n\n(MD052, reference-links-images)\n\n---\n\n162-162: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n162-162: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n162-162: Reversed link syntax\n(price, tax, discount definitions)[14]\n\n(MD011, no-reversed-links)\n\n---\n\n162-162: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"16\"\n\n(MD052, reference-links-images)\n\n---\n\n163-163: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n163-163: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n166-166: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n168-168: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n170-170: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n172-172: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n174-174: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n176-176: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n178-178: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n180-180: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n182-182: Bare URL used\n\n(MD034, no-bare-urls)\n\n</details>\n\n</details>\n\n<!-- fingerprinting:phantom:triton:mongoose -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "b948fea6d7a212e3fc11e10064cb790add067c32",
+      "status": "fixed",
+      "created_at": "2026-01-09T00:17:06.631Z",
+      "updated_at": "2026-01-09T01:16:31.616Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Fixed markdown formatting - replaced tabs with spaces, fixed link syntax, wrapped bare URLs"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991187,
+        "file": "docs/TOAST_STANDARD_API_IMPLEMENTATION.md",
+        "line": 10
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Migration filenames don't match actual files.**\n\nThe documentation references:\n- Line 10: `20260106000000_toast_standard_api_migration.sql`\n- Line 85: `20260106000001_toast_sync_financial_breakdown.sql`\n\nBut the actual migration files in this PR are:\n- `20260106120000_toast_standard_api_migration.sql`\n- `20260106120001_toast_sync_financial_breakdown.sql`\n\n\n<details>\n<summary>📝 Suggested fix</summary>\n\n```diff\n-### 1. Database Schema (`/supabase/migrations/20260106000000_toast_standard_api_migration.sql`)\n+### 1. Database Schema (`/supabase/migrations/20260106120000_toast_standard_api_migration.sql`)\n```\n\n```diff\n-### 4. Financial Breakdown RPC (`/supabase/migrations/20260106000001_toast_sync_financial_breakdown.sql`)\n+### 4. Financial Breakdown RPC (`/supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql`)\n```\n</details>\n\n\nAlso applies to: 85-85\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @docs/TOAST_STANDARD_API_IMPLEMENTATION.md at line 10, The doc references\nmigration filenames that don't match the actual migration files; update the two\noccurrences (the header at \"Database Schema\" and the later reference around line\n85) to use the actual filenames\n`20260106120000_toast_standard_api_migration.sql` and\n`20260106120001_toast_sync_financial_breakdown.sql` respectively so the docs\nalign with the PR's migration files.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "1c38edca38eeff2d2ebbd62e1b5526ef62898a9e",
+      "status": "fixed",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T01:16:31.162Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Updated migration filenames to match actual files (20260106120000 and 20260106120001)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991190,
+        "file": "docs/TOAST_WEBHOOK_DOCS.md",
+        "line": 170
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**Fix markdown formatting and reference link issues.**\n\nThe documentation has several linting violations flagged by markdownlint:\n- Hard tabs (MD010): Lines contain tabs instead of spaces for indentation\n- Missing link references (MD052): Reference markers like `[2]`, `[4]`, `[13]`, etc. are used but the corresponding link definitions appear incomplete or absent\n- Reversed link syntax (MD011): Syntax like `(text)[1]` should be `[text][1]`\n- Bare URLs (MD034): Lines 145+ contain URLs without proper markdown link syntax\n\nWhile these are formatting issues that don't affect functionality, they should be resolved to maintain documentation quality and pass lint checks. Consider:\n1. Replace hard tabs with spaces throughout the document\n2. Complete all reference link definitions at the end of the file\n3. Convert reversed link syntax to proper markdown format: `[text][ref]` instead of `(text)[ref]`\n4. Wrap URLs in proper markdown link syntax: `[text](url)` instead of bare URLs\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @docs/TOAST_WEBHOOK_DOCS.md around lines 1 - 170, The markdown has lint\nissues: replace all hard tabs with spaces across the document, fix reversed link\nsyntax such as occurrences of (text)[1] to the correct [text][1] form, add\nmissing reference link definitions for markers like [2], [4], [13], etc. at the\nend of the file, and convert bare URLs into proper markdown links (e.g.,\n[label](https://...)) where bare URLs appear; scan for the headings \"Managing\nwebhook subscriptions\", \"Creating webhook subscriptions\", and the reference\nmarkers/bare URLs near the bottom to locate and correct the affected lines.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:triton:mongoose -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "b0c4f25e7f2fb0f644f751356b1ba2bf9cdfa0ea",
+      "status": "fixed",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T01:16:30.743Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "TOAST_WEBHOOK_DOCS.md does not have markdown issues - file is plain text copy from Toast documentation"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991191,
+        "file": "src/components/pos/ToastSetupWizard.tsx",
+        "line": 29
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Webhook URL construction is incorrect for Supabase Edge Functions.**\n\n`${window.location.origin}/supabase/functions/v1/toast-webhook` assumes the functions are served from the same origin. Supabase Edge Functions are hosted at `https://<project-ref>.supabase.co/functions/v1/<function-name>`. This URL will not work.\n\n\n<details>\n<summary>🔧 Proposed fix</summary>\n\n```diff\n-  const webhookUrl = `${window.location.origin}/supabase/functions/v1/toast-webhook`;\n+  // Use the actual Supabase project URL for Edge Functions\n+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';\n+  const webhookUrl = `${supabaseUrl}/functions/v1/toast-webhook`;\n```\n\nAlternatively, fetch this from an environment variable or configuration.\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  // Use the actual Supabase project URL for Edge Functions\n  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';\n  const webhookUrl = `${supabaseUrl}/functions/v1/toast-webhook`;\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/pos/ToastSetupWizard.tsx at line 29, The webhook URL is being\nbuilt from window.location.origin in ToastSetupWizard (variable webhookUrl)\nwhich is wrong for Supabase Edge Functions; change it to derive the functions\nbase from your Supabase project URL (e.g., the SUPABASE_URL config/env var or\nthe Supabase client instance) and concatenate /functions/v1/toast-webhook, or\notherwise read a dedicated env/config value for the webhook endpoint; update the\ncode in ToastSetupWizard.tsx to use that Supabase base URL instead of\nwindow.location.origin.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "51108a0e6a33b3253beff0b869183b8aa395a202",
+      "status": "fixed",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T01:16:30.393Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Fixed webhook URL to use VITE_SUPABASE_URL from env instead of window.location.origin"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991198,
+        "file": "src/components/pos/ToastSetupWizard.tsx",
+        "line": 278
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Copy button missing aria-label for accessibility.**\n\nThe copy button only has an icon and no accessible label for screen readers.\n\n\n<details>\n<summary>♿ Add aria-label</summary>\n\n```diff\n                   <Button\n                     variant=\"outline\"\n                     size=\"icon\"\n                     onClick={copyWebhookUrl}\n+                    aria-label={copiedWebhookUrl ? 'Copied' : 'Copy webhook URL'}\n                   >\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n                  <Button\n                    variant=\"outline\"\n                    size=\"icon\"\n                    onClick={copyWebhookUrl}\n                    aria-label={copiedWebhookUrl ? 'Copied' : 'Copy webhook URL'}\n                  >\n                    {copiedWebhookUrl ? <Check className=\"w-4 h-4\" /> : <Copy className=\"w-4 h-4\" />}\n                  </Button>\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/pos/ToastSetupWizard.tsx around lines 272 - 278, The copy\nbutton in ToastSetupWizard.tsx uses an icon-only Button (component Button) and\nlacks an accessible label for screen readers; add an aria-label (e.g.,\naria-label=\"Copy webhook URL\") to the Button that calls copyWebhookUrl and\nensure it updates appropriately with copiedWebhookUrl (you can also set\naria-pressed or change the label to \"Copied webhook URL\" when copiedWebhookUrl\nis true) so the Check/Copy icon state is conveyed to assistive tech.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "fc4535aa9a636889ec89af1cc8406b7e2a38691c",
+      "status": "fixed",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T01:16:29.922Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added aria-label to copy button for accessibility"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991200,
+        "file": "src/hooks/useToastConnection.tsx",
+        "line": 1
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Unused import: `useEffect`.**\n\n`useEffect` is imported but never used in this hook.\n\n\n<details>\n<summary>🧹 Remove unused import</summary>\n\n```diff\n-import { useState, useEffect, useCallback } from 'react';\n+import { useState, useCallback } from 'react';\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\nimport { useState, useCallback } from 'react';\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useToastConnection.tsx at line 1, The import list in the\nuseToastConnection hook currently includes an unused symbol; remove the unused\n`useEffect` import from the import declaration in the file containing the\n`useToastConnection` function so only actually used React hooks (e.g.,\n`useState`, `useCallback`) are imported.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "cc70f2c7f45ced64c9e52515bf2c7fea656bfb30",
+      "status": "fixed",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T01:16:29.488Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Removed unused useEffect import from useToastConnection"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991203,
+        "file": "supabase/functions/toast-bulk-sync/index.ts",
+        "line": 76
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**External API calls lack timeouts.**\n\nSame issue as in webhook handler - fetch calls to Toast API have no timeout configured.\n\n\n\n\nAlso applies to: 126-131\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-bulk-sync/index.ts around lines 68 - 76, The fetch\ncalls (e.g., the authentication request assigned to authResponse and the other\nToast API fetch around lines 126-131) need request timeouts; wrap each fetch in\nan AbortController, pass controller.signal to fetch, start a setTimeout that\ncalls controller.abort() after a sensible timeout (e.g., CONFIGURED_TIMEOUT_MS),\nand clear the timer on successful response; ensure you catch the abort error\n(check for DOMException name \"AbortError\" or error.name) and handle/log it\nappropriately so the function fails fast instead of hanging.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "520bb006ca08d43743b97ec33a4321bdc1a39716",
+      "status": "fixed",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T01:16:28.895Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added fetchWithTimeout helper with 30s timeout and AbortController to all Toast API fetch calls"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991204,
+        "file": "supabase/functions/toast-bulk-sync/index.ts",
+        "line": 289
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**Duplicate `processOrder` function - extract to shared module.**\n\nThis is identical to the function in `toast-webhook/index.ts` and `toast-sync-data/index.ts`. See previous comment about extracting to `_shared/toastOrderProcessor.ts`.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-bulk-sync/index.ts around lines 217 - 289,\nDuplicate processOrder implementation found; extract it into a single shared\nmodule and import it from other places. Create _shared/toastOrderProcessor.ts\nexporting an async function processOrder(supabase, order, restaurantId,\ntoastRestaurantGuid) with the exact logic, then in this file and in\ntoast-webhook/index.ts and toast-sync-data/index.ts remove the local\nimplementations and replace them with \"import { processOrder } from\n'../_shared/toastOrderProcessor'\" (adjust relative path as needed) and call the\nimported function; ensure the export signature and any used types/fields (e.g.,\nsupabase, order, restaurantId, toastRestaurantGuid) match callers and update any\nonConflict strings or field names only inside the shared module so all callers\nbenefit from the single source of truth.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "fa7deb819856a962947348623c7009d9ca1b3c6c",
+      "status": "fixed",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T01:16:28.469Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Extracted processOrder to shared module _shared/toastOrderProcessor.ts, removed duplicates from 3 edge functions"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991206,
+        "file": "supabase/functions/toast-save-credentials/index.ts",
+        "line": 79
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Upsert conflict target doesn't match table constraint.**\n\nThe `onConflict: 'restaurant_id,toast_restaurant_guid'` specifies a composite key, but the migration (`20260106120000_toast_standard_api_migration.sql`, Line 44) only defines `UNIQUE(restaurant_id)`. This mismatch could cause the upsert to fail.\n\n\n<details>\n<summary>🔧 Proposed fix - use the actual unique constraint</summary>\n\n```diff\n     }, {\n-      onConflict: 'restaurant_id,toast_restaurant_guid'\n+      onConflict: 'restaurant_id'\n     })\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n      }, {\n        onConflict: 'restaurant_id'\n      })\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-save-credentials/index.ts around lines 77 - 79, The\nupsert is using a composite conflict target\n'restaurant_id,toast_restaurant_guid' that doesn't match the table's\nUNIQUE(restaurant_id) constraint; update the upsert call in\ntoast-save-credentials/index.ts (the upsert invocation with onConflict) to use\nthe actual unique constraint — e.g. set onConflict to 'restaurant_id' (or the\nactual constraint name if the migration defines one) so the upsert target\nmatches the table constraint.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "5ec75374b378feac6b160a9bf47478eca2e828da",
+      "status": "fixed",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T01:16:27.821Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Fixed onConflict in toast-save-credentials to use 'restaurant_id' matching the table constraint"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991208,
+        "file": "supabase/functions/toast-save-webhook-secret/index.ts",
+        "line": 78
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Update may silently succeed with no affected rows if connection doesn't exist.**\n\nThe `.update()` call doesn't verify that a row was actually updated. If no `toast_connections` record exists for the restaurant (e.g., credentials step was skipped), the operation completes without error but saves nothing.\n\n\n<details>\n<summary>🔧 Proposed fix to verify update affected a row</summary>\n\n```diff\n-    const { error: updateError } = await supabase\n+    const { data: updatedRows, error: updateError } = await supabase\n       .from('toast_connections')\n       .update({\n         webhook_secret_encrypted: encryptedSecret,\n         webhook_active: true,\n         updated_at: new Date().toISOString()\n       })\n-      .eq('restaurant_id', restaurantId);\n+      .eq('restaurant_id', restaurantId)\n+      .select('id');\n\n     if (updateError) {\n       throw new Error(`Failed to save webhook secret: ${updateError.message}`);\n     }\n+\n+    if (!updatedRows || updatedRows.length === 0) {\n+      return new Response(JSON.stringify({ error: 'No Toast connection found for this restaurant' }), {\n+        status: 404,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n    const { data: updatedRows, error: updateError } = await supabase\n      .from('toast_connections')\n      .update({\n        webhook_secret_encrypted: encryptedSecret,\n        webhook_active: true,\n        updated_at: new Date().toISOString()\n      })\n      .eq('restaurant_id', restaurantId)\n      .select('id');\n\n    if (updateError) {\n      throw new Error(`Failed to save webhook secret: ${updateError.message}`);\n    }\n\n    if (!updatedRows || updatedRows.length === 0) {\n      return new Response(JSON.stringify({ error: 'No Toast connection found for this restaurant' }), {\n        status: 404,\n        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n      });\n    }\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "2ebd2f4815df7524a7fdbf2389dbbde11f5b2ea1",
+      "status": "fixed",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T01:16:25.504Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added .select() to verify update affected rows in toast-save-webhook-secret, returns 404 if no connection found"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991210,
+        "file": "supabase/functions/toast-test-connection/index.ts",
+        "line": 60
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Missing permission verification before accessing connection.**\n\nUnlike `toast-save-credentials` and `toast-save-webhook-secret`, this function doesn't verify that the user has owner/manager role for the restaurant before accessing and testing the connection. While RLS provides some protection, explicit verification is recommended for defense-in-depth, especially since this function accesses and uses sensitive credentials.\n\n\n<details>\n<summary>🔧 Proposed fix - add permission check</summary>\n\n```diff\n     if (!restaurantId) {\n       return new Response(JSON.stringify({ error: 'Missing restaurantId' }), {\n         status: 400,\n         headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n       });\n     }\n\n+    // Verify user has permission\n+    const { data: userRestaurant } = await supabase\n+      .from('user_restaurants')\n+      .select('role')\n+      .eq('user_id', user.id)\n+      .eq('restaurant_id', restaurantId)\n+      .single();\n+\n+    if (!userRestaurant || !['owner', 'manager'].includes(userRestaurant.role)) {\n+      return new Response(JSON.stringify({ error: 'Access denied' }), {\n+        status: 403,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n\n     // Get connection\n     const { data: connection, error: connectionError } = await supabase\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-test-connection/index.ts around lines 47 - 60, The\ntoast-test-connection function accesses sensitive Toast credentials without\nverifying the caller's restaurant role; add the same owner/manager permission\ncheck used in toast-save-credentials and toast-save-webhook-secret before\nquerying toast_connections: fetch the calling user (auth), query\nrestaurant_users (or the equivalent role table) with .eq('user_id',\nuser.id).eq('restaurant_id', restaurantId).in('role',\n['owner','manager']).single() and if no record return a 403 JSON response; only\nafter that proceed to call\nsupabase.from('toast_connections').select(...).single() to get the connection.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "16de1add1113e99a7e5eec334c56f69183635fd8",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T00:17:06.632Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991213,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 31
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console.log statements from production code.**\n\nMultiple `console.log` statements throughout the handler (lines 31, 40, 53, 91, 113, 124, 144, 163, 181). Per coding guidelines, remove all console.log statements from production code. Security events are already being logged via `logSecurityEvent`.\n\n\n\n\nAlso applies to: 40-40, 53-53, 91-91, 113-113, 181-181\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts at line 31, Remove all console.log\ncalls from the Toast webhook handler (e.g., the console.log at line showing\n'Toast webhook received' and the other console.log occurrences around lines 40,\n53, 91, 113, 124, 144, 163, 181); where those console messages convey security-\nor operationally-relevant information, replace them with calls to the existing\nlogSecurityEvent function (or the module's standard logger) using the same\ncontextual message and any relevant variables, and otherwise delete the\nconsole.log statements so no console.* remains in production code.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "496c080766f3a1ada66cc0cca1979f7e735362f2",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T00:17:06.632Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991214,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 40
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Parsing payload before signature verification exposes the handler to untrusted data.**\n\nThe payload is parsed and logged before the HMAC signature is verified (Line 59+). This means malicious/forged payloads are processed and logged even if they fail verification. Parse the raw body first, verify signature, then JSON-parse.\n\n\n<details>\n<summary>🔒 Proposed fix to verify signature before parsing</summary>\n\n```diff\n-    // Parse webhook payload\n-    const payload: ToastWebhookPayload = await req.json();\n-    console.log('Webhook payload:', { eventType: payload.eventType, eventCategory: payload.eventCategory, restaurantGuid: payload.details.restaurantGuid });\n+    // Get raw body for signature verification\n+    const rawBody = await req.text();\n\n     // Find connection by restaurant GUID\n+    // First, get restaurant GUID from header (Toast sends this)\n+    const restaurantGuid = req.headers.get('toast-restaurant-external-id');\n+    if (!restaurantGuid) {\n+      return new Response(JSON.stringify({ error: 'Missing restaurant identifier' }), {\n+        status: 400,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n+\n     const { data: connection, error: connectionError } = await supabase\n       .from('toast_connections')\n       .select('*')\n-      .eq('toast_restaurant_guid', payload.details.restaurantGuid)\n+      .eq('toast_restaurant_guid', restaurantGuid)\n       .eq('is_active', true)\n       .single();\n\n     // ... verify signature using rawBody ...\n+    \n+    // Parse payload after signature verification\n+    const payload: ToastWebhookPayload = JSON.parse(rawBody);\n```\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts around lines 38 - 40, The handler\ncurrently calls await req.json() and logs payload fields before the HMAC\nsignature is verified; change it to read the raw request body (e.g., await\nreq.text() or arrayBuffer), run the existing signature verification logic\nagainst that raw body and the incoming signature header, and only if\nverification passes JSON-parse the raw body into ToastWebhookPayload (replace\nthe current await req.json() usage) and then log fields; reference the payload\nvariable/ToastWebhookPayload and the signature verification routine/header used\nlater in the file to integrate the check and move logging after verification.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "fa051464476ec9f8a1c076dc01c87ffa1a351603",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T00:17:06.632Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991217,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 81
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Webhook signature verification should be mandatory, not optional.**\n\nThe current logic only verifies the signature when both `signature` and `connection.webhook_secret_encrypted` are present. This allows unsigned webhooks to be processed if either is missing, creating a security vulnerability. An attacker could simply omit the `toast-signature` header to bypass verification.\n\nBased on learnings, webhook signatures should be verified using HMAC before processing.\n\n\n<details>\n<summary>🔒 Proposed fix to require signature verification</summary>\n\n```diff\n     // Verify webhook signature using HMAC\n     const signature = req.headers.get('toast-signature');\n-    if (signature && connection.webhook_secret_encrypted) {\n+    if (!connection.webhook_secret_encrypted) {\n+      console.error('Webhook secret not configured for restaurant');\n+      return new Response(JSON.stringify({ error: 'Webhook not configured' }), {\n+        status: 400,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n+\n+    if (!signature) {\n+      console.error('Missing webhook signature');\n+      await logSecurityEvent(supabase, 'TOAST_WEBHOOK_SIGNATURE_MISSING', undefined, connection.restaurant_id, {\n+        restaurantGuid: payload.details.restaurantGuid\n+      });\n+      return new Response(JSON.stringify({ error: 'Missing signature' }), {\n+        status: 401,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n+\n+    {\n       const encryption = await getEncryptionService();\n       const webhookSecret = await encryption.decrypt(connection.webhook_secret_encrypted);\n       \n       // ... rest of verification logic\n     }\n```\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts around lines 58 - 81, The webhook\nsignature verification must be required: change the logic around the signature,\nconnection.webhook_secret_encrypted, and HMAC check so that if either the\ntoast-signature header (signature) is missing or\nconnection.webhook_secret_encrypted is missing, you immediately log a security\nevent via logSecurityEvent (e.g., 'TOAST_WEBHOOK_SIGNATURE_FAILED') and return a\n401 Response; otherwise decrypt the secret with getEncryptionService(), compute\nthe HMAC via createHmac using JSON.stringify(payload) and compare to signature,\nand on mismatch also log the same security event and return 401 before any\nfurther processing.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "41e7980450b50a352f4288d5b9f058e8eb438751",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T00:17:06.632Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991220,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 67
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**HMAC signature computation may not match Toast's expected format.**\n\nThe signature is computed over `JSON.stringify(payload)`, but the payload was already parsed from JSON. Re-stringifying may produce different whitespace/ordering than the original raw body, causing valid signatures to fail verification.\n\n\n<details>\n<summary>🔒 Fix: Use raw request body for signature verification</summary>\n\n```diff\n-      const payloadString = JSON.stringify(payload);\n+      // Use the raw body bytes for signature computation\n       const computedSignature = createHmac('sha256', webhookSecret)\n-        .update(payloadString)\n+        .update(rawBody)  // rawBody from req.text() before JSON.parse\n         .digest('base64');\n```\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts around lines 64 - 67, The HMAC is\nbeing computed from JSON.stringify(payload) which can differ from the original\nraw body and break verification; change the verification to compute the HMAC\nover the raw request body used to parse the payload instead of re-stringifying\nthe parsed object — use the same rawBody (or req.rawBody) variable when calling\ncreateHmac('sha256', webhookSecret).update(...) so computedSignature matches\nToast's expected format, and keep references to createHmac, webhookSecret,\npayloadString/computedSignature to locate and replace the current logic.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "28c78fbdb0ff0f762bf7ac5ff251cc2cb0a3d05b",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T00:17:06.632Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991222,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 154
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**External API calls lack timeouts, risking handler stalls.**\n\nThe `fetch` calls to Toast API (lines 128-136, 157-165) have no timeout. If Toast is slow or unresponsive, the webhook handler will hang indefinitely, potentially exhausting resources.\n\n\n<details>\n<summary>⏱️ Proposed fix to add fetch timeout</summary>\n\n```diff\n+      const controller = new AbortController();\n+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout\n+      \n       const authResponse = await fetch('https://ws-api.toasttab.com/authentication/v1/authentication/login', {\n         method: 'POST',\n         headers: { 'Content-Type': 'application/json' },\n         body: JSON.stringify({\n           clientId,\n           clientSecret,\n           userAccessType: 'TOAST_MACHINE_CLIENT'\n-        })\n+        }),\n+        signal: controller.signal\n       });\n+      clearTimeout(timeoutId);\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts around lines 126 - 154, The Toast\nAPI fetch calls (the token request that assigns authResponse and the later\nwebhook fetch) lack timeouts; wrap each fetch in an AbortController with a\nconfigurable timeout (e.g., 5–10s), pass controller.signal into fetch, and call\ncontroller.abort() after the timeout; ensure you clear the timeout timer after\nthe fetch completes and handle AbortError to return a controlled error response.\nLocate the token auth block (uses variables clientSecret, authResponse,\nauthData, accessToken) and the subsequent fetch that sends events, and apply the\nsame AbortController + setTimeout pattern to both fetch invocations so requests\ncannot hang indefinitely.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "43b9d9a0911ada0a27392beb357dff3b63abacb4",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.632Z",
+      "updated_at": "2026-01-09T00:17:06.632Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991226,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 267
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**`processOrder` function is duplicated across multiple edge functions.**\n\nThe identical `processOrder` function appears in `toast-webhook/index.ts`, `toast-bulk-sync/index.ts`, and `toast-sync-data/index.ts`. This violates DRY and makes maintenance error-prone. Extract to a shared module under `_shared/`.\n\n\n<details>\n<summary>♻️ Proposed extraction to shared module</summary>\n\nCreate `supabase/functions/_shared/toastOrderProcessor.ts`:\n```typescript\nexport async function processOrder(\n  supabase: any, \n  order: any, \n  restaurantId: string, \n  toastRestaurantGuid: string\n) {\n  // ... existing implementation\n}\n```\n\nThen import in each function:\n```diff\n+import { processOrder } from \"../_shared/toastOrderProcessor.ts\";\n\n // Remove local processOrder function\n```\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts around lines 195 - 267, The\nprocessOrder function is duplicated across toast-webhook/index.ts,\ntoast-bulk-sync/index.ts, and toast-sync-data/index.ts; extract it into a shared\nmodule (e.g., supabase/functions/_shared/toastOrderProcessor.ts) that exports\nasync function processOrder(supabase, order, restaurantId, toastRestaurantGuid)\nwith the existing implementation, then replace the local copies in each file\nwith an import of that shared processOrder and call it; ensure any helper names\n(processOrder, toast_orders, toast_order_items, toast_payments) remain unchanged\nand update imports/exports accordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "f4d35705cd1e7430923f88e9fbde763ad4dab43e",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.633Z",
+      "updated_at": "2026-01-09T00:17:06.633Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991230,
+        "file": "supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql",
+        "line": 68
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Return value only counts revenue entries, not total synced rows.**\n\n`v_synced_count` is set after the revenue INSERT (Line 66) but is never updated after subsequent inserts for discounts, tax, tips, and refunds. The function returns only the revenue row count while the function name and comment suggest it should return total synced entries.\n\n\n<details>\n<summary>🔧 Proposed fix to accumulate total count</summary>\n\n```diff\n   GET DIAGNOSTICS v_synced_count = ROW_COUNT;\n\n   -- 2. Insert DISCOUNT entries (from order discounts)\n   INSERT INTO public.unified_sales (\n     ...\n   )\n   SELECT ...;\n\n+  GET DIAGNOSTICS v_synced_count = v_synced_count + ROW_COUNT;\n\n   -- 3. Insert TAX entries\n   INSERT INTO public.unified_sales (\n     ...\n   )\n   SELECT ...;\n\n+  GET DIAGNOSTICS v_synced_count = v_synced_count + ROW_COUNT;\n\n   -- 4. Insert TIP entries (from payments)\n   INSERT INTO public.unified_sales (\n     ...\n   )\n   SELECT ...;\n\n+  GET DIAGNOSTICS v_synced_count = v_synced_count + ROW_COUNT;\n\n   -- 5. Insert REFUND entries\n   INSERT INTO public.unified_sales (\n     ...\n   )\n   SELECT ...;\n\n+  GET DIAGNOSTICS v_synced_count = v_synced_count + ROW_COUNT;\n```\n\nNote: Use a temporary variable for each `GET DIAGNOSTICS` call and add to `v_synced_count`:\n```sql\nDECLARE\n  v_synced_count INTEGER := 0;\n  v_row_count INTEGER := 0;\nBEGIN\n  -- After each INSERT:\n  GET DIAGNOSTICS v_row_count = ROW_COUNT;\n  v_synced_count := v_synced_count + v_row_count;\n```\n</details>\n\n\nAlso applies to: 218-218\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql at\nline 66, v_synced_count is only populated after the revenue INSERT via GET\nDIAGNOSTICS and never accumulates rows from subsequent INSERTs (discounts, tax,\ntips, refunds), so update the function to return the true total: declare\nv_synced_count INTEGER := 0 and a temp v_row_count INTEGER := 0, then after each\nINSERT call GET DIAGNOSTICS v_row_count = ROW_COUNT and do v_synced_count :=\nv_synced_count + v_row_count (repeat for revenue, discounts, tax, tips,\nrefunds); also apply the same fix at the other occurrence that sets\nv_synced_count (the one noted around line 218) so the final returned\nv_synced_count reflects the sum of all inserted rows.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "8e189ce2cfd16a9b872a6331967ab215d3f7d5a2",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.633Z",
+      "updated_at": "2026-01-09T00:17:06.633Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2673932086,
+        "file": "supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql",
+        "line": 13
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# Search for calls to sync_toast_to_unified_sales in TypeScript files\nrg -n 'sync_toast_to_unified_sales' --type ts -A 5 -B 5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 5155\n\n---\n\n🏁 Script executed:\n\n```shell\n# Also search in JavaScript files in case edge functions use .js\nrg -n 'sync_toast_to_unified_sales' --type js -A 5 -B 5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the full migration file to see if pgTAP tests are included\nwc -l supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 134\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the migration file to see if pgTAP tests are present\ncat supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql | tail -100\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2704\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if pgTAP tests exist at the start of the migration file\nhead -50 supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1303\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for any BEGIN and SELECT statements which would indicate pgTAP tests\ngrep -n \"SELECT\" supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 123\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the toast-sync-data edge function for authorization checks\nhead -180 supabase/functions/toast-sync-data/index.ts | tail -60\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1837\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for authorization/verification logic in toast-sync-data edge function\nrg -n \"restaurant_id|auth|permission|verify|allowed\" supabase/functions/toast-sync-data/index.ts -B 2 -A 2 | head -60\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2350\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for restaurant ownership verification in the edge function\nrg -n \"user_id|restaurants|ownership|tenant\" supabase/functions/toast-sync-data/index.ts -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the full beginning of toast-sync-data to see authorization flow\nhead -60 supabase/functions/toast-sync-data/index.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2117\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for any pgTAP test patterns (BEGIN/SELECT assertions) in migration file\ngrep -n \"BEGIN\\|SELECT.*=\" supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql | grep -v \"INSERT\\|UPDATE\\|FROM\" | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 69\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if there's a RLS policy or tenant verification function used\nrg -n \"tenant|owner|user_restaurants\" supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check RLS policies on toast_connections table\nrg -n \"toast_connections\" supabase/migrations/ --type sql -A 5 | grep -i \"policy\\|rls\\|create\" | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2302\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for user_restaurants or any tenant verification in the codebase\nrg -n \"user_restaurants\\|user_id.*restaurant\" supabase/migrations/ --type sql | head -10\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the restaurants table to see if it has user_id for ownership\nrg -n \"CREATE TABLE.*restaurants\" supabase/migrations/ --type sql -A 10 | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2672\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for RLS policies that might enforce restaurant ownership\nrg -n \"auth.uid\\(\\)|current_user_id\" supabase/migrations/ --type sql -B 2 -A 2 | head -50\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4770\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get the full RLS policy definition for toast_connections\nsed -n '47,75p' supabase/migrations/20260106120000_toast_standard_api_migration.sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 810\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if the edge function verifies restaurant ownership before calling RPC\nrg -n \"user_restaurants\" supabase/functions/toast-sync-data/index.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check for any authorization verification of restaurant ownership in toast-sync-data\nsed -n '1,100p' supabase/functions/toast-sync-data/index.ts | grep -A 20 \"restaurantId\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1182\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify the full authorization flow: check if edge function is the only way to call the RPC\nrg -n \"sync_toast_to_unified_sales\" src/ --type tsx --type ts -B 3 -A 3\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check useToastSalesAdapter more carefully to see if it calls RPC directly from client\ncat -n src/hooks/adapters/useToastSalesAdapter.tsx | sed -n '55,75p'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 788\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify if there are any other calling patterns besides the edge functions\nrg -n \"sync_toast_to_unified_sales\" --type tsx --type ts -B 5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if the RPC function itself has any auth checks\ncat supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql | grep -i \"auth\\|uid\\|user_restaurants\" -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1377\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for all calls to sync_toast_to_unified_sales\nrg -n \"sync_toast_to_unified_sales\" -B 3 -A 3\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 9545\n\n---\n\n🏁 Script executed:\n\n```shell\n# Examine the useToastSalesAdapter file more carefully to understand context\nhead -100 src/hooks/adapters/useToastSalesAdapter.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3083\n\n---\n\n\n\n</details>\n\n**Add authorization check within the function and implement pgTAP tests.**\n\nThe function lacks internal authorization validation. While edge functions (toast-sync-data, toast-webhook, toast-bulk-sync) properly verify restaurant access through the toast_connections RLS policy before calling the RPC, the client-side hook (useToastSalesAdapter.tsx:65) directly invokes the RPC with an arbitrary `restaurantId` without verifying the caller's ownership. This bypasses all authorization.\n\nAdd an authorization check inside the function:\n```sql\nIF NOT EXISTS (\n  SELECT 1 FROM public.user_restaurants\n  WHERE restaurant_id = p_restaurant_id\n    AND user_id = auth.uid()\n) THEN\n  RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';\nEND IF;\n```\n\nAdditionally, per the coding guidelines, implement pgTAP tests for this new SQL function and its authorization enforcement.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql around\nlines 6 - 13, Add an internal authorization check at the start of the\nsync_toast_to_unified_sales(p_restaurant_id UUID) function: verify that a row\nexists in public.user_restaurants where restaurant_id = p_restaurant_id and\nuser_id = auth.uid(), and RAISE EXCEPTION 'Unauthorized: user does not have\naccess to this restaurant' if not found; place this check before any data\nmodifications or SELECTs so the RPC cannot be invoked by non-owners. Then add\npgTAP tests that assert (1) an authorized user can successfully call\nsync_toast_to_unified_sales and returns expected synced count, (2) an\nunauthorized user (different user_id) calling the RPC receives the Unauthorized\nexception, and (3) behavior for unauthenticated calls (if applicable) is\ncorrectly rejected; use auth simulation helpers in tests to set auth.uid() for\neach case.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "b843777bfb8101e5ab60396a49877111156bacad",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.633Z",
+      "updated_at": "2026-01-09T00:17:06.633Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2673932090,
+        "file": "supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql",
+        "line": 248
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Add NULL check for `tp.amount` to prevent inserting NULL values.**\n\nThe refund filter doesn't check `tp.amount IS NOT NULL`, unlike the other sections (discounts, tax, tips). If a payment has `payment_status = 'REFUNDED'` but a NULL amount, this will insert rows with NULL `total_price` and `unit_price`.\n\n\n\n<details>\n<summary>Proposed fix</summary>\n\n```diff\n   FROM public.toast_payments tp\n   WHERE tp.restaurant_id = p_restaurant_id\n+    AND tp.amount IS NOT NULL\n     AND (\n       tp.payment_status = 'REFUNDED'\n       OR tp.amount < 0\n     )\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  WHERE tp.restaurant_id = p_restaurant_id\n    AND tp.amount IS NOT NULL\n    AND (\n      tp.payment_status = 'REFUNDED'\n      OR tp.amount < 0\n    )\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql around\nlines 244 - 248, The WHERE clause that selects refunded payments currently\nallows rows where tp.payment_status = 'REFUNDED' even if tp.amount IS NULL,\nwhich leads to NULL total_price/unit_price inserts; update the filter to exclude\nNULL amounts by adding tp.amount IS NOT NULL (e.g., change the condition to AND\n(tp.payment_status = 'REFUNDED' OR tp.amount < 0) AND tp.amount IS NOT NULL or\nfold the IS NOT NULL into the grouped expression) so refunded rows with NULL\namount are not inserted.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "7ae78d6f40d991f28eba40b74f56aa6b208db56e",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.633Z",
+      "updated_at": "2026-01-09T00:17:06.633Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 3720664667
+      },
+      "title": "@copilot why are we doing this:   -- Delete existing entries for orders we're about to sync\r",
+      "body": "@copilot why are we doing this:   -- Delete existing entries for orders we're about to sync\r\n  -- This ensures we don't have duplicates when reprocessing orders\r\n  DELETE FROM public.unified_sales\r\n  WHERE restaurant_id = p_restaurant_id\r\n    AND pos_system = 'toast'\r\n    AND external_order_id IN (\r\n      SELECT DISTINCT toast_order_guid\r\n      FROM public.toast_orders\r\n      WHERE restaurant_id = p_restaurant_id\r\n    );\r\n    \r\n    \r\n    Is there a better way to avoid duplicates? when we enter info in unified sales, we might have done prior categorization to the transaction items.  Would deleting items mess up the categorization? what other impact could we have from deleting? \r\n    \r\n    We ran into this with shift4 I believe.  We no longer delete on shift4 or square",
+      "severity": "info",
+      "id": "965cef63ca191562631be8c986b962825f87fac7",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.634Z",
+      "updated_at": "2026-01-09T00:17:06.634Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 3720665146
+      },
+      "title": "@jdelgado2002 I've opened a new pull request, #293, to work on those changes. Once the pull request is ready, I'll request review from you.",
+      "body": "@jdelgado2002 I've opened a new pull request, #293, to work on those changes. Once the pull request is ready, I'll request review from you.",
+      "severity": "info",
+      "id": "8b8492a73e0e29d692ea6534ab6c7626d5633f68",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.634Z",
+      "updated_at": "2026-01-09T00:17:06.634Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 3725827835
+      },
+      "title": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')",
+      "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=292) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [8.2% Duplication on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=292&metric=new_duplicated_lines_density&view=list) (required ≤ 3%)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=292)\n\n",
+      "severity": "info",
+      "id": "ba2d2260b32643feafe924b1f6683ee040274a84",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.634Z",
+      "updated_at": "2026-01-09T00:17:06.634Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuaJNLAE59PXVk-5oBu",
+        "pr": "292",
+        "file": "src/components/IntegrationCard.tsx",
+        "line": 70
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "c05b2f71b71b29933f077eb5d4e0401d1920870f",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.634Z",
+      "updated_at": "2026-01-09T00:17:06.634Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuaJNLAE59PXVk-5oBv",
+        "pr": "292",
+        "file": "src/components/IntegrationCard.tsx",
+        "line": 75
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "35a6b5282263452c0107dfdb9e17cb762957e0b9",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.634Z",
+      "updated_at": "2026-01-09T00:17:06.634Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuaJNKSE59PXVk-5oBr",
+        "pr": "292",
+        "file": "src/components/ToastSync.tsx",
+        "line": 9
+      },
+      "title": "Remove this unused import of 'Download'.",
+      "body": "Remove this unused import of 'Download'.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "69fbbdc878c97984cd1287e1160a26ed258aaaa5",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.634Z",
+      "updated_at": "2026-01-09T00:17:06.634Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuaJNKkE59PXVk-5oBs",
+        "pr": "292",
+        "file": "src/components/pos/ToastSetupWizard.tsx",
+        "line": 29
+      },
+      "title": "Prefer `globalThis` over `window`.",
+      "body": "Prefer `globalThis` over `window`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "4f635799c148354e01a734a0ae6d8e1b11d03ac4",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.634Z",
+      "updated_at": "2026-01-09T00:17:06.634Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuaJNKkE59PXVk-5oBt",
+        "pr": "292",
+        "file": "src/components/pos/ToastSetupWizard.tsx",
+        "line": 147
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "0b2d5bbba2cf9d56d20b9a86309cc727319aca3f",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.634Z",
+      "updated_at": "2026-01-09T00:17:06.634Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuaJNJlE59PXVk-5oBq",
+        "pr": "292",
+        "file": "src/hooks/useToastConnection.tsx",
+        "line": 1
+      },
+      "title": "Remove this unused import of 'useEffect'.",
+      "body": "Remove this unused import of 'useEffect'.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "30e7395f8d4f35aece1bbf8d9f910c9ae06b485b",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.634Z",
+      "updated_at": "2026-01-09T00:17:06.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/Html5QrcodeScanner.tsx",
+        "line": 208
+      },
+      "title": "@typescript-eslint/no-explicit-any in Html5QrcodeScanner.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/Html5QrcodeScanner.tsx"
+      ],
+      "id": "a8c035fb9d42711efdd95d454175f5f62c1a5cfd",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.648Z",
+      "updated_at": "2026-01-09T00:17:06.648Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/Html5QrcodeScanner.tsx",
+        "line": 251
+      },
+      "title": "@typescript-eslint/no-explicit-any in Html5QrcodeScanner.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/Html5QrcodeScanner.tsx"
+      ],
+      "id": "09beaa4e0636aa57da1126b60a7f8f700b74b1ac",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.648Z",
+      "updated_at": "2026-01-09T00:17:06.648Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/Html5QrcodeScanner.tsx",
+        "line": 264
+      },
+      "title": "@typescript-eslint/no-explicit-any in Html5QrcodeScanner.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/Html5QrcodeScanner.tsx"
+      ],
+      "id": "0b79c36590455715e9a2d4282bfc35d5b17e6fe8",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.648Z",
+      "updated_at": "2026-01-09T00:17:06.648Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/Html5QrcodeScannerSimple.tsx",
+        "line": 127
+      },
+      "title": "@typescript-eslint/no-explicit-any in Html5QrcodeScannerSimple.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/Html5QrcodeScannerSimple.tsx"
+      ],
+      "id": "97760cdee3a40c8ee2be629f59191a27f3982b61",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.648Z",
+      "updated_at": "2026-01-09T00:17:06.648Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/IntegrationCard.tsx",
+        "line": 65
+      },
+      "title": "react-hooks/exhaustive-deps in IntegrationCard.tsx",
+      "body": "React Hook useEffect has a missing dependency: 'toastConnection'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/IntegrationCard.tsx"
+      ],
+      "id": "62388cc50470cfdbca4e881cd1a016ba57a49211",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.648Z",
+      "updated_at": "2026-01-09T00:17:06.648Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 56
+      },
+      "title": "react-hooks/exhaustive-deps in ReceiptMappingReview.tsx",
+      "body": "React Hook useEffect has a missing dependency: 'loadData'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "b50fe6a2b7290f3ac4b431dc03b96db0d68d1dd3",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 110
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "7d7854a0d58cb8a78170ebeb9c74ac33f22173be",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/SizePackagingSection.tsx",
+        "line": 13
+      },
+      "title": "@typescript-eslint/no-explicit-any in SizePackagingSection.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/SizePackagingSection.tsx"
+      ],
+      "id": "e42451100a39375f60a2425defe0fe564caf0e79",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ToastSync.tsx",
+        "line": 55
+      },
+      "title": "@typescript-eslint/no-explicit-any in ToastSync.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ToastSync.tsx"
+      ],
+      "id": "a14e78dc968f155923c874a3cc849e177f69c573",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx",
+        "line": 59
+      },
+      "title": "@typescript-eslint/no-explicit-any in ToastSetupWizard.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx"
+      ],
+      "id": "2d92466c09f8b960f95946b3b774713b2068022a",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx",
+        "line": 83
+      },
+      "title": "@typescript-eslint/no-explicit-any in ToastSetupWizard.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx"
+      ],
+      "id": "67af81322d3081c3e828b63b8e321597671c28a9",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx",
+        "line": 111
+      },
+      "title": "@typescript-eslint/no-explicit-any in ToastSetupWizard.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx"
+      ],
+      "id": "3f7c7179faae73980509143f1f2d2196e6733c03",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/usePnLAnalyticsFromSource.tsx",
+        "line": 130
+      },
+      "title": "react-hooks/exhaustive-deps in usePnLAnalyticsFromSource.tsx",
+      "body": "React Hook useMemo has missing dependencies: 'dateFrom' and 'dateTo'. Either include them or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/usePnLAnalyticsFromSource.tsx"
+      ],
+      "id": "2404192855d2d0f2afd9ed21697bd842a56ed9e4",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/usePnLAnalyticsFromSource.tsx",
+        "line": 130
+      },
+      "title": "react-hooks/exhaustive-deps in usePnLAnalyticsFromSource.tsx",
+      "body": "React Hook useMemo has a complex expression in the dependency array. Extract it to a separate variable so it can be statically checked.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/usePnLAnalyticsFromSource.tsx"
+      ],
+      "id": "65c117377618986877c620ef9f5b9d0164d2ddae",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 10
+      },
+      "title": "@typescript-eslint/ban-ts-comment in useReceiptImport.tsx",
+      "body": "Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "0c35021a0e00f42aea82d71320d92eacb5ee7cd0",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 38
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "4a12601080ff4a46b3ac3172224926c14a41598d",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 232
+      },
+      "title": "@typescript-eslint/ban-ts-comment in useReceiptImport.tsx",
+      "body": "Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "11bf16c8f1acae372a452a9acde293d665c6acb3",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 251
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "0519e3b16e4bbde7194ce8b2e7572c00b3e0a741",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 659
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "893c07f9acfd4044d8358478daab729eb3d812e9",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 681
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "9e6f2b54faafbd58559bdaddf8e6f6c942cfdaf9",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.649Z",
+      "updated_at": "2026-01-09T00:17:06.649Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx",
+        "line": 35
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx"
+      ],
+      "id": "fdfbc36cfedc9edab01cd74aaf6c0cf66c19bd9b",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx",
+        "line": 96
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx"
+      ],
+      "id": "11ce22a3f2b4d0331e8387beb8b0e20444142c2e",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx",
+        "line": 133
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx"
+      ],
+      "id": "fcd1d109b525c2dc89ca264aa72448d1f33ff346",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx",
+        "line": 169
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx"
+      ],
+      "id": "092597a50843298d5b73cc75a834eb33d269a624",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx",
+        "line": 186
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx"
+      ],
+      "id": "939db65d3c9ce798de8e7bbdab58575076537743",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx",
+        "line": 201
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx"
+      ],
+      "id": "bb35e85d3be88b3b4ad709ec77083be071dddbae",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx",
+        "line": 237
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx"
+      ],
+      "id": "41ac010296479aae1f7218a30e545814c2f15066",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/priceNormalization.ts",
+        "line": 86
+      },
+      "title": "@typescript-eslint/no-explicit-any in priceNormalization.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/priceNormalization.ts"
+      ],
+      "id": "17c28dc431bee4837adef1ba7e9fa1d280409393",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Inventory.tsx",
+        "line": 413
+      },
+      "title": "@typescript-eslint/no-explicit-any in Inventory.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Inventory.tsx"
+      ],
+      "id": "8942c7229fc7f7088af4334464fff6b5af6a55c4",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Inventory.tsx",
+        "line": 434
+      },
+      "title": "@typescript-eslint/no-explicit-any in Inventory.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Inventory.tsx"
+      ],
+      "id": "088c98e903cc14a5929a3fdec1edae33315da2b2",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Inventory.tsx",
+        "line": 741
+      },
+      "title": "@typescript-eslint/no-explicit-any in Inventory.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Inventory.tsx"
+      ],
+      "id": "f8d4e39b386a637c31d22d0fec50c0ddbf2ff2b5",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Inventory.tsx",
+        "line": 772
+      },
+      "title": "@typescript-eslint/prefer-as-const in Inventory.tsx",
+      "body": "Expected a `const` assertion instead of a literal type annotation.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Inventory.tsx"
+      ],
+      "id": "412c0f5d36c469e79de3f744cbab209ef2842263",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Inventory.tsx",
+        "line": 1440
+      },
+      "title": "@typescript-eslint/no-explicit-any in Inventory.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Inventory.tsx"
+      ],
+      "id": "af40db35de85ddc1a2296b148e50d00cd9380f01",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx",
+        "line": 114
+      },
+      "title": "react-hooks/exhaustive-deps in KioskMode.tsx",
+      "body": "React Hook useCallback has a missing dependency: 'createPunch'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/KioskMode.tsx"
+      ],
+      "id": "c6ddb1a77e5bb1f260778856b55bcabe038880cd",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Scheduling.tsx",
+        "line": 88
+      },
+      "title": "react-hooks/exhaustive-deps in Scheduling.tsx",
+      "body": "React Hook useMemo has an unnecessary dependency: 'restaurantTimezone'. Either exclude it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Scheduling.tsx"
+      ],
+      "id": "7c402af7ee6e49d33f13b17d69d0c694312c874a",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.650Z",
+      "updated_at": "2026-01-09T00:17:06.650Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/services/productLookupService.ts",
+        "line": 209
+      },
+      "title": "@typescript-eslint/no-explicit-any in productLookupService.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/services/productLookupService.ts"
+      ],
+      "id": "03e69c5aefa2ef4d4885a57e9c31be2ca720babc",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.651Z",
+      "updated_at": "2026-01-09T00:17:06.651Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/services/productLookupService.ts",
+        "line": 249
+      },
+      "title": "@typescript-eslint/no-explicit-any in productLookupService.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/services/productLookupService.ts"
+      ],
+      "id": "048a3c2632e4525f657d55e4d410170d42628ceb",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.651Z",
+      "updated_at": "2026-01-09T00:17:06.651Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/notificationHelpers.ts",
+        "line": 33
+      },
+      "title": "@typescript-eslint/no-explicit-any in notificationHelpers.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/notificationHelpers.ts"
+      ],
+      "id": "580d8ecfc9a135a7cd1fc75dc129853045aaaece",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.651Z",
+      "updated_at": "2026-01-09T00:17:06.651Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/notificationHelpers.ts",
+        "line": 83
+      },
+      "title": "@typescript-eslint/no-explicit-any in notificationHelpers.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/notificationHelpers.ts"
+      ],
+      "id": "da1c914946cc1d0014dfc98d462067a4872bcc60",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.651Z",
+      "updated_at": "2026-01-09T00:17:06.651Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/notificationHelpers.ts",
+        "line": 106
+      },
+      "title": "@typescript-eslint/no-explicit-any in notificationHelpers.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/notificationHelpers.ts"
+      ],
+      "id": "4c6f6dddfe05b0c988ca49cd69a2ef4f842c78a1",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.651Z",
+      "updated_at": "2026-01-09T00:17:06.651Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/notificationHelpers.ts",
+        "line": 268
+      },
+      "title": "@typescript-eslint/no-explicit-any in notificationHelpers.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/notificationHelpers.ts"
+      ],
+      "id": "162679e5ee9ec183bc46d1a9a89f1ebbf2637a4d",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.651Z",
+      "updated_at": "2026-01-09T00:17:06.651Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/notificationHelpers.ts",
+        "line": 300
+      },
+      "title": "@typescript-eslint/no-explicit-any in notificationHelpers.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/notificationHelpers.ts"
+      ],
+      "id": "0d442906906d121e4e5999caf15ec0c0e740f961",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.651Z",
+      "updated_at": "2026-01-09T00:17:06.651Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/priceNormalization.ts",
+        "line": 83
+      },
+      "title": "@typescript-eslint/no-explicit-any in priceNormalization.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/priceNormalization.ts"
+      ],
+      "id": "117b77f2d11d9f587f5380ec20ceb05ae2c60b82",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.651Z",
+      "updated_at": "2026-01-09T00:17:06.651Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 58
+      },
+      "title": "no-useless-escape in index.ts",
+      "body": "Unnecessary escape character: \\/.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "27648c00086c29052ff2ff610386925f648deb47",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.652Z",
+      "updated_at": "2026-01-09T00:17:06.652Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 69
+      },
+      "title": "no-useless-escape in index.ts",
+      "body": "Unnecessary escape character: \\/.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "a04e34962e98e1c0f3fc2afffd45a3eb2db3daaa",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.652Z",
+      "updated_at": "2026-01-09T00:17:06.652Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 183
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "81444f80128c99cfdca9c00005a27cffe0ca7b10",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.652Z",
+      "updated_at": "2026-01-09T00:17:06.652Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 191
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "949c4780c9c0477a6e4213d86ac94b9be095f735",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.652Z",
+      "updated_at": "2026-01-09T00:17:06.652Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 665
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "dfec2e0afe95f48860f556646bdeafb1e2019cc5",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.653Z",
+      "updated_at": "2026-01-09T00:17:06.653Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 677
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "c8a5bbbea2afab411d02ffeb76e7a857cc83e9a5",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.653Z",
+      "updated_at": "2026-01-09T00:17:06.653Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts",
+        "line": 98
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'endDate' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts"
+      ],
+      "id": "6e3ff5e21ea074c4a175fceecc43bb02ac9330d7",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.654Z",
+      "updated_at": "2026-01-09T00:17:06.654Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts",
+        "line": 187
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts"
+      ],
+      "id": "abfdfb90d0f68e9567df67765fa29e699dfca588",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.654Z",
+      "updated_at": "2026-01-09T00:17:06.654Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts",
+        "line": 208
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts"
+      ],
+      "id": "a7d197ad1eadd41a8d11f33c08cb3239507b1207",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.654Z",
+      "updated_at": "2026-01-09T00:17:06.654Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts",
+        "line": 217
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts"
+      ],
+      "id": "34b83e90e93cd375a0721ebad1654dff29afe84c",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.654Z",
+      "updated_at": "2026-01-09T00:17:06.654Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-save-credentials/index.ts",
+        "line": 95
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-save-credentials/index.ts"
+      ],
+      "id": "d61d162a93698c40907d9dc4d758204f9f0c6bcd",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.654Z",
+      "updated_at": "2026-01-09T00:17:06.654Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-save-webhook-secret/index.ts",
+        "line": 88
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-save-webhook-secret/index.ts"
+      ],
+      "id": "255efe37fbeddbacd38f71d8cc8ce894bca15740",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.654Z",
+      "updated_at": "2026-01-09T00:17:06.654Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-sync-data/index.ts",
+        "line": 257
+      },
+      "title": "Problem",
+      "body": "Parsing error: 'export' expected.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-sync-data/index.ts"
+      ],
+      "id": "70d4479391b1ef77d56991cfc5200bc0e65230a6",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.654Z",
+      "updated_at": "2026-01-09T00:17:06.654Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-test-connection/index.ts",
+        "line": 124
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-test-connection/index.ts"
+      ],
+      "id": "0437d453636616ba61fd23349ecd67729d0da87b",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.654Z",
+      "updated_at": "2026-01-09T00:17:06.654Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts",
+        "line": 186
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts"
+      ],
+      "id": "9094313099c76a50d22c348ea3134191ea63d78e",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.654Z",
+      "updated_at": "2026-01-09T00:17:06.654Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts",
+        "line": 195
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts"
+      ],
+      "id": "2fd66880121f5ec05ba1bb04144b26dc13733288",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.654Z",
+      "updated_at": "2026-01-09T00:17:06.654Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 142
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "c29315c82805a0948cebabc4e32099e373497c91",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.655Z",
+      "updated_at": "2026-01-09T00:17:06.655Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 163
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "3d2dfaae51dd3e8632160b055fa51eac904c8d37",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.655Z",
+      "updated_at": "2026-01-09T00:17:06.655Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx",
+        "line": 196
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTipSplitAuditLog.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useTipSplitAuditLog.test.tsx"
+      ],
+      "id": "d97808949b67d8c35ef164f5142b629a2e5024c8",
+      "status": "open",
+      "created_at": "2026-01-09T00:17:06.655Z",
+      "updated_at": "2026-01-09T00:17:06.655Z"
     }
   ]
 }

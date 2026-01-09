@@ -2,11 +2,34 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getEncryptionService } from "../_shared/encryption.ts";
 import { logSecurityEvent } from "../_shared/securityEvents.ts";
+import { processOrder } from "../_shared/toastOrderProcessor.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const FETCH_TIMEOUT_MS = 30000; // 30 seconds
+
+async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${FETCH_TIMEOUT_MS}ms`);
+    }
+    throw error;
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -65,7 +88,7 @@ serve(async (req) => {
           const clientId = connection.client_id;
           const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
           
-          const authResponse = await fetch('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
+          const authResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -123,7 +146,7 @@ serve(async (req) => {
           
           console.log(`Fetching page ${page}...`);
           
-          const ordersResponse = await fetch(bulkUrl, {
+          const ordersResponse = await fetchWithTimeout(bulkUrl, {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
               'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
@@ -213,77 +236,3 @@ serve(async (req) => {
     });
   }
 });
-
-async function processOrder(supabase: any, order: any, restaurantId: string, toastRestaurantGuid: string) {
-  // Parse order date and time
-  const closedDate = order.closedDate ? new Date(order.closedDate) : null;
-  const orderDate = closedDate ? closedDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-  const orderTime = closedDate ? closedDate.toISOString().split('T')[1].split('.')[0] : null;
-
-  // Upsert order header
-  await supabase.from('toast_orders').upsert({
-    restaurant_id: restaurantId,
-    toast_order_guid: order.guid,
-    toast_restaurant_guid: toastRestaurantGuid,
-    order_number: order.orderNumber || null,
-    order_date: orderDate,
-    order_time: orderTime,
-    total_amount: order.totalAmount ? order.totalAmount / 100 : null,
-    subtotal_amount: order.subtotal ? order.subtotal / 100 : null,
-    tax_amount: order.taxAmount ? order.taxAmount / 100 : null,
-    tip_amount: order.tipAmount ? order.tipAmount / 100 : null,
-    discount_amount: order.discountAmount ? order.discountAmount / 100 : null,
-    service_charge_amount: order.serviceChargeAmount ? order.serviceChargeAmount / 100 : null,
-    payment_status: order.paymentStatus || null,
-    dining_option: order.diningOption?.behavior || null,
-    raw_json: order,
-    synced_at: new Date().toISOString(),
-  }, {
-    onConflict: 'restaurant_id,toast_order_guid'
-  });
-
-  // Process order items from checks
-  if (order.checks) {
-    for (const check of order.checks) {
-      if (check.selections) {
-        for (const selection of check.selections) {
-          await supabase.from('toast_order_items').upsert({
-            restaurant_id: restaurantId,
-            toast_item_guid: selection.guid,
-            toast_order_guid: order.guid,
-            item_name: selection.itemName || selection.name || 'Unknown Item',
-            quantity: selection.quantity || 1,
-            unit_price: selection.preDiscountPrice ? selection.preDiscountPrice / 100 : 0,
-            total_price: selection.price ? selection.price / 100 : 0,
-            menu_category: selection.salesCategory || null,
-            modifiers: selection.modifiers || null,
-            raw_json: selection,
-            synced_at: new Date().toISOString(),
-          }, {
-            onConflict: 'restaurant_id,toast_item_guid,toast_order_guid'
-          });
-        }
-      }
-
-      // Process payments
-      if (check.payments) {
-        for (const payment of check.payments) {
-          await supabase.from('toast_payments').upsert({
-            restaurant_id: restaurantId,
-            toast_payment_guid: payment.guid,
-            toast_order_guid: order.guid,
-            payment_type: payment.type || null,
-            amount: payment.amount ? payment.amount / 100 : 0,
-            tip_amount: payment.tipAmount ? payment.tipAmount / 100 : null,
-            payment_date: orderDate,
-            payment_status: payment.status || null,
-            raw_json: payment,
-            synced_at: new Date().toISOString(),
-          }, {
-            onConflict: 'restaurant_id,toast_payment_guid,toast_order_guid'
-          });
-        }
-      }
-    }
-  }
-}

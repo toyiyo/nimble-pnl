@@ -64,17 +64,25 @@ serve(async (req) => {
     const encryptedSecret = await encryption.encrypt(webhookSecret);
 
     // Update connection with webhook secret
-    const { error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from('toast_connections')
       .update({
         webhook_secret_encrypted: encryptedSecret,
         webhook_active: true,
         updated_at: new Date().toISOString()
       })
-      .eq('restaurant_id', restaurantId);
+      .eq('restaurant_id', restaurantId)
+      .select('id');
 
     if (updateError) {
       throw new Error(`Failed to save webhook secret: ${updateError.message}`);
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      return new Response(JSON.stringify({ error: 'No Toast connection found for this restaurant' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     await logSecurityEvent(supabase, 'TOAST_WEBHOOK_CONFIGURED', user.id, restaurantId, {

@@ -7,7 +7,7 @@ Completed full implementation of Toast POS Standard API Access integration, repl
 
 ## What Was Built
 
-### 1. Database Schema (`/supabase/migrations/20260106000000_toast_standard_api_migration.sql`)
+### 1. Database Schema (`/supabase/migrations/20260106120000_toast_standard_api_migration.sql`)
 **Purpose**: Complete database restructure for Standard API model
 
 **Key Changes**:
@@ -82,7 +82,7 @@ Completed full implementation of Toast POS Standard API Access integration, repl
 
 ---
 
-### 4. Financial Breakdown RPC (`/supabase/migrations/20260106000001_toast_sync_financial_breakdown.sql`)
+### 4. Financial Breakdown RPC (`/supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql`)
 **Purpose**: Create separate `unified_sales` entries for revenue, discounts, tax, tips, refunds
 
 **Logic**:

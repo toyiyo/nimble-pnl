@@ -75,7 +75,7 @@ serve(async (req) => {
         connection_status: 'pending',
         updated_at: new Date().toISOString()
       }, {
-        onConflict: 'restaurant_id,toast_restaurant_guid'
+        onConflict: 'restaurant_id'
       })
       .select()
       .single();

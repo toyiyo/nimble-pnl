@@ -26,7 +26,9 @@ export const ToastSetupWizard = ({ restaurantId, onComplete }: ToastSetupWizardP
   const { toast } = useToast();
   const { saveCredentials, testConnection, saveWebhookSecret } = useToastConnection();
 
-  const webhookUrl = `${window.location.origin}/supabase/functions/v1/toast-webhook`;
+  // Use the actual Supabase project URL for Edge Functions
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+  const webhookUrl = `${supabaseUrl}/functions/v1/toast-webhook`;
 
   const steps: { id: SetupStep; label: string; completed: boolean }[] = [
     { id: 'credentials', label: 'API Credentials', completed: currentStep !== 'credentials' },
@@ -273,6 +275,7 @@ export const ToastSetupWizard = ({ restaurantId, onComplete }: ToastSetupWizardP
                     variant="outline"
                     size="icon"
                     onClick={copyWebhookUrl}
+                    aria-label={copiedWebhookUrl ? 'Copied webhook URL' : 'Copy webhook URL'}
                   >
                     {copiedWebhookUrl ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                   </Button>

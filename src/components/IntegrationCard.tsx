@@ -263,8 +263,8 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
                 `Connected: ${new Date(cloverIntegration.connection.connected_at).toLocaleDateString()}` :
               isShift4Integration && shift4Integration.connection ?
                 `Connected: ${new Date(shift4Integration.connection.connected_at).toLocaleDateString()}` :
-              isToastIntegration && toastIntegration.connection ?
-                `Connected: ${new Date(toastIntegration.connection.connected_at).toLocaleDateString()}` :
+              isToastIntegration && toastConnection.connection ?
+                `Connected: ${new Date(toastConnection.connection.created_at).toLocaleDateString()}` :
                 'Last sync: 2 hours ago'
               }
             </div>

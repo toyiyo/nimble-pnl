@@ -136,7 +136,7 @@ INSERT INTO unified_sales (
   NOW() - INTERVAL '1 hour'
 ) ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id) 
   WHERE parent_sale_id IS NULL 
-  DO UPDATE SET custom_category = 'User Custom Category';
+  DO UPDATE SET custom_category = COALESCE(unified_sales.custom_category, EXCLUDED.custom_category);
 
 -- Run sync which should update POS fields but preserve custom_category
 SELECT sync_toast_to_unified_sales('00000000-0000-0000-0000-100000000011');

@@ -53,13 +53,14 @@ export const useToastConnection = (restaurantId?: string | null) => {
     },
     enabled: !!restaurantId,
     staleTime: 30000, // 30 seconds
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false, // Avoid excessive refetches on tab switching
     refetchOnMount: true,
   });
 
   const isConnected = !!connection;
 
-  // Legacy function for backward compatibility
+  // Legacy function for backward compatibility - used by components that call hook without restaurantId
+  // and then call this function with a restaurantId parameter
   const checkConnectionStatus = async (restaurantId: string) => {
     if (!restaurantId) {
       return null;

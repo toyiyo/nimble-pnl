@@ -85,7 +85,7 @@ Completed full implementation of Toast POS Standard API Access integration, repl
 ### 4. Financial Breakdown RPC (`/supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql`)
 **Purpose**: Create separate `unified_sales` entries for revenue, discounts, tax, tips, refunds
 
-**Storage Convention**: All amounts are stored as **positive values**. Discounts and refunds are stored positive and subtracted in queries. This ensures consistency across all integrations (Toast, Square, etc.).
+**Storage Convention**: Discounts and refunds are stored as **negative values** (following Square/Shift4 pattern). When displaying, use `ABS()` to show positive amounts. When calculating net revenue, negative values automatically reduce `SUM(total_price)`. This ensures consistent accounting across all POS integrations.
 
 **Logic**:
 ```sql

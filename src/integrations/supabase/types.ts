@@ -6082,49 +6082,73 @@ export type Database = {
       }
       toast_connections: {
         Row: {
-          access_token: string
-          connected_at: string
+          access_token_encrypted: string | null
+          client_id: string
+          client_secret_encrypted: string
+          connection_status: string | null
           created_at: string
           id: string
-          last_sync_at: string | null
-          refresh_token: string | null
+          initial_sync_done: boolean | null
+          is_active: boolean | null
+          last_error: string | null
+          last_error_at: string | null
+          last_sync_time: string | null
           restaurant_id: string
-          scopes: string[] | null
           toast_restaurant_guid: string
           token_expires_at: string | null
+          token_fetched_at: string | null
           updated_at: string
+          webhook_active: boolean | null
+          webhook_secret_encrypted: string | null
+          webhook_subscription_guid: string | null
         }
         Insert: {
-          access_token: string
-          connected_at?: string
+          access_token_encrypted?: string | null
+          client_id: string
+          client_secret_encrypted: string
+          connection_status?: string | null
           created_at?: string
           id?: string
-          last_sync_at?: string | null
-          refresh_token?: string | null
+          initial_sync_done?: boolean | null
+          is_active?: boolean | null
+          last_error?: string | null
+          last_error_at?: string | null
+          last_sync_time?: string | null
           restaurant_id: string
-          scopes?: string[] | null
           toast_restaurant_guid: string
           token_expires_at?: string | null
+          token_fetched_at?: string | null
           updated_at?: string
+          webhook_active?: boolean | null
+          webhook_secret_encrypted?: string | null
+          webhook_subscription_guid?: string | null
         }
         Update: {
-          access_token?: string
-          connected_at?: string
+          access_token_encrypted?: string | null
+          client_id?: string
+          client_secret_encrypted?: string
+          connection_status?: string | null
           created_at?: string
           id?: string
-          last_sync_at?: string | null
-          refresh_token?: string | null
+          initial_sync_done?: boolean | null
+          is_active?: boolean | null
+          last_error?: string | null
+          last_error_at?: string | null
+          last_sync_time?: string | null
           restaurant_id?: string
-          scopes?: string[] | null
           toast_restaurant_guid?: string
           token_expires_at?: string | null
+          token_fetched_at?: string | null
           updated_at?: string
+          webhook_active?: boolean | null
+          webhook_secret_encrypted?: string | null
+          webhook_subscription_guid?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "toast_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7370,6 +7394,32 @@ export type Database = {
           transaction_count: number
         }[]
       }
+      get_uncovered_bank_patterns: {
+        Args: { p_limit?: number; p_restaurant_id: string }
+        Returns: {
+          amount_range: string
+          category_code: string
+          category_name: string
+          date_range: string
+          description: string
+          merchant_name: string
+          normalized_payee: string
+          occurrence_count: number
+          typical_amount: number
+        }[]
+      }
+      get_uncovered_pos_patterns: {
+        Args: { p_limit?: number; p_restaurant_id: string }
+        Returns: {
+          category_code: string
+          category_name: string
+          date_range: string
+          item_name: string
+          occurrence_count: number
+          pos_category: string
+          typical_price: number
+        }[]
+      }
       get_users_by_ids: {
         Args: { user_ids: string[] }
         Returns: {
@@ -7570,6 +7620,10 @@ export type Database = {
         Returns: number
       }
       text_soundex: { Args: { "": string }; Returns: string }
+      toast_sync_financial_breakdown: {
+        Args: { p_order_guid: string; p_restaurant_id: string }
+        Returns: number
+      }
       trigger_square_periodic_sync: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
       unpublish_schedule: {
